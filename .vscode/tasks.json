@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Stop stalled Flutter SDK clone",
+			"type": "shell",
+			"command": "taskkill",
+			"args": [
+				"/IM",
+				"git.exe",
+				"/F"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

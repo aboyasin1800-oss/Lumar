@@ -1,0 +1,23 @@
+# .NET
+**/bin/
+**/obj/
+
+# Flutter and Dart
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/build/
+
+# IDE and local configuration
+.vs/
+.vscode/*.user
+*.user
+*.suo
+
+# Secrets and local environment configuration
+**/appsettings.Local.json
+**/.env
+
+# Database backup retained outside version control
+backups/

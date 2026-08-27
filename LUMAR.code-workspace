@@ -1,0 +1,20 @@
+{
+  "folders": [
+    {
+      "name": "Backend",
+      "path": "backend/LUMAR_ERP_API_V2"
+    },
+    {
+      "name": "Flutter",
+      "path": "frontend/tailoring_system"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/bin": true,
+      "**/obj": true,
+      "**/.dart_tool": true,
+      "**/build": true
+    }
+  }
+}
