@@ -1,0 +1,3 @@
+using LUMAR_ERP_API_V2.DTOs.Inventory;
+namespace LUMAR_ERP_API_V2.Services;
+public interface IInventoryService { Task<IReadOnlyList<InventoryItemDto>> GetItemsAsync(CancellationToken ct); Task<InventoryItemDto?> GetItemByIdAsync(int id, CancellationToken ct); Task<IReadOnlyList<InventoryTransactionDto>> GetTransactionsAsync(CancellationToken ct); Task<IReadOnlyList<FabricDto>> GetFabricsAsync(CancellationToken ct); Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken ct); Task<IReadOnlyList<ImportedReadyMadeProductDto>> GetImportedAsync(CancellationToken ct); }

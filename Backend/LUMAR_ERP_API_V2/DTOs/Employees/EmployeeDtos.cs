@@ -1,0 +1,11 @@
+namespace LUMAR_ERP_API_V2.DTOs.Employees;
+
+public sealed record EmployeeListDto(int EmployeeId, string EmployeeCode, string EmployeeName, string? JobTitle, string? PhoneNumber, bool? IsActive, string Status, int DepartmentId);
+public sealed record EmployeeDetailsDto(int EmployeeId, string EmployeeCode, string EmployeeName, string? JobTitle, string? ScannerCode, string? PhoneNumber, decimal? BaseSalary, string? Notes, bool? IsActive, string? SalaryType, decimal? FixedSalary, string FullName, string? NationalId, string? Phone, string? Email, string? Address, DateTime HireDate, DateTime? TerminationDate, string Status, int DepartmentId, decimal BasicSalary, decimal PieceWageRate, decimal OvertimeHourlyRate, DateTime CreatedAt, DateTime? UpdatedAt);
+public sealed record DepartmentDto(int DepartmentId, string DepartmentCode, string DepartmentName, string? Description, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+public sealed record EmployeeAttendanceDto(int EmployeeAttendanceId, int EmployeeId, DateTime AttendanceDate, DateTime? CheckInTime, DateTime? CheckOutTime, decimal WorkedHours, decimal OvertimeHours, bool IsAbsent, string? AbsenceReason, string? Notes, DateTime CreatedAt);
+public sealed record LeaveRequestDto(int LeaveRequestId, int EmployeeId, string LeaveType, DateTime StartDate, DateTime EndDate, decimal RequestedDays, string Status, string? Reason, string? ApprovedBy, DateTime? ApprovedAt, DateTime CreatedAt);
+public sealed record EmployeeDrawDto(int DrawId, string? EmployeeCode, DateTime? DrawDate, decimal? Amount, string? Notes);
+public sealed record EmployeeDrawSettlementDto(int SettlementId, int DrawId, string? EmployeeCode, DateTime SettlementDate, decimal Amount, string? Notes, int? JournalEntryId);
+public sealed record EmployeeDocumentDto(int EmployeeDocumentId, int EmployeeId, string DocumentType, string? DocumentNumber, DateTime? IssueDate, DateTime? ExpiryDate, string? FilePath, string? Notes, DateTime CreatedAt);
+public sealed record EmployeeWorkflowDto(string EmployeeCode, string? WorkStage);

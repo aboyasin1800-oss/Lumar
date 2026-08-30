@@ -8,10 +8,17 @@
 **/.flutter-plugins-dependencies
 **/.packages
 **/build/
+**/local.properties
+
+# Local SDK and drive synchronization artifacts
+Tools/FlutterSDK/
+.tmp.driveupload/
+.tmp.drivedownload/
 
 # IDE and local configuration
 .vs/
 .vscode/*.user
+.vscode/backend.env
 *.user
 *.suo
 

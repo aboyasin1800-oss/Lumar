@@ -39,3 +39,5 @@ D:\YASIN
 ```
 
 The intended future database target is SQL Server `YASIN-YASIN\SQLEXPRESS`, database `LUMAR_ERP`. No connection string is stored in this repository, and this task does not change that database or create migrations.
+
+The current Flutter target is Windows only. Future Flutter runs and tests use `flutter run -d windows`; the `android` folder remains present as generated project structure, but Android setup and deployment are deferred.

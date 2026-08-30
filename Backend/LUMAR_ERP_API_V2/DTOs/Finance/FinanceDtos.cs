@@ -1,0 +1,11 @@
+namespace LUMAR_ERP_API_V2.DTOs.Finance;
+public sealed record FinancialTransactionDto(int FinancialTransactionId, string ReferenceNumber, string TransactionType, decimal Amount, string? Description, DateTime CreatedAt);
+public sealed record JournalEntryDto(int JournalEntryId, string ReferenceNumber, string? Description, DateTime EntryDate, DateTime CreatedAt);
+public sealed record JournalEntryLineDto(int JournalEntryLineId, int JournalEntryId, int LedgerAccountId, decimal DebitAmount, decimal CreditAmount, string? Description);
+public sealed record LedgerAccountDto(int LedgerAccountId, string AccountCode, string AccountName, string AccountType, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+public sealed record CashAccountDto(int CashAccountId, string AccountName, decimal CurrentBalance, bool IsActive, DateTime CreatedAt);
+public sealed record CustomerLedgerEntryDto(int CustomerLedgerEntryId, int CustomerId, string ReferenceNumber, decimal DebitAmount, decimal CreditAmount, decimal BalanceAfterTransaction, DateTime CreatedAt);
+public sealed record SupplierLedgerEntryDto(int SupplierLedgerEntryId, int SupplierId, string ReferenceNumber, decimal DebitAmount, decimal CreditAmount, decimal BalanceAfterTransaction, DateTime CreatedAt);
+public sealed record SupplierPaymentDto(int SupplierPaymentId, int SupplierId, string PaymentNumber, DateTime PaymentDate, decimal Amount, string? PaymentMethod, string? ReferenceNumber, string? Notes, DateTime CreatedAt, int? JournalEntryId);
+public sealed record SupplierInvoiceDto(int SupplierInvoiceId, int SupplierId, int PurchaseOrderId, string InvoiceNumber, DateTime InvoiceDate, DateTime DueDate, decimal TotalAmount, decimal AmountPaid, string Status, string? Notes, DateTime CreatedAt);
+public sealed record FinancialReconciliationDto(int FinancialTransactions, int JournalEntries, int BalancedJournalEntries, int UnbalancedJournalEntries, int SharedReferences, int FinancialReferencesWithoutJournal, int JournalReferencesWithoutTransaction, int OrphanJournalLines);

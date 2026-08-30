@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend: LUMAR API (5093)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build LUMAR Backend",
+      "program": "D:/YASIN/Backend/LUMAR_ERP_API_V2/bin/Debug/net10.0/LUMAR_ERP_API_V2.dll",
+      "cwd": "D:/YASIN/Backend/LUMAR_ERP_API_V2",
+      "envFile": "D:/YASIN/.vscode/backend.env",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://127.0.0.1:5093"
+      }
+    },
+    {
+      "name": "Flutter: LUMAR Windows",
+      "type": "dart",
+      "request": "launch",
+      "program": "D:/YASIN/frontend/tailoring_system/lib/main.dart",
+      "deviceId": "windows",
+      "toolArgs": [
+        "--dart-define=LUMAR_API_URL=http://127.0.0.1:5093"
+      ]
+    }
+  ]
+}

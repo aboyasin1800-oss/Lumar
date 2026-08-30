@@ -1,0 +1,1 @@
+export 'finance_views.dart' show JournalEntriesScreen;

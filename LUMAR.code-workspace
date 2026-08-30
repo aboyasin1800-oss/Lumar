@@ -10,6 +10,7 @@
     }
   ],
   "settings": {
+    "dart.flutterSdkPath": "D:/YASIN/Tools/FlutterSDK",
     "files.exclude": {
       "**/bin": true,
       "**/obj": true,

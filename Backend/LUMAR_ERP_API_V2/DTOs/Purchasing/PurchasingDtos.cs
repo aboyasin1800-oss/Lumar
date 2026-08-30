@@ -1,0 +1,9 @@
+namespace LUMAR_ERP_API_V2.DTOs.Purchasing;
+public sealed record PurchaseOrderListDto(int PurchaseOrderId, string PurchaseOrderNumber, int SupplierId, DateTime OrderDate, DateTime? ExpectedDeliveryDate, string Status, decimal TotalAmount);
+public sealed record PurchaseOrderDetailsDto(int PurchaseOrderId, string PurchaseOrderNumber, int SupplierId, DateTime OrderDate, DateTime? ExpectedDeliveryDate, string Status, decimal TotalAmount, DateTime CreatedAt);
+public sealed record PurchaseOrderItemDto(int PurchaseOrderItemId, int PurchaseOrderId, string ItemName, decimal Quantity, decimal UnitCost, decimal LineTotal);
+public sealed record GoodsReceiptDto(int GoodsReceiptId, int SupplierId, int PurchaseOrderId, string ReceiptNumber, DateTime ReceiptDate, string? Notes, DateTime CreatedAt);
+public sealed record GoodsReceiptItemDto(int GoodsReceiptItemId, int GoodsReceiptId, string ItemName, decimal ReceivedQuantity, decimal UnitCost, decimal LineTotal);
+public sealed record PurchasingInvoiceDto(int SupplierInvoiceId, int SupplierId, int PurchaseOrderId, string InvoiceNumber, DateTime InvoiceDate, DateTime DueDate, decimal TotalAmount, decimal AmountPaid, string Status, string? Notes, DateTime CreatedAt);
+public sealed record PurchasingPaymentDto(int SupplierPaymentId, int SupplierId, string PaymentNumber, DateTime PaymentDate, decimal Amount, string? PaymentMethod, string? ReferenceNumber, string? Notes, DateTime CreatedAt, int? JournalEntryId);
+public sealed record PurchasingPaymentAllocationDto(int SupplierPaymentAllocationId, int SupplierPaymentId, int SupplierInvoiceId, decimal AllocatedAmount, DateTime AllocationDate, string? Notes, DateTime CreatedAt);

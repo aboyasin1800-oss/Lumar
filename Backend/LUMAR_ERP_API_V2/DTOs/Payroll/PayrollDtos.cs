@@ -1,0 +1,7 @@
+namespace LUMAR_ERP_API_V2.DTOs.Payroll;
+public sealed record PayrollPeriodDto(int PayrollPeriodId, string PeriodCode, DateTime StartDate, DateTime EndDate, string Status, string? Notes, DateTime? GeneratedAt, DateTime? ApprovedAt, DateTime CreatedAt);
+public sealed record PayrollRecordDto(int PayrollRecordId, int PayrollPeriodId, int EmployeeId, decimal BasicSalaryAmount, decimal PieceWageAmount, decimal AttendanceAdjustmentAmount, decimal OvertimeAmount, decimal GrossAmount, decimal DeductionsAmount, decimal NetAmount, string Status, string? Notes, DateTime CreatedAt);
+public sealed record PayrollItemDto(int PayrollItemId, int PayrollRecordId, string ItemType, string ItemName, decimal Quantity, decimal Rate, decimal Amount, string? Notes);
+public sealed record EmployeePayrollSummaryDto(int EmployeeId, int PayrollPeriodId, decimal BasicSalaryAmount, decimal PieceWageAmount, decimal AttendanceAdjustmentAmount, decimal OvertimeAmount, decimal GrossAmount, decimal DeductionsAmount, decimal NetAmount);
+public sealed record PieceWageRecordDto(int PieceWageRecordId, int OrderId, int OrderItemId, int PieceId, int TrackingEventId, int? EmployeeId, string? EmployeeCode, string PieceType, string Stage, decimal Quantity, decimal WageRate, decimal TotalWage, int? PayrollPeriodId, int? PayrollRecordId, string Status, string? Notes, DateTime CreatedAt);
+public sealed record PieceWageRateDto(int PieceWageRateId, string PieceType, string Stage, decimal WageRate, bool IsActive, string? Notes, DateTime CreatedAt, DateTime? UpdatedAt);

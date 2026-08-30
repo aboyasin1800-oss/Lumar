@@ -1,0 +1,8 @@
+namespace LUMAR_ERP_API_V2.DTOs.Suppliers;
+public sealed record SupplierListDto(int SupplierId, string SupplierCode, string SupplierName, string? Phone, string? Email, bool IsActive);
+public sealed record SupplierDetailsDto(int SupplierId, string SupplierCode, string SupplierName, string? Phone, string? Email, string? Address, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+public sealed record SupplierTransactionDto(int SupplierTransactionId, int SupplierId, string ReferenceNumber, string TransactionType, decimal Amount, string? Description, DateTime CreatedAt);
+public sealed record SupplierLedgerEntryDto(int SupplierLedgerEntryId, int SupplierId, string ReferenceNumber, decimal DebitAmount, decimal CreditAmount, decimal BalanceAfterTransaction, DateTime CreatedAt);
+public sealed record SupplierInvoiceDto(int SupplierInvoiceId, int SupplierId, int PurchaseOrderId, string InvoiceNumber, DateTime InvoiceDate, DateTime DueDate, decimal TotalAmount, decimal AmountPaid, string Status, string? Notes, DateTime CreatedAt);
+public sealed record SupplierPaymentDto(int SupplierPaymentId, int SupplierId, string PaymentNumber, DateTime PaymentDate, decimal Amount, string? PaymentMethod, string? ReferenceNumber, string? Notes, DateTime CreatedAt, int? JournalEntryId);
+public sealed record SupplierPaymentAllocationDto(int SupplierPaymentAllocationId, int SupplierPaymentId, int SupplierInvoiceId, decimal AllocatedAmount, DateTime AllocationDate, string? Notes, DateTime CreatedAt);
