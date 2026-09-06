@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../screens/inventory/bulk_fabric_entry_screen.dart';
 import '../screens/login_screen.dart';
 import '../widgets/main_shell.dart';
 import '../services/auth_state.dart';
@@ -32,6 +33,7 @@ class AppRoutes {
 		AppDestination('/reports', 'التقارير', Icons.analytics_outlined),
 		AppDestination('/administration', 'الإدارة', Icons.admin_panel_settings_outlined),
 		AppDestination('/settings', 'الإعدادات', Icons.settings_outlined),
+		AppDestination('/ready-made-production', 'الإنتاج الجاهز من منتجاتنا', Icons.checkroom_outlined),
 	];
 
 	static Route<void> onGenerateRoute(RouteSettings settings, AuthState auth, ThemeState themeState, UiScaleState uiScale, SidebarState sidebarState) {
@@ -39,6 +41,10 @@ class AppRoutes {
 			return MaterialPageRoute(builder: (_) => LoginScreen(auth: auth), settings: settings);
 		}
 		if (!auth.signedIn) return MaterialPageRoute(builder: (_) => LoginScreen(auth: auth), settings: settings);
+		if (settings.name == '/structure/إدخال الأقمشة بالجملة' || settings.name == '/inventory/bulk-entry') {
+			sidebarState.setVisible(true);
+			return MaterialPageRoute(builder: (_) => const BulkFabricEntryScreen(), settings: settings);
+		}
 		if (settings.name?.startsWith('/structure/') ?? false) {
 			final title = Uri.decodeComponent(settings.name!.substring('/structure/'.length));
 			sidebarState.setVisible(true);

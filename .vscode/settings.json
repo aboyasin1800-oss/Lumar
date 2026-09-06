@@ -1,0 +1,39 @@
+{
+  "files.exclude": {
+    "**/build": true,
+    "**/.dart_tool": true,
+    "**/windows/flutter/ephemeral": true,
+    "**/FlutterSDK/**": true,
+    "**/.tmp.driveupload/**": true,
+    "**/.tmp.drivedownload/**": true,
+    "**/backups/**": true,
+    "**/artifacts/**": true
+  },
+  "search.exclude": {
+    "D:/YASIN/Tools/FlutterSDK/**": true,
+    "D:/YASIN/.tmp.driveupload/**": true,
+    "D:/YASIN/.tmp.drivedownload/**": true,
+    "D:/YASIN/backups/**": true,
+    "D:/YASIN/artifacts/**": true,
+    "D:/YASIN/frontend/tailoring_system/build/**": true,
+    "D:/YASIN/frontend/tailoring_system/.dart_tool/**": true,
+    "D:/YASIN/frontend/tailoring_system/windows/flutter/ephemeral/**": true
+  },
+  "files.watcherExclude": {
+    "D:/YASIN/Tools/FlutterSDK/**": true,
+    "D:/YASIN/.tmp.driveupload/**": true,
+    "D:/YASIN/.tmp.drivedownload/**": true,
+    "D:/YASIN/backups/**": true,
+    "D:/YASIN/artifacts/**": true,
+    "D:/YASIN/frontend/tailoring_system/build/**": true,
+    "D:/YASIN/frontend/tailoring_system/.dart_tool/**": true,
+    "D:/YASIN/frontend/tailoring_system/windows/flutter/ephemeral/**": true
+  },
+  "dart.analysisExcludedFolders": [
+    "D:/YASIN/Tools/FlutterSDK",
+    "D:/YASIN/.tmp.driveupload",
+    "D:/YASIN/.tmp.drivedownload",
+    "D:/YASIN/backups",
+    "D:/YASIN/artifacts"
+  ]
+}

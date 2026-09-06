@@ -1,5 +1,6 @@
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Orders;
+using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
 
 namespace LUMAR_ERP_API_V2.Repositories;
@@ -24,7 +25,8 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
         {
             if (!await CustomerExistsAsync(order.CustomerId, connection, transaction, cancellationToken)) return null;
             var now = DateTime.UtcNow;
-            var orderNumber = $"ORD-{await NextNumberAsync("dbo.Orders", "OrderNumber", "ORD-", connection, transaction, cancellationToken):D6}";
+            var orderPrefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "OrderCodePrefix", "ORD-", cancellationToken);
+            var orderNumber = $"{orderPrefix}{await NextNumberAsync("dbo.Orders", "OrderNumber", orderPrefix, connection, transaction, cancellationToken):D6}";
             var remainingAmount = order.TotalAmount - order.DiscountAmount - order.AdvancePayment;
             const string orderSql = "INSERT INTO dbo.Orders (OrderNumber,CustomerID,OrderDate,DeliveryDate,TotalAmount,DiscountAmount,PaidAmount,RemainingAmount,UrgencyStatus,OrderStatus,Notes,CreatedDate,SaleCategory) OUTPUT INSERTED.OrderID VALUES (@number,@customerId,@orderDate,@deliveryDate,@total,@discount,@paid,@remaining,@urgency,N'New',@notes,@created,@category)";
             await using var orderCommand = new SqlCommand(orderSql, connection, transaction);
@@ -42,13 +44,14 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             orderCommand.Parameters.AddWithValue("@category", order.SaleCategory.Trim());
             var orderId = (int)(await orderCommand.ExecuteScalarAsync(cancellationToken))!;
 
-            var nextTracking = await NextNumberAsync("dbo.Pieces", "TrackingCode", "TRK-", connection, transaction, cancellationToken);
+            var trackingPrefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "PieceTrackingPrefix", "TRK-", cancellationToken);
+            var nextTracking = await NextNumberAsync("dbo.Pieces", "TrackingCode", trackingPrefix, connection, transaction, cancellationToken);
             foreach (var item in order.Items)
             {
-                var itemTracking = $"TRK-{nextTracking++:D6}";
+                var itemTracking = $"{trackingPrefix}{nextTracking++:D6}";
                 var orderItemId = await InsertOrderItemAsync(orderId, item, itemTracking, now, connection, transaction, cancellationToken);
                 for (var pieceNumber = 1; pieceNumber <= item.Quantity; pieceNumber++)
-                    await InsertPieceAsync(orderItemId, $"TRK-{nextTracking++:D6}", pieceNumber, now, connection, transaction, cancellationToken);
+                    await InsertPieceAsync(orderItemId, $"{trackingPrefix}{nextTracking++:D6}", pieceNumber, now, connection, transaction, cancellationToken);
                 if (item.Fabric is not null) await InsertFabricAsync(orderItemId, item.Fabric, now, connection, transaction, cancellationToken);
             }
 
@@ -69,6 +72,10 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
 
     public Task<IReadOnlyList<OrderPieceDto>> GetPiecesAsync(int orderId, CancellationToken cancellationToken) => QueryAsync("SELECT p.PieceID, p.OrderItemID, p.TrackingCode, p.PieceStatus, p.PieceNumber, p.CreatedDate FROM dbo.Pieces p INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = p.OrderItemID WHERE oi.OrderID = @orderId ORDER BY p.PieceNumber, p.PieceID", reader => new OrderPieceDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetString(3), reader.GetInt32(4), reader.GetDateTime(5)), orderId, cancellationToken);
 
+    public Task<IReadOnlyList<OrderFabricDto>> GetFabricsAsync(int orderId, CancellationToken cancellationToken) => QueryAsync("SELECT f.OrderItemFabricID, f.OrderItemID, f.InventoryItemID, f.FabricCode, f.FabricType, f.FabricColor, f.Quantity, f.Unit, f.UnitCost, f.TotalCost, f.ConsumedQuantity, i.YardPrice, f.CreatedDate FROM dbo.OrderItemFabrics f INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = f.OrderItemID LEFT JOIN dbo.InventoryItems i ON i.InventoryItemID = f.InventoryItemID WHERE oi.OrderID = @orderId ORDER BY f.OrderItemFabricID", reader => new OrderFabricDto(reader.GetInt32(0), reader.GetInt32(1), reader.NullableInt32("InventoryItemID"), reader.NullableString("FabricCode"), reader.NullableString("FabricType"), reader.NullableString("FabricColor"), reader.GetDecimal(6), reader.GetString(7), reader.GetDecimal(8), reader.GetDecimal(9), reader.GetDecimal(10), reader.NullableDecimal("YardPrice"), reader.GetDateTime(12)), orderId, cancellationToken);
+
+    public Task<IReadOnlyList<OrderPaymentDto>> GetPaymentsAsync(int orderId, CancellationToken cancellationToken) => QueryAsync("SELECT PaymentID, OrderID, InvoiceID, PaymentDate, Amount, PaymentMethod, ReferenceNo, Notes, CreatedDate, PaymentKind FROM dbo.Payments WHERE OrderID = @orderId ORDER BY PaymentDate DESC, PaymentID DESC", reader => new OrderPaymentDto(reader.GetInt32(0), reader.GetInt32(1), reader.NullableInt32("InvoiceID"), reader.GetDateTime(3), reader.GetDecimal(4), reader.NullableString("PaymentMethod"), reader.NullableString("ReferenceNo"), reader.NullableString("Notes"), reader.GetDateTime(8), reader.GetString(9)), orderId, cancellationToken);
+
     public async Task<OrderDeliveryDto?> GetDeliveryAsync(int orderId, CancellationToken cancellationToken)
     {
         var results = await QueryAsync("SELECT OrderID, OrderStatus, DeliveryDate FROM dbo.Orders WHERE OrderID = @orderId", reader => new OrderDeliveryDto(reader.GetInt32(0), reader.GetString(1), reader.NullableDateTime("DeliveryDate")), orderId, cancellationToken);
@@ -84,9 +91,10 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
 
     private static async Task<int> NextNumberAsync(string table, string column, string prefix, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
     {
-        var sql = $"SELECT ISNULL(MAX(TRY_CONVERT(int,SUBSTRING({column},{prefix.Length + 1},20))),0)+1 FROM {table} WITH (TABLOCKX,HOLDLOCK) WHERE {column} LIKE @prefix";
+        var normalizedPrefix = string.IsNullOrWhiteSpace(prefix) ? "" : prefix.Trim();
+        var sql = $"SELECT ISNULL(MAX(TRY_CONVERT(int,SUBSTRING({column},{normalizedPrefix.Length + 1},20))),0)+1 FROM {table} WITH (TABLOCKX,HOLDLOCK) WHERE {column} LIKE @prefix";
         await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("@prefix", $"{prefix}%");
+        command.Parameters.AddWithValue("@prefix", $"{normalizedPrefix}%");
         return (int)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 

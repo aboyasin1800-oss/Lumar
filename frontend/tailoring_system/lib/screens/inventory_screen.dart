@@ -4,211 +4,1183 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
+import '../core/app_navigation.dart';
+import '../core/ui_palette.dart';
+import 'inventory/bulk_fabric_entry_screen.dart';
+import 'inventory/imported_product_entry_screen.dart';
+import 'inventory/tool_entry_screen.dart';
+
 class InventoryScreen extends StatefulWidget {
-	const InventoryScreen({super.key});
-	@override
-	State<InventoryScreen> createState() => _InventoryScreenState();
+  const InventoryScreen({super.key});
+
+  @override
+  State<InventoryScreen> createState() => _InventoryScreenState();
 }
 
-class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProviderStateMixin {
-	static const _baseUrl = String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5092');
-	late final TabController _tabs;
-	late Future<InventoryData> _data;
+class _InventoryScreenState extends State<InventoryScreen>
+    with SingleTickerProviderStateMixin {
+  static const _baseUrl = String.fromEnvironment(
+    'LUMAR_API_URL',
+    defaultValue: 'http://127.0.0.1:5093',
+  );
 
-	@override
-	void initState() {
-		super.initState();
-		_tabs = TabController(length: 3, vsync: this);
-		_data = _load();
-	}
+  late final TabController _tabs;
+  late final TextEditingController _fabricSearchController;
+  InventoryData? _data;
+  bool _loading = true;
 
-	@override
-	void dispose() {
-		_tabs.dispose();
-		super.dispose();
-	}
+  @override
+  void initState() {
+    super.initState();
+    _tabs = TabController(length: 4, vsync: this);
+    _fabricSearchController = TextEditingController();
+    _load();
+  }
 
-	Future<InventoryData> _load() async {
-		final responses = await Future.wait([
-			http.get(Uri.parse('$_baseUrl/inventory/items')),
-			http.get(Uri.parse('$_baseUrl/inventory/readymade')),
-			http.get(Uri.parse('$_baseUrl/inventory/imported')),
-		]);
-		if (responses.any((response) => response.statusCode < 200 || response.statusCode >= 300)) throw Exception();
-		List<Map<String, dynamic>> decode(http.Response response) => (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
-		return InventoryData(
-			fabrics: decode(responses[0]).map(FabricItem.fromJson).toList(),
-			readyMade: decode(responses[1]).map(ReadyMadeItem.fromJson).toList(),
-			imported: decode(responses[2]).map(ImportedItem.fromJson).toList(),
-		);
-	}
+  @override
+  void dispose() {
+    _tabs.dispose();
+    _fabricSearchController.dispose();
+    super.dispose();
+  }
 
-	Future<void> _refresh() async {
-		setState(() => _data = _load());
-		await _data;
-	}
+  Future<void> _load() async {
+    setState(() => _loading = true);
 
-	@override
-	Widget build(BuildContext context) => FutureBuilder<InventoryData>(
-		future: _data,
-		builder: (context, snapshot) {
-			if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-			if (snapshot.hasError) return _LoadError(onRetry: _refresh);
-			final data = snapshot.data!;
-			return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-				Row(children: [
-					Expanded(child: Text('نظرة عامة على المخزون', style: Theme.of(context).textTheme.headlineSmall)),
-					IconButton(tooltip: 'تحديث البيانات', onPressed: _refresh, icon: const Icon(Icons.refresh)),
-				]),
-				const SizedBox(height: 14),
-				_Statistics(data: data),
-				const SizedBox(height: 16),
-				TabBar(controller: _tabs, isScrollable: true, tabs: const [
-					Tab(icon: Icon(Icons.texture_outlined), text: 'مخزن الأقمشة'),
-					Tab(icon: Icon(Icons.checkroom_outlined), text: 'منتجاتنا الجاهزة'),
-					Tab(icon: Icon(Icons.public_outlined), text: 'المنتجات المستوردة'),
-				]),
-				const SizedBox(height: 10),
-				Expanded(child: TabBarView(controller: _tabs, children: [
-					InventoryTable(
-						columns: const ['الكود', 'اسم الصنف', 'الفئة', 'الرصيد الحالي', 'المتاح', 'المحجوز'],
-						rows: data.fabrics.map((item) => [item.code, item.name, item.category, quantity(item.current), quantity(item.available), quantity(item.reserved)]).toList(),
-						emptyMessage: 'لا توجد أصناف أقمشة.', onRefresh: _refresh,
-					),
-					InventoryTable(
-						columns: const ['المنتج', 'الحالة', 'التكلفة', 'سعر البيع المقترح'],
-						rows: data.readyMade.map((item) => [item.product, statusLabel(item.status), money(item.cost), money(item.price)]).toList(),
-						emptyMessage: 'لا توجد منتجات جاهزة من إنتاجنا.', onRefresh: _refresh,
-					),
-					InventoryTable(
-						columns: const ['المنتج', 'الكمية', 'سعر الشراء', 'سعر البيع'],
-						rows: data.imported.map((item) => [item.product, '${quantity(item.quantity)} ${item.unit}', money(item.purchasePrice), money(item.sellingPrice)]).toList(),
-						emptyMessage: 'لا توجد منتجات مستوردة.', onRefresh: _refresh,
-					),
-				])),
-			]);
-		},
-	);
+    try {
+      final responses = await Future.wait([
+        http.get(Uri.parse('$_baseUrl/inventory/items')),
+        http.get(Uri.parse('$_baseUrl/inventory/fabrics')),
+        http.get(Uri.parse('$_baseUrl/inventory/readymade')),
+        http.get(Uri.parse('$_baseUrl/inventory/imported')),
+        http.get(Uri.parse('$_baseUrl/suppliers')),
+        http.get(Uri.parse('$_baseUrl/inventory/transactions')),
+      ]);
+
+      if (responses.any((response) => response.statusCode < 200 || response.statusCode >= 300)) {
+        throw Exception();
+      }
+
+      final inventoryItems = (jsonDecode(responses[0].body) as List)
+          .cast<Map<String, dynamic>>()
+          .map(InventoryItemRecord.fromJson)
+          .toList();
+
+      final fabricRows = (jsonDecode(responses[1].body) as List)
+          .cast<Map<String, dynamic>>();
+
+      final readyMade = (jsonDecode(responses[2].body) as List)
+          .cast<Map<String, dynamic>>()
+          .map(ReadyMadeItem.fromJson)
+          .toList();
+
+      final imported = (jsonDecode(responses[3].body) as List)
+          .cast<Map<String, dynamic>>()
+          .map(ImportedItem.fromJson)
+          .toList();
+
+      final supplierMap = <int, String>{};
+      final suppliers = (jsonDecode(responses[4].body) as List?) ?? const [];
+      for (final supplier in suppliers.cast<Map<String, dynamic>>()) {
+        final id = (supplier['supplierId'] as num?)?.toInt();
+        final name = supplier['supplierName']?.toString();
+        if (id != null && name != null && name.trim().isNotEmpty) {
+          supplierMap[id] = name.trim();
+        }
+      }
+
+      final supplierByInventoryItemId = <int, String>{};
+      final transactions = (jsonDecode(responses[5].body) as List?) ?? const [];
+      for (final transaction in transactions.cast<Map<String, dynamic>>()) {
+        final itemId = (transaction['inventoryItemId'] as num?)?.toInt();
+        final notes = transaction['notes']?.toString() ?? '';
+        if (itemId == null || notes.trim().isEmpty) {
+          continue;
+        }
+
+        final match = RegExp(r'(?:المورد|مورد)\s*:\s*([^|]+)|Supplier\s*:\s*([^|]+)').firstMatch(notes);
+        final candidate = (match?.group(1) ?? match?.group(2))?.trim();
+        if (candidate != null && candidate.isNotEmpty) {
+          supplierByInventoryItemId[itemId] = candidate;
+        }
+      }
+
+      final fabricsFromApi = fabricRows
+          .map((row) => _fabricItemFromApi(row, supplierMap, supplierByInventoryItemId))
+          .whereType<FabricItem>()
+          .toList();
+
+      final fabrics = _deduplicateFabrics(fabricsFromApi);
+
+      final tools = inventoryItems
+          .where((item) => _isToolCategory(item.category) || _isToolCategory(item.itemName))
+          .map(ToolItem.fromInventory)
+          .toList();
+
+      setState(() {
+        _data = InventoryData(
+          fabrics: fabrics,
+          readyMade: readyMade,
+          imported: imported,
+          tools: tools,
+        );
+        _loading = false;
+      });
+    } catch (_) {
+      setState(() {
+        _loading = false;
+        _data = null;
+      });
+    }
+  }
+
+  List<FabricItem> _deduplicateFabrics(List<FabricItem> fabrics) {
+    final seen = <String>{};
+    final result = <FabricItem>[];
+
+    for (final fabric in fabrics) {
+      final key = '${fabric.sourceTable ?? 'unknown'}|${fabric.sourceId ?? ''}|${fabric.code}|${fabric.name}|${fabric.color ?? ''}|${fabric.unit ?? ''}';
+      if (seen.add(key)) {
+        result.add(fabric);
+      }
+    }
+
+    return result;
+  }
+
+  bool _matchesFabricSearch(FabricItem item, String query) {
+    if (query.isEmpty) {
+      return true;
+    }
+
+    final normalizedQuery = query.toLowerCase();
+    final haystack = [
+      item.name,
+      item.code,
+      item.color ?? '',
+      item.category,
+      item.unit ?? '',
+    ].join(' ').toLowerCase();
+
+    return haystack.contains(normalizedQuery);
+  }
+
+  bool _isToolCategory(String category) {
+    final value = category.toLowerCase();
+    return value.contains('tool') ||
+        value.contains('sewing') ||
+        value.contains('needle') ||
+        value.contains('thread') ||
+        value.contains('machine') ||
+        value.contains('equipment') ||
+        value.contains('اداة') ||
+        value.contains('أداة');
+  }
+
+  FabricItem? _fabricItemFromApi(
+    Map<String, dynamic> json,
+    Map<int, String> supplierMap,
+    Map<int, String> supplierByInventoryItemId,
+  ) {
+    final code = (json['fabricCode'] ?? json['FabricCode'] ?? json['itemCode'] ?? json['ItemCode'] ?? json['inventoryFabricCode'] ?? json['InventoryFabricCode'])?.toString();
+    final name = (json['inventoryFabricName'] ?? json['fabricName'] ?? json['InventoryFabricName'] ?? json['FabricName'])?.toString();
+    final available = ((json['availableQuantity'] ?? json['AvailableQuantity'] ?? json['quantityYard'] ?? json['QuantityYard']) as num?)?.toDouble() ?? 0;
+    final current = ((json['quantityYard'] ?? json['QuantityYard'] ?? json['availableQuantity'] ?? json['AvailableQuantity']) as num?)?.toDouble() ?? available;
+    final color = (json['color'] ?? json['Color'] ?? json['fabricColor'] ?? json['FabricColor'])?.toString();
+    final unit = (json['unit'] ?? json['Unit'])?.toString();
+    final price = ((json['pricePerYard'] ?? json['PricePerYard'] ?? json['fabricPrice'] ?? json['FabricPrice']) as num?)?.toDouble();
+    final sourceTable = (json['sourceTable'] ?? json['SourceTable'])?.toString();
+    final sourceId = (json['fabricId'] ?? json['FabricID']) as num?;
+    final inventoryItemId = (json['inventoryFabricCode'] ?? json['InventoryFabricCode']) as num?;
+    final rawSupplierId = (json['supplierId'] ?? json['SupplierId'] ?? json['supplier_id'] ?? json['supplierID']) as num?;
+    final explicitSupplierName = (json['supplierName'] ?? json['SupplierName'] ?? json['supplier'] ?? json['Supplier'])?.toString();
+    final catalogNumber = (json['catalogNumber'] ?? json['CatalogNumber'] ?? json['barcode'] ?? json['Barcode'])?.toString();
+
+    final supplierName = explicitSupplierName ??
+        (rawSupplierId != null ? supplierMap[rawSupplierId.toInt()] : null) ??
+        (inventoryItemId != null ? supplierByInventoryItemId[inventoryItemId.toInt()] : null);
+
+    if (code == null && name == null) {
+      return null;
+    }
+
+    return FabricItem(
+      code: code ?? name ?? 'FAB-${DateTime.now().microsecondsSinceEpoch}',
+      name: name ?? code ?? 'قماش',
+      category: sourceTable ?? 'Fabric',
+      current: current,
+      available: available,
+      reserved: 0,
+      color: color,
+      unit: unit,
+      price: price,
+      catalogNumber: catalogNumber,
+      sourceTable: sourceTable,
+      sourceId: sourceId?.toInt(),
+      supplierName: supplierName,
+    );
+  }
+
+  Future<void> _refresh() async => _load();
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    String message,
+    Future<void> Function() onDelete,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تنبيه حذف'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await onDelete();
+    }
+  }
+
+  InventoryData _removeFabric(int index) {
+    final current = _data!;
+    final updated = [...current.fabrics];
+    updated.removeAt(index);
+    return InventoryData(
+      fabrics: updated,
+      readyMade: [...current.readyMade],
+      imported: [...current.imported],
+      tools: [...current.tools],
+    );
+  }
+
+  InventoryData _removeReadyMade(int index) {
+    final current = _data!;
+    final updated = [...current.readyMade];
+    updated.removeAt(index);
+    return InventoryData(
+      fabrics: [...current.fabrics],
+      readyMade: updated,
+      imported: [...current.imported],
+      tools: [...current.tools],
+    );
+  }
+
+  InventoryData _removeImported(int index) {
+    final current = _data!;
+    final updated = [...current.imported];
+    updated.removeAt(index);
+    return InventoryData(
+      fabrics: [...current.fabrics],
+      readyMade: [...current.readyMade],
+      imported: updated,
+      tools: [...current.tools],
+    );
+  }
+
+  InventoryData _removeTool(int index) {
+    final current = _data!;
+    final updated = [...current.tools];
+    updated.removeAt(index);
+    return InventoryData(
+      fabrics: [...current.fabrics],
+      readyMade: [...current.readyMade],
+      imported: [...current.imported],
+      tools: updated,
+    );
+  }
+
+  Future<void> _deleteFabricAt(int index) async {
+    if (_data == null) return;
+    await _confirmDelete(
+      context,
+      'هل أنت متأكد من حذف هذا المنتج من مخزن الأقمشة؟',
+      () async {
+        setState(() {
+          _data = _removeFabric(index);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم حذف المنتج من مخزن الأقمشة.')),
+          );
+        }
+      },
+    );
+  }
+
+  Future<void> _deleteReadyMadeAt(int index) async {
+    if (_data == null) return;
+    await _confirmDelete(
+      context,
+      'هل أنت متأكد من حذف هذا المنتج من مخزن المنتجات الجاهزة؟',
+      () async {
+        setState(() {
+          _data = _removeReadyMade(index);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم حذف المنتج من مخزن المنتجات الجاهزة.')),
+          );
+        }
+      },
+    );
+  }
+
+  Future<void> _deleteImportedAt(int index) async {
+    if (_data == null) return;
+    await _confirmDelete(
+      context,
+      'هل أنت متأكد من حذف هذا المنتج من مخزن المنتجات المستوردة؟',
+      () async {
+        setState(() {
+          _data = _removeImported(index);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم حذف المنتج من مخزن المنتجات المستوردة.')),
+          );
+        }
+      },
+    );
+  }
+
+  Future<void> _deleteToolAt(int index) async {
+    if (_data == null) return;
+    await _confirmDelete(
+      context,
+      'هل أنت متأكد من حذف هذا المنتج من مخزن الأدوات؟',
+      () async {
+        setState(() {
+          _data = _removeTool(index);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم حذف المنتج من مخزن الأدوات.')),
+          );
+        }
+      },
+    );
+  }
+
+  Future<void> _addToTab(String tabName) async {
+    if (tabName == 'fabric') {
+      final result = await AppNavigation.push<bool>(context, (_) => const BulkFabricEntryScreen());
+      if (result == true) {
+        _load();
+      }
+      return;
+    }
+
+    if (tabName == 'imported') {
+      final result = await AppNavigation.push<bool>(context, (_) => const ImportedProductEntryScreen());
+      if (result == true) {
+        _load();
+      }
+      return;
+    }
+
+    if (tabName == 'tools') {
+      final result = await AppNavigation.push<bool>(context, (_) => const ToolEntryScreen());
+      if (result == true) {
+        _load();
+      }
+      return;
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('إضافة عنصر جديد في $tabName سيتم تنفيذها لاحقًا في شاشة الإدخال المناسبة.')),
+      );
+    }
+  }
+
+  double get _readyMadeAveragePrice {
+    if (_data == null || _data!.readyMade.isEmpty) {
+      return 0;
+    }
+
+    final total = _data!.readyMade
+        .map((item) => item.price ?? 0.0)
+        .reduce((a, b) => a + b);
+
+    return total / _data!.readyMade.length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_data == null) {
+      return _LoadError(onRetry: _refresh);
+    }
+
+    final data = _data!;
+    final fabricSearchQuery = _fabricSearchController.text.trim();
+    final visibleFabrics = data.fabrics
+        .where((item) => _matchesFabricSearch(item, fabricSearchQuery))
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'إدارة المخازن',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+            ),
+            IconButton(
+              tooltip: 'تحديث البيانات',
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          height: 52,
+          decoration: BoxDecoration(
+            color: UiPalette.surfaceCard,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: UiPalette.borderSoft.withValues(alpha: 0.55)),
+          ),
+          child: TabBar(
+            controller: _tabs,
+            isScrollable: false,
+            tabAlignment: TabAlignment.fill,
+            labelColor: UiPalette.textMain,
+            unselectedLabelColor: UiPalette.textSoft,
+            indicatorColor: const Color.fromARGB(255, 18, 247, 216),
+            dividerColor: Colors.transparent,
+            indicatorSize: TabBarIndicatorSize.tab,
+            indicator: const UnderlineTabIndicator(
+              borderSide: BorderSide(width: 3, color: Color.fromARGB(255, 18, 247, 216)),
+              insets: EdgeInsets.symmetric(horizontal: 6),
+            ),
+            labelStyle: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+            unselectedLabelStyle: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+            tabs: const [
+              Tab(text: 'مخزن الأقمشة'),
+              Tab(text: 'مخزن المنتجات الجاهزة'),
+              Tab(text: 'مخزن المنتجات المستوردة'),
+              Tab(text: 'مخزن الأدوات المستخدمة'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: TabBarView(
+            controller: _tabs,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'مخزن الأقمشة',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      FilledButton.icon(
+                        onPressed: () => _addToTab('fabric'),
+                        icon: const Icon(Icons.add),
+                        label: const Text('إضافة قماش'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Autocomplete<String>(
+                      optionsBuilder: (TextEditingValue value) {
+                        final query = value.text.trim();
+                        if (query.isEmpty) {
+                          return const Iterable<String>.empty();
+                        }
+
+                        final lowerQuery = query.toLowerCase();
+                        final matches = <String>{};
+
+                        for (final item in data.fabrics) {
+                          final name = item.name.toLowerCase();
+                          final code = item.code.toLowerCase();
+                          final color = (item.color ?? '').toLowerCase();
+
+                          if (name.contains(lowerQuery) || code.contains(lowerQuery) || color.contains(lowerQuery)) {
+                            if (item.name.isNotEmpty) {
+                              matches.add(item.name);
+                            }
+                            if (item.code.isNotEmpty) {
+                              matches.add(item.code);
+                            }
+                          }
+                        }
+
+                        return matches
+                            .where((option) => option.toLowerCase().contains(lowerQuery))
+                            .take(10);
+                      },
+                      onSelected: (value) {
+                        _fabricSearchController.text = value;
+                        setState(() {});
+                      },
+                      fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                        return TextField(
+                          controller: _fabricSearchController,
+                          focusNode: focusNode,
+                          onChanged: (_) => setState(() {}),
+                          onSubmitted: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            hintText: 'ابحث بالكود أو نوع القماش',
+                            prefixIcon: const Icon(Icons.search),
+                            border: const OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        );
+                      },
+                      optionsViewBuilder: (context, onSelected, options) {
+                        final items = options.toList();
+                        return Align(
+                          alignment: Alignment.topLeft,
+                          child: Material(
+                            elevation: 4,
+                            borderRadius: BorderRadius.circular(12),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 220, maxWidth: 440),
+                              child: ListView.builder(
+                                padding: EdgeInsets.zero,
+                                itemCount: items.length,
+                                itemBuilder: (context, index) {
+                                  final option = items[index];
+                                  return ListTile(
+                                    dense: true,
+                                    title: Text(option),
+                                    onTap: () => onSelected(option),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      _StatMetric(icon: Icons.layers_outlined, label: 'إجمالي الأصناف', value: '${visibleFabrics.length}'),
+                      _StatMetric(icon: Icons.inventory_2_outlined, label: 'الرصيد الحالي', value: quantity(visibleFabrics.fold(0.0, (sum, item) => sum + item.current))),
+                      _StatMetric(icon: Icons.check_circle_outline, label: 'المتاح', value: quantity(visibleFabrics.fold(0.0, (sum, item) => sum + item.available))),
+                    ].map(
+                      (metric) => SizedBox(
+                        width: 380,
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(5),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                                  child: Icon(metric.icon, color: Theme.of(context).colorScheme.onPrimaryContainer),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        metric.label,
+                                        style: Theme.of(context).textTheme.labelMedium?.copyWith(fontSize: 18),
+                                      ),
+                                      Text(
+                                        metric.value,
+                                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ).toList(),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${visibleFabrics.length} صنف',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Expanded(
+                    child: visibleFabrics.isEmpty
+                        ? const Center(child: Text('لا توجد عناصر في هذا المخزن حاليًا.'))
+                        : ListView.separated(
+                            itemCount: visibleFabrics.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 4),
+                            itemBuilder: (context, index) {
+                              final item = visibleFabrics[index];
+                              final yardPrice = item.price;
+                              final inchPrice = item.price == null ? null : item.price! / 36;
+
+                              return Card(
+                                margin: const EdgeInsets.symmetric(vertical: 2),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(10),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              item.name,
+                                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                          IconButton(
+                                            tooltip: 'حذف المنتج',
+                                            onPressed: () => _deleteFabricAt(data.fabrics.indexOf(item)),
+                                            icon: const Icon(Icons.delete_outline),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      LayoutBuilder(
+                                        builder: (context, constraints) {
+                                          final spacing = 2.0;
+                                          final columns = constraints.maxWidth < 520
+                                              ? 4
+                                              : constraints.maxWidth < 860
+                                                  ? 10
+                                                  : 12;
+                                          final width = (constraints.maxWidth - (spacing * (columns - 1))) / columns;
+                                          final metrics = [
+                                            _fabricInfoCard(context, 'كود القماش', item.code.isEmpty ? 'غير محدد' : item.code),
+                                            _fabricInfoCard(context, 'رقم الكتالوج', item.catalogNumber?.isNotEmpty == true ? item.catalogNumber! : 'غير محدد'),
+                                            _fabricInfoCard(context, 'اسم المورد', item.supplierName ?? 'غير محدد'),
+                                            _fabricInfoCard(context, 'نوع القماش', item.name),
+                                            _fabricInfoCard(context, 'لون القماش', item.color ?? 'غير محدد'),
+                                            _fabricInfoCard(context, 'الكمية المدخلة', quantity(item.current)),
+                                            _fabricInfoCard(context, 'الكمية المتوفرة', quantity(item.available)),
+                                            _fabricInfoCard(context, 'عدد البوصات المتوفرة', quantity(item.available * 36)),
+                                            _fabricInfoCard(context, 'الكمية المحجوزة', quantity(item.reserved)),
+                                            _fabricInfoCard(context, 'سعر الياردة', yardPrice == null ? '-' : money(yardPrice)),
+                                            _fabricInfoCard(context, 'سعر البوصة', inchPrice == null ? '-' : money(inchPrice)),
+                                          ];
+
+                                          return Wrap(
+                                            spacing: spacing,
+                                            runSpacing: spacing,
+                                            children: metrics
+                                                .map((metric) => SizedBox(width: width.clamp(90.0, 150.0), child: metric))
+                                                .toList(),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+              _InventoryTabSection(
+                title: 'مخزن المنتجات الجاهزة',
+                subtitle: '${data.readyMade.length} منتج',
+                addLabel: 'إضافة منتج',
+                onAdd: () => _addToTab('ready'),
+                stats: [
+                  _StatMetric(icon: Icons.checkroom_outlined, label: 'إجمالي المنتجات', value: '${data.readyMade.length}'),
+                  _StatMetric(icon: Icons.attach_money_outlined, label: 'متاح للبيع', value: '${data.readyMade.where((item) => item.status == 'AvailableForSale').length}'),
+                  _StatMetric(icon: Icons.sell_outlined, label: 'متوسط السعر', value: money(_readyMadeAveragePrice)),
+                ],
+                items: data.readyMade
+                    .map(
+                      (item) => InventoryListItem(
+                        title: item.product,
+                        subtitle: '${statusLabel(item.status)} • ${item.productType}',
+                        value: money(item.price),
+                        trailing: IconButton(
+                          tooltip: 'حذف المنتج',
+                          onPressed: () => _deleteReadyMadeAt(data.readyMade.indexOf(item)),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+              _InventoryTabSection(
+                title: 'مخزن المنتجات المستوردة',
+                subtitle: '${data.imported.length} منتج',
+                addLabel: 'إضافة مستورد',
+                onAdd: () => _addToTab('imported'),
+                stats: [
+                  _StatMetric(icon: Icons.shopping_bag_outlined, label: 'إجمالي المنتجات', value: '${data.imported.length}'),
+                  _StatMetric(icon: Icons.numbers_outlined, label: 'إجمالي الكمية', value: quantity(data.importedQuantity)),
+                  _StatMetric(icon: Icons.paid_outlined, label: 'إجمالي المشتريات', value: money(data.imported.fold<double>(0.0, (sum, item) => sum + item.purchasePrice))),
+                ],
+                items: data.imported
+                    .map(
+                      (item) => InventoryListItem(
+                        title: item.product,
+                        subtitle: '${item.productType} • ${item.unit}',
+                        value: '${quantity(item.quantity)} ${item.unit}',
+                        trailing: IconButton(
+                          tooltip: 'حذف المنتج',
+                          onPressed: () => _deleteImportedAt(data.imported.indexOf(item)),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+              _InventoryTabSection(
+                title: 'مخزن الأدوات المستخدمة',
+                subtitle: '${data.tools.length} أداة',
+                addLabel: 'إضافة أداة',
+                onAdd: () => _addToTab('tools'),
+                stats: [
+                  _StatMetric(icon: Icons.build_circle_outlined, label: 'إجمالي الأدوات', value: '${data.tools.length}'),
+                  _StatMetric(icon: Icons.inventory_2_outlined, label: 'الرصيد الكلي', value: quantity(data.tools.fold<double>(0.0, (sum, item) => sum + item.quantity))),
+                  _StatMetric(icon: Icons.fact_check_outlined, label: 'النوع', value: data.tools.isEmpty ? '—' : data.tools.first.category),
+                ],
+                items: data.tools
+                    .map(
+                      (item) => InventoryListItem(
+                        title: item.name,
+                        subtitle: '${item.category} • ${item.code}',
+                        value: '${quantity(item.quantity)} ${item.unit}',
+                        trailing: IconButton(
+                          tooltip: 'حذف المنتج',
+                          onPressed: () => _deleteToolAt(data.tools.indexOf(item)),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-class _Statistics extends StatelessWidget {
-	const _Statistics({required this.data});
-	final InventoryData data;
-	@override
-	Widget build(BuildContext context) => LayoutBuilder(builder: (context, constraints) {
-		final width = constraints.maxWidth < 720 ? constraints.maxWidth : (constraints.maxWidth - 24) / 3;
-		return Wrap(spacing: 12, runSpacing: 12, children: [
-			StatCard(width: width, icon: Icons.texture_outlined, title: 'الأقمشة', value: '${data.fabrics.length} صنف', detail: 'إجمالي الرصيد ${quantity(data.fabricBalance)}'),
-			StatCard(width: width, icon: Icons.checkroom_outlined, title: 'منتجاتنا', value: '${data.readyMade.length} منتج', detail: '${data.readyMade.where((item) => item.status == 'AvailableForSale').length} متاح للبيع'),
-			StatCard(width: width, icon: Icons.public_outlined, title: 'المستورد', value: '${data.imported.length} منتج', detail: 'إجمالي الكمية ${quantity(data.importedQuantity)}'),
-		]);
-	});
+class _InventoryTabSection extends StatelessWidget {
+  const _InventoryTabSection({
+    required this.title,
+    required this.subtitle,
+    required this.addLabel,
+    required this.onAdd,
+    required this.stats,
+    required this.items,
+  });
+
+  final String title;
+  final String subtitle;
+  final String addLabel;
+  final VoidCallback onAdd;
+  final List<_StatMetric> stats;
+  final List<InventoryListItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add),
+              label: Text(addLabel),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: stats
+              .map(
+                (metric) => SizedBox(
+                  width: 220,
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                            child: Icon(metric.icon, color: Theme.of(context).colorScheme.onPrimaryContainer),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  metric.label,
+                                  style: Theme.of(context).textTheme.labelMedium?.copyWith(fontSize: 13),
+                                ),
+                                Text(
+                                  metric.value,
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          subtitle,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: items.isEmpty
+              ? const Center(child: Text('لا توجد عناصر في هذا المخزن حاليًا.'))
+              : ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return Card(
+                      child: ListTile(
+                        title: Text(
+                          item.title,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: Text(item.subtitle),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              item.value,
+                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            item.trailing,
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
 }
 
-class StatCard extends StatelessWidget {
-	const StatCard({required this.width, required this.icon, required this.title, required this.value, required this.detail, super.key});
-	final double width;
-	final IconData icon;
-	final String title;
-	final String value;
-	final String detail;
-	@override
-	Widget build(BuildContext context) => SizedBox(width: width, height: 96, child: Card(child: Padding(
-		padding: const EdgeInsets.all(14),
-		child: Row(children: [
-			CircleAvatar(backgroundColor: Theme.of(context).colorScheme.secondaryContainer, child: Icon(icon)),
-			const SizedBox(width: 12),
-			Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-				Text(title, style: Theme.of(context).textTheme.labelLarge),
-				Text(value, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-				Text(detail, style: Theme.of(context).textTheme.bodySmall),
-			])),
-		]),
-	)));
+class _StatMetric {
+  const _StatMetric({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
 }
 
-class InventoryTable extends StatelessWidget {
-	const InventoryTable({required this.columns, required this.rows, required this.emptyMessage, required this.onRefresh, super.key});
-	final List<String> columns;
-	final List<List<String>> rows;
-	final String emptyMessage;
-	final Future<void> Function() onRefresh;
-	@override
-	Widget build(BuildContext context) => RefreshIndicator(
-		onRefresh: onRefresh,
-		child: rows.isEmpty
-				? ListView(children: [const SizedBox(height: 150), Center(child: Text(emptyMessage))])
-				: ListView(children: [Card(clipBehavior: Clip.antiAlias, child: SingleChildScrollView(
-					scrollDirection: Axis.horizontal,
-					child: DataTable(
-						columnSpacing: 36,
-						columns: columns.map((column) => DataColumn(label: Text(column, style: const TextStyle(fontWeight: FontWeight.bold)))).toList(),
-						rows: rows.map((row) => DataRow(cells: row.map((value) => DataCell(Text(value))).toList())).toList(),
-					),
-				))]),
-	);
+class InventoryListItem {
+  const InventoryListItem({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.trailing,
+  });
+
+  final String title;
+  final String subtitle;
+  final String value;
+  final Widget trailing;
 }
+
+Widget _fabricInfoCard(BuildContext context, String label, String value) => Container(
+      width: 146,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              fontSize: 10,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
 
 class InventoryData {
-	const InventoryData({required this.fabrics, required this.readyMade, required this.imported});
-	final List<FabricItem> fabrics;
-	final List<ReadyMadeItem> readyMade;
-	final List<ImportedItem> imported;
-	double get fabricBalance => fabrics.fold(0, (sum, item) => sum + item.current);
-	double get importedQuantity => imported.fold(0, (sum, item) => sum + item.quantity);
+  const InventoryData({
+    required this.fabrics,
+    required this.readyMade,
+    required this.imported,
+    required this.tools,
+  });
+
+  final List<FabricItem> fabrics;
+  final List<ReadyMadeItem> readyMade;
+  final List<ImportedItem> imported;
+  final List<ToolItem> tools;
+
+  double get fabricBalance => fabrics.fold(0.0, (sum, item) => sum + item.current);
+  double get importedQuantity => imported.fold(0.0, (sum, item) => sum + item.quantity);
+}
+
+class InventoryItemRecord {
+  const InventoryItemRecord({
+    required this.itemCode,
+    required this.itemName,
+    required this.category,
+    required this.currentQuantity,
+    required this.availableQuantity,
+    required this.reservedQuantity,
+    required this.unit,
+  });
+
+  factory InventoryItemRecord.fromJson(Map<String, dynamic> json) => InventoryItemRecord(
+        itemCode: json['itemCode']?.toString() ?? '-',
+        itemName: json['itemName']?.toString() ?? '-',
+        category: json['category']?.toString() ?? '-',
+        currentQuantity: (json['currentQuantity'] as num?)?.toDouble() ?? 0,
+        availableQuantity: (json['availableQuantity'] as num?)?.toDouble() ?? 0,
+        reservedQuantity: (json['reservedQuantity'] as num?)?.toDouble() ?? 0,
+        unit: json['unit']?.toString() ?? '',
+      );
+
+  final String itemCode;
+  final String itemName;
+  final String category;
+  final double currentQuantity;
+  final double availableQuantity;
+  final double reservedQuantity;
+  final String unit;
 }
 
 class FabricItem {
-	const FabricItem(this.code, this.name, this.category, this.current, this.available, this.reserved);
-	factory FabricItem.fromJson(Map<String, dynamic> json) => FabricItem(
-		json['itemCode']?.toString() ?? '-', json['itemName']?.toString() ?? '-', json['category']?.toString() ?? '-',
-		(json['currentQuantity'] as num?)?.toDouble() ?? 0, (json['availableQuantity'] as num?)?.toDouble() ?? 0, (json['reservedQuantity'] as num?)?.toDouble() ?? 0,
-	);
-	final String code;
-	final String name;
-	final String category;
-	final double current;
-	final double available;
-	final double reserved;
+  const FabricItem({
+    required this.code,
+    required this.name,
+    required this.category,
+    required this.current,
+    required this.available,
+    required this.reserved,
+    this.color,
+    this.unit,
+    this.price,
+    this.catalogNumber,
+    this.sourceTable,
+    this.sourceId,
+    this.supplierName,
+  });
+
+  factory FabricItem.fromInventory(InventoryItemRecord item) => FabricItem(
+        code: item.itemCode,
+        name: item.itemName,
+        category: item.category,
+        current: item.currentQuantity,
+        available: item.availableQuantity,
+        reserved: item.reservedQuantity,
+      );
+
+  final String code;
+  final String name;
+  final String category;
+  final double current;
+  final double available;
+  final double reserved;
+  final String? color;
+  final String? unit;
+  final double? price;
+  final String? catalogNumber;
+  final String? sourceTable;
+  final int? sourceId;
+  final String? supplierName;
+
+  double get availableInches => available * 36;
 }
 
 class ReadyMadeItem {
-	const ReadyMadeItem(this.product, this.status, this.cost, this.price);
-	factory ReadyMadeItem.fromJson(Map<String, dynamic> json) => ReadyMadeItem(
-		json['productionName']?.toString() ?? json['pieceType']?.toString() ?? '-', json['status']?.toString() ?? '-',
-		(json['actualCost'] as num?)?.toDouble(), (json['suggestedSellingPrice'] as num?)?.toDouble(),
-	);
-	final String product;
-	final String status;
-	final double? cost;
-	final double? price;
+  const ReadyMadeItem({
+    required this.product,
+    required this.productType,
+    required this.status,
+    required this.price,
+  });
+
+  factory ReadyMadeItem.fromJson(Map<String, dynamic> json) => ReadyMadeItem(
+        product: json['productionName']?.toString() ?? json['pieceType']?.toString() ?? '-',
+        productType: json['pieceType']?.toString() ?? '-',
+        status: json['status']?.toString() ?? '-',
+        price: (json['suggestedSellingPrice'] as num?)?.toDouble(),
+      );
+
+  final String product;
+  final String productType;
+  final String status;
+  final double? price;
 }
 
 class ImportedItem {
-	const ImportedItem(this.product, this.quantity, this.unit, this.purchasePrice, this.sellingPrice);
-	factory ImportedItem.fromJson(Map<String, dynamic> json) => ImportedItem(
-		json['productName']?.toString() ?? '-', (json['quantity'] as num?)?.toDouble() ?? 0, json['unit']?.toString() ?? '',
-		(json['purchasePrice'] as num?)?.toDouble() ?? 0, (json['sellingPrice'] as num?)?.toDouble() ?? 0,
-	);
-	final String product;
-	final double quantity;
-	final String unit;
-	final double purchasePrice;
-	final double sellingPrice;
+  const ImportedItem({
+    required this.product,
+    required this.productType,
+    required this.quantity,
+    required this.unit,
+    required this.purchasePrice,
+  });
+
+  factory ImportedItem.fromJson(Map<String, dynamic> json) => ImportedItem(
+        product: json['productName']?.toString() ?? '-',
+        productType: json['productType']?.toString() ?? '-',
+        quantity: (json['quantity'] as num?)?.toDouble() ?? 0,
+        unit: json['unit']?.toString() ?? '',
+        purchasePrice: (json['purchasePrice'] as num?)?.toDouble() ?? 0,
+      );
+
+  final String product;
+  final String productType;
+  final double quantity;
+  final String unit;
+  final double purchasePrice;
+}
+
+class ToolItem {
+  const ToolItem({
+    required this.code,
+    required this.name,
+    required this.category,
+    required this.quantity,
+    required this.unit,
+  });
+
+  factory ToolItem.fromInventory(InventoryItemRecord item) => ToolItem(
+        code: item.itemCode,
+        name: item.itemName,
+        category: item.category,
+        quantity: item.currentQuantity,
+        unit: item.unit.isEmpty ? 'قطعة' : item.unit,
+      );
+
+  final String code;
+  final String name;
+  final String category;
+  final double quantity;
+  final String unit;
 }
 
 class _LoadError extends StatelessWidget {
-	const _LoadError({required this.onRetry});
-	final Future<void> Function() onRetry;
-	@override
-	Widget build(BuildContext context) => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-		const Icon(Icons.cloud_off_outlined, size: 42), const SizedBox(height: 12), const Text('تعذر تحميل بيانات المخزون.'), const SizedBox(height: 12),
-		FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
-	]));
+  const _LoadError({required this.onRetry});
+
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off_outlined, size: 42),
+            const SizedBox(height: 6),
+            const Text('تعذر تحميل بيانات المخزون.'),
+            const SizedBox(height: 6),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة'),
+            ),
+          ],
+        ),
+      );
 }
 
 final numberFormat = NumberFormat('#,##0.##');
 final moneyFormat = NumberFormat('#,##0.00');
+
 String quantity(double value) => numberFormat.format(value);
 String money(double? value) => value == null ? '-' : moneyFormat.format(value);
-String statusLabel(String status) => switch (status) { 'AvailableForSale' => 'متاح للبيع', 'Sold' => 'مباع', _ => status };
+String statusLabel(String status) => switch (status) {
+      'AvailableForSale' => 'متاح للبيع',
+      'Sold' => 'مباع',
+      _ => status,
+    };

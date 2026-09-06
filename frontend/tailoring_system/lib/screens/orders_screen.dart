@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../core/app_navigation.dart';
 import 'order_details_screen.dart';
 
 class OrdersScreen extends StatefulWidget {
@@ -13,7 +14,7 @@ class OrdersScreen extends StatefulWidget {
 }
 
 class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderStateMixin {
-	static const _baseUrl = String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5092');
+	static const _baseUrl = String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5093');
 	late final TabController _tabController;
 	late Future<List<OrderSummary>> _orders;
 
@@ -52,9 +53,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
 	}
 
 	void _openDetails(OrderSummary order) {
-		Navigator.of(context).push(MaterialPageRoute(
-			builder: (_) => OrderDetailsScreen(orderId: order.orderId),
-		));
+		AppNavigation.push(context, (_) => OrderDetailsScreen(orderId: order.orderId));
 	}
 
 	Future<void> _showDelivery(OrderSummary order) async {

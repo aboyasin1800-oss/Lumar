@@ -10,4 +10,8 @@ public interface IInventoryRepository
     Task<IReadOnlyList<FabricDto>> GetFabricsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<ImportedReadyMadeProductDto>> GetImportedAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<InventoryItemDto>> GetToolsAsync(CancellationToken cancellationToken);
+    Task<ImportedReadyMadeProductDto?> UpsertImportedProductAsync(CreateImportedProductDto product, CancellationToken cancellationToken);
+    Task<InventoryItemDto?> UpsertToolItemAsync(CreateToolItemDto tool, CancellationToken cancellationToken);
+    Task<FabricBatchResultDto?> ReceiveFabricBatchAsync(CreateFabricBatchDto batch, CancellationToken cancellationToken);
 }

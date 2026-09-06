@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/app_navigation.dart';
 import '../../models/finance_models.dart';
 import '../../providers/finance_provider.dart';
 import '../../repositories/finance_repository.dart';
@@ -14,46 +15,114 @@ class FinancialScreen extends StatefulWidget {
 	@override State<FinancialScreen> createState() => _FinancialScreenState();
 }
 
-class _FinancialScreenState extends State<FinancialScreen> {
+class _FinancialScreenState extends State<FinancialScreen> with SingleTickerProviderStateMixin {
 	late final FinanceProvider provider;
-	@override void initState() { super.initState(); provider = FinanceProvider()..loadOverview(); }
-	@override void dispose() { provider.dispose(); super.dispose(); }
-	void _open(Widget screen) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+	late final TabController tabs;
+	@override void initState() { super.initState(); tabs = TabController(length: 7, vsync: this); provider = FinanceProvider()..loadOverview(); }
+	@override void dispose() { tabs.dispose(); provider.dispose(); super.dispose(); }
 
 	@override Widget build(BuildContext context) => AnimatedBuilder(
 		animation: provider,
 		builder: (context, _) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
 			Row(children: [Expanded(child: Text('الإدارة المالية', style: Theme.of(context).textTheme.headlineSmall)), IconButton(tooltip: 'تحديث البيانات', onPressed: provider.state == FinanceLoadState.loading ? null : provider.loadOverview, icon: const Icon(Icons.refresh))]),
 			const SizedBox(height: 12),
-			if (provider.state == FinanceLoadState.loading) const LinearProgressIndicator(),
-			if (provider.state == FinanceLoadState.error) _ErrorPanel(onRetry: provider.loadOverview),
-			if (provider.state == FinanceLoadState.empty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('لا توجد بيانات مالية متاحة.'))),
-			const SizedBox(height: 12),
-			Expanded(child: GridView.count(crossAxisCount: MediaQuery.sizeOf(context).width < 850 ? 2 : 3, childAspectRatio: 2.35, mainAxisSpacing: 12, crossAxisSpacing: 12, children: [
-				_FinanceTile('الحركات المالية', 'سجل الحركات المسجلة', Icons.swap_horiz_outlined, () => _open(const FinancialTransactionsScreen())),
-				_FinanceTile('دليل الحسابات', 'الحسابات وتصنيفاتها', Icons.account_tree_outlined, () => _open(const LedgerAccountsScreen())),
-				_FinanceTile('القيود اليومية', 'القيود وتفاصيل التوازن', Icons.menu_book_outlined, () => _open(const JournalEntriesScreen())),
-				_FinanceTile('الحسابات النقدية', 'الأرصدة النقدية الحالية', Icons.account_balance_wallet_outlined, () => _open(const CashAccountsScreen())),
-				_FinanceTile('كشف حساب العميل', 'الحركات والأرصدة المسجلة', Icons.person_search_outlined, () => _open(const CustomerLedgerScreen())),
-				_FinanceTile('كشف حساب المورد', 'حركات المورد دون إعادة احتساب', Icons.local_shipping_outlined, () => _open(const SupplierLedgerScreen())),
-				_FinanceTile('فواتير الموردين', 'الفواتير وحالات السداد', Icons.receipt_long_outlined, () => _open(const SupplierInvoicesScreen())),
-				_FinanceTile('دفعات الموردين', 'الدفعات ومراجعها', Icons.payments_outlined, () => _open(const SupplierPaymentsScreen())),
-				_FinanceTile('المصروفات التشغيلية', 'الحركات المصنفة كمصروف تشغيلي', Icons.money_off_outlined, () => _open(const OperatingExpensesScreen())),
-				_FinanceTile('القوائم المالية', 'حالة مصادر القوائم', Icons.assessment_outlined, () => _open(const FinancialStatementsScreen())),
-				_FinanceTile('المطابقة والتدقيق', 'تغطية الحركات بالقيود', Icons.rule_outlined, () => _open(const FinancialReconciliationScreen())),
-			]),),
+			TabBar(controller: tabs, isScrollable: true, tabAlignment: TabAlignment.start, tabs: const [
+				Tab(icon: Icon(Icons.query_stats_outlined), text: 'الإحصاء'),
+				Tab(icon: Icon(Icons.assessment_outlined), text: 'القوائم والتقارير'),
+				Tab(icon: Icon(Icons.swap_horiz_outlined), text: 'المعاملات'),
+				Tab(icon: Icon(Icons.person_search_outlined), text: 'أستاذ العميل'),
+				Tab(icon: Icon(Icons.account_balance_wallet_outlined), text: 'النقدية'),
+				Tab(icon: Icon(Icons.menu_book_outlined), text: 'القيود'),
+				Tab(icon: Icon(Icons.account_tree_outlined), text: 'الأستاذ'),
+			]),
+			const SizedBox(height: 8),
+			Expanded(child: TabBarView(controller: tabs, children: [
+				_FinanceStatisticsTab(provider: provider),
+				const _FinancialReportsTab(),
+				const FinancialTransactionsScreen(embedded: true),
+				const CustomerLedgerScreen(embedded: true),
+				const CashAccountsScreen(embedded: true),
+				const JournalEntriesScreen(embedded: true),
+				const LedgerAccountsScreen(embedded: true),
+			])),
 		]),
 	);
 }
 
-class _FinanceTile extends StatelessWidget {
-	const _FinanceTile(this.title, this.subtitle, this.icon, this.onTap);
-	final String title; final String subtitle; final IconData icon; final VoidCallback onTap;
-	@override Widget build(BuildContext context) => Card(clipBehavior: Clip.antiAlias, child: InkWell(onTap: onTap, child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [Icon(icon, size: 30), const SizedBox(width: 12), Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: 3), Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis)])), const Icon(Icons.chevron_left)]))));
+class _FinanceStatisticsTab extends StatelessWidget {
+	const _FinanceStatisticsTab({required this.provider});
+	final FinanceProvider provider;
+	@override Widget build(BuildContext context) {
+		if (provider.state == FinanceLoadState.loading || provider.state == FinanceLoadState.idle) return const Center(child: CircularProgressIndicator());
+		if (provider.state == FinanceLoadState.error) return _ErrorPanel(onRetry: provider.loadOverview);
+		final metrics = [
+			('الحسابات', '${provider.ledgerAccounts.length}', Icons.account_tree_outlined),
+			('القيود', '${provider.journalEntries.length}', Icons.menu_book_outlined),
+			('المعاملات', '${provider.transactions.length}', Icons.swap_horiz_outlined),
+			('الحسابات النقدية', '${provider.cashAccounts.length}', Icons.account_balance_wallet_outlined),
+		];
+		return ListView(children: [
+			Text('نظرة عامة', style: Theme.of(context).textTheme.titleLarge),
+			const SizedBox(height: 6),
+			const Text('مؤشرات عددية من الخدمات الحالية دون إعادة احتساب أي قيمة مالية.'),
+			const SizedBox(height: 16),
+			Wrap(spacing: 12, runSpacing: 12, children: metrics.map((metric) => _FinanceMetricCard(label: metric.$1, value: metric.$2, icon: metric.$3)).toList()),
+			const SizedBox(height: 18),
+			const _StatusCard('الإحصاءات المالية التفصيلية', 'هيكل أولي', 'لا توجد خدمة إحصاءات مالية مستقلة في النظام الحالي، لذلك لم تُنشأ إجماليات أو مؤشرات محاسبية جديدة.'),
+		]);
+	}
+}
+
+class _FinanceMetricCard extends StatelessWidget {
+	const _FinanceMetricCard({required this.label, required this.value, required this.icon});
+	final String label;
+	final String value;
+	final IconData icon;
+	@override Widget build(BuildContext context) => SizedBox(
+		width: 210,
+		height: 92,
+		child: Card(child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
+			Icon(icon, size: 30),
+			const SizedBox(width: 12),
+			Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label), Text(value, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold))])),
+		]))),
+	);
+}
+
+class _FinancialReportsTab extends StatelessWidget {
+	const _FinancialReportsTab();
+	@override Widget build(BuildContext context) => ListView(children: [
+		Text('القوائم المالية', style: Theme.of(context).textTheme.titleLarge),
+		const SizedBox(height: 8),
+		const _UnavailableReport('الأرباح والخسائر'),
+		const _UnavailableReport('الميزانية'),
+		const _UnavailableReport('التدفقات النقدية'),
+		const SizedBox(height: 20),
+		Text('التقارير المتقدمة', style: Theme.of(context).textTheme.titleLarge),
+		const SizedBox(height: 8),
+		const _UnavailableReport('الملخص المالي'),
+		const _UnavailableReport('تقييم المخزون'),
+		const _UnavailableReport('تكلفة الإنتاج'),
+		const _UnavailableReport('الذمم الدائنة'),
+		const _UnavailableReport('ملخص الرواتب'),
+		const _UnavailableReport('الملخص التنفيذي'),
+	]);
+}
+
+class _UnavailableReport extends StatelessWidget {
+	const _UnavailableReport(this.title);
+	final String title;
+	@override Widget build(BuildContext context) => ListTile(
+		leading: const Icon(Icons.description_outlined),
+		title: Text(title),
+		subtitle: const Text('لا توجد خدمة تقرير فعلية لهذا التقرير في النظام الحالي.'),
+		trailing: const Chip(label: Text('غير متاح حالياً')),
+	);
 }
 
 class FinancialTransactionsScreen extends StatefulWidget {
-	const FinancialTransactionsScreen({super.key});
+	const FinancialTransactionsScreen({this.embedded = false, super.key});
+	final bool embedded;
 	@override State<FinancialTransactionsScreen> createState() => _FinancialTransactionsScreenState();
 }
 
@@ -63,49 +132,63 @@ class _FinancialTransactionsScreenState extends State<FinancialTransactionsScree
 	@override void initState() { super.initState(); future = repository.getTransactions(); }
 	@override void dispose() { search.dispose(); super.dispose(); }
 	void reload() => setState(() => future = repository.getTransactions());
-	@override Widget build(BuildContext context) => _Page(title: 'الحركات المالية', onRefresh: reload, child: FutureBuilder<List<FinancialTransaction>>(future: future, builder: (context, snapshot) {
+	@override Widget build(BuildContext context) => _Page(title: 'الحركات المالية', onRefresh: reload, embedded: widget.embedded, child: FutureBuilder<List<FinancialTransaction>>(future: future, builder: (context, snapshot) {
 		if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
 		if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
 		final all = snapshot.data!; final types = all.map((item) => item.transactionType).toSet().toList()..sort();
 		final query = search.text.trim().toLowerCase(); final items = all.where((item) => (type == null || item.transactionType == type) && (from == null || !item.createdAt.isBefore(from!)) && (to == null || item.createdAt.isBefore(to!.add(const Duration(days: 1)))) && (query.isEmpty || item.referenceNumber.toLowerCase().contains(query) || item.transactionType.toLowerCase().contains(query) || (item.description?.toLowerCase().contains(query) ?? false))).toList();
-		return Column(children: [Wrap(spacing: 10, runSpacing: 10, children: [SizedBox(width: 260, child: TextField(controller: search, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'بحث بالمرجع أو الوصف', border: OutlineInputBorder()))), SizedBox(width: 210, child: DropdownButtonFormField<String>(initialValue: type, decoration: const InputDecoration(labelText: 'نوع الحركة', border: OutlineInputBorder()), items: [const DropdownMenuItem(value: null, child: Text('كل الأنواع')), ...types.map((value) => DropdownMenuItem(value: value, child: Text(value)))], onChanged: (value) => setState(() => type = value))), _DateFilter(label: 'من تاريخ', value: from, onChanged: (value) => setState(() => from = value)), _DateFilter(label: 'إلى تاريخ', value: to, onChanged: (value) => setState(() => to = value))]), const SizedBox(height: 12), Expanded(child: _Table(columns: const ['رقم الحركة', 'المرجع', 'النوع', 'المبلغ', 'الوصف', 'التاريخ'], rows: items.map((item) => ['${item.id}', item.referenceNumber, item.transactionType, _money.format(item.amount), _text(item.description), _date.format(item.createdAt)]).toList(), empty: 'لا توجد حركات مطابقة.'))]);
+		return Column(children: [Wrap(spacing: 10, runSpacing: 10, children: [SizedBox(width: 260, child: TextField(controller: search, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'بحث بالمرجع أو الوصف', border: OutlineInputBorder()))), SizedBox(width: 210, child: DropdownButtonFormField<String>(initialValue: type, decoration: const InputDecoration(labelText: 'نوع الحركة', border: OutlineInputBorder()), items: [const DropdownMenuItem(value: null, child: Text('كل الأنواع')), ...types.map((value) => DropdownMenuItem(value: value, child: Text(value)))], onChanged: (value) => setState(() => type = value))), _DateFilter(label: 'من تاريخ', value: from, onChanged: (value) => setState(() => from = value)), _DateFilter(label: 'إلى تاريخ', value: to, onChanged: (value) => setState(() => to = value))]), const SizedBox(height: 12), Expanded(child: _Table(columns: const ['المرجع', 'النوع', 'المبلغ', 'التاريخ', 'الوصف'], rows: items.map((item) => [item.referenceNumber, item.transactionType, _money.format(item.amount), _date.format(item.createdAt), _text(item.description)]).toList(), empty: 'لا توجد حركات مطابقة.'))]);
 	}));
 }
 
 class JournalEntriesScreen extends StatefulWidget {
-	const JournalEntriesScreen({super.key});
+	const JournalEntriesScreen({this.embedded = false, super.key});
+	final bool embedded;
 	@override State<JournalEntriesScreen> createState() => _JournalEntriesScreenState();
 }
 class _JournalEntriesScreenState extends State<JournalEntriesScreen> {
-	final repository = FinanceRepository(); late Future<List<JournalEntry>> future;
-	@override void initState() { super.initState(); future = repository.getJournalEntries(); }
-	void reload() => setState(() => future = repository.getJournalEntries());
+	final repository = FinanceRepository(); late Future<List<_JournalEntrySummary>> future;
+	@override void initState() { super.initState(); future = load(); }
+	Future<List<_JournalEntrySummary>> load() async {
+		final entries = await repository.getJournalEntries();
+		return Future.wait(entries.map((entry) async => _JournalEntrySummary(entry, await repository.getJournalEntryLines(entry.id))));
+	}
+	void reload() => setState(() => future = load());
 	@override Widget build(BuildContext context) => _Page(
 		title: 'القيود اليومية',
 		onRefresh: reload,
-		child: FutureBuilder<List<JournalEntry>>(
+		embedded: widget.embedded,
+		child: FutureBuilder<List<_JournalEntrySummary>>(
 			future: future,
 			builder: (context, snapshot) {
 				if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
 				if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
 				final items = snapshot.data!;
-				return ListView.separated(
-					itemCount: items.length,
-					separatorBuilder: (_, __) => const SizedBox(height: 8),
-					itemBuilder: (context, index) {
-						final item = items[index];
-						return Card(child: ListTile(
-							leading: CircleAvatar(child: Text('${item.id}')),
-							title: Text(item.referenceNumber),
-							subtitle: Text('${_text(item.description)}  •  ${_date.format(item.entryDate)}'),
-							trailing: const Icon(Icons.chevron_left),
-							onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => JournalEntryDetailsScreen(entryId: item.id))),
-						));
-					},
-				);
+				return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+					Row(children: [
+						Tooltip(message: 'إنشاء القيود غير مدعوم لأن خدمة المالية الحالية للقراءة فقط.', child: FilledButton.icon(onPressed: null, icon: const Icon(Icons.add), label: const Text('قيد جديد'))),
+						const SizedBox(width: 12),
+						const Expanded(child: Text('اضغط على أي قيد لعرض تفاصيله وأسطره.')),
+					]),
+					const SizedBox(height: 10),
+					Expanded(child: _Table(
+						columns: const ['المرجع', 'التاريخ', 'الوصف', 'إجمالي المدين', 'إجمالي الدائن'],
+						rows: items.map((item) => [item.entry.referenceNumber, _date.format(item.entry.entryDate), _text(item.entry.description), _money.format(item.debit), _money.format(item.credit)]).toList(),
+						empty: 'لا توجد قيود مسجلة.',
+						onRowTap: (index) => AppNavigation.push(context, (_) => JournalEntryDetailsScreen(entryId: items[index].entry.id)),
+					)),
+				]);
 			},
 		),
 	);
+}
+
+class _JournalEntrySummary {
+	const _JournalEntrySummary(this.entry, this.lines);
+	final JournalEntry entry;
+	final List<JournalEntryLine> lines;
+	double get debit => lines.fold(0, (sum, line) => sum + line.debitAmount);
+	double get credit => lines.fold(0, (sum, line) => sum + line.creditAmount);
 }
 
 class JournalEntryDetailsScreen extends StatefulWidget {
@@ -125,21 +208,36 @@ class _JournalEntryDetailsScreenState extends State<JournalEntryDetailsScreen> {
 }
 
 class LedgerAccountsScreen extends StatelessWidget {
-	const LedgerAccountsScreen({super.key});
-	@override Widget build(BuildContext context) => _SimpleListPage<LedgerAccount>(title: 'دليل الحسابات', load: FinanceRepository().getLedgerAccounts, columns: const ['الكود', 'اسم الحساب', 'النوع', 'الحالة'], row: (item) => [item.accountCode, item.accountName, item.accountType, item.isActive ? 'نشط' : 'غير نشط']);
+	const LedgerAccountsScreen({this.embedded = false, super.key});
+	final bool embedded;
+	@override Widget build(BuildContext context) => _SimpleListPage<LedgerAccount>(title: 'دليل الحسابات', embedded: embedded, load: FinanceRepository().getLedgerAccounts, columns: const ['رمز الحساب', 'اسم الحساب', 'نوع الحساب', 'الحالة'], row: (item) => [item.accountCode, item.accountName, item.accountType, item.isActive ? 'نشط' : 'غير نشط'], toolbar: const _LedgerActions());
 }
 class CashAccountsScreen extends StatelessWidget {
-	const CashAccountsScreen({super.key});
-	@override Widget build(BuildContext context) => _SimpleListPage<CashAccount>(title: 'الحسابات النقدية', load: FinanceRepository().getCashAccounts, columns: const ['رقم الحساب', 'اسم الحساب', 'الرصيد الحالي', 'الحالة', 'تاريخ الإنشاء'], row: (item) => ['${item.id}', item.accountName, _money.format(item.currentBalance), item.isActive ? 'نشط' : 'غير نشط', _date.format(item.createdAt)]);
+	const CashAccountsScreen({this.embedded = false, super.key});
+	final bool embedded;
+	@override Widget build(BuildContext context) => _SimpleListPage<CashAccount>(title: 'الحسابات النقدية', embedded: embedded, load: FinanceRepository().getCashAccounts, columns: const ['اسم الحساب', 'الرصيد الحالي', 'الحالة'], row: (item) => [item.accountName, _money.format(item.currentBalance), item.isActive ? 'نشط' : 'غير نشط']);
 }
 
 class CustomerLedgerScreen extends StatelessWidget {
-	const CustomerLedgerScreen({super.key});
-	@override Widget build(BuildContext context) => _LedgerLookup<CustomerLedgerEntry>(title: 'كشف حساب العميل', partyLabel: 'رقم العميل', load: FinanceRepository().getCustomerLedger, row: (item) => [item.referenceNumber, item.debitAmount > 0 ? 'مدين' : 'دائن', _money.format(item.debitAmount), _money.format(item.creditAmount), _money.format(item.balanceAfterTransaction), _date.format(item.createdAt)]);
+	const CustomerLedgerScreen({this.embedded = false, super.key});
+	final bool embedded;
+	@override Widget build(BuildContext context) => _LedgerLookup<CustomerLedgerEntry>(title: 'كشف حساب العميل', partyLabel: 'رقم العميل', embedded: embedded, load: FinanceRepository().getCustomerLedger, row: (item) => [item.referenceNumber, _money.format(item.debitAmount), _money.format(item.creditAmount), _money.format(item.balanceAfterTransaction), _date.format(item.createdAt)]);
 }
 class SupplierLedgerScreen extends StatelessWidget {
 	const SupplierLedgerScreen({super.key});
-	@override Widget build(BuildContext context) => _LedgerLookup<SupplierLedgerEntry>(title: 'كشف حساب المورد', partyLabel: 'رقم المورد', load: FinanceRepository().getSupplierLedger, row: (item) => [item.referenceNumber, item.debitAmount > 0 ? 'مدين' : 'دائن', _money.format(item.debitAmount), _money.format(item.creditAmount), _money.format(item.balanceAfterTransaction), _date.format(item.createdAt)]);
+	@override Widget build(BuildContext context) => _LedgerLookup<SupplierLedgerEntry>(title: 'كشف حساب المورد', partyLabel: 'رقم المورد', load: FinanceRepository().getSupplierLedger, row: (item) => [item.referenceNumber, _money.format(item.debitAmount), _money.format(item.creditAmount), _money.format(item.balanceAfterTransaction), _date.format(item.createdAt)]);
+}
+
+class _LedgerActions extends StatelessWidget {
+	const _LedgerActions();
+	static const reason = 'إضافة الحسابات وتعديلها غير مدعومتين لأن خدمة المالية الحالية للقراءة فقط.';
+	@override Widget build(BuildContext context) => Row(children: [
+		Tooltip(message: reason, child: FilledButton.icon(onPressed: null, icon: const Icon(Icons.add), label: const Text('إضافة حساب'))),
+		const SizedBox(width: 8),
+		Tooltip(message: reason, child: OutlinedButton.icon(onPressed: null, icon: const Icon(Icons.edit_outlined), label: const Text('تعديل حساب'))),
+		const SizedBox(width: 12),
+		const Expanded(child: Text('التحديث متاح من زر التحديث أعلى القائمة.')),
+	]);
 }
 
 class SupplierInvoicesScreen extends StatelessWidget {
@@ -186,35 +284,39 @@ class _StatusCard extends StatelessWidget {
 }
 
 class _LedgerLookup<T> extends StatefulWidget {
-	const _LedgerLookup({required this.title, required this.partyLabel, required this.load, required this.row});
-	final String title; final String partyLabel; final Future<List<T>> Function(int) load; final List<String> Function(T) row;
+	const _LedgerLookup({required this.title, required this.partyLabel, required this.load, required this.row, this.embedded = false});
+	final String title; final String partyLabel; final Future<List<T>> Function(int) load; final List<String> Function(T) row; final bool embedded;
 	@override State<_LedgerLookup<T>> createState() => _LedgerLookupState<T>();
 }
 class _LedgerLookupState<T> extends State<_LedgerLookup<T>> {
 	final controller = TextEditingController(); final filter = TextEditingController(); Future<List<T>>? future;
 	@override void dispose() { controller.dispose(); filter.dispose(); super.dispose(); }
 	void search() { final id = int.tryParse(controller.text.trim()); if (id != null && id > 0) setState(() => future = widget.load(id)); }
-	@override Widget build(BuildContext context) => _Page(title: widget.title, child: Column(children: [Wrap(spacing: 10, runSpacing: 10, children: [SizedBox(width: 240, child: TextField(controller: controller, keyboardType: TextInputType.number, onSubmitted: (_) => search(), decoration: InputDecoration(labelText: widget.partyLabel, border: const OutlineInputBorder()))), FilledButton.icon(onPressed: search, icon: const Icon(Icons.search), label: const Text('عرض الكشف')), SizedBox(width: 260, child: TextField(controller: filter, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_alt_outlined), labelText: 'تصفية بالمرجع أو القيمة', border: OutlineInputBorder()))) ]), const SizedBox(height: 12), Expanded(child: future == null ? const Center(child: Text('أدخل الرقم لعرض كشف الحساب.')) : FutureBuilder<List<T>>(future: future, builder: (context, snapshot) { if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator()); if (snapshot.hasError) return _ErrorPanel(onRetry: search); final query = filter.text.trim().toLowerCase(); final rows = snapshot.data!.map(widget.row).where((row) => query.isEmpty || row.any((value) => value.toLowerCase().contains(query))).toList(); return _Table(columns: const ['المرجع', 'نوع الحركة', 'المدين', 'الدائن', 'الرصيد بعد الحركة', 'التاريخ'], rows: rows, empty: 'لا توجد حركات مطابقة لهذا الحساب.'); }))]));
+	@override Widget build(BuildContext context) => _Page(title: widget.title, embedded: widget.embedded, child: Column(children: [Wrap(spacing: 10, runSpacing: 10, children: [SizedBox(width: 240, child: TextField(controller: controller, keyboardType: TextInputType.number, onSubmitted: (_) => search(), decoration: InputDecoration(labelText: widget.partyLabel, border: const OutlineInputBorder()))), FilledButton.icon(onPressed: search, icon: const Icon(Icons.search), label: const Text('عرض الكشف')), SizedBox(width: 260, child: TextField(controller: filter, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_alt_outlined), labelText: 'تصفية بالمرجع أو القيمة', border: OutlineInputBorder()))) ]), const SizedBox(height: 12), Expanded(child: future == null ? const Center(child: Text('أدخل الرقم لعرض كشف الحساب.')) : FutureBuilder<List<T>>(future: future, builder: (context, snapshot) { if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator()); if (snapshot.hasError) return _ErrorPanel(onRetry: search); final query = filter.text.trim().toLowerCase(); final rows = snapshot.data!.map(widget.row).where((row) => query.isEmpty || row.any((value) => value.toLowerCase().contains(query))).toList(); return _Table(columns: const ['المرجع', 'مدين', 'دائن', 'الرصيد', 'التاريخ'], rows: rows, empty: 'لا توجد حركات مطابقة لهذا الحساب.'); }))]));
 }
 
 class _SimpleListPage<T> extends StatefulWidget {
-	const _SimpleListPage({required this.title, required this.load, required this.columns, required this.row});
-	final String title; final Future<List<T>> Function() load; final List<String> columns; final List<String> Function(T) row;
+	const _SimpleListPage({required this.title, required this.load, required this.columns, required this.row, this.embedded = false, this.toolbar});
+	final String title; final Future<List<T>> Function() load; final List<String> columns; final List<String> Function(T) row; final bool embedded; final Widget? toolbar;
 	@override State<_SimpleListPage<T>> createState() => _SimpleListPageState<T>();
 }
 class _SimpleListPageState<T> extends State<_SimpleListPage<T>> {
 	late Future<List<T>> future;
 	@override void initState() { super.initState(); future = widget.load(); }
 	void reload() => setState(() => future = widget.load());
-	@override Widget build(BuildContext context) => _Page(title: widget.title, onRefresh: reload, child: FutureBuilder<List<T>>(future: future, builder: (context, snapshot) { if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator()); if (snapshot.hasError) return _ErrorPanel(onRetry: reload); return _Table(columns: widget.columns, rows: snapshot.data!.map(widget.row).toList(), empty: 'لا توجد بيانات متاحة.'); }));
+	@override Widget build(BuildContext context) => _Page(title: widget.title, onRefresh: reload, embedded: widget.embedded, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [if (widget.toolbar != null) ...[widget.toolbar!, const SizedBox(height: 10)], Expanded(child: FutureBuilder<List<T>>(future: future, builder: (context, snapshot) { if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator()); if (snapshot.hasError) return _ErrorPanel(onRetry: reload); return _Table(columns: widget.columns, rows: snapshot.data!.map(widget.row).toList(), empty: 'لا توجد بيانات متاحة.'); }))]));
 }
 
 class _Page extends StatelessWidget {
-	const _Page({required this.title, required this.child, this.onRefresh}); final String title; final Widget child; final VoidCallback? onRefresh;
-	@override Widget build(BuildContext context) => Scaffold(appBar: Navigator.of(context).canPop() ? AppBar(title: Text(title), actions: [if (onRefresh != null) IconButton(tooltip: 'تحديث', onPressed: onRefresh, icon: const Icon(Icons.refresh))]) : null, body: SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: child)));
+	const _Page({required this.title, required this.child, this.onRefresh, this.embedded = false}); final String title; final Widget child; final VoidCallback? onRefresh; final bool embedded;
+	@override Widget build(BuildContext context) {
+		final content = SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: child));
+		if (embedded) return content;
+		return Scaffold(appBar: Navigator.of(context).canPop() ? AppBar(title: Text(title), actions: [if (onRefresh != null) IconButton(tooltip: 'تحديث', onPressed: onRefresh, icon: const Icon(Icons.refresh))]) : null, body: content);
+	}
 }
 class _Table extends StatelessWidget {
-	const _Table({required this.columns, required this.rows, required this.empty}); final List<String> columns; final List<List<String>> rows; final String empty;
+	const _Table({required this.columns, required this.rows, required this.empty, this.onRowTap}); final List<String> columns; final List<List<String>> rows; final String empty; final ValueChanged<int>? onRowTap;
 	@override Widget build(BuildContext context) {
 		if (rows.isEmpty) return Center(child: Text(empty));
 		return Card(
@@ -225,7 +327,7 @@ class _Table extends StatelessWidget {
 					child: SingleChildScrollView(
 						child: DataTable(
 							columns: columns.map((value) => DataColumn(label: Text(value, style: const TextStyle(fontWeight: FontWeight.bold)))).toList(),
-							rows: rows.map((row) => DataRow(cells: row.map((value) => DataCell(SelectableText(value))).toList())).toList(),
+							rows: rows.asMap().entries.map((entry) => DataRow(onSelectChanged: onRowTap == null ? null : (_) => onRowTap!(entry.key), cells: entry.value.map((value) => DataCell(SelectableText(value))).toList())).toList(),
 						),
 					),
 				),

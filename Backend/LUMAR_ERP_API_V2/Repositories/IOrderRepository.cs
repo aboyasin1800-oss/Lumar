@@ -9,5 +9,7 @@ public interface IOrderRepository
     Task<OrderDetailsDto?> CreateAsync(CreateOrderDto order, CancellationToken cancellationToken);
     Task<IReadOnlyList<OrderItemDto>> GetItemsAsync(int orderId, CancellationToken cancellationToken);
     Task<IReadOnlyList<OrderPieceDto>> GetPiecesAsync(int orderId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<OrderFabricDto>> GetFabricsAsync(int orderId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<OrderPaymentDto>> GetPaymentsAsync(int orderId, CancellationToken cancellationToken);
     Task<OrderDeliveryDto?> GetDeliveryAsync(int orderId, CancellationToken cancellationToken);
 }

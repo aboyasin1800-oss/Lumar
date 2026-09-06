@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>LUMAR-ERP-API-V2-20260831</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

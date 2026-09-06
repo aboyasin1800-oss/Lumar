@@ -17,7 +17,7 @@ class AuthUser {
 }
 
 class AuthState extends ChangeNotifier {
-	AuthState({String? baseUrl}) : _baseUrl = baseUrl ?? const String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5092');
+	AuthState({String? baseUrl}) : _baseUrl = baseUrl ?? const String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5093');
 	static const _tokenKey = 'lumar_auth_token';
 	static const _usernameKey = 'lumar_remembered_username';
 	final String _baseUrl;

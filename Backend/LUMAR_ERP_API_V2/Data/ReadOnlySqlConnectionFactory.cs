@@ -15,7 +15,8 @@ public sealed class ReadOnlySqlConnectionFactory(IOptions<DatabaseOptions> optio
 
         var builder = new SqlConnectionStringBuilder(options.Value.ConnectionString)
         {
-            ApplicationIntent = ApplicationIntent.ReadOnly
+            ApplicationIntent = ApplicationIntent.ReadOnly,
+            MultipleActiveResultSets = true
         };
 
         return new SqlConnection(builder.ConnectionString);

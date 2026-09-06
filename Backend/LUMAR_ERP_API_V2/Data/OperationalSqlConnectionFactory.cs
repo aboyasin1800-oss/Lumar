@@ -9,6 +9,12 @@ public sealed class OperationalSqlConnectionFactory(IOptions<DatabaseOptions> op
     public SqlConnection Create()
     {
         if (string.IsNullOrWhiteSpace(options.Value.ConnectionString)) throw new InvalidOperationException("Set Lumar__ConnectionString outside the repository before calling database endpoints.");
-        return new SqlConnection(options.Value.ConnectionString);
+
+        var builder = new SqlConnectionStringBuilder(options.Value.ConnectionString)
+        {
+            MultipleActiveResultSets = true
+        };
+
+        return new SqlConnection(builder.ConnectionString);
     }
 }

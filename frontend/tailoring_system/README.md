@@ -1,4 +1,13 @@
-# tailoring_system
+# LUMAR ERP Flutter
+
+## Navigation Policies
+
+All current and future screens use two application-wide navigation policies:
+
+- Mouse navigation: pages open through `AppNavigation`; Mouse Back follows the Navigator stack and Mouse Forward restores available forward history.
+- Enter navigation: Enter activates the focused control, while editable fields retain their `onSubmitted` behavior.
+
+The enforceable implementation rules are defined in `.github/instructions/flutter-navigation.instructions.md` at the repository root.
 
 A new Flutter project.
 

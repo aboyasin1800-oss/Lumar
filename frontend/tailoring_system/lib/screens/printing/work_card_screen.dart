@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
+import '../../core/app_navigation.dart';
+
 class WorkCardScreen extends StatefulWidget {
 	const WorkCardScreen({super.key});
 	@override State<WorkCardScreen> createState() => _WorkCardScreenState();
@@ -36,7 +38,7 @@ class _WorkCardScreenState extends State<WorkCardScreen> {
 							leading: CircleAvatar(child: Text('${piece.pieceNumber}')),
 							title: Text('${piece.pieceType} - ${piece.trackingCode}'),
 							subtitle: Text('الحالة: ${piece.status}'),
-							trailing: IconButton(tooltip: 'معاينة البطاقة', icon: const Icon(Icons.visibility_outlined), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => WorkCardPreviewScreen(pieceId: piece.id)))),
+							trailing: IconButton(tooltip: 'معاينة البطاقة', icon: const Icon(Icons.visibility_outlined), onPressed: () => AppNavigation.push(context, (_) => WorkCardPreviewScreen(pieceId: piece.id))),
 						));
 					},
 				);
@@ -102,7 +104,7 @@ class _WorkCardError extends StatelessWidget {
 }
 
 class WorkCardApi {
-	static const _baseUrl = String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5092');
+	static const _baseUrl = String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5093');
 	Future<dynamic> _get(String path) async { final response = await http.get(Uri.parse('$_baseUrl$path')); if (response.statusCode < 200 || response.statusCode >= 300) throw WorkCardApiException(response.statusCode); return jsonDecode(response.body); }
 	Future<List<WorkCardPiece>> getPieces() async => ((await _get('/production/pieces')) as List).cast<Map<String, dynamic>>().map(WorkCardPiece.fromJson).toList();
 	Future<WorkCard> getWorkCard(int pieceId) async => WorkCard.fromJson((await _get('/production/pieces/$pieceId/work-card')) as Map<String, dynamic>);

@@ -39,11 +39,37 @@ public sealed class ProductionController(IProductionService service) : Controlle
     [HttpGet("readymade-orders")]
     public Task<IReadOnlyList<ReadyMadeProductionOrderDto>> GetReadyMadeOrders(CancellationToken ct) => service.GetReadyMadeOrdersAsync(ct);
 
+    [HttpGet("readymade-orders/{id:int}")]
+    public async Task<ActionResult<ReadyMadeProductionOrderDto>> GetReadyMadeOrder(int id, CancellationToken ct)
+    {
+        if (id <= 0) return BadRequest("Order id must be positive.");
+        var order = await service.GetReadyMadeOrderByIdAsync(id, ct);
+        return order is null ? NotFound() : Ok(order);
+    }
+
     [HttpGet("readymade-orders/{id:int}/items")]
     public Task<IReadOnlyList<ReadyMadeProductionOrderItemDto>> GetReadyMadeOrderItems(int id, CancellationToken ct) => service.GetReadyMadeOrderItemsAsync(id, ct);
 
+    [HttpPost("readymade-orders")]
+    [ProducesResponseType<ReadyMadeProductionOrderCreateResultDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<ReadyMadeProductionOrderCreateResultDto>> CreateReadyMadeOrder(ReadyMadeProductionOrderCreateDto order, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(order.ProductionName)) return BadRequest("اسم المنتج مطلوب.");
+        if (order.Items == null || order.Items.Count == 0) return BadRequest("يجب إضافة بند واحد على الأقل.");
+        if (order.TotalCost < 0) return BadRequest("التكلفة غير صالحة.");
+        if (order.ProfitPercentage < 0) return BadRequest("نسبة الربح غير صالحة.");
+        if (order.SuggestedSellingPrice < 0) return BadRequest("سعر البيع المقترح غير صالح.");
+
+        var created = await service.CreateReadyMadeOrderAsync(order, ct);
+        return StatusCode(StatusCodes.Status201Created, created);
+    }
+
     [HttpGet("readymade-order-items/{id:int}/pieces")]
     public Task<IReadOnlyList<ReadyMadeProductionPieceDto>> GetReadyMadeItemPieces(int id, CancellationToken ct) => service.GetReadyMadeItemPiecesAsync(id, ct);
+
+    [HttpGet("readymade-pieces/{id:int}/tracking")]
+    public Task<IReadOnlyList<TrackingEventDto>> GetReadyMadePieceTracking(int id, CancellationToken ct) => service.GetReadyMadePieceTrackingAsync(id, ct);
 
     [HttpGet("deliveries")]
     public Task<IReadOnlyList<ProductionDeliveryDto>> GetDeliveries(CancellationToken ct) => service.GetDeliveriesAsync(ct);

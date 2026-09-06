@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'core/app_navigation.dart';
 import 'core/app_routes.dart';
+import 'core/ui_palette.dart';
 import 'screens/login_screen.dart';
 import 'services/auth_state.dart';
 import 'services/theme_state.dart';
@@ -26,10 +28,12 @@ class _LumarAppState extends State<LumarApp> {
 	@override
 	Widget build(BuildContext context) => ListenableBuilder(listenable:Listenable.merge([auth, themeState, uiScale, sidebarState]),builder:(context,_)=>MaterialApp(
 		title: 'لومار لإدارة الأعمال',
+		navigatorKey: AppNavigation.navigatorKey,
+		navigatorObservers: [AppNavigation.observer],
 		locale: const Locale('ar'),
 		supportedLocales: const [Locale('ar')],
 		localizationsDelegates: const [GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
-		builder: (context, child) => KeyboardPolicy(uiScale: uiScale, child: Directionality(textDirection: TextDirection.rtl, child: MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(uiScale.scale)), child: child!))),
+		builder: (context, child) => AppNavigationRegion(child: KeyboardPolicy(uiScale: uiScale, child: Directionality(textDirection: TextDirection.rtl, child: MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(uiScale.scale)), child: child!)))),
 		themeMode: themeState.themeMode,
 		theme: _appTheme(Brightness.light, uiScale.scale),
 		darkTheme: _appTheme(Brightness.dark, uiScale.scale),
@@ -39,16 +43,45 @@ class _LumarAppState extends State<LumarApp> {
 
 	ThemeData _appTheme(Brightness brightness, double scale) {
 		final isDark = brightness == Brightness.dark;
-		final scheme = ColorScheme.fromSeed(seedColor: const Color(0xff2f6f6d), brightness: brightness);
+		final scheme = ColorScheme.fromSeed(
+			seedColor: UiPalette.primaryBlue,
+			brightness: brightness,
+		).copyWith(
+			primary: UiPalette.primaryBlue,
+			onPrimary: UiPalette.textMain,
+			secondary: UiPalette.purpleAccent,
+			onSecondary: UiPalette.textMain,
+			surface: UiPalette.screenBackground,
+			onSurface: UiPalette.textMain,
+			surfaceContainerLowest: UiPalette.screenBackground,
+			surfaceContainerLow: UiPalette.softBlue,
+			surfaceContainer: UiPalette.softBlue,
+			surfaceContainerHigh: UiPalette.surfaceCard,
+			surfaceContainerHighest: UiPalette.surfaceCard,
+			outline: UiPalette.borderSoft,
+			outlineVariant: UiPalette.borderSoft,
+		);
 		final density = (scale - 1) * 2;
 		return ThemeData(
 			useMaterial3: true,
 			brightness: brightness,
 			colorScheme: scheme,
 			visualDensity: VisualDensity(horizontal: density, vertical: density),
-			scaffoldBackgroundColor: isDark ? const Color(0xff171c1c) : const Color(0xfff4f7f6),
-			cardTheme: CardThemeData(color: isDark ? const Color(0xff242b2b) : Colors.white, surfaceTintColor: Colors.transparent, margin: EdgeInsets.all(4 * scale)),
-			navigationRailTheme: NavigationRailThemeData(backgroundColor: isDark ? const Color(0xff202727) : const Color(0xffeaf1f0), minWidth: 72 * scale, groupAlignment: -1),
+			scaffoldBackgroundColor: isDark ? UiPalette.screenBackground : const Color(0xFFF5F7FB),
+			cardTheme: CardThemeData(
+				color: isDark ? UiPalette.surfaceCard : const Color(0xFFFFFFFF),
+				surfaceTintColor: Colors.transparent,
+				margin: EdgeInsets.all(4 * scale),
+			),
+			navigationRailTheme: NavigationRailThemeData(
+				backgroundColor: isDark ? UiPalette.softBlue : const Color(0xFFEAF2FF),
+				minWidth: 72 * scale,
+				groupAlignment: -1,
+			),
+			textTheme: ThemeData(brightness: brightness).textTheme.apply(
+				bodyColor: UiPalette.textMain,
+				displayColor: UiPalette.textMain,
+			),
 		);
 	}
 }

@@ -6,7 +6,7 @@ import '../models/finance_models.dart';
 
 class FinanceRepository {
 	FinanceRepository({http.Client? client}) : _client = client ?? http.Client();
-	static const _baseUrl = String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5092');
+	static const _baseUrl = String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5093');
 	final http.Client _client;
 
 	Future<List<T>> _list<T>(String path, T Function(JsonMap) fromJson) async {

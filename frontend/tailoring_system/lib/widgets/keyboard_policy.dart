@@ -14,7 +14,20 @@ class KeyboardPolicy extends StatelessWidget {
   Widget build(BuildContext context) => Focus(
     autofocus: true,
     onKeyEvent: (_, event) {
-      if (event is! KeyDownEvent || !HardwareKeyboard.instance.isControlPressed) return KeyEventResult.ignored;
+      if (event is! KeyDownEvent) return KeyEventResult.ignored;
+      if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+        final focusContext = FocusManager.instance.primaryFocus?.context;
+        final isEditing = focusContext?.widget is EditableText || focusContext?.findAncestorWidgetOfExactType<EditableText>() != null;
+        if (!isEditing && focusContext != null) {
+          final handler = Actions.handler<ActivateIntent>(focusContext, const ActivateIntent());
+          if (handler != null) {
+            handler();
+            return KeyEventResult.handled;
+          }
+        }
+        return KeyEventResult.ignored;
+      }
+      if (!HardwareKeyboard.instance.isControlPressed) return KeyEventResult.ignored;
       if (event.logicalKey == LogicalKeyboardKey.numpadAdd || event.logicalKey == LogicalKeyboardKey.equal) { uiScale.increase(); return KeyEventResult.handled; }
       if (event.logicalKey == LogicalKeyboardKey.numpadSubtract || event.logicalKey == LogicalKeyboardKey.minus) { uiScale.decrease(); return KeyEventResult.handled; }
       if (event.logicalKey == LogicalKeyboardKey.digit0 || event.logicalKey == LogicalKeyboardKey.numpad0) { uiScale.reset(); return KeyEventResult.handled; }

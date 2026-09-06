@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_navigation.dart';
+
 class StructurePlaceholder extends StatelessWidget {
   const StructurePlaceholder({required this.title, required this.description, super.key});
 
@@ -48,7 +50,7 @@ class ModuleSection extends StatelessWidget {
                           leading: Icon(item.icon),
                           title: Text(item.title),
                           subtitle: Text(item.description),
-                          onTap: () => Navigator.of(context).pushNamed('/structure/${Uri.encodeComponent(item.title)}'),
+                          onTap: () => AppNavigation.pushNamed(context, '/structure/${Uri.encodeComponent(item.title)}'),
                         ),
                       ),
                     ))
