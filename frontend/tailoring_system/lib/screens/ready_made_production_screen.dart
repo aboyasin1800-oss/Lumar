@@ -718,7 +718,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 						'fabricCost': item.fabricCostValue,
 						'pieceCost': item.pieceCostValue,
 						'lineTotal': item.lineTotalValue,
-						'measurementSnapshot': item.measurementsForPayload.isEmpty ? null : item.measurementsForPayload,
+						'measurementSnapshot': item.measurementsForPayload.isEmpty ? null : jsonEncode(item.measurementsForPayload),
 						'notes': item.notesController.text.trim().isEmpty ? null : item.notesController.text.trim(),
 					};
 				}).toList(),

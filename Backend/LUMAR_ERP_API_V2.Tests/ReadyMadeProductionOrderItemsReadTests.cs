@@ -1,6 +1,7 @@
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.Repositories;
+using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using Xunit;

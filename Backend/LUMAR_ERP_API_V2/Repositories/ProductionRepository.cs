@@ -1030,7 +1030,7 @@ public sealed class ProductionRepository(
     public async Task<ReadyMadeProductionOrderCreateResultDto> CreateReadyMadeOrderAsync(ReadyMadeProductionOrderCreateDto order, CancellationToken ct)
     {
         if (order.Items.Count == 0) throw new InvalidOperationException("يجب إضافة بند واحد على الأقل.");
-        await using var connection = connections.Create();
+        await using var connection = operationalConnections.Create();
         await connection.OpenAsync(ct);
         await using var transaction = connection.BeginTransaction();
         try
@@ -1126,7 +1126,7 @@ public sealed class ProductionRepository(
     {
         var prefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "ProductionTrackingPrefix", "RMP-", ct);
         var sql = @"
-            SELECT ISNULL(MAX(CAST(SUBSTRING(ProductionOrderNumber, CHARINDEX('-', ProductionOrderNumber) + 1, 20) AS int)), 0) + 1
+            SELECT ISNULL(MAX(TRY_CONVERT(int, SUBSTRING(ProductionOrderNumber, CHARINDEX('-', ProductionOrderNumber) + 1, 20))), 0) + 1
             FROM dbo.ReadyMadeProductionOrders WITH (TABLOCKX, HOLDLOCK)
             WHERE ProductionOrderNumber LIKE @prefix;";
         await using var command = new SqlCommand(sql, connection, transaction);
@@ -1147,7 +1147,7 @@ public sealed class ProductionRepository(
     {
         var prefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "PieceTrackingPrefix", "TRK-", ct);
         var sql = @"
-            SELECT ISNULL(MAX(CAST(REPLACE(TrackingCode, @prefix2, '') AS int)), 0) + 1
+            SELECT ISNULL(MAX(TRY_CONVERT(int, REPLACE(TrackingCode, @prefix2, ''))), 0) + 1
             FROM (
                 SELECT TrackingCode FROM dbo.Pieces WITH (TABLOCKX, HOLDLOCK)
                 UNION ALL
