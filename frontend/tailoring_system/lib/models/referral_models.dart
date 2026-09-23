@@ -73,6 +73,26 @@ class ReferralAccount {
   final DateTime updatedAt;
 }
 
+class ReferralCustomerDetails {
+  const ReferralCustomerDetails({
+    required this.currentPoints,
+    required this.totalReferralPoints,
+    required this.totalReferralRewardsAmount,
+    required this.referralAccountBalance,
+    required this.totalFinancialBalance,
+    required this.currentDebt,
+    required this.latestLedgerBalance,
+  });
+
+  final double currentPoints;
+  final double totalReferralPoints;
+  final double totalReferralRewardsAmount;
+  final double referralAccountBalance;
+  final double totalFinancialBalance;
+  final double currentDebt;
+  final double latestLedgerBalance;
+}
+
 class ReferralCode {
   const ReferralCode({
     required this.referralCodeId,

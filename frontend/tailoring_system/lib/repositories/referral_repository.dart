@@ -4,6 +4,11 @@ import 'package:http/http.dart' as http;
 
 import '../models/referral_models.dart';
 
+double _referralNumber(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0;
+}
+
 class ReferralRepository {
   ReferralRepository({http.Client? client}) : _client = client ?? http.Client();
 
@@ -111,10 +116,67 @@ class ReferralRepository {
         (json) => ReferralAccount.fromJson(Map<String, dynamic>.from(json)),
       );
 
+  Future<ReferralCustomerDetails> getCustomerDetails(int customerId) async {
+    final results = await Future.wait<dynamic>([
+      _getOptionalJson('/customers/$customerId/loyalty'),
+      _getOptionalJson('/api/referrals/customers/$customerId/account'),
+      getTransactions(customerId),
+      _getList<Map<String, dynamic>>(
+        '/customers/$customerId/ledger',
+        (json) => Map<String, dynamic>.from(json),
+      ),
+    ]);
+
+    final loyalty = results[0] as Map<String, dynamic>?;
+    final account = results[1] as Map<String, dynamic>?;
+    final transactions = results[2] as List<ReferralTransaction>;
+    final ledger = results[3] as List<Map<String, dynamic>>;
+
+    final latestLedgerBalance = ledger.isEmpty
+      ? 0.0
+      : _referralNumber(ledger.first['balanceAfterTransaction']);
+    final totalFinancialBalance = ledger.fold<double>(
+      0,
+      (balance, entry) =>
+          balance +
+          _referralNumber(entry['debitAmount']) -
+          _referralNumber(entry['creditAmount']),
+    );
+    final referralAccountBalance = transactions.fold<double>(0, (balance, item) {
+      if (item.referrerCustomerId != customerId) return balance;
+      return balance +
+          (item.transactionType == 'RewardReversal'
+              ? -item.fixedRewardAmount
+              : item.transactionType == 'RewardGranted'
+                  ? item.fixedRewardAmount
+                  : 0);
+    });
+
+    return ReferralCustomerDetails(
+        currentPoints: _referralNumber(loyalty?['currentPoints']),
+        totalReferralPoints: _referralNumber(account?['totalRewardPoints']),
+      totalReferralRewardsAmount:
+          _referralNumber(account?['totalRewardsAmount']),
+      referralAccountBalance: referralAccountBalance,
+      totalFinancialBalance: totalFinancialBalance,
+      currentDebt: latestLedgerBalance > 0 ? latestLedgerBalance : 0,
+      latestLedgerBalance: latestLedgerBalance,
+    );
+  }
+
   Future<List<ReferralCode>> getCodes(int customerId) => _getList(
         '/api/referrals/customers/$customerId/codes',
         (json) => ReferralCode.fromJson(Map<String, dynamic>.from(json)),
       );
+
+  Future<Map<String, dynamic>?> _getOptionalJson(String path) async {
+    final response = await _client.get(Uri.parse('$_baseUrl$path'));
+    if (response.statusCode == 404) return null;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('طلب فشل: $path (${response.statusCode})');
+    }
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
 
   Future<List<ReferralTransaction>> getTransactions(int customerId) => _getList(
         '/api/referrals/customers/$customerId/transactions',

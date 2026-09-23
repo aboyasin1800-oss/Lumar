@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/rl_ui_text.dart';
 import '../../core/ui_palette.dart';
@@ -418,6 +419,18 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
   }
 
   void _showNodeDetails(ReferralTreeNode node) {
+    _openNodeDetails(node);
+  }
+
+  Future<void> _openNodeDetails(ReferralTreeNode node) async {
+    ReferralCustomerDetails? details;
+    try {
+      details = await _repository.getCustomerDetails(node.customerId);
+    } catch (_) {
+      details = null;
+    }
+    if (!mounted) return;
+
     showDialog<void>(
       context: context,
       builder: (context) {
@@ -430,10 +443,11 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
               fontWeight: FontWeight.bold,
             ),
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               _detailRow('اسم العميل', node.customerName ?? '-'),
               _detailRow('كود العميل', node.customerCode ?? '-'),
               _detailRow('كود الإحالة', node.referralCode ?? '-'),
@@ -447,9 +461,46 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
               _detailRow(
                   'عدد الإحالات المباشرة', '${node.directChildrenCount}'),
               _detailRow('إجمالي التابعين', '${node.totalDescendantsCount}'),
-              _detailRow('رصيد النقاط', '-'),
-              _detailRow('إجمالي نقاط الإحالة', '-'),
-            ],
+              _detailRow(
+                'رصيد النقاط',
+                details == null ? '-' : _formatAmount(details.currentPoints),
+              ),
+              _detailRow(
+                'إجمالي نقاط الإحالة',
+                details == null
+                    ? '-'
+                    : _formatAmount(details.totalReferralPoints),
+              ),
+              _detailRow(
+                'إجمالي مكافآت الإحالة المكتسبة',
+                details == null
+                    ? '-'
+                    : _formatAmount(details.totalReferralRewardsAmount),
+              ),
+              _detailRow(
+                'الرصيد الحالي لحساب الإحالة',
+                details == null
+                    ? '-'
+                    : _formatAmount(details.referralAccountBalance),
+              ),
+              _detailRow(
+                'إجمالي الرصيد المالي للعميل',
+                details == null
+                    ? '-'
+                    : _formatAmount(details.totalFinancialBalance),
+              ),
+              _detailRow(
+                'إجمالي المديونية الحالية',
+                details == null ? '-' : _formatAmount(details.currentDebt),
+              ),
+                _detailRow(
+                  'آخر رصيد فعلي للعميل',
+                  details == null
+                      ? '-'
+                      : _formatAmount(details.latestLedgerBalance),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -464,6 +515,9 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
       },
     );
   }
+
+  String _formatAmount(double value) =>
+      NumberFormat('#,##0.##', 'en_US').format(value);
 
   Widget _detailRow(String label, String value) {
     return Padding(

@@ -218,6 +218,43 @@ class _BranchingReferralRepository extends ReferralRepository {
   }
 }
 
+class _C10053ReferralRepository extends ReferralRepository {
+  @override
+  Future<List<ReferralRoot>> getRoots() async => const [
+        ReferralRoot(
+          customerId: 78,
+          customerCode: 'C10053',
+          customerName: 'ابو ياسين الفقيه',
+          directReferralsCount: 5,
+          totalDescendantsCount: 82,
+          maxDepth: 4,
+        ),
+      ];
+
+  @override
+  Future<ReferralTree> getTree(int customerId) async => const ReferralTree(
+        rootCustomerId: 78,
+        rootCustomerCode: 'C10053',
+        rootCustomerName: 'ابو ياسين الفقيه',
+        directReferralsCount: 5,
+        totalDescendantsCount: 82,
+        maxDepth: 4,
+        children: [],
+      );
+
+  @override
+  Future<ReferralCustomerDetails> getCustomerDetails(int customerId) async =>
+      const ReferralCustomerDetails(
+        currentPoints: 1490.63,
+        totalReferralPoints: 90.63,
+        totalReferralRewardsAmount: 0,
+        referralAccountBalance: 0,
+        totalFinancialBalance: -5000,
+        currentDebt: 0,
+        latestLedgerBalance: -5000,
+      );
+}
+
 void main() {
   testWidgets('tree renders customer names only and removes zoom controls', (tester) async {
     await tester.pumpWidget(
@@ -324,5 +361,30 @@ void main() {
     expect(find.text('سعدون مسعد'), findsOneWidget);
     expect(find.text('محمد سعدون مسعد'), findsOneWidget);
     expect(find.byType(InteractiveViewer), findsOneWidget);
+  });
+
+  testWidgets('C10053 details show official referral and financial indicators',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReferralTreeScreen(
+          repository: _C10053ReferralRepository(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('C10053'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('رصيد النقاط'), findsOneWidget);
+    expect(find.text('1,490.63'), findsOneWidget);
+    expect(find.text('إجمالي نقاط الإحالة'), findsOneWidget);
+    expect(find.text('90.63'), findsOneWidget);
+    expect(find.text('إجمالي مكافآت الإحالة المكتسبة'), findsOneWidget);
+    expect(find.text('إجمالي الرصيد المالي للعميل'), findsOneWidget);
+    expect(find.text('-5,000'), findsNWidgets(2));
+    expect(find.text('إجمالي المديونية الحالية'), findsOneWidget);
+    expect(find.text('آخر رصيد فعلي للعميل'), findsOneWidget);
   });
 }
