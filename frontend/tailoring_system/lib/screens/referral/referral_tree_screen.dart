@@ -49,12 +49,15 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
   final Map<int, bool> _expandedNodes = <int, bool>{};
   final TransformationController _treeTransform = TransformationController();
   final FocusNode _treeFocusNode = FocusNode();
+  final GlobalKey _treeViewportKey = GlobalKey();
   Timer? _searchDebounce;
   List<ReferralCustomerIdentity> _customerSuggestions = const [];
   bool _suggestionsLoading = false;
 
   double _treeScale = 1.0;
   Offset _treePan = Offset.zero;
+  Size? _treeViewportSize;
+  Size? _treeContentSize;
   bool _altPressed = false;
 
   Future<List<ReferralRoot>>? _rootsFuture;
@@ -182,6 +185,37 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
       ..scale(_treeScale);
   }
 
+  void _centerTreeAtMinimum() {
+    final viewportSize = _treeViewportSize;
+    final contentSize = _treeContentSize;
+    if (viewportSize == null || contentSize == null) {
+      return;
+    }
+
+    final minimumScale = _treeZoomLevels.first;
+    _treePan = Offset(
+      (viewportSize.width - contentSize.width * minimumScale) / 2,
+      (viewportSize.height - contentSize.height * minimumScale) / 2,
+    );
+    _applyTreeTransform();
+  }
+
+  void _rememberTreeDimensions(Size viewportSize, Size contentSize) {
+    if (_treeViewportSize == viewportSize && _treeContentSize == contentSize) {
+      return;
+    }
+
+    _treeViewportSize = viewportSize;
+    _treeContentSize = contentSize;
+    if (_treeScale == _treeZoomLevels.first) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _treeScale == _treeZoomLevels.first) {
+          _centerTreeAtMinimum();
+        }
+      });
+    }
+  }
+
   bool get _isAltPressed {
     return _altPressed ||
         HardwareKeyboard.instance
@@ -234,17 +268,42 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
       return;
     }
 
+    final nextScale = _treeZoomLevels[nextIndex];
     setState(() {
-      _treeScale = _treeZoomLevels[nextIndex];
-      _applyTreeTransform();
+      if (nextScale == _treeZoomLevels.first) {
+        _treeScale = nextScale;
+        _centerTreeAtMinimum();
+      } else {
+        final focalPoint = _treeFocalPoint;
+        if (focalPoint != null && _treeScale > 0) {
+          final scaleRatio = nextScale / _treeScale;
+          _treePan = focalPoint -
+              (focalPoint - _treePan) * scaleRatio;
+        }
+        _treeScale = nextScale;
+        _applyTreeTransform();
+      }
     });
   }
+
+  Offset? get _treeFocalPoint {
+    final renderObject = _treeViewportKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) {
+      return null;
+    }
+    return _lastPointerPosition == null
+        ? null
+        : renderObject.globalToLocal(_lastPointerPosition!);
+  }
+
+  Offset? _lastPointerPosition;
 
   void _handleWheelZoom(PointerSignalEvent event) {
     if (event is! PointerScrollEvent || !_isAltPressed) {
       return;
     }
 
+    _lastPointerPosition = event.position;
     final delta = event.scrollDelta.dy;
     if (delta == 0) {
       return;
@@ -902,24 +961,35 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
           decoration: BoxDecoration(
             color: altCardColor.withValues(alpha: 0.35),
           ),
-          child: RawKeyboardListener(
-            focusNode: _treeFocusNode,
-            onKey: _handleKeyEvent,
-            child: Listener(
-              onPointerSignal: _handleWheelZoom,
-              child: InteractiveViewer(
-                clipBehavior: Clip.none,
-                constrained: false,
-                boundaryMargin: const EdgeInsets.all(120),
-                minScale: 0.45,
-                maxScale: 2.4,
-                transformationController: _treeTransform,
-                panEnabled: true,
-                scaleEnabled: false,
-                child: SizedBox(
-                  width: layout.width,
-                  height: layout.height,
-                  child: Stack(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final viewportSize = Size(
+                constraints.maxWidth,
+                constraints.maxHeight,
+              );
+              _rememberTreeDimensions(
+                viewportSize,
+                Size(layout.width, layout.height),
+              );
+              return RawKeyboardListener(
+                focusNode: _treeFocusNode,
+                onKey: _handleKeyEvent,
+                child: Listener(
+                  onPointerSignal: _handleWheelZoom,
+                  child: InteractiveViewer(
+                    key: _treeViewportKey,
+                    clipBehavior: Clip.none,
+                    constrained: false,
+                    boundaryMargin: const EdgeInsets.all(120),
+                    minScale: 0.45,
+                    maxScale: 2.4,
+                    transformationController: _treeTransform,
+                    panEnabled: true,
+                    scaleEnabled: false,
+                    child: SizedBox(
+                      width: layout.width,
+                      height: layout.height,
+                      child: Stack(
                     children: [
                       Positioned.fill(
                         child: CustomPaint(
@@ -990,10 +1060,12 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
                         );
                       }),
                     ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ],
