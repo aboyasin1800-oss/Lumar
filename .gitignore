@@ -28,3 +28,7 @@ Tools/FlutterSDK/
 
 # Database backup retained outside version control
 backups/
+
+# Local validation and build outputs
+_validation_output/
+_validation_obj/

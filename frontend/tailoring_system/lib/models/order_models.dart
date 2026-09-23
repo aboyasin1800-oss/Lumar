@@ -20,6 +20,15 @@ Map<String, dynamic> _snapshot(String? value) {
   }
 }
 
+String? _firstString(Object? first, [Object? second, Object? third]) {
+  final values = [first, second, third]
+      .whereType<Object>()
+      .map((value) => value.toString().trim())
+      .where((value) => value.isNotEmpty)
+      .toList();
+  return values.isEmpty ? null : values.first;
+}
+
 class OrderDetails {
   const OrderDetails(
       {required this.id,
@@ -39,7 +48,11 @@ class OrderDetails {
       required this.cancellationReason,
       required this.cancelledAt,
       required this.cancelledBy,
-      required this.saleCategory});
+      required this.saleCategory,
+      required this.revenueRecognized,
+      this.revenueRecognizedAt,
+      required this.revenueReversalCreated,
+      this.revenueReversalCreatedAt});
 
   factory OrderDetails.fromJson(OrderJson json) => OrderDetails(
         id: json['orderId'] as int,
@@ -60,6 +73,11 @@ class OrderDetails {
         cancelledAt: _nullableDate(json, 'cancelledAt'),
         cancelledBy: json['cancelledBy'] as String?,
         saleCategory: json['saleCategory'] as String,
+        revenueRecognized: json['revenueRecognized'] as bool? ?? false,
+        revenueRecognizedAt: _nullableDate(json, 'revenueRecognizedAt'),
+        revenueReversalCreated: json['revenueReversalCreated'] as bool? ?? false,
+        revenueReversalCreatedAt:
+            _nullableDate(json, 'revenueReversalCreatedAt'),
       );
 
   final int id;
@@ -80,6 +98,10 @@ class OrderDetails {
   final DateTime? cancelledAt;
   final String? cancelledBy;
   final String saleCategory;
+  final bool revenueRecognized;
+  final DateTime? revenueRecognizedAt;
+  final bool revenueReversalCreated;
+  final DateTime? revenueReversalCreatedAt;
 }
 
 class OrderItem {
@@ -93,6 +115,7 @@ class OrderItem {
       required this.fabricColor,
       required this.request1,
       required this.request2,
+      required this.specialRequest,
       required this.notes1,
       required this.notes2,
       required this.trackingCode,
@@ -101,23 +124,34 @@ class OrderItem {
       required Map<String, dynamic> snapshot})
       : snapshot = Map.unmodifiable(snapshot);
 
-  factory OrderItem.fromJson(OrderJson json) => OrderItem(
-        id: json['orderItemId'] as int,
-        orderId: json['orderId'] as int,
-        pieceType: json['pieceType'] as String,
-        quantity: json['quantity'] as int,
-        fabricCode: json['fabricCode'] as String?,
-        fabricType: json['fabricType'] as String?,
-        fabricColor: json['fabricColor'] as String?,
-        request1: json['request1'] as String?,
-        request2: json['request2'] as String?,
-        notes1: json['notes1'] as String?,
-        notes2: json['notes2'] as String?,
-        trackingCode: json['trackingCode'] as String?,
-        pieceStatus: json['pieceStatus'] as String?,
-        createdDate: _date(json, 'createdDate'),
-        snapshot: _snapshot(json['measurementSnapshot'] as String?),
-      );
+  factory OrderItem.fromJson(OrderJson json) {
+    final snapshot = _snapshot(json['measurementSnapshot'] as String?);
+    final request1 = (json['request1'] as String?) ??
+        _firstString(snapshot['request1'], snapshot['Request1']);
+    final request2 = (json['request2'] as String?) ??
+        _firstString(snapshot['request2'], snapshot['Request2']);
+    final specialRequest = (json['specialRequest'] as String?) ??
+        _firstString(snapshot['specialRequest'], snapshot['SpecialRequest']);
+
+    return OrderItem(
+      id: json['orderItemId'] as int,
+      orderId: json['orderId'] as int,
+      pieceType: json['pieceType'] as String,
+      quantity: json['quantity'] as int,
+      fabricCode: json['fabricCode'] as String?,
+      fabricType: json['fabricType'] as String?,
+      fabricColor: json['fabricColor'] as String?,
+      request1: request1,
+      request2: request2,
+      specialRequest: specialRequest,
+      notes1: json['notes1'] as String?,
+      notes2: json['notes2'] as String?,
+      trackingCode: json['trackingCode'] as String?,
+      pieceStatus: json['pieceStatus'] as String?,
+      createdDate: _date(json, 'createdDate'),
+      snapshot: snapshot,
+    );
+  }
 
   final int id;
   final int orderId;
@@ -128,6 +162,7 @@ class OrderItem {
   final String? fabricColor;
   final String? request1;
   final String? request2;
+  final String? specialRequest;
   final String? notes1;
   final String? notes2;
   final String? trackingCode;
@@ -135,7 +170,33 @@ class OrderItem {
   final DateTime createdDate;
   final Map<String, dynamic> snapshot;
 
-  String? get catalogNumber => snapshot['_catalogNumber']?.toString();
+  String? get catalogNumber => [
+        snapshot['_catalogNumber'],
+        snapshot['CatalogNumber'],
+        snapshot['catalogNumber'],
+        snapshot['barcode'],
+        snapshot['Barcode'],
+      ]
+          .whereType<Object>()
+          .map((value) => value.toString())
+          .firstWhere(
+            (value) => value.trim().isNotEmpty,
+            orElse: () => '',
+          )
+          .trim()
+          .isEmpty
+      ? null
+      : [
+          snapshot['_catalogNumber'],
+          snapshot['CatalogNumber'],
+          snapshot['catalogNumber'],
+          snapshot['barcode'],
+          snapshot['Barcode'],
+        ]
+              .whereType<Object>()
+              .map((value) => value.toString())
+              .firstWhere((value) => value.trim().isNotEmpty, orElse: () => '')
+              .trim();
   double? get consumption =>
       double.tryParse(snapshot['_consumption']?.toString() ?? '');
   double? get fullCost => snapshot['fullCost'] is num
@@ -405,4 +466,100 @@ class OrderDetailsData {
   final List<OrderTrackingEvent> trackingEvents;
   final List<OrderFinancialTransaction> financialTransactions;
   final List<OrderLedgerEntry> ledgerEntries;
+}
+
+class CancelledPieceDisposition {
+  const CancelledPieceDisposition({
+    required this.cancelledPieceDispositionId,
+    required this.pieceId,
+    required this.decision,
+    required this.reason,
+    required this.decidedBy,
+    required this.decidedAt,
+    required this.transferStatus,
+    required this.readyMadeInventoryProductId,
+    required this.transferredAt,
+    required this.createdAt,
+  });
+
+  factory CancelledPieceDisposition.fromJson(OrderJson json) =>
+      CancelledPieceDisposition(
+        cancelledPieceDispositionId:
+            json['cancelledPieceDispositionId'] as int? ?? 0,
+        pieceId: json['pieceId'] as int? ?? 0,
+        decision: json['decision'] as String? ?? '',
+        reason: json['reason'] as String?,
+        decidedBy: json['decidedBy'] as String?,
+        decidedAt: _nullableDate(json, 'decidedAt') ?? DateTime.now(),
+        transferStatus: json['transferStatus'] as String? ?? 'Pending',
+        readyMadeInventoryProductId:
+            json['readyMadeInventoryProductId'] as int?,
+        transferredAt: _nullableDate(json, 'transferredAt'),
+        createdAt: _nullableDate(json, 'createdAt') ?? DateTime.now(),
+      );
+
+  final int cancelledPieceDispositionId;
+  final int pieceId;
+  final String decision;
+  final String? reason;
+  final String? decidedBy;
+  final DateTime decidedAt;
+  final String transferStatus;
+  final int? readyMadeInventoryProductId;
+  final DateTime? transferredAt;
+  final DateTime createdAt;
+}
+
+class ProductionStageRoute {
+  const ProductionStageRoute({
+    required this.pieceType,
+    required this.route,
+    required this.currentStage,
+    required this.nextStage,
+  });
+
+  factory ProductionStageRoute.fromJson(OrderJson json) => ProductionStageRoute(
+        pieceType: (json['pieceType'] ?? '').toString(),
+        route: (json['route'] as List? ?? const [])
+            .map((entry) => entry.toString())
+            .toList(),
+        currentStage: (json['currentStage'] ?? '').toString(),
+        nextStage: json['nextStage']?.toString(),
+      );
+
+  final String pieceType;
+  final List<String> route;
+  final String currentStage;
+  final String? nextStage;
+}
+
+class ProductionStageAdvanceResult {
+  const ProductionStageAdvanceResult({
+    required this.pieceId,
+    required this.trackingCode,
+    required this.previousStatus,
+    required this.newStatus,
+    required this.nextStage,
+    required this.message,
+    required this.updated,
+  });
+
+  factory ProductionStageAdvanceResult.fromJson(OrderJson json) =>
+      ProductionStageAdvanceResult(
+        pieceId: json['pieceId'] as int? ?? 0,
+        trackingCode: json['trackingCode']?.toString(),
+        previousStatus: (json['previousStatus'] ?? '').toString(),
+        newStatus: (json['newStatus'] ?? '').toString(),
+        nextStage: json['nextStage']?.toString(),
+        message: (json['message'] ?? '').toString(),
+        updated: json['updated'] as bool? ?? false,
+      );
+
+  final int? pieceId;
+  final String? trackingCode;
+  final String previousStatus;
+  final String newStatus;
+  final String? nextStage;
+  final String message;
+  final bool updated;
 }

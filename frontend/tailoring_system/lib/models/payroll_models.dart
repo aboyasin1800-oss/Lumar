@@ -118,6 +118,68 @@ class PieceWageRecord {
 	final DateTime createdAt;
 }
 
+class PieceWageRate {
+	const PieceWageRate({required this.id, required this.pieceType, required this.stage, required this.wageRate, required this.isActive, required this.notes, required this.createdAt, required this.updatedAt});
+	factory PieceWageRate.fromJson(PayrollJson json) => PieceWageRate(
+		id: json['pieceWageRateId'] as int,
+		pieceType: json['pieceType'] as String,
+		stage: json['stage'] as String,
+		wageRate: _amount(json, 'wageRate'),
+		isActive: (json['isActive'] as bool?) ?? false,
+		notes: json['notes'] as String?,
+		createdAt: _date(json, 'createdAt'),
+		updatedAt: _nullableDate(json, 'updatedAt'),
+	);
+	final int id;
+	final String pieceType;
+	final String stage;
+	final double wageRate;
+	final bool isActive;
+	final String? notes;
+	final DateTime createdAt;
+	final DateTime? updatedAt;
+}
+
+class PayrollGenerationResult {
+	const PayrollGenerationResult({required this.payrollPeriodId, required this.periodCode, required this.employeeCount, required this.totalGrossAmount, required this.totalNetAmount, required this.generatedAt, required this.payrollRecordIds});
+	factory PayrollGenerationResult.fromJson(PayrollJson json) => PayrollGenerationResult(
+		payrollPeriodId: json['payrollPeriodId'] as int,
+		periodCode: json['periodCode'] as String,
+		employeeCount: json['employeeCount'] as int,
+		totalGrossAmount: _amount(json, 'totalGrossAmount'),
+		totalNetAmount: _amount(json, 'totalNetAmount'),
+		generatedAt: _date(json, 'generatedAt'),
+		payrollRecordIds: (json['payrollRecordIds'] as List? ?? const []).map((item) => (item as num).toInt()).toList(),
+	);
+	final int payrollPeriodId;
+	final String periodCode;
+	final int employeeCount;
+	final double totalGrossAmount;
+	final double totalNetAmount;
+	final DateTime generatedAt;
+	final List<int> payrollRecordIds;
+}
+
+class PayrollSettlement {
+	const PayrollSettlement({required this.settlementId, required this.drawId, required this.employeeCode, required this.settlementDate, required this.amount, required this.notes, required this.journalEntryId});
+	factory PayrollSettlement.fromJson(PayrollJson json) => PayrollSettlement(
+		settlementId: json['settlementId'] as int,
+		drawId: json['drawId'] as int,
+		employeeCode: json['employeeCode'] as String?,
+		settlementDate: _date(json, 'settlementDate'),
+		amount: _amount(json, 'amount'),
+		notes: json['notes'] as String?,
+		journalEntryId: json['journalEntryId'] as int?,
+	);
+	final int settlementId;
+	final int drawId;
+	final String? employeeCode;
+	final DateTime settlementDate;
+	final double amount;
+	final String? notes;
+	final int? journalEntryId;
+}
+
 class PayrollOverview {
 	const PayrollOverview({required this.periods, required this.records, required this.employees, required this.departments, required this.pieceWages, required this.itemsByRecord, required this.drawsByEmployee});
 	final List<PayrollPeriod> periods;

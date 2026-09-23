@@ -9,7 +9,6 @@ import '../services/auth_state.dart';
 import '../services/theme_state.dart';
 import '../services/ui_scale_state.dart';
 import '../services/sidebar_state.dart';
-import '../services/screen_chrome_state.dart';
 
 class MainShell extends StatefulWidget {
 	const MainShell({required this.auth, required this.themeState, required this.uiScale, required this.sidebarState, this.initialIndex = 0, this.content, this.title, super.key});

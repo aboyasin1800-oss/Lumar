@@ -26,14 +26,32 @@ public sealed class ConsumptionRulesRepository(ReadOnlySqlConnectionFactory conn
 
     public async Task<ConsumptionRulesDashboardDto> GetDashboardAsync(CancellationToken cancellationToken)
     {
-        await using var connection = connections.Create();
-        await connection.OpenAsync(cancellationToken);
+        await using var productTypesConnection = connections.Create();
+        await using var sizeClassesConnection = connections.Create();
+        await using var rulesConnection = connections.Create();
+        await using var profilesConnection = connections.Create();
+        await using var fieldsConnection = connections.Create();
 
-        var productTypes = await ReadProductTypesAsync(connection, cancellationToken);
-        var sizeClasses = await ReadSizeClassesAsync(connection, cancellationToken);
-        var rules = await ReadRulesAsync(connection, cancellationToken);
-        var profiles = await ReadMeasurementProfilesAsync(connection, cancellationToken);
-        var fields = await ReadMeasurementFieldsAsync(connection, cancellationToken);
+        await Task.WhenAll(
+            productTypesConnection.OpenAsync(cancellationToken),
+            sizeClassesConnection.OpenAsync(cancellationToken),
+            rulesConnection.OpenAsync(cancellationToken),
+            profilesConnection.OpenAsync(cancellationToken),
+            fieldsConnection.OpenAsync(cancellationToken));
+
+        var productTypesTask = ReadProductTypesAsync(productTypesConnection, cancellationToken);
+        var sizeClassesTask = ReadSizeClassesAsync(sizeClassesConnection, cancellationToken);
+        var rulesTask = ReadRulesAsync(rulesConnection, cancellationToken);
+        var profilesTask = ReadMeasurementProfilesAsync(profilesConnection, cancellationToken);
+        var fieldsTask = ReadMeasurementFieldsAsync(fieldsConnection, cancellationToken);
+
+        await Task.WhenAll(productTypesTask, sizeClassesTask, rulesTask, profilesTask, fieldsTask);
+
+        var productTypes = productTypesTask.Result;
+        var sizeClasses = sizeClassesTask.Result;
+        var rules = rulesTask.Result;
+        var profiles = profilesTask.Result;
+        var fields = fieldsTask.Result;
 
         return new ConsumptionRulesDashboardDto(
             productTypes.Count,
@@ -127,6 +145,67 @@ public sealed class ConsumptionRulesRepository(ReadOnlySqlConnectionFactory conn
             validation.ProductTypesCoveringAllSizes,
             validation.ProductTypesNeedingCompletion,
             mergedIssues);
+    }
+
+    public async Task<EvaluateConsumptionResponseDto?> EvaluateAsync(EvaluateConsumptionRequestDto request, CancellationToken cancellationToken)
+    {
+        var dashboard = await GetDashboardAsync(cancellationToken);
+        var rules = dashboard.Rules
+            .Where(rule => rule.ProductTypeId == request.ProductTypeId
+                && rule.IsActive
+                && string.Equals(rule.Status, "Active", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (rules.Count == 0) return null;
+
+        var values = new Dictionary<string, decimal>(request.Measurements ?? new Dictionary<string, decimal>(), StringComparer.OrdinalIgnoreCase);
+        var rangedMatches = rules
+            .Where(rule => !string.IsNullOrWhiteSpace(rule.MeasurementCode))
+            .Where(rule => values.TryGetValue(rule.MeasurementCode!, out var value)
+                && rule.MinimumValue.HasValue
+                && rule.MinimumValue.Value <= value
+                && (!rule.MaximumValue.HasValue || value < rule.MaximumValue.Value))
+            .ToList();
+        var candidates = rangedMatches.Count > 0
+            ? rangedMatches
+            : rules.Where(rule => string.IsNullOrWhiteSpace(rule.MeasurementCode)
+                && !rule.MinimumValue.HasValue
+                && !rule.MaximumValue.HasValue).ToList();
+        if (candidates.Count == 0)
+        {
+            var missing = rules
+                .Select(rule => rule.MeasurementCode)
+                .Where(code => !string.IsNullOrWhiteSpace(code) && !values.ContainsKey(code!))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            throw new InvalidOperationException(missing.Count > 0
+                ? $"القياسات المطلوبة ناقصة: {string.Join(", ", missing)}."
+                : "لا توجد قاعدة استهلاك مطابقة للقياسات المدخلة.");
+        }
+
+        var selected = candidates.OrderBy(rule => rule.Priority).ThenBy(rule => rule.ConsumptionRuleId).ToList();
+        if (selected.Count > 1 && selected[0].Priority == selected[1].Priority)
+        {
+            throw new InvalidOperationException("يوجد تعارض بين أكثر من قاعدة استهلاك مطابقة.");
+        }
+
+        var rule = selected[0];
+        var evaluation = ConsumptionFormulaEvaluator.Evaluate(rule.Formula, values);
+        if (!evaluation.IsSuccessful)
+        {
+            if (evaluation.MissingMeasurements.Count > 0)
+            {
+                throw new InvalidOperationException($"القياسات المطلوبة ناقصة: {string.Join(", ", evaluation.MissingMeasurements)}.");
+            }
+
+            throw new InvalidOperationException(evaluation.ErrorMessage ?? "تعذر تقييم صيغة الاستهلاك.");
+        }
+
+        return new EvaluateConsumptionResponseDto(
+            evaluation.Value!.Value,
+            rule.ResultUnit,
+            rule.ConsumptionRuleId,
+            rule.SizeClassId,
+            ConsumptionFormulaEvaluator.ExtractMeasurementTokens(rule.Formula));
     }
 
     public async Task<IReadOnlyList<ConsumptionRuleDto>> SaveProductRulesBatchAsync(SaveProductRulesBatchDto request, CancellationToken cancellationToken)
@@ -1277,7 +1356,12 @@ public sealed class ConsumptionRulesRepository(ReadOnlySqlConnectionFactory conn
                    cr.Status,
                    cr.IsActive,
                    cr.EffectiveFrom,
-                   cr.EffectiveTo
+                                     cr.EffectiveTo,
+                                     cr.FabricWidth,
+                                     cr.FabricWidthUnit,
+                                     sc.MeasurementCode,
+                                     sc.MinimumValue,
+                                     sc.MaximumValue
             FROM dbo.PricingConsumptionRules cr WITH (UPDLOCK,HOLDLOCK)
             LEFT JOIN dbo.PricingProductTypes pt WITH (NOLOCK) ON pt.ProductTypeId = cr.ProductTypeId
             LEFT JOIN dbo.PricingSizeClasses sc WITH (NOLOCK) ON sc.SizeClassId = cr.SizeClassId

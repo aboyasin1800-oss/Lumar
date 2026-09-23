@@ -4,360 +4,592 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
-class PricingScreen extends StatefulWidget {
-	const PricingScreen({super.key});
+import '../core/app_navigation.dart';
+import '../core/ui_palette.dart';
+import 'settings/piece_cost_management_screen.dart';
 
-	@override
-	State<PricingScreen> createState() => _PricingScreenState();
+class PricingScreen extends StatefulWidget {
+  const PricingScreen({super.key});
+
+  @override
+  State<PricingScreen> createState() => _PricingScreenState();
 }
 
 class _PricingScreenState extends State<PricingScreen> {
-	static const _baseUrl = String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5093');
-	final search = TextEditingController();
-	late Future<List<_PieceCostSetting>> settings;
+  static const _baseUrl = String.fromEnvironment('LUMAR_API_URL',
+      defaultValue: 'http://127.0.0.1:5093');
+  final _fabricCode = TextEditingController();
+  final _consumption = TextEditingController();
+  final _globalProfit = TextEditingController();
+  late Future<_PricingData> _dataFuture;
+  final _results = <int, _PricingResult>{};
+  int _calculationVersion = 0;
+  bool _calculating = false;
+  String? _error;
 
-	@override
-	void initState() {
-		super.initState();
-		settings = _load();
-	}
+  @override
+  void initState() {
+    super.initState();
+    _dataFuture = _loadData();
+  }
 
-	@override
-	void dispose() {
-		search.dispose();
-		super.dispose();
-	}
+  @override
+  void dispose() {
+    _fabricCode.dispose();
+    _consumption.dispose();
+    _globalProfit.dispose();
+    super.dispose();
+  }
 
-	Future<List<_PieceCostSetting>> _load() async {
-		final response = await http.get(Uri.parse('$_baseUrl/piece-cost-settings'));
-		if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('HTTP ${response.statusCode}');
-		return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>().map(_PieceCostSetting.fromJson).toList();
-	}
+  Future<_PricingData> _loadData() async {
+    final responses = await Future.wait([
+      http.get(Uri.parse('$_baseUrl/piece-cost-management')),
+      http.get(Uri.parse('$_baseUrl/pricing-engine/profit-settings')),
+    ]);
+    for (final response in responses) {
+      if (response.statusCode < 200 || response.statusCode >= 300)
+        throw Exception('HTTP ${response.statusCode}');
+    }
+    final costs = (jsonDecode(responses[0].body) as List)
+        .cast<Map<String, dynamic>>()
+        .map(_PieceCostSetting.fromJson)
+        .toList();
+    final profitJson = jsonDecode(responses[1].body) as Map<String, dynamic>;
+    final rawProductProfits =
+        (profitJson['productTypeProfitPercentages'] as Map?) ?? {};
+    final productProfits = <int, double>{};
+    for (final entry in rawProductProfits.entries) {
+      final id = int.tryParse(entry.key.toString());
+      if (id != null && entry.value is num)
+        productProfits[id] = (entry.value as num).toDouble();
+    }
+    final global =
+        (profitJson['globalProfitPercentage'] as num?)?.toDouble() ?? 0;
+    _globalProfit.text = _editableNumber(global);
+    return _PricingData(
+        costs: costs, globalProfit: global, productProfits: productProfits);
+  }
 
-	Future<void> _refresh() async {
-		setState(() => settings = _load());
-		await settings;
-	}
+  Future<void> _refresh() async {
+    setState(() {
+      _error = null;
+      _results.clear();
+      _dataFuture = _loadData();
+    });
+    await _dataFuture;
+  }
 
-	Future<_PieceCostSetting> _save(_PieceCostSetting item, Map<String, dynamic> values) async {
-		final response = await http.put(
-			Uri.parse('$_baseUrl/piece-cost-settings/${item.productTypeId}'),
-			headers: const {'Content-Type': 'application/json'},
-			body: jsonEncode(values),
-		);
-		if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('HTTP ${response.statusCode}');
-		return _PieceCostSetting.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
-	}
+  Future<void> _saveGlobal() async {
+    final value = double.tryParse(_globalProfit.text.trim());
+    if (value == null || value < 0) {
+      setState(() => _error = 'نسبة الربح العامة يجب أن تكون رقمًا غير سالب.');
+      return;
+    }
+    try {
+      await _save('$_baseUrl/pricing-engine/profit-settings/global', value);
+      await _refresh();
+      await _calculate();
+    } catch (exception) {
+      if (mounted)
+        setState(() =>
+            _error = exception.toString().replaceFirst('Exception: ', ''));
+    }
+  }
 
-	Future<void> _edit(_PieceCostSetting item) async {
-		final saved = await showDialog<_PieceCostSetting>(
-			context: context,
-			barrierDismissible: false,
-			builder: (_) => _PieceCostDialog(item: item, onSave: (values) => _save(item, values)),
-		);
+  Future<void> _saveProductProfit(_PieceCostSetting item, double value) async {
+    await _save(
+        '$_baseUrl/pricing-engine/profit-settings/product-type/${item.productTypeId}',
+        value);
+    await _refresh();
+    await _calculate();
+  }
 
-		if (saved == null || !mounted) return;
-		setState(() => settings = settings.then((items) => items.map((current) => current.productTypeId == saved.productTypeId ? saved : current).toList()));
-		ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم حفظ تكاليف ${saved.pieceName}.')));
-	}
+  Future<void> _save(String url, double value) async {
+    final response = await http.put(Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'profitPercentage': value}));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = jsonDecode(response.body);
+      throw Exception(
+          body is Map ? body['message'] ?? 'تعذر الحفظ.' : 'تعذر الحفظ.');
+    }
+  }
 
-	@override
-	Widget build(BuildContext context) => FutureBuilder<List<_PieceCostSetting>>(
-		future: settings,
-		builder: (context, snapshot) {
-			if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-			if (snapshot.hasError) return _LoadError(onRetry: _refresh);
-			final allItems = snapshot.data!;
-			final query = search.text.trim().toLowerCase();
-			final items = allItems.where((item) => query.isEmpty || item.searchText.contains(query)).toList();
-			final configuredCount = allItems.where((item) => item.isConfigured).length;
-			return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-				Row(children: [
-					Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-						Text('إعدادات تكاليف القطع', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-						const SizedBox(height: 4),
-						Text('المصدر الرسمي للتكاليف التشغيلية المستخدمة في التسعير التلقائي.', style: Theme.of(context).textTheme.bodyMedium),
-					])),
-					IconButton(tooltip: 'تحديث البيانات', onPressed: _refresh, icon: const Icon(Icons.refresh)),
-				]),
-				const SizedBox(height: 18),
-				Wrap(spacing: 12, runSpacing: 12, children: [
-					_Summary(width: 210, icon: Icons.checkroom_outlined, label: 'أنواع القطع', value: '${allItems.length}'),
-					_Summary(width: 210, icon: Icons.tune_outlined, label: 'تم إعداد تكلفتها', value: '$configuredCount'),
-					_Summary(width: 210, icon: Icons.pending_actions_outlined, label: 'بانتظار الإعداد', value: '${allItems.length - configuredCount}'),
-				]),
-				const SizedBox(height: 16),
-				TextField(
-					controller: search,
-					onChanged: (_) => setState(() {}),
-					decoration: const InputDecoration(labelText: 'بحث باسم القطعة أو الكود', prefixIcon: Icon(Icons.search), border: OutlineInputBorder(), isDense: true),
-				),
-				const SizedBox(height: 12),
-				Expanded(child: items.isEmpty ? const Center(child: Text('لا توجد أنواع قطع مطابقة.')) : LayoutBuilder(builder: (context, constraints) {
-					if (constraints.maxWidth < 950) return ListView.separated(itemCount: items.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (context, index) => _PieceCostTile(item: items[index], onEdit: () => _edit(items[index])));
-					return _PieceCostTable(items: items, onEdit: _edit);
-				})),
-			]);
-		},
-	);
+  Future<void> _calculate() async {
+    final fabricCode = _fabricCode.text.trim();
+    final consumption = double.tryParse(_consumption.text.trim());
+    if (fabricCode.isEmpty || consumption == null || consumption < 0) {
+      setState(() => _error = 'أدخل كود القماش والاستهلاك بالبوصة للمحاكاة.');
+      return;
+    }
+    final data = await _dataFuture;
+    final version = ++_calculationVersion;
+    setState(() {
+      _error = null;
+      _calculating = true;
+      _results.clear();
+    });
+    try {
+      for (final item in data.costs) {
+        final response = await http.post(
+          Uri.parse('$_baseUrl/pricing-engine/calculate'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'productTypeId': item.productTypeId,
+            'fabricCode': fabricCode,
+            'consumption': consumption,
+            'consumptionUnit': 'Inch',
+            'quantity': 1,
+            'pieceProfitPercentage':
+                data.productProfits[item.productTypeId] ?? 0,
+            'globalProfitPercentage': data.globalProfit,
+          }),
+        );
+        if (version != _calculationVersion || !mounted) return;
+        _results[item.productTypeId] =
+            response.statusCode >= 200 && response.statusCode < 300
+                ? _PricingResult.fromJson(
+                    jsonDecode(response.body) as Map<String, dynamic>)
+                : _PricingResult.error('تعذر الاتصال بمحرك التسعير.');
+        setState(() {});
+      }
+    } finally {
+      if (mounted && version == _calculationVersion)
+        setState(() => _calculating = false);
+    }
+  }
+
+  Future<void> _editProfit(_PricingData data, _PieceCostSetting item) async {
+    final value = await showDialog<double>(
+        context: context,
+        builder: (_) => _ProfitDialog(
+            initialValue: data.productProfits[item.productTypeId] ?? 0,
+            pieceName: item.pieceName));
+    if (value == null || !mounted) return;
+    try {
+      await _saveProductProfit(item, value);
+    } catch (exception) {
+      if (mounted)
+        setState(() =>
+            _error = exception.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<_PricingData>(
+        future: _dataFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done)
+            return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) return _LoadError(onRetry: _refresh);
+          final data = snapshot.data!;
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(children: [
+                  Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Text('محرك التسعير المركزي',
+                            style: UiPalette.adaptiveTextStyle(context,
+                                backgroundColor: UiPalette.screenBackground,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 4),
+                        Text(
+                            'التكاليف التشغيلية للقراءة فقط. المدخلات أدناه محاكاة ولا تنشئ عملية بيع.',
+                            style: UiPalette.adaptiveTextStyle(context,
+                                backgroundColor: UiPalette.screenBackground,
+                                fontSize: 13)),
+                      ])),
+                  IconButton(
+                      tooltip: 'تحديث البيانات',
+                      onPressed: _refresh,
+                      icon: const Icon(Icons.refresh_rounded)),
+                  FilledButton.icon(
+                      onPressed: () => AppNavigation.push(
+                          context, (_) => const PieceCostManagementScreen()),
+                      icon: const Icon(Icons.settings_outlined),
+                      label: const Text('إدارة التكاليف')),
+                ]),
+                const SizedBox(height: 16),
+                _SimulationPanel(
+                    fabricCode: _fabricCode,
+                    consumption: _consumption,
+                    globalProfit: _globalProfit,
+                    saving: _calculating,
+                    onCalculate: _calculate,
+                    onSaveGlobal: _saveGlobal),
+                if (_error != null)
+                  Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(_error!,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.error))),
+                const SizedBox(height: 14),
+                Expanded(
+                    child: ListView.separated(
+                        itemCount: data.costs.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, index) {
+                          final item = data.costs[index];
+                          return _PricingCard(
+                              item: item,
+                              profit:
+                                  data.productProfits[item.productTypeId] ?? 0,
+                              globalProfit: data.globalProfit,
+                              result: _results[item.productTypeId],
+                              onEdit: () => _editProfit(data, item));
+                        })),
+              ]);
+        },
+      );
 }
 
-class _PieceCostDialog extends StatefulWidget {
-	const _PieceCostDialog({required this.item, required this.onSave});
-	final _PieceCostSetting item;
-	final Future<_PieceCostSetting> Function(Map<String, dynamic> values) onSave;
+class _SimulationPanel extends StatelessWidget {
+  const _SimulationPanel(
+      {required this.fabricCode,
+      required this.consumption,
+      required this.globalProfit,
+      required this.saving,
+      required this.onCalculate,
+      required this.onSaveGlobal});
+  final TextEditingController fabricCode;
+  final TextEditingController consumption;
+  final TextEditingController globalProfit;
+  final bool saving;
+  final Future<void> Function() onCalculate;
+  final Future<void> Function() onSaveGlobal;
 
-	@override
-	State<_PieceCostDialog> createState() => _PieceCostDialogState();
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+            color: UiPalette.surfaceCard,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: UiPalette.borderSoft)),
+        child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.end,
+            children: [
+              SizedBox(
+                  width: 190,
+                  child: TextField(
+                      controller: globalProfit,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                          labelText: 'نسبة الربح العامة',
+                          suffixText: '%',
+                          border: OutlineInputBorder(),
+                          isDense: true))),
+              FilledButton.icon(
+                  onPressed: saving ? null : onSaveGlobal,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('حفظ الربح العام')),
+              SizedBox(
+                  width: 180,
+                  child: TextField(
+                      controller: fabricCode,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: const InputDecoration(
+                          labelText: 'كود القماش للمحاكاة',
+                          border: OutlineInputBorder(),
+                          isDense: true))),
+              SizedBox(
+                  width: 150,
+                  child: TextField(
+                      controller: consumption,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                          labelText: 'الاستهلاك بالبوصة',
+                          border: OutlineInputBorder(),
+                          isDense: true))),
+              FilledButton.icon(
+                  onPressed: saving ? null : onCalculate,
+                  icon: const Icon(Icons.calculate_outlined),
+                  label: const Text('احتساب المحاكاة')),
+            ]),
+      );
 }
 
-class _PieceCostDialogState extends State<_PieceCostDialog> {
-	final formKey = GlobalKey<FormState>();
-	late final TextEditingController sewing;
-	late final TextEditingController consumables;
-	late final TextEditingController ironing;
-	late final TextEditingController fixed;
-	late final TextEditingController notes;
-	bool saving = false;
-	String? error;
+class _PricingCard extends StatelessWidget {
+  const _PricingCard(
+      {required this.item,
+      required this.profit,
+      required this.globalProfit,
+      required this.result,
+      required this.onEdit});
+  final _PieceCostSetting item;
+  final double profit;
+  final double globalProfit;
+  final _PricingResult? result;
+  final VoidCallback onEdit;
 
-	@override
-	void initState() {
-		super.initState();
-		sewing = TextEditingController(text: _editableNumber(widget.item.sewingCost));
-		consumables = TextEditingController(text: _editableNumber(widget.item.consumablesCost));
-		ironing = TextEditingController(text: _editableNumber(widget.item.ironingAndPackagingCost));
-		fixed = TextEditingController(text: _editableNumber(widget.item.fixedOperatingCost));
-		notes = TextEditingController(text: widget.item.notes ?? '');
-	}
-
-	@override
-	void dispose() {
-		sewing.dispose();
-		consumables.dispose();
-		ironing.dispose();
-		fixed.dispose();
-		notes.dispose();
-		super.dispose();
-	}
-
-	double _value(TextEditingController controller) => double.tryParse(controller.text.trim()) ?? 0;
-	double get total => _value(sewing) + _value(consumables) + _value(ironing) + _value(fixed);
-
-	Future<void> _submit() async {
-		if (!(formKey.currentState?.validate() ?? false)) return;
-		setState(() { saving = true; error = null; });
-		try {
-			final result = await widget.onSave({
-				'sewingCost': _value(sewing),
-				'consumablesCost': _value(consumables),
-				'ironingAndPackagingCost': _value(ironing),
-				'fixedOperatingCost': _value(fixed),
-				'notes': notes.text.trim().isEmpty ? null : notes.text.trim(),
-			});
-			if (mounted) Navigator.pop(context, result);
-		} catch (_) {
-			if (mounted) setState(() { saving = false; error = 'تعذر حفظ إعدادات التكلفة.'; });
-		}
-	}
-
-	@override
-	Widget build(BuildContext context) => AlertDialog(
-		title: Text('${widget.item.isConfigured ? 'تعديل' : 'إضافة'} تكاليف ${widget.item.pieceName}'),
-		content: SizedBox(
-			width: 580,
-			child: Form(
-				key: formKey,
-				child: SingleChildScrollView(
-					child: Column(mainAxisSize: MainAxisSize.min, children: [
-						Row(children: [
-							Expanded(child: _CostField(controller: sewing, label: 'تكلفة الخياطة', onChanged: () => setState(() {}), onSubmitted: _submit)),
-							const SizedBox(width: 12),
-							Expanded(child: _CostField(controller: consumables, label: 'الأدوات والمستهلكات', onChanged: () => setState(() {}), onSubmitted: _submit)),
-						]),
-						const SizedBox(height: 12),
-						Row(children: [
-							Expanded(child: _CostField(controller: ironing, label: 'الكي والتغليف', onChanged: () => setState(() {}), onSubmitted: _submit)),
-							const SizedBox(width: 12),
-							Expanded(child: _CostField(controller: fixed, label: 'التشغيل الثابت', onChanged: () => setState(() {}), onSubmitted: _submit)),
-						]),
-						const SizedBox(height: 14),
-						Container(
-							width: double.infinity,
-							padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-							decoration: BoxDecoration(color: Theme.of(context).colorScheme.secondaryContainer, borderRadius: BorderRadius.circular(6)),
-							child: Row(children: [
-								const Expanded(child: Text('إجمالي التكاليف التشغيلية', style: TextStyle(fontWeight: FontWeight.bold))),
-								Text(_money(total), style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-							]),
-						),
-						const SizedBox(height: 14),
-						TextFormField(controller: notes, maxLength: 500, maxLines: 3, decoration: const InputDecoration(labelText: 'ملاحظات اختيارية', border: OutlineInputBorder(), alignLabelWithHint: true)),
-						if (error != null) Align(alignment: Alignment.centerRight, child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
-					]),
-				),
-			),
-		),
-		actions: [
-			TextButton(onPressed: saving ? null : () => Navigator.pop(context), child: const Text('إلغاء')),
-			FilledButton.icon(
-				onPressed: saving ? null : _submit,
-				icon: saving ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save_outlined),
-				label: const Text('حفظ'),
-			),
-		],
-	);
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+            color: UiPalette.surfaceCard,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: UiPalette.borderSoft)),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(item.pieceName,
+                      style: UiPalette.adaptiveTextStyle(context,
+                          backgroundColor: UiPalette.surfaceCard,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800)),
+                  Text(
+                      '${item.pieceCode}  |  ProductTypeId: ${item.productTypeId}',
+                      style: UiPalette.adaptiveTextStyle(context,
+                          backgroundColor: UiPalette.surfaceCard, fontSize: 12))
+                ])),
+            TextButton.icon(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('تعديل التسعير'))
+          ]),
+          const Divider(),
+          Wrap(spacing: 20, runSpacing: 10, children: [
+            _Value(label: 'الخياطة', value: item.sewingCost),
+            _Value(label: 'الأدوات', value: item.consumablesCost),
+            _Value(label: 'الكي والتغليف', value: item.ironingAndPackagingCost),
+            _Value(label: 'التشغيل الثابت', value: item.fixedOperatingCost),
+            _Value(
+                label: 'الإجمالي التشغيلي',
+                value: item.totalOperationalCost,
+                emphasized: true),
+            _Value(
+                label: 'اكتمال التكلفة',
+                text: item.isComplete ? 'مكتملة' : 'ناقصة'),
+            _Value(
+                label: 'ربح القطعة', text: '${_numberFormat.format(profit)}%'),
+            _Value(
+                label: 'الربح العام',
+                text: '${_numberFormat.format(globalProfit)}%'),
+          ]),
+          const SizedBox(height: 10),
+          if (result == null)
+            const Text('أدخل بيانات المحاكاة واضغط احتساب المحاكاة لعرض السعر.',
+                style: TextStyle(color: UiPalette.textSoft))
+          else
+            _ResultView(result: result!),
+        ]),
+      );
 }
 
-class _CostField extends StatelessWidget {
-	const _CostField({required this.controller, required this.label, required this.onChanged, required this.onSubmitted});
-	final TextEditingController controller;
-	final String label;
-	final VoidCallback onChanged;
-	final Future<void> Function() onSubmitted;
+class _ResultView extends StatelessWidget {
+  const _ResultView({required this.result});
+  final _PricingResult result;
 
-	@override
-	Widget build(BuildContext context) => TextFormField(
-		controller: controller,
-		keyboardType: const TextInputType.numberWithOptions(decimal: true),
-		textInputAction: TextInputAction.next,
-		onChanged: (_) => onChanged(),
-		onFieldSubmitted: (_) => onSubmitted(),
-		decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), prefixText: 'ر.س '),
-		validator: (value) {
-			final number = double.tryParse(value?.trim() ?? '');
-			if (number == null) return 'أدخل قيمة رقمية';
-			if (number < 0) return 'لا يمكن أن تكون سالبة';
-			return null;
-		},
-	);
+  @override
+  Widget build(BuildContext context) {
+    if (!result.ready)
+      return Text(result.reason ?? 'تعذر إصدار سعر نهائي.',
+          style: TextStyle(color: Theme.of(context).colorScheme.error));
+    return Wrap(spacing: 20, runSpacing: 10, children: [
+      _Value(label: 'تكلفة القماش', value: result.fabricCost),
+      _Value(label: 'التكلفة الكاملة', value: result.fullCost),
+      _Value(label: 'قيمة ربح القطعة', value: result.pieceProfitValue),
+      _Value(label: 'بعد ربح القطعة', value: result.afterPieceProfit),
+      _Value(label: 'الربح العام', value: result.globalProfitValue),
+      _Value(
+          label: 'السعر النهائي المقترح',
+          value: result.finalPrice,
+          emphasized: true),
+    ]);
+  }
 }
 
-class _PieceCostTable extends StatelessWidget {
-	const _PieceCostTable({required this.items, required this.onEdit});
-	final List<_PieceCostSetting> items;
-	final ValueChanged<_PieceCostSetting> onEdit;
-
-	@override
-	Widget build(BuildContext context) => SingleChildScrollView(
-		child: SizedBox(
-			width: double.infinity,
-			child: DataTable(
-				showBottomBorder: true,
-				columns: const [
-					DataColumn(label: Text('نوع القطعة')),
-					DataColumn(label: Text('الخياطة'), numeric: true),
-					DataColumn(label: Text('الأدوات'), numeric: true),
-					DataColumn(label: Text('الكي والتغليف'), numeric: true),
-					DataColumn(label: Text('التشغيل الثابت'), numeric: true),
-					DataColumn(label: Text('الإجمالي'), numeric: true),
-					DataColumn(label: Text('الإجراء')),
-				],
-				rows: items.map((item) => DataRow(cells: [
-					DataCell(Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [Text(item.pieceName, style: const TextStyle(fontWeight: FontWeight.bold)), Text(item.pieceCode, style: Theme.of(context).textTheme.bodySmall)])),
-					DataCell(Text(_money(item.sewingCost))),
-					DataCell(Text(_money(item.consumablesCost))),
-					DataCell(Text(_money(item.ironingAndPackagingCost))),
-					DataCell(Text(_money(item.fixedOperatingCost))),
-					DataCell(Text(_money(item.totalOperationalCost), style: const TextStyle(fontWeight: FontWeight.bold))),
-					DataCell(item.isConfigured
-						? IconButton(tooltip: 'تعديل التكاليف', onPressed: () => onEdit(item), icon: const Icon(Icons.edit_outlined))
-						: FilledButton.icon(onPressed: () => onEdit(item), icon: const Icon(Icons.add, size: 18), label: const Text('إضافة'))),
-				])).toList(),
-			),
-		),
-	);
+class _ProfitDialog extends StatefulWidget {
+  const _ProfitDialog({required this.initialValue, required this.pieceName});
+  final double initialValue;
+  final String pieceName;
+  @override
+  State<_ProfitDialog> createState() => _ProfitDialogState();
 }
 
-class _PieceCostTile extends StatelessWidget {
-	const _PieceCostTile({required this.item, required this.onEdit});
-	final _PieceCostSetting item;
-	final VoidCallback onEdit;
+class _ProfitDialogState extends State<_ProfitDialog> {
+  late final TextEditingController controller;
+  final formKey = GlobalKey<FormState>();
+  @override
+  void initState() {
+    super.initState();
+    controller =
+        TextEditingController(text: _editableNumber(widget.initialValue));
+  }
 
-	@override
-	Widget build(BuildContext context) => Container(
-		padding: const EdgeInsets.all(12),
-		decoration: BoxDecoration(border: Border.all(color: Theme.of(context).dividerColor), borderRadius: BorderRadius.circular(8)),
-		child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-			Row(children: [
-				Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(item.pieceName, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)), Text(item.pieceCode)])),
-				IconButton(tooltip: item.isConfigured ? 'تعديل التكاليف' : 'إضافة التكاليف', onPressed: onEdit, icon: Icon(item.isConfigured ? Icons.edit_outlined : Icons.add_circle_outline)),
-			]),
-			const Divider(),
-			Wrap(spacing: 18, runSpacing: 8, children: [
-				_Value(label: 'الخياطة', value: item.sewingCost),
-				_Value(label: 'الأدوات', value: item.consumablesCost),
-				_Value(label: 'الكي والتغليف', value: item.ironingAndPackagingCost),
-				_Value(label: 'التشغيل الثابت', value: item.fixedOperatingCost),
-				_Value(label: 'الإجمالي', value: item.totalOperationalCost, emphasized: true),
-			]),
-		]),
-	);
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+          title: Text('تعديل ربح ${widget.pieceName}'),
+          content: Form(
+              key: formKey,
+              child: TextFormField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _submit(),
+                  decoration: const InputDecoration(
+                      labelText: 'نسبة ربح القطعة',
+                      suffixText: '%',
+                      border: OutlineInputBorder()),
+                  validator: (value) {
+                    final number = double.tryParse(value?.trim() ?? '');
+                    if (number == null) return 'أدخل قيمة رقمية';
+                    if (number < 0) return 'لا يمكن أن تكون سالبة';
+                    return null;
+                  })),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إلغاء')),
+            FilledButton(onPressed: _submit, child: const Text('حفظ'))
+          ]);
+  void _submit() {
+    if (formKey.currentState?.validate() ?? false)
+      Navigator.pop(context, double.parse(controller.text.trim()));
+  }
 }
 
-class _Value extends StatelessWidget {
-	const _Value({required this.label, required this.value, this.emphasized = false});
-	final String label;
-	final double value;
-	final bool emphasized;
-	@override
-	Widget build(BuildContext context) => SizedBox(width: 120, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: Theme.of(context).textTheme.bodySmall), Text(_money(value), style: TextStyle(fontWeight: emphasized ? FontWeight.bold : FontWeight.normal))]));
+class _PricingData {
+  const _PricingData(
+      {required this.costs,
+      required this.globalProfit,
+      required this.productProfits});
+  final List<_PieceCostSetting> costs;
+  final double globalProfit;
+  final Map<int, double> productProfits;
 }
 
-class _Summary extends StatelessWidget {
-	const _Summary({required this.width, required this.icon, required this.label, required this.value});
-	final double width;
-	final IconData icon;
-	final String label;
-	final String value;
-	@override
-	Widget build(BuildContext context) => SizedBox(width: width, child: Container(
-		padding: const EdgeInsets.all(14),
-		decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
-		child: Row(children: [Icon(icon), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: Theme.of(context).textTheme.bodySmall), Text(value, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))]))]),
-	));
-}
-
-class _LoadError extends StatelessWidget {
-	const _LoadError({required this.onRetry});
-	final Future<void> Function() onRetry;
-	@override
-	Widget build(BuildContext context) => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-		const Icon(Icons.cloud_off_outlined, size: 44),
-		const SizedBox(height: 10),
-		const Text('تعذر تحميل إعدادات تكاليف القطع.'),
-		const SizedBox(height: 10),
-		FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
-	]));
+class _PricingResult {
+  const _PricingResult(
+      {required this.ready,
+      this.reason,
+      this.fabricCost = 0,
+      this.fullCost = 0,
+      this.pieceProfitValue = 0,
+      this.afterPieceProfit = 0,
+      this.globalProfitValue = 0,
+      this.finalPrice = 0});
+  factory _PricingResult.fromJson(Map<String, dynamic> json) => _PricingResult(
+      ready: json['isReady'] == true,
+      reason: (json['reasons'] as List?)?.join(' '),
+      fabricCost: (json['fabricCostPerPiece'] as num?)?.toDouble() ?? 0,
+      fullCost: (json['fullCostPerPiece'] as num?)?.toDouble() ?? 0,
+      pieceProfitValue:
+          (json['pieceProfitValuePerPiece'] as num?)?.toDouble() ?? 0,
+      afterPieceProfit:
+          (json['priceAfterPieceProfitPerPiece'] as num?)?.toDouble() ?? 0,
+      globalProfitValue:
+          (json['globalProfitValuePerPiece'] as num?)?.toDouble() ?? 0,
+      finalPrice: (json['finalPricePerPiece'] as num?)?.toDouble() ?? 0);
+  factory _PricingResult.error(String reason) =>
+      _PricingResult(ready: false, reason: reason);
+  final bool ready;
+  final String? reason;
+  final double fabricCost;
+  final double fullCost;
+  final double pieceProfitValue;
+  final double afterPieceProfit;
+  final double globalProfitValue;
+  final double finalPrice;
 }
 
 class _PieceCostSetting {
-	const _PieceCostSetting({required this.productTypeId, required this.pieceCode, required this.pieceName, required this.sewingCost, required this.consumablesCost, required this.ironingAndPackagingCost, required this.fixedOperatingCost, required this.notes, required this.totalOperationalCost, required this.isConfigured});
-	factory _PieceCostSetting.fromJson(Map<String, dynamic> json) => _PieceCostSetting(
-		productTypeId: json['productTypeId'] as int,
-		pieceCode: json['pieceCode']?.toString() ?? '-',
-		pieceName: json['pieceName']?.toString() ?? '-',
-		sewingCost: (json['sewingCost'] as num?)?.toDouble() ?? 0,
-		consumablesCost: (json['consumablesCost'] as num?)?.toDouble() ?? 0,
-		ironingAndPackagingCost: (json['ironingAndPackagingCost'] as num?)?.toDouble() ?? 0,
-		fixedOperatingCost: (json['fixedOperatingCost'] as num?)?.toDouble() ?? 0,
-		notes: json['notes']?.toString(),
-		totalOperationalCost: (json['totalOperationalCost'] as num?)?.toDouble() ?? 0,
-		isConfigured: json['isConfigured'] == true,
-	);
-	final int productTypeId;
-	final String pieceCode;
-	final String pieceName;
-	final double sewingCost;
-	final double consumablesCost;
-	final double ironingAndPackagingCost;
-	final double fixedOperatingCost;
-	final String? notes;
-	final double totalOperationalCost;
-	final bool isConfigured;
-	String get searchText => '$pieceCode $pieceName'.toLowerCase();
+  const _PieceCostSetting(
+      {required this.productTypeId,
+      required this.pieceCode,
+      required this.pieceName,
+      required this.sewingCost,
+      required this.consumablesCost,
+      required this.ironingAndPackagingCost,
+      required this.fixedOperatingCost,
+      required this.totalOperationalCost});
+  factory _PieceCostSetting.fromJson(Map<String, dynamic> json) =>
+      _PieceCostSetting(
+          productTypeId: json['productTypeId'] as int,
+          pieceCode: (json['pieceCode'] ?? json['code'])?.toString() ?? '-',
+          pieceName: json['pieceName']?.toString() ?? '-',
+          sewingCost: (json['sewingCost'] as num?)?.toDouble() ?? 0,
+          consumablesCost: (json['consumablesCost'] as num?)?.toDouble() ?? 0,
+          ironingAndPackagingCost:
+              (json['ironingAndPackagingCost'] as num?)?.toDouble() ?? 0,
+          fixedOperatingCost:
+              (json['fixedOperatingCost'] as num?)?.toDouble() ?? 0,
+          totalOperationalCost:
+              (json['totalOperationalCost'] as num?)?.toDouble() ?? 0);
+  final int productTypeId;
+  final String pieceCode;
+  final String pieceName;
+  final double sewingCost;
+  final double consumablesCost;
+  final double ironingAndPackagingCost;
+  final double fixedOperatingCost;
+  final double totalOperationalCost;
+  bool get isComplete =>
+      sewingCost > 0 &&
+      consumablesCost > 0 &&
+      ironingAndPackagingCost > 0 &&
+      fixedOperatingCost > 0;
+}
+
+class _Value extends StatelessWidget {
+  const _Value(
+      {required this.label, this.value, this.text, this.emphasized = false});
+  final String label;
+  final double? value;
+  final String? text;
+  final bool emphasized;
+  @override
+  Widget build(BuildContext context) => SizedBox(
+      width: 145,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label,
+            style: UiPalette.adaptiveTextStyle(context,
+                backgroundColor: UiPalette.surfaceCard, fontSize: 12)),
+        Text(text ?? _money(value ?? 0),
+            style: UiPalette.adaptiveTextStyle(context,
+                backgroundColor: UiPalette.surfaceCard,
+                fontWeight: emphasized ? FontWeight.w800 : FontWeight.w500))
+      ]));
+}
+
+class _LoadError extends StatelessWidget {
+  const _LoadError({required this.onRetry});
+  final Future<void> Function() onRetry;
+  @override
+  Widget build(BuildContext context) => Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.cloud_off_outlined, size: 44),
+        const SizedBox(height: 10),
+        const Text('تعذر تحميل بيانات محرك التسعير.'),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('إعادة المحاولة'))
+      ]));
 }
 
 final _numberFormat = NumberFormat('#,##0.##');
 String _money(double value) => '${_numberFormat.format(value)} ر.س';
-String _editableNumber(double value) => value == value.truncateToDouble() ? value.toInt().toString() : value.toString();
+String _editableNumber(double value) => value == value.truncateToDouble()
+    ? value.toInt().toString()
+    : value.toString();

@@ -67,7 +67,13 @@ class CustomerLoyalty {
       required this.vipLevelCode,
       required this.vipLevelDisplayName,
       required this.createdAt,
-      required this.lastActivityAt});
+      required this.lastActivityAt,
+      this.loyaltyAccountStatus = 'Active',
+      this.warningStartedAtUtc,
+      this.frozenAtUtc,
+      this.reactivatedAtUtc,
+      this.freezeReason,
+      this.lastQualifyingActivityAtUtc});
 
   factory CustomerLoyalty.fromJson(CustomerJson json) => CustomerLoyalty(
         currentPoints: _amount(json, 'currentPoints'),
@@ -78,6 +84,14 @@ class CustomerLoyalty {
         vipLevelDisplayName: json['vipLevelDisplayName'] as String?,
         createdAt: _date(json, 'createdAt'),
         lastActivityAt: _nullableDate(json, 'lastActivityAt'),
+        loyaltyAccountStatus:
+            json['loyaltyAccountStatus'] as String? ?? 'Active',
+        warningStartedAtUtc: _nullableDate(json, 'warningStartedAtUtc'),
+        frozenAtUtc: _nullableDate(json, 'frozenAtUtc'),
+        reactivatedAtUtc: _nullableDate(json, 'reactivatedAtUtc'),
+        freezeReason: json['freezeReason'] as String?,
+        lastQualifyingActivityAtUtc:
+            _nullableDate(json, 'lastQualifyingActivityAtUtc'),
       );
 
   final double currentPoints;
@@ -88,6 +102,12 @@ class CustomerLoyalty {
   final String? vipLevelDisplayName;
   final DateTime createdAt;
   final DateTime? lastActivityAt;
+  final String loyaltyAccountStatus;
+  final DateTime? warningStartedAtUtc;
+  final DateTime? frozenAtUtc;
+  final DateTime? reactivatedAtUtc;
+  final String? freezeReason;
+  final DateTime? lastQualifyingActivityAtUtc;
 }
 
 class CustomerReferral {

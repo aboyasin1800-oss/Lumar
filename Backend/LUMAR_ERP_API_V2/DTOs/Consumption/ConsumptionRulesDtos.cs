@@ -93,6 +93,17 @@ public sealed record ConsumptionRulesDashboardDto(
     IReadOnlyList<ConsumptionRuleMeasurementProfileDto> MeasurementProfiles,
     IReadOnlyList<ConsumptionRuleMeasurementFieldDto> MeasurementFields);
 
+public sealed record EvaluateConsumptionRequestDto(
+    int ProductTypeId,
+    IReadOnlyDictionary<string, decimal> Measurements);
+
+public sealed record EvaluateConsumptionResponseDto(
+    decimal Value,
+    string Unit,
+    int ConsumptionRuleId,
+    int? SizeClassId,
+    IReadOnlyList<string> UsedMeasurementCodes);
+
 public sealed record MeasurementTypeWriteResultDto(
     int ProductTypeId,
     int MeasurementProfileId,

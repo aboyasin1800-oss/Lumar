@@ -35,6 +35,19 @@ public sealed class CustomersController(ICustomerService service) : ControllerBa
         catch (Microsoft.Data.SqlClient.SqlException exception) when (exception.Number is 2601 or 2627) { return Conflict("CustomerCode already exists."); }
     }
 
+    [HttpPost("with-referral")]
+    [ProducesResponseType<CustomerCreationResultDto>(StatusCodes.Status201Created)]
+    public async Task<ActionResult<CustomerCreationResultDto>> CreateCustomerWithReferral(CreateCustomerWithReferralDto customer, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var created = await service.CreateWithReferralAsync(customer, cancellationToken);
+            return CreatedAtAction(nameof(GetCustomer), new { id = created.CustomerId }, created);
+        }
+        catch (ArgumentException exception) { return BadRequest(exception.Message); }
+        catch (Microsoft.Data.SqlClient.SqlException exception) when (exception.Number is 2601 or 2627) { return Conflict("تعذر حفظ العميل بسبب تعارض في البيانات."); }
+    }
+
     [HttpPut("{id:int}")]
     public async Task<ActionResult<CustomerDetailsDto>> UpdateCustomer(int id, UpdateCustomerDto customer, CancellationToken cancellationToken)
     {
@@ -53,6 +66,13 @@ public sealed class CustomersController(ICustomerService service) : ControllerBa
     {
         if (string.IsNullOrWhiteSpace(term)) return BadRequest("Search term must not be empty.");
         return Ok(await service.SearchAsync(term, cancellationToken));
+    }
+
+    [HttpGet("referral-search")]
+    public async Task<ActionResult<IReadOnlyList<CustomerReferralCandidateDto>>> SearchReferralCandidates([FromQuery] string term, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(term)) return Ok(Array.Empty<CustomerReferralCandidateDto>());
+        return Ok(await service.SearchReferralCandidatesAsync(term, cancellationToken));
     }
 
     [HttpGet("{id:int}/referral-hierarchy")]

@@ -10,6 +10,8 @@ public sealed class InventoryService(IInventoryRepository repository) : IInvento
     public Task<IReadOnlyList<InventoryTransactionDto>> GetTransactionsAsync(CancellationToken ct) => repository.GetTransactionsAsync(ct);
     public Task<IReadOnlyList<FabricDto>> GetFabricsAsync(CancellationToken ct) => repository.GetFabricsAsync(ct);
     public Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken ct) => repository.GetReadyMadeAsync(ct);
+    public Task<ReadyMadeProductDto?> GetReadyMadeByIdAsync(int readyMadeInventoryProductId, CancellationToken ct) => repository.GetReadyMadeByIdAsync(readyMadeInventoryProductId, ct);
+    public Task<ReadyMadeProductDto?> RecordReadyMadeSaleCostAsync(int readyMadeInventoryProductId, CancellationToken ct) => repository.RecordReadyMadeSaleCostAsync(readyMadeInventoryProductId, ct);
     public Task<IReadOnlyList<ImportedReadyMadeProductDto>> GetImportedAsync(CancellationToken ct) => repository.GetImportedAsync(ct);
     public Task<IReadOnlyList<InventoryItemDto>> GetToolsAsync(CancellationToken ct) => repository.GetToolsAsync(ct);
     public Task<ImportedReadyMadeProductDto?> UpsertImportedProductAsync(CreateImportedProductDto product, CancellationToken ct) => repository.UpsertImportedProductAsync(product, ct);

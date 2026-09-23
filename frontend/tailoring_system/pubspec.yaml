@@ -12,8 +12,17 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   flutter_secure_storage: ^10.0.0
+  flutter_markdown_plus: ^1.0.12
   http: ^1.6.0
   intl: ^0.20.3
+  pdf: ^3.11.1
+  printing: ^5.13.0
+  path_provider: ^2.1.5
+  gap: ^3.0.1
+  flutter_svg: ^2.3.0
+  google_fonts: ^8.2.1
+  responsive_framework: ^1.5.1
+  flex_color_scheme: ^8.4.0
 
 dev_dependencies:
   flutter_test:
@@ -22,3 +31,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/fonts/Tahoma.ttf
+  fonts:
+    - family: Tahoma
+      fonts:
+        - asset: assets/fonts/Tahoma.ttf

@@ -28,6 +28,23 @@ public sealed class InventoryController(IInventoryService service) : ControllerB
     [HttpGet("readymade")]
     public Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMade(CancellationToken ct) => service.GetReadyMadeAsync(ct);
 
+    [HttpGet("readymade/{id:int}")]
+    public async Task<ActionResult<ReadyMadeProductDto>> GetReadyMadeById(int id, CancellationToken ct)
+    {
+        if (id <= 0) return BadRequest("Ready-made inventory id must be positive.");
+        var item = await service.GetReadyMadeByIdAsync(id, ct);
+        return item is null ? NotFound() : Ok(item);
+    }
+
+    [HttpPost("readymade/{id:int}/sale-cost")]
+    [ProducesResponseType<ReadyMadeProductDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ReadyMadeProductDto>> RecordReadyMadeSaleCost(int id, CancellationToken ct)
+    {
+        var item = await service.RecordReadyMadeSaleCostAsync(id, ct);
+        return item is null ? NotFound() : Ok(item);
+    }
+
     [HttpGet("imported")]
     public Task<IReadOnlyList<ImportedReadyMadeProductDto>> GetImported(CancellationToken ct) => service.GetImportedAsync(ct);
 

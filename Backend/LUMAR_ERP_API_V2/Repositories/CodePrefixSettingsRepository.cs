@@ -11,7 +11,7 @@ public sealed class CodePrefixSettingsRepository(ReadOnlySqlConnectionFactory co
     {
         ["FabricCodePrefix"] = "FA",
         ["CatalogNumberPrefix"] = "CAT",
-        ["CustomerCodePrefix"] = "CH",
+        ["CustomerCodePrefix"] = "C",
         ["EmployeeCodePrefix"] = "MO",
         ["OrderCodePrefix"] = "OR",
         ["PieceTrackingPrefix"] = "TAR",

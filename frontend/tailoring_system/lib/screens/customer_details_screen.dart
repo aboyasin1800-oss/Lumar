@@ -303,10 +303,22 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
               type: 'إلغاء',
               amount: transaction.amount,
               date: transaction.createdAt)),
+      ...data.ledger
+          .where((entry) => entry.referenceNumber.startsWith('LoyaltyCredit:'))
+          .map((entry) => _CustomerActivity(
+              reference: _loyaltyCreditOrder(entry.referenceNumber),
+              type: 'رصيد ولاء',
+              amount: entry.creditAmount,
+              date: entry.createdAt)),
     ];
     activities.sort((left, right) => right.date.compareTo(left.date));
     return activities;
   }
+}
+
+String _loyaltyCreditOrder(String reference) {
+    final parts = reference.split(':');
+    return parts.length > 2 ? parts[2] : reference;
 }
 
 class _CustomerActivity {

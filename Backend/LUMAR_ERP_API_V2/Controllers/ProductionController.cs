@@ -6,7 +6,7 @@ namespace LUMAR_ERP_API_V2.Controllers;
 
 [ApiController]
 [Route("production")]
-public sealed class ProductionController(IProductionService service) : ControllerBase
+public sealed class ProductionController(IProductionService service, IProductionTrackingService productionTrackingService) : ControllerBase
 {
     [HttpGet("pieces")]
     public Task<IReadOnlyList<PieceDto>> GetPieces(CancellationToken ct) => service.GetPiecesAsync(ct);
@@ -36,6 +36,9 @@ public sealed class ProductionController(IProductionService service) : Controlle
     [HttpGet("dashboard")]
     public Task<ProductionDashboardDto> GetDashboard(CancellationToken ct) => service.GetDashboardAsync(ct);
 
+    [HttpGet("factory-monitoring")]
+    public Task<FactoryMonitoringDashboardDto> GetFactoryMonitoring(CancellationToken ct) => service.GetFactoryMonitoringAsync(ct);
+
     [HttpGet("readymade-orders")]
     public Task<IReadOnlyList<ReadyMadeProductionOrderDto>> GetReadyMadeOrders(CancellationToken ct) => service.GetReadyMadeOrdersAsync(ct);
 
@@ -57,6 +60,7 @@ public sealed class ProductionController(IProductionService service) : Controlle
     {
         if (string.IsNullOrWhiteSpace(order.ProductionName)) return BadRequest("اسم المنتج مطلوب.");
         if (order.Items == null || order.Items.Count == 0) return BadRequest("يجب إضافة بند واحد على الأقل.");
+        if (order.Items.Any(item => item.ProductTypeId <= 0)) return BadRequest("ProductTypeId الرسمي مطلوب لكل بند إنتاج جاهز.");
         if (order.TotalCost < 0) return BadRequest("التكلفة غير صالحة.");
         if (order.ProfitPercentage < 0) return BadRequest("نسبة الربح غير صالحة.");
         if (order.SuggestedSellingPrice < 0) return BadRequest("سعر البيع المقترح غير صالح.");
@@ -73,6 +77,69 @@ public sealed class ProductionController(IProductionService service) : Controlle
 
     [HttpGet("deliveries")]
     public Task<IReadOnlyList<ProductionDeliveryDto>> GetDeliveries(CancellationToken ct) => service.GetDeliveriesAsync(ct);
+
+    [HttpGet("routes/{pieceType}")]
+    public ActionResult<IReadOnlyList<string>> GetRoute(string pieceType)
+    {
+        var route = productionTrackingService.GetRoute(pieceType);
+        return route.Count == 0 ? NotFound() : Ok(route);
+    }
+
+    [HttpGet("pieces/route")]
+    public async Task<ActionResult<ProductionTrackingRouteDto>> GetPieceRoute([FromQuery] int? pieceId, [FromQuery] string? trackingCode, CancellationToken ct)
+    {
+        if (pieceId is null && string.IsNullOrWhiteSpace(trackingCode))
+            return BadRequest("Either pieceId or trackingCode is required.");
+
+        ProductionTrackingRouteDto? route;
+        if (pieceId.HasValue && pieceId.Value > 0)
+        {
+            route = await service.GetPieceRouteAsync(pieceId.Value, ct);
+        }
+        else
+        {
+            route = await service.GetPieceRouteByTrackingCodeAsync(trackingCode!, ct);
+        }
+
+        return route is null ? NotFound() : Ok(route);
+    }
+
+    [HttpPost("pieces/advance")]
+    [ProducesResponseType<ProductionTrackingAdvanceResultDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<ProductionTrackingAdvanceResultDto>> AdvancePiece([FromBody] ProductionTrackingAdvanceRequestDto request, CancellationToken ct)
+    {
+        if (request is null) return BadRequest("Request body is required.");
+        if (request.PieceId is null && string.IsNullOrWhiteSpace(request.TrackingCode)) return BadRequest("Either PieceId or TrackingCode is required.");
+        if (string.IsNullOrWhiteSpace(request.RequestedStage)) return BadRequest("Requested stage is required.");
+        if (request.ProductTypeId <= 0) return BadRequest("ProductTypeId is required.");
+
+        ProductionTrackingRouteDto? route = null;
+        if (!string.IsNullOrWhiteSpace(request.TrackingCode))
+        {
+            route = await service.GetPieceRouteByTrackingCodeAsync(request.TrackingCode, ct);
+        }
+        else if (request.PieceId is > 0)
+        {
+            route = await service.GetPieceRouteAsync(request.PieceId.Value, ct);
+        }
+
+        var resolvedRequest = request with
+        {
+            PieceType = string.IsNullOrWhiteSpace(request.PieceType) ? route?.PieceType ?? string.Empty : request.PieceType.Trim(),
+        };
+
+        if (route is not null && route.ProductTypeId != request.ProductTypeId)
+            return BadRequest("ProductTypeId does not match the piece's official product type.");
+
+        if (string.IsNullOrWhiteSpace(resolvedRequest.PieceType))
+            return BadRequest("Piece type could not be resolved for the supplied piece information.");
+
+        var result = await service.AdvancePieceStageAsync(resolvedRequest, ct);
+        if (result is null) return NotFound();
+        if (!result.Updated) return BadRequest(result);
+        return Ok(result);
+    }
 
     [HttpPost("pieces")]
     [HttpPut("pieces/{id:int}")]

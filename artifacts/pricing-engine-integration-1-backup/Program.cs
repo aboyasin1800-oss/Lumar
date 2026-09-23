@@ -1,0 +1,58 @@
+using LUMAR_ERP_API_V2.Configuration;
+using LUMAR_ERP_API_V2.Data;
+using LUMAR_ERP_API_V2.Repositories;
+using LUMAR_ERP_API_V2.Services;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options => options.CustomSchemaIds(type => type.FullName!));
+builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection(DatabaseOptions.SectionName));
+builder.Services.AddSingleton<ReadOnlySqlConnectionFactory>();
+builder.Services.AddSingleton<OperationalSqlConnectionFactory>();
+builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
+builder.Services.AddScoped<IOrderRepository, OrderRepository>();
+builder.Services.AddScoped<IProductionRepository, ProductionRepository>();
+builder.Services.AddScoped<IInventoryRepository, InventoryRepository>();
+builder.Services.AddScoped<IScannerRepository, ScannerRepository>();
+builder.Services.AddScoped<IPieceWageRepository, PieceWageRepository>();
+builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+builder.Services.AddScoped<IPayrollRepository, PayrollRepository>();
+builder.Services.AddScoped<IFinanceRepository, FinanceRepository>();
+builder.Services.AddScoped<ISupplierRepository, SupplierRepository>();
+builder.Services.AddScoped<IPurchasingRepository, PurchasingRepository>();
+builder.Services.AddScoped<IMessageRepository, MessageRepository>();
+builder.Services.AddScoped<ISettingsRepository, SettingsRepository>();
+builder.Services.AddScoped<ICodePrefixSettingsRepository, CodePrefixSettingsRepository>();
+builder.Services.AddScoped<IPieceCostSettingRepository, PieceCostSettingRepository>();
+builder.Services.AddScoped<IPieceCostManagementRepository, PieceCostManagementRepository>();
+builder.Services.AddScoped<IConsumptionRulesRepository, ConsumptionRulesRepository>();
+builder.Services.AddScoped<IAuthRepository, AuthRepository>();
+builder.Services.AddScoped<ICustomerService, CustomerService>();
+builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<IProductionService, ProductionService>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<IScannerService, ScannerService>();
+builder.Services.AddScoped<IPieceWageService, PieceWageService>();
+builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<IPayrollService, PayrollService>();
+builder.Services.AddScoped<IFinanceService, FinanceService>();
+builder.Services.AddScoped<ISupplierService, SupplierService>();
+builder.Services.AddScoped<IPurchasingService, PurchasingService>();
+builder.Services.AddScoped<IMessageService, MessageService>();
+builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddScoped<ICodePrefixSettingsService, CodePrefixSettingsService>();
+builder.Services.AddScoped<IPieceCostSettingService, PieceCostSettingService>();
+builder.Services.AddScoped<IPieceCostManagementService, PieceCostManagementService>();
+builder.Services.AddScoped<IPricingEngineService, PricingEngineService>();
+builder.Services.AddScoped<IConsumptionRulesService, ConsumptionRulesService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+
+var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI();
+app.MapControllers();
+
+app.Run();

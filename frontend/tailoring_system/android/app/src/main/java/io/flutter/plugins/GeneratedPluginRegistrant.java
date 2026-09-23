@@ -30,5 +30,10 @@ public final class GeneratedPluginRegistrant {
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin jni_flutter, com.github.dart_lang.jni_flutter.JniFlutterPlugin", e);
     }
+    try {
+      flutterEngine.getPlugins().add(new net.nfet.flutter.printing.PrintingPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin printing, net.nfet.flutter.printing.PrintingPlugin", e);
+    }
   }
 }

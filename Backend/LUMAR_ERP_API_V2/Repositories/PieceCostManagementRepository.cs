@@ -1,0 +1,166 @@
+using System.Data;
+using LUMAR_ERP_API_V2.Data;
+using LUMAR_ERP_API_V2.DTOs.Pricing;
+using Microsoft.Data.SqlClient;
+
+namespace LUMAR_ERP_API_V2.Repositories;
+
+public sealed class PieceCostManagementRepository(
+    ReadOnlySqlConnectionFactory readOnlyConnections,
+    OperationalSqlConnectionFactory operationalConnections) : IPieceCostManagementRepository
+{
+    private static readonly string[] MonthlyKeys =
+    [
+        "MonthlyFixedCostRent",
+        "MonthlyFixedCostSalaries",
+        "MonthlyFixedCostElectricity",
+        "MonthlyFixedCostWater",
+        "MonthlyFixedCostInternet",
+        "MonthlyFixedCostDepreciation"
+    ];
+
+    public async Task<IReadOnlyList<PieceCostManagementDto>> GetAllAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = readOnlyConnections.Create();
+        await connection.OpenAsync(cancellationToken);
+
+        var products = new List<(int Id, string Code, string Name)>();
+        const string productsSql = """
+            SELECT ProductTypeId, Code, NameAr
+            FROM dbo.PricingProductTypes
+            WHERE IsActive=1 AND Category=N'Garment' AND Scope IN (N'Both',N'Tailoring')
+            ORDER BY NameAr, ProductTypeId;
+            """;
+        await using (var command = new SqlCommand(productsSql, connection))
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                products.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2)));
+            }
+        }
+
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        return products.Select(product => Map(product, settings)).ToList();
+    }
+
+    public async Task<PieceCostManagementDto?> UpdateAsync(
+        int productTypeId,
+        UpdatePieceCostManagementDto request,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+
+        string? code = null;
+        string? pieceName = null;
+        const string productSql = """
+            SELECT Code, NameAr
+            FROM dbo.PricingProductTypes WITH (UPDLOCK,HOLDLOCK)
+            WHERE ProductTypeId=@productTypeId AND IsActive=1
+              AND Category=N'Garment' AND Scope IN (N'Both',N'Tailoring');
+            """;
+        await using (var productCommand = new SqlCommand(productSql, connection, transaction))
+        {
+            productCommand.Parameters.AddWithValue("@productTypeId", productTypeId);
+            await using var reader = await productCommand.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                code = reader.GetString(0);
+                pieceName = reader.GetString(1);
+            }
+        }
+
+        if (pieceName is null || code is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return null;
+        }
+
+        var values = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [$"PieceTypeCost.{Uri.EscapeDataString(pieceName)}.Sewing"] = request.SewingCost.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [$"PieceTypeCost.{Uri.EscapeDataString(pieceName)}.ToolsConsumables"] = request.ConsumablesCost.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [$"PieceTypeCost.{Uri.EscapeDataString(pieceName)}.IroningPackaging"] = request.IroningAndPackagingCost.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [$"PieceTypeCost.{Uri.EscapeDataString(pieceName)}.FixedOperating"] = request.FixedOperatingCost.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [MonthlyKeys[0]] = request.MonthlyRent.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [MonthlyKeys[1]] = request.MonthlySalaries.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [MonthlyKeys[2]] = request.MonthlyElectricity.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [MonthlyKeys[3]] = request.MonthlyWater.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [MonthlyKeys[4]] = request.MonthlyInternet.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [MonthlyKeys[5]] = request.MonthlyDepreciation.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        };
+
+        foreach (var entry in values)
+        {
+            const string sql = """
+                UPDATE dbo.System_Settings SET SettingValue=@value WHERE SettingName=@name;
+                IF @@ROWCOUNT=0
+                    INSERT INTO dbo.System_Settings (SettingName, SettingValue, Description)
+                    VALUES (@name, @value, N'إعدادات إدارة تكاليف القطع');
+                """;
+            await using var command = new SqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("@name", entry.Key);
+            command.Parameters.AddWithValue("@value", entry.Value);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        var saved = await GetAllAsync(cancellationToken);
+        return saved.SingleOrDefault(item => item.ProductTypeId == productTypeId);
+    }
+
+    private static async Task<Dictionary<string, string>> ReadSettingsAsync(
+        SqlConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var settings = new Dictionary<string, string>(StringComparer.Ordinal);
+        const string sql = """
+            SELECT SettingName, SettingValue
+            FROM dbo.System_Settings
+            WHERE SettingName LIKE N'PieceTypeCost.%'
+               OR SettingName IN (
+                    N'MonthlyFixedCostRent', N'MonthlyFixedCostSalaries',
+                    N'MonthlyFixedCostElectricity', N'MonthlyFixedCostWater',
+                    N'MonthlyFixedCostInternet', N'MonthlyFixedCostDepreciation');
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (!reader.IsDBNull(0))
+            {
+                settings[reader.GetString(0)] = reader.IsDBNull(1) ? "0" : reader.GetString(1);
+            }
+        }
+
+        return settings;
+    }
+
+    private static PieceCostManagementDto Map(
+        (int Id, string Code, string Name) product,
+        IReadOnlyDictionary<string, string> settings)
+    {
+        var prefix = $"PieceTypeCost.{Uri.EscapeDataString(product.Name)}.";
+        return new PieceCostManagementDto(
+            product.Id,
+            product.Code,
+            product.Name,
+            Value(settings, prefix + "Sewing"),
+            Value(settings, prefix + "ToolsConsumables"),
+            Value(settings, prefix + "IroningPackaging"),
+            Value(settings, prefix + "FixedOperating"),
+            Value(settings, MonthlyKeys[0]),
+            Value(settings, MonthlyKeys[1]),
+            Value(settings, MonthlyKeys[2]),
+            Value(settings, MonthlyKeys[3]),
+            Value(settings, MonthlyKeys[4]),
+            Value(settings, MonthlyKeys[5]));
+    }
+
+    private static decimal Value(IReadOnlyDictionary<string, string> settings, string key) =>
+        decimal.TryParse(settings.GetValueOrDefault(key), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var value)
+            ? value
+            : 0m;
+}

@@ -1,5 +1,64 @@
 typedef EmployeeJson = Map<String, dynamic>;
 
+class EmployeePieceRateRow {
+  const EmployeePieceRateRow({
+    this.pieceType = '',
+    this.rateText = '',
+  });
+
+  final String pieceType;
+  final String rateText;
+
+  EmployeePieceRateRow copyWith({String? pieceType, String? rateText}) =>
+      EmployeePieceRateRow(
+        pieceType: pieceType ?? this.pieceType,
+        rateText: rateText ?? this.rateText,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'pieceType': pieceType.trim(),
+        'rate': rateText.trim(),
+      };
+}
+
+class EmployeeWritePayload {
+  const EmployeeWritePayload({
+    required this.employeeCode,
+    required this.fullName,
+    required this.departmentId,
+    required this.basicSalary,
+    this.phoneNumber,
+    this.hireDate,
+    this.status = 'Active',
+    this.salaryType = 'BasicSalary',
+    this.pieceRates = const <EmployeePieceRateRow>[],
+  });
+
+  final String employeeCode;
+  final String fullName;
+  final int departmentId;
+  final double basicSalary;
+  final String? phoneNumber;
+  final DateTime? hireDate;
+  final String status;
+  final String salaryType;
+  final List<EmployeePieceRateRow> pieceRates;
+
+  Map<String, dynamic> toJson() => {
+        'employeeCode': employeeCode.trim(),
+        'fullName': fullName.trim(),
+        'departmentId': departmentId,
+        'basicSalary': basicSalary,
+        'phoneNumber': phoneNumber == null || phoneNumber!.trim().isEmpty
+            ? null
+            : phoneNumber!.trim(),
+        'hireDate': hireDate?.toIso8601String(),
+        'status': status,
+        'salaryType': salaryType,
+        'pieceRates': pieceRates.map((row) => row.toJson()).toList(),
+      };
+}
+
 DateTime _date(EmployeeJson json, String key) =>
     DateTime.parse(json[key] as String);
 DateTime? _nullableDate(EmployeeJson json, String key) =>
@@ -218,6 +277,88 @@ class EmployeeAttendanceRecord {
   final bool isAbsent;
   final String? absenceReason;
   final String? notes;
+}
+
+class EmployeeContractTemplate {
+  const EmployeeContractTemplate({
+    required this.id,
+    required this.templateName,
+    required this.contractType,
+    required this.isActive,
+    required this.templateText,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory EmployeeContractTemplate.fromJson(EmployeeJson json) =>
+      EmployeeContractTemplate(
+        id: json['contractTemplateId'] as int,
+        templateName: json['templateName'] as String,
+        contractType: json['contractType'] as String,
+        isActive: json['isActive'] as bool,
+        templateText: json['templateText'] as String,
+        createdAt: _date(json, 'createdAt'),
+        updatedAt: _nullableDate(json, 'updatedAt'),
+      );
+
+  final int id;
+  final String templateName;
+  final String contractType;
+  final bool isActive;
+  final String templateText;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
+}
+
+class EmployeeContract {
+  const EmployeeContract({
+    required this.id,
+    required this.employeeId,
+    required this.contractTemplateId,
+    required this.number,
+    required this.type,
+    required this.status,
+    required this.startDate,
+    required this.endDate,
+    required this.signedDate,
+    required this.notes,
+    required this.filePath,
+    required this.text,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory EmployeeContract.fromJson(EmployeeJson json) => EmployeeContract(
+        id: json['employeeContractId'] as int,
+        employeeId: json['employeeId'] as int,
+        contractTemplateId: json['contractTemplateId'] as int?,
+        number: json['contractNumber'] as String?,
+        type: json['contractType'] as String?,
+        status: json['contractStatus'] as String?,
+        startDate: _nullableDate(json, 'contractStartDate'),
+        endDate: _nullableDate(json, 'contractEndDate'),
+        signedDate: _nullableDate(json, 'contractSignedDate'),
+        notes: json['contractNotes'] as String?,
+        filePath: json['contractFilePath'] as String?,
+        text: json['contractText'] as String?,
+        createdAt: _date(json, 'createdAt'),
+        updatedAt: _nullableDate(json, 'updatedAt'),
+      );
+
+  final int id;
+  final int employeeId;
+  final int? contractTemplateId;
+  final String? number;
+  final String? type;
+  final String? status;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final DateTime? signedDate;
+  final String? notes;
+  final String? filePath;
+  final String? text;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
 }
 
 class EmployeeLeaveRequest {

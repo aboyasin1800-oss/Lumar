@@ -11,6 +11,8 @@ class OrderRepository {
       defaultValue: 'http://127.0.0.1:5093');
   final http.Client _client;
 
+  http.Client get client => _client;
+
   Future<List<T>> _list<T>(String path, T Function(OrderJson) fromJson) async {
     final response = await _client.get(Uri.parse('$_baseUrl$path'));
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -64,6 +66,191 @@ class OrderRepository {
           .where((item) => belongsToOrder(item.referenceNumber))
           .toList(),
     );
+  }
+
+  Future<OrderDetails> collectCustomerPayment(
+    int orderId,
+    double amount,
+    String referenceNumber, {
+    String? paymentMethod,
+    String? notes,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/orders/$orderId/collect'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'amount': amount,
+        'paymentMethod': paymentMethod ?? 'Cash',
+        'referenceNumber': referenceNumber,
+        'notes': notes ?? 'تحصيل من شاشة التسوية',
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw OrderApiException('/orders/$orderId/collect', response.statusCode);
+    }
+    return OrderDetails.fromJson(jsonDecode(response.body) as OrderJson);
+  }
+
+  Future<OrderDetails> settleCustomerBalance(
+    int orderId,
+    double amount,
+    double discountAmount,
+    String referenceNumber, {
+    String? paymentMethod,
+    String? notes,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/orders/$orderId/settle'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'amount': amount,
+        'discountAmount': discountAmount,
+        'paymentMethod': paymentMethod ?? 'Cash',
+        'referenceNumber': referenceNumber,
+        'notes': notes ?? 'تسوية من شاشة التسليم',
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw OrderApiException('/orders/$orderId/settle', response.statusCode);
+    }
+    return OrderDetails.fromJson(jsonDecode(response.body) as OrderJson);
+  }
+
+  Future<OrderDetails> recognizeDeliveryRevenue(int orderId) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/orders/$orderId/delivery/revenue-recognize'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw OrderApiException(
+          '/orders/$orderId/delivery/revenue-recognize', response.statusCode);
+    }
+    return OrderDetails.fromJson(jsonDecode(response.body) as OrderJson);
+  }
+
+  Future<OrderDetails> deliverOrder(int orderId) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/orders/$orderId/delivery/confirm'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw OrderApiException(
+          '/orders/$orderId/delivery/confirm', response.statusCode);
+    }
+    return OrderDetails.fromJson(jsonDecode(response.body) as OrderJson);
+  }
+
+  Future<OrderDetails> waiveRemainingBalance(int orderId) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/orders/$orderId/delivery/balance-waiver'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw OrderApiException(
+          '/orders/$orderId/delivery/balance-waiver', response.statusCode);
+    }
+    return OrderDetails.fromJson(jsonDecode(response.body) as OrderJson);
+  }
+
+  Future<OrderDetails> cancelOrder(
+    int orderId, {
+    String? reason,
+    String? cancelledBy,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/orders/$orderId/cancel'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'reason': reason ?? 'إلغاء الطلب من شاشة التفاصيل',
+        'cancelledBy': cancelledBy ?? 'FlutterApp',
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw OrderApiException('/orders/$orderId/cancel', response.statusCode);
+    }
+    return OrderDetails.fromJson(jsonDecode(response.body) as OrderJson);
+  }
+
+  Future<ProductionStageRoute> getPieceRoute(int pieceId) async {
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/production/pieces/route?pieceId=$pieceId'),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw OrderApiException(
+          '/production/pieces/route?pieceId=$pieceId', response.statusCode);
+    }
+    return ProductionStageRoute.fromJson(
+      jsonDecode(response.body) as OrderJson,
+    );
+  }
+
+  Future<ProductionStageAdvanceResult> advancePieceStage({
+    required int pieceId,
+    required String pieceType,
+    required String requestedStage,
+    String? trackingCode,
+    String? scannerCode,
+    String? employeeCode,
+    String? operationReference,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/production/pieces/advance'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'pieceId': pieceId,
+        'pieceType': pieceType,
+        'trackingCode': trackingCode,
+        'requestedStage': requestedStage,
+        'scannerCode': scannerCode,
+        'employeeCode': employeeCode,
+        'operationReference':
+            operationReference ?? 'Manual order detail transition',
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw OrderApiException(
+          '/production/pieces/advance', response.statusCode);
+    }
+    return ProductionStageAdvanceResult.fromJson(
+      jsonDecode(response.body) as OrderJson,
+    );
+  }
+
+  Future<CancelledPieceDisposition> savePieceDisposition(
+    int pieceId,
+    String decision, {
+    String? reason,
+    String? decidedBy,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/cancelled-piece-dispositions'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'pieceId': pieceId,
+        'decision': decision,
+        'reason': reason ?? 'إدارة القرار من شاشة تفاصيل الطلب',
+        'decidedBy': decidedBy ?? 'FlutterApp',
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw OrderApiException(
+          '/cancelled-piece-dispositions', response.statusCode);
+    }
+    return CancelledPieceDisposition.fromJson(
+        jsonDecode(response.body) as OrderJson);
+  }
+
+  Future<CancelledPieceDisposition> executePieceDisposition(int pieceId) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/cancelled-piece-dispositions/$pieceId/execute'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw OrderApiException('/cancelled-piece-dispositions/$pieceId/execute',
+          response.statusCode);
+    }
+    return CancelledPieceDisposition.fromJson(
+        jsonDecode(response.body) as OrderJson);
   }
 }
 

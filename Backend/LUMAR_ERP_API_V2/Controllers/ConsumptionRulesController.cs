@@ -20,6 +20,27 @@ public sealed class ConsumptionRulesController(IConsumptionRulesService service)
         return Ok(await service.GetIntegrityReportAsync(cancellationToken));
     }
 
+    [HttpPost("evaluate")]
+    public async Task<ActionResult<EvaluateConsumptionResponseDto>> Evaluate([FromBody] EvaluateConsumptionRequestDto request, CancellationToken cancellationToken)
+    {
+        if (request is null || request.ProductTypeId <= 0)
+        {
+            return BadRequest(new { message = "نوع القطعة مطلوب." });
+        }
+
+        try
+        {
+            var result = await service.EvaluateAsync(request, cancellationToken);
+            return result is null
+                ? BadRequest(new { message = "لا توجد قاعدة استهلاك مطابقة للقياسات المدخلة." })
+                : Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
     [HttpPost("batch")]
     public async Task<ActionResult<IReadOnlyList<ConsumptionRuleDto>>> SaveBatch([FromBody] SaveProductRulesBatchDto request, CancellationToken cancellationToken)
     {

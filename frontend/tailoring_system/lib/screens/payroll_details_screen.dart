@@ -31,6 +31,7 @@ class PayrollDetailsScreen extends StatefulWidget {
 class _PayrollDetailsScreenState extends State<PayrollDetailsScreen> {
 	final repository = PayrollRepository();
 	late Future<EmployeePayrollDetailsData> future;
+	bool _processing = false;
 
 	@override void initState() {
 		super.initState();
@@ -38,6 +39,22 @@ class _PayrollDetailsScreenState extends State<PayrollDetailsScreen> {
 	}
 
 	void reload() => setState(() => future = repository.getPayrollDetails(widget.record.id, widget.employee.id));
+
+	Future<void> _payCurrentRecord() async {
+		if (_processing || widget.record.status.toLowerCase() == 'paid') return;
+		setState(() => _processing = true);
+		try {
+			await repository.payPayroll(widget.record.id, paymentMethod: 'Cash', referenceNumber: 'PAY-${widget.record.id}-${DateTime.now().millisecondsSinceEpoch}', notes: 'دفع من شاشة تفاصيل الرواتب');
+			if (!mounted) return;
+			ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم دفع الراتب الخاص بالموظف ${widget.employee.name} بنجاح')));
+			reload();
+		} catch (error) {
+			if (!mounted) return;
+			ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر دفع الراتب: $error')));
+		} finally {
+			if (mounted) setState(() => _processing = false);
+		}
+	}
 
 	bool _insidePeriod(DateTime? value) => value != null && !value.isBefore(widget.period.startDate) && value.isBefore(widget.period.endDate.add(const Duration(days: 1)));
 
@@ -154,9 +171,13 @@ class _PayrollDetailsScreenState extends State<PayrollDetailsScreen> {
 						title: 'الدفع',
 						icon: Icons.credit_card_outlined,
 						child: Row(children: [
-							const Expanded(child: _UnavailableNotice('طريقة الدفع وسجل الدفع غير متاحين في خدمة الرواتب الحالية. لم تُنشأ معالجة مالية بديلة.')),
+							Expanded(child: _UnavailableNotice(widget.record.status.toLowerCase() == 'paid' ? 'تم تسجيل الدفع لهذا الراتب سابقاً.' : 'يمكن دفع هذا الراتب مباشرة من الواجهة بعد التحقق من بيانات الموظف والفترة.')),
 							const SizedBox(width: 12),
-							Tooltip(message: 'لا توجد خدمة دفع رواتب حالية.', child: FilledButton.icon(onPressed: null, icon: const Icon(Icons.payments_outlined), label: const Text('دفع'))),
+							FilledButton.icon(
+								onPressed: widget.record.status.toLowerCase() == 'paid' || _processing ? null : _payCurrentRecord,
+								icon: _processing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.payments_outlined),
+								label: Text(widget.record.status.toLowerCase() == 'paid' ? 'تم الدفع' : 'دفع'),
+							),
 						]),
 					),
 					const SizedBox(height: 12),

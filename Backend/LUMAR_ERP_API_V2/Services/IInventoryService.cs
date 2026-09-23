@@ -7,6 +7,8 @@ public interface IInventoryService
     Task<IReadOnlyList<InventoryTransactionDto>> GetTransactionsAsync(CancellationToken ct);
     Task<IReadOnlyList<FabricDto>> GetFabricsAsync(CancellationToken ct);
     Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken ct);
+    Task<ReadyMadeProductDto?> GetReadyMadeByIdAsync(int readyMadeInventoryProductId, CancellationToken ct);
+    Task<ReadyMadeProductDto?> RecordReadyMadeSaleCostAsync(int readyMadeInventoryProductId, CancellationToken ct);
     Task<IReadOnlyList<ImportedReadyMadeProductDto>> GetImportedAsync(CancellationToken ct);
     Task<IReadOnlyList<InventoryItemDto>> GetToolsAsync(CancellationToken ct);
     Task<ImportedReadyMadeProductDto?> UpsertImportedProductAsync(CreateImportedProductDto product, CancellationToken ct);

@@ -108,7 +108,78 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
 
         return await QueryAsync(sql, reader => new FabricDto(reader.GetString(0), reader.NullableInt32("FabricID"), reader.NullableString("FabricCode"), reader.NullableString("FabricName"), reader.NullableDecimal("FabricPrice"), reader.NullableBoolean("IsActive"), reader.NullableInt32("InventoryFabricCode"), reader.NullableString("InventoryFabricName"), reader.NullableString("Unit"), reader.NullableString("Color"), reader.NullableString("CatalogNumber"), reader.NullableDecimal("QuantityYard"), reader.NullableDecimal("QuantityInch"), reader.NullableDecimal("TotalRollCost"), reader.NullableDecimal("PricePerYard"), reader.NullableDecimal("PricePerInch"), reader.NullableDecimal("UsedQuantity"), reader.NullableDecimal("AvailableQuantity")), null, ct);
     }
-    public Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken ct) => QueryAsync("SELECT ReadyMadeInventoryProductId, ReadyMadeProductionOrderId, ReadyMadeProductionOrderItemId, ReadyMadeProductionOrderPieceInstanceId, ProductionOrderNumber, ProductionName, PieceType, PieceNumber, TrackingCode, FabricCode, FabricType, FabricColor, CatalogNumber, FabricUnit, FabricWidth, FabricWidthUnit, ActualCost, SuggestedSellingPrice, MeasurementSnapshot, ReadyForSaleAt, Status, Source, Notes, IsActive, CreatedAt FROM dbo.ReadyMadeInventoryProducts ORDER BY ReadyForSaleAt DESC, ReadyMadeInventoryProductId DESC", reader => new ReadyMadeProductDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetInt32(7), reader.GetString(8), reader.NullableString("FabricCode"), reader.NullableString("FabricType"), reader.NullableString("FabricColor"), reader.NullableString("CatalogNumber"), reader.NullableString("FabricUnit"), reader.NullableString("FabricWidth"), reader.NullableString("FabricWidthUnit"), reader.NullableDecimal("ActualCost"), reader.NullableDecimal("SuggestedSellingPrice"), reader.NullableString("MeasurementSnapshot"), reader.GetDateTime(19), reader.GetString(20), reader.GetString(21), reader.NullableString("Notes"), reader.GetBoolean(23), reader.GetDateTime(24)), null, ct);
+    public Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken ct) => QueryAsync("SELECT ReadyMadeInventoryProductId, ReadyMadeProductionOrderId, ReadyMadeProductionOrderItemId, ReadyMadeProductionOrderPieceInstanceId, ProductTypeId, ProductionOrderNumber, ProductionName, PieceType, PieceNumber, TrackingCode, FabricCode, FabricType, FabricColor, CatalogNumber, FabricUnit, FabricWidth, FabricWidthUnit, ActualCost, SuggestedSellingPrice, MeasurementSnapshot, ReadyForSaleAt, Status, Source, Notes, IsActive, CreatedAt FROM dbo.ReadyMadeInventoryProducts ORDER BY ReadyForSaleAt DESC, ReadyMadeInventoryProductId DESC", MapReadyMade, null, ct);
+    public async Task<ReadyMadeProductDto?> GetReadyMadeByIdAsync(int readyMadeInventoryProductId, CancellationToken ct) => (await QueryAsync("SELECT ReadyMadeInventoryProductId, ReadyMadeProductionOrderId, ReadyMadeProductionOrderItemId, ReadyMadeProductionOrderPieceInstanceId, ProductTypeId, ProductionOrderNumber, ProductionName, PieceType, PieceNumber, TrackingCode, FabricCode, FabricType, FabricColor, CatalogNumber, FabricUnit, FabricWidth, FabricWidthUnit, ActualCost, SuggestedSellingPrice, MeasurementSnapshot, ReadyForSaleAt, Status, Source, Notes, IsActive, CreatedAt FROM dbo.ReadyMadeInventoryProducts WHERE ReadyMadeInventoryProductId = @id", MapReadyMade, readyMadeInventoryProductId, ct)).SingleOrDefault();
+    private static ReadyMadeProductDto MapReadyMade(SqlDataReader reader) => new(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.NullableInt32("ProductTypeId"), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetInt32(8), reader.GetString(9), reader.NullableString("FabricCode"), reader.NullableString("FabricType"), reader.NullableString("FabricColor"), reader.NullableString("CatalogNumber"), reader.NullableString("FabricUnit"), reader.NullableString("FabricWidth"), reader.NullableString("FabricWidthUnit"), reader.NullableDecimal("ActualCost"), reader.NullableDecimal("SuggestedSellingPrice"), reader.NullableString("MeasurementSnapshot"), reader.GetDateTime(20), reader.GetString(21), reader.GetString(22), reader.NullableString("Notes"), reader.GetBoolean(24), reader.GetDateTime(25));
+    public async Task<ReadyMadeProductDto?> RecordReadyMadeSaleCostAsync(int readyMadeInventoryProductId, CancellationToken ct)
+    {
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+
+        try
+        {
+            const string selectSql = "SELECT ReadyMadeInventoryProductId, ReadyMadeProductionOrderId, ReadyMadeProductionOrderItemId, ReadyMadeProductionOrderPieceInstanceId, ProductTypeId, ProductionOrderNumber, ProductionName, PieceType, PieceNumber, TrackingCode, FabricCode, FabricType, FabricColor, CatalogNumber, FabricUnit, FabricWidth, FabricWidthUnit, ActualCost, SuggestedSellingPrice, MeasurementSnapshot, ReadyForSaleAt, Status, Source, Notes, IsActive, CreatedAt FROM dbo.ReadyMadeInventoryProducts WITH (UPDLOCK,HOLDLOCK) WHERE ReadyMadeInventoryProductId = @id";
+            await using var selectCommand = new SqlCommand(selectSql, connection, transaction);
+            selectCommand.Parameters.AddWithValue("@id", readyMadeInventoryProductId);
+            await using var reader = await selectCommand.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct))
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                return null;
+            }
+
+            var readyMadeProductionOrderId = reader.GetInt32(1);
+            var readyMadeProductionOrderItemId = reader.GetInt32(2);
+            var productStatus = reader.GetString(21);
+            var actualCost = reader.IsDBNull(17) ? 0m : reader.GetDecimal(17);
+
+            await reader.DisposeAsync();
+
+            if (!string.Equals(productStatus, "Sold", StringComparison.OrdinalIgnoreCase) || actualCost <= 0m)
+            {
+                await transaction.CommitAsync(ct);
+                return await GetReadyMadeByIdAsync(readyMadeInventoryProductId, ct);
+            }
+
+            var reference = $"Order:{readyMadeProductionOrderId}:Line:{readyMadeProductionOrderItemId}:Product:{readyMadeInventoryProductId}:ReadyMadeCost";
+            const string financialSql = "INSERT INTO dbo.FinancialTransactions (ReferenceNumber,TransactionType,Amount,Description,CreatedAt) SELECT @reference,@transactionType,@amount,@description,@createdAt WHERE NOT EXISTS (SELECT 1 FROM dbo.FinancialTransactions WITH (UPDLOCK,HOLDLOCK) WHERE ReferenceNumber = @reference AND TransactionType = N'ReadyMadeCost')";
+            await using (var financial = new SqlCommand(financialSql, connection, transaction))
+            {
+                financial.Parameters.AddWithValue("@reference", reference);
+                financial.Parameters.AddWithValue("@transactionType", "ReadyMadeCost");
+                financial.Parameters.AddWithValue("@amount", actualCost);
+                financial.Parameters.AddWithValue("@description", $"Ready-made sale cost for product {readyMadeInventoryProductId}");
+                financial.Parameters.AddWithValue("@createdAt", DateTime.UtcNow);
+                await financial.ExecuteNonQueryAsync(ct);
+            }
+
+            await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+                connection,
+                transaction,
+                reference,
+                "ReadyMadeCost",
+                actualCost,
+                $"Ready-made sale cost for product {readyMadeInventoryProductId}",
+                ct);
+
+            await transaction.CommitAsync(ct);
+            return await GetReadyMadeByIdAsync(readyMadeInventoryProductId, ct);
+        }
+        catch
+        {
+            try
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+            }
+            catch
+            {
+                // Ignore rollback failures after the original exception is already active.
+            }
+
+            throw;
+        }
+    }
     public Task<IReadOnlyList<ImportedReadyMadeProductDto>> GetImportedAsync(CancellationToken ct) => QueryAsync("SELECT ImportedReadyMadeProductId, ProductName, ProductType, ProductCode, Unit, Quantity, PurchasePrice, SellingPrice, IsActive, AlertThreshold, Notes, Category, CreatedAt, UpdatedAt FROM dbo.ImportedReadyMadeProducts ORDER BY ProductName, ImportedReadyMadeProductId", reader => new ImportedReadyMadeProductDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetBoolean(8), reader.NullableDecimal("AlertThreshold"), reader.NullableString("Notes"), reader.GetString(11), reader.GetDateTime(12), reader.NullableDateTime("UpdatedAt")), null, ct);
     public Task<IReadOnlyList<InventoryItemDto>> GetToolsAsync(CancellationToken ct) => QueryAsync("SELECT InventoryItemID, ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice FROM dbo.InventoryItems WHERE Category LIKE '%Tool%' OR Category LIKE '%Accessory%' OR Category LIKE '%Thread%' OR Category LIKE '%Button%' OR Category LIKE '%Packing%' OR Category LIKE '%Glue%' OR ItemName LIKE '%خيط%' OR ItemName LIKE '%زر%' OR ItemName LIKE '%سحاب%' OR ItemName LIKE '%لاصق%' OR ItemName LIKE '%تغليف%' OR ItemName LIKE '%أداة%' OR ItemName LIKE '%مستلزم%' ORDER BY ItemName, InventoryItemID", MapItem, null, ct);
 

@@ -12,4 +12,5 @@ public interface IConsumptionRulesService
     Task<MeasurementTypeWriteResultDto?> CreateMeasurementTypeAsync(CreateMeasurementTypeDto request, CancellationToken cancellationToken);
     Task<MeasurementTypeWriteResultDto?> UpdateMeasurementTypeAsync(int productTypeId, UpdateMeasurementTypeDto request, CancellationToken cancellationToken);
     Task<bool> DeleteMeasurementTypeAsync(int productTypeId, CancellationToken cancellationToken);
+    Task<EvaluateConsumptionResponseDto?> EvaluateAsync(EvaluateConsumptionRequestDto request, CancellationToken cancellationToken);
 }

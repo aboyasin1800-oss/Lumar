@@ -20,4 +20,6 @@ public sealed class ConsumptionRulesService(IConsumptionRulesRepository reposito
     public Task<MeasurementTypeWriteResultDto?> UpdateMeasurementTypeAsync(int productTypeId, UpdateMeasurementTypeDto request, CancellationToken cancellationToken) => repository.UpdateMeasurementTypeAsync(productTypeId, request, cancellationToken);
 
     public Task<bool> DeleteMeasurementTypeAsync(int productTypeId, CancellationToken cancellationToken) => repository.DeleteMeasurementTypeAsync(productTypeId, cancellationToken);
+
+    public Task<EvaluateConsumptionResponseDto?> EvaluateAsync(EvaluateConsumptionRequestDto request, CancellationToken cancellationToken) => repository.EvaluateAsync(request, cancellationToken);
 }

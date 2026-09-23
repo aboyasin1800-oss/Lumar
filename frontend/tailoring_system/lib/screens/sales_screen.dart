@@ -1,13 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart' as intl;
 
 import '../core/app_navigation.dart';
 import '../core/ui_palette.dart';
+import '../models/customer_creation_models.dart';
+import '../repositories/loyalty_repository.dart';
 import '../services/screen_chrome_state.dart';
+import 'customers/customer_create_screen.dart';
 import 'measurements_screen.dart';
 import 'ready_made_production_screen.dart';
 import 'ready_sales_screen.dart';
@@ -17,6 +22,12 @@ enum SalesViewMode {
   sessions,
   all,
   fullscreen,
+}
+
+DateTime calculateDeliveryDateFromDays(int days, {DateTime? base}) {
+  final anchor = (base ?? DateTime.now()).toLocal();
+  final normalized = DateTime(anchor.year, anchor.month, anchor.day);
+  return normalized.add(Duration(days: days));
 }
 
 final ValueNotifier<SalesViewMode> salesViewModeNotifier =
@@ -29,13 +40,15 @@ class SalesScreen extends StatefulWidget {
   State<SalesScreen> createState() => _SalesScreenState();
 }
 
-class _SalesScreenState extends State<SalesScreen> {
+class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
+  static const _activeSessionStorageKey = 'lumar_sales_active_session_v1';
   static const _baseUrl = String.fromEnvironment(
     'LUMAR_API_URL',
     defaultValue: 'http://127.0.0.1:5093',
   );
+  final _sessionStorage = const FlutterSecureStorage();
   static const _defaultPieceType = '';
-  static const _pieceTypeOptions = [
+  static const _fallbackPieceTypeOptions = [
     'ثوب',
     'قميص',
     'يلق',
@@ -49,13 +62,14 @@ class _SalesScreenState extends State<SalesScreen> {
     'سروال',
     'مقطب',
   ];
-  static const _dashboardCardHeight = 45.0;
+  final List<String> _officialPieceTypeOptions = [];
+  static const _dashboardCardHeight = 52.0;
   static const _headerTitleFontSize = 12.0;
   static const _sectionTitleFontSize = 16.0;
   static const _tabFontSize = 14.0;
   static const _kpiValueFontSize = 18.0;
-  static const _fieldFontSize = 18.0;
-  static const _fieldLabelFontSize = 15.0;
+  static const _fieldFontSize = 20.0;
+  static const _fieldLabelFontSize = 16.0;
   static const _supportingFontSize = 16.0;
   static const _buttonFontSize = 16.0;
 
@@ -86,6 +100,8 @@ class _SalesScreenState extends State<SalesScreen> {
   String totalOrdersCount = '1200';
   String todayOrdersCount = '24';
   bool _savingOrder = false;
+  bool _isInitialLoading = true;
+  bool _isRefreshingOfficialCatalog = false;
   int _selectedTab = 0;
   int? _selectedPieceIndex;
   SalesViewMode _salesViewMode = SalesViewMode.all;
@@ -99,6 +115,7 @@ class _SalesScreenState extends State<SalesScreen> {
   final customerIdController = TextEditingController();
   final phoneController = TextEditingController();
   final referrerController = TextEditingController();
+  final relationshipController = TextEditingController();
   final currentPointsController = TextEditingController();
   final accumulatedPointsController = TextEditingController();
   final treeCustomerCountController = TextEditingController();
@@ -107,13 +124,24 @@ class _SalesScreenState extends State<SalesScreen> {
   final discountAmountController = TextEditingController();
   final remainingAmountController = TextEditingController();
   final deliveryDateController = TextEditingController();
+  final deliveryDaysController = TextEditingController();
   final profitPercentageController = TextEditingController();
   final profitAmountController = TextEditingController();
   final List<String> pieceTypes = [_defaultPieceType];
   final Map<String, Map<String, String>> measurementValuesByType = {};
   final Map<String, List<String>> _officialMeasurementFieldsByType = {};
+  final Map<String, Map<String, String>> _measurementCodesByType = {};
+  final Map<String, int> _productTypeIdsByType = {};
+  final List<double?> _calculatedConsumptions = [null];
+  final List<String> _consumptionUnits = [''];
+  final List<String> _consumptionMessages = [''];
+  final List<_SalesPricingQuote?> _pricingQuotes = [null];
+  final List<int> _pricingVersions = [0];
+  final List<double?> _expectedLoyaltyPoints = [0];
+  final List<int> _expectedLoyaltyPointVersions = [0];
   final Map<String, _FabricStockSnapshot> _fabricStockByCode = {};
   final Map<String, bool> _focusedEditableFieldStates = {};
+  final LoyaltyRepository _loyaltyRepository = LoyaltyRepository();
   final List<TextEditingController> quantityControllers = [
     TextEditingController(text: '1')
   ];
@@ -145,17 +173,53 @@ class _SalesScreenState extends State<SalesScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     salesViewModeNotifier.addListener(_handleSalesViewModeChanged);
     _salesViewMode = salesViewModeNotifier.value;
     profitPercentageController.text = profitPercentage;
     profitAmountController.text = profitAmount;
     _fillCustomerControllers();
-    _loadOfficialMeasurementFields();
-    loadMeasurementPreview();
+    unawaited(_restorePersistedSession());
+    _initializeScreenData();
+  }
+
+  Future<void> _initializeScreenData() async {
+    await Future.wait([
+      _loadOfficialMeasurementFields(),
+      loadMeasurementPreview(),
+    ]);
+    if (!mounted) return;
+    setState(() => _isInitialLoading = false);
   }
 
   Future<void> searchCustomerByPhone() =>
       searchCustomerByTerm(phoneController.text.trim());
+
+  Future<void> _openCustomerCreation() async {
+    final created = await AppNavigation.push<CustomerCreationResult>(
+      context,
+      (_) => CustomerCreateScreen(initialPhone: phoneController.text.trim()),
+    );
+    if (!mounted || created == null) return;
+    setState(() {
+      customerFound = true;
+      currentCustomerId = created.customerId;
+      currentCustomerName = created.customerName;
+      currentCustomerCode = created.customerCode;
+      currentCustomerPhone = created.phoneNumber;
+      currentPoints = '0';
+      accumulatedPoints = _formatCustomerNumber(created.totalPoints);
+      treeCustomerCount = '${created.referralCount}';
+      referrerController.text = created.referrerCustomerName ?? '';
+      relationshipController.text = created.relationshipType ?? '';
+    });
+    _fillCustomerControllers();
+    await _loadCustomerSummary(created.customerId);
+    await loadSelectedCustomer();
+  }
+
+  String _formatCustomerNumber(num value) =>
+      value % 1 == 0 ? value.toInt().toString() : value.toStringAsFixed(2);
 
   Future<void> searchCustomerByTerm(String term) async {
     if (term.isEmpty) {
@@ -185,6 +249,7 @@ class _SalesScreenState extends State<SalesScreen> {
         if (selected == null) return;
         _applySelectedCustomer(selected);
       }
+      await _loadCustomerSummary(currentCustomerId);
       await loadSelectedCustomer();
     } catch (error) {
       debugPrint('Customer search failed: $error');
@@ -200,7 +265,14 @@ class _SalesScreenState extends State<SalesScreen> {
       currentCustomerId = 0;
       currentCustomerCode = '';
       currentCustomerName = '';
+      currentCustomerPhone = '';
+      currentPoints = '0';
+      accumulatedPoints = '0';
+      treeCustomerCount = '0';
+      referrerController.clear();
+      relationshipController.clear();
     });
+    _updateCurrentOrderPoints();
   }
 
   void _applySelectedCustomer(Map<String, dynamic> customer) {
@@ -212,7 +284,65 @@ class _SalesScreenState extends State<SalesScreen> {
       currentCustomerName = customer['customerName']?.toString() ?? '';
       currentCustomerPhone =
           customer['phoneNumber']?.toString() ?? currentCustomerPhone;
+      referrerController.clear();
+      relationshipController.clear();
+      accumulatedPoints = '0';
+      treeCustomerCount = '0';
+      currentPoints = '0';
     });
+    _updateCurrentOrderPoints();
+  }
+
+  Future<void> _loadCustomerSummary(int customerId) async {
+    if (customerId <= 0) return;
+    try {
+      final responses = await Future.wait([
+        http.get(Uri.parse('$_baseUrl/customers/$customerId')),
+        http.get(Uri.parse('$_baseUrl/customers/$customerId/loyalty')),
+        http.get(
+          Uri.parse('$_baseUrl/api/referrals/customers/$customerId/tree'),
+        ),
+      ]);
+      final detailsResponse = responses[0];
+      if (detailsResponse.statusCode < 200 ||
+          detailsResponse.statusCode >= 300) {
+        return;
+      }
+      final details =
+          Map<String, dynamic>.from(jsonDecode(detailsResponse.body));
+      final loyaltyResponse = responses[1];
+      final loyalty = loyaltyResponse.statusCode >= 200 &&
+              loyaltyResponse.statusCode < 300 &&
+              loyaltyResponse.body.trim().isNotEmpty
+          ? Map<String, dynamic>.from(jsonDecode(loyaltyResponse.body))
+          : const <String, dynamic>{};
+      final treeResponse = responses[2];
+      final tree = treeResponse.statusCode >= 200 &&
+              treeResponse.statusCode < 300 &&
+              treeResponse.body.trim().isNotEmpty
+          ? Map<String, dynamic>.from(jsonDecode(treeResponse.body))
+          : const <String, dynamic>{};
+      final lifetimePoints =
+          (loyalty['lifetimeEarnedPoints'] as num?)?.toDouble() ??
+              (details['totalPoints'] as num?)?.toDouble() ??
+              0;
+      final descendantsCount =
+          (tree['totalDescendantsCount'] as num?)?.toInt() ?? 0;
+      if (!mounted || currentCustomerId != customerId) return;
+      setState(() {
+        referrerController.text =
+            details['parentCustomerName']?.toString() ?? '';
+        relationshipController.text =
+            details['relationshipType']?.toString() ?? '';
+        accumulatedPoints = _formatCustomerNumber(lifetimePoints);
+        treeCustomerCount = '$descendantsCount';
+        currentPoints = '0';
+      });
+      _updateCurrentOrderPoints();
+      _fillCustomerControllers();
+    } catch (error) {
+      debugPrint('Failed to load customer sales summary: $error');
+    }
   }
 
   Future<Map<String, dynamic>?> _pickCustomerFromPhoneMatches(
@@ -258,61 +388,14 @@ class _SalesScreenState extends State<SalesScreen> {
 
   Future<void> saveOrder() async {
     if (_savingOrder) return;
-    var customerCreated = false;
-    final pendingMeasurements = {
-      for (final entry in measurementValuesByType.entries)
-        entry.key: Map<String, String>.from(entry.value),
-    };
     currentCustomerPhone = phoneController.text.trim();
     if (currentCustomerPhone.isEmpty) {
       _showMessage('الرجاء إدخال رقم الهاتف');
       return;
     }
-    if (!customerFound) {
-      final name = customerNameController.text.trim();
-      final code = customerCodeController.text.trim();
-      if (name.isEmpty) {
-        _showMessage('الرجاء إدخال اسم العميل لإنشاء عميل جديد');
-        return;
-      }
-      if (code.isEmpty) {
-        _showMessage('الرجاء إدخال كود العميل لإنشاء عميل جديد');
-        return;
-      }
-      try {
-        final response = await http.post(
-          Uri.parse('$_baseUrl/customers'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'customerCode': code,
-            'customerName': name,
-            'phoneNumber': currentCustomerPhone,
-          }),
-        );
-        if (response.statusCode != 200 && response.statusCode != 201) {
-          _showMessage('تعذر إنشاء العميل. تحقق من البيانات المدخلة.');
-          return;
-        }
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map<String, dynamic>) {
-          setState(() {
-            customerCreated = true;
-            customerFound = true;
-            currentCustomerId =
-                int.tryParse(decoded['customerId']?.toString() ?? '') ?? 0;
-            currentCustomerCode = decoded['customerCode']?.toString() ?? code;
-            currentCustomerName = name;
-          });
-          _fillCustomerControllers();
-          measurementValuesByType
-            ..clear()
-            ..addAll(pendingMeasurements);
-        }
-      } catch (error) {
-        debugPrint('Customer creation failed: $error');
-        _showMessage('تعذر الاتصال بالخادم لإنشاء العميل.');
-        return;
-      }
+    if (!customerFound || currentCustomerId <= 0) {
+      _showMessage('أنشئ العميل أولاً من زر إنشاء عميل ثم احفظ الطلب.');
+      return;
     }
     final total =
         double.tryParse(totalAmountController.text.trim().replaceAll(',', '.'));
@@ -332,41 +415,98 @@ class _SalesScreenState extends State<SalesScreen> {
     }
     final items = <Map<String, dynamic>>[];
     for (var index = 0; index < pieceTypes.length; index++) {
+      final productTypeId =
+          _productTypeIdsByType[_normalizePieceTypeKey(pieceTypes[index])];
+      if (productTypeId == null || productTypeId <= 0) {
+        _showMessage(
+            'تعذر إنشاء الطلب: نوع القطعة غير مرتبط بمعرف رسمي.');
+        return;
+      }
       final quantity = int.tryParse(quantityControllers[index].text.trim());
       if (quantity == null || quantity <= 0) {
         _showMessage('أدخل عددًا صحيحًا للقطعة رقم ${index + 1}.');
         return;
       }
+      final calculatedConsumption = _calculatedConsumptions[index];
+      if (pieceTypes[index].isNotEmpty && calculatedConsumption == null) {
+        _showMessage(_consumptionMessages[index].isEmpty
+            ? 'تعذر حساب استهلاك القطعة رقم ${index + 1} من القواعد الرسمية.'
+            : _consumptionMessages[index]);
+        return;
+      }
       final fabricCode = fabricCodeControllers[index].text.trim();
+      final quote = _pricingQuotes[index];
+      if (pieceTypes[index].isEmpty ||
+          fabricCode.isEmpty ||
+          quote == null ||
+          !quote.isReady) {
+        _showMessage(quote?.reason ??
+            'تعذر احتساب سعر القطعة رقم ${index + 1}. أكمل بيانات القطعة والقماش.');
+        return;
+      }
       final fabricType = fabricTypeControllers[index].text.trim();
       final fabricColor = fabricColorControllers[index].text.trim();
+      final catalogNumber = catalogNumberControllers[index].text.trim();
       final hasFabric = fabricCode.isNotEmpty ||
           fabricType.isNotEmpty ||
           fabricColor.isNotEmpty;
+      final request1 = _nullableText(notes1Controllers[index]);
+      final request2 = _nullableText(notes2Controllers[index]);
+      final specialRequest = _nullableText(specialRequestsControllers[index]);
+      final measurementMap = Map<String, dynamic>.from(
+          measurementValuesByType[_pieceMeasurementKey(index)] ?? const {});
+      if (catalogNumber.isNotEmpty) {
+        measurementMap['_catalogNumber'] = catalogNumber;
+      }
+      if (calculatedConsumption != null) {
+        measurementMap['_consumption'] =
+            calculatedConsumption.toStringAsFixed(2);
+      }
+      if (_consumptionUnits[index].isNotEmpty) {
+        measurementMap['_consumptionUnit'] = _consumptionUnits[index];
+      }
+      if (fabricCode.isNotEmpty) measurementMap['fabricCode'] = fabricCode;
+      if (fabricType.isNotEmpty) measurementMap['fabricType'] = fabricType;
+      if (fabricColor.isNotEmpty) measurementMap['fabricColor'] = fabricColor;
+      if (request1 != null) measurementMap['request1'] = request1;
+      if (request2 != null) measurementMap['request2'] = request2;
+      if (specialRequest != null)
+        measurementMap['specialRequest'] = specialRequest;
       items.add({
         'pieceType': pieceTypes[index],
+        'productTypeId': productTypeId,
         'quantity': quantity,
         'fabricCode': fabricCode.isEmpty ? null : fabricCode,
         'fabricType': fabricType.isEmpty ? null : fabricType,
         'fabricColor': fabricColor.isEmpty ? null : fabricColor,
-        'notes1': _nullableText(notes1Controllers[index]),
-        'notes2': _nullableText(notes2Controllers[index]),
-        'measurementSnapshot':
-            jsonEncode(measurementValuesByType[pieceTypes[index]] ?? const {}),
+        'catalogNumber': catalogNumber.isEmpty ? null : catalogNumber,
+        'consumption':
+            calculatedConsumption == null ? null : calculatedConsumption,
+        'consumptionUnit':
+            _consumptionUnits[index].isEmpty ? null : _consumptionUnits[index],
+        'request1': request1,
+        'request2': request2,
+        'specialRequest': specialRequest,
+        'notes1': null,
+        'notes2': null,
+        'measurementSnapshot': jsonEncode(measurementMap),
         if (hasFabric)
           'fabric': {
             'fabricCode': fabricCode.isEmpty ? null : fabricCode,
             'fabricType': fabricType.isEmpty ? null : fabricType,
             'fabricColor': fabricColor.isEmpty ? null : fabricColor,
-            'quantity': quantity,
-            'unit': 'Piece',
-            'unitCost': 0,
+            'quantity': calculatedConsumption == null
+                ? quantity
+                : calculatedConsumption * quantity,
+            'unit': _consumptionUnits[index].isEmpty
+                ? 'Piece'
+                : _consumptionUnits[index],
+            'unitCost': quote.inchPrice,
           },
       });
     }
     setState(() => _savingOrder = true);
     try {
-      if (customerCreated) await _persistMeasurements();
       final delivery = deliveryDateController.text.trim();
       final response = await http.post(
         Uri.parse('$_baseUrl/orders'),
@@ -389,30 +529,18 @@ class _SalesScreenState extends State<SalesScreen> {
       if (response.statusCode != 201) {
         debugPrint(
             'Order save failed (${response.statusCode}): ${response.body}');
-        _showMessage('تعذر حفظ الطلب. تحقق من البيانات وحاول مجددًا.');
+        _showMessage(_apiErrorMessage(
+            response.body, 'تعذر حفظ الطلب. تحقق من البيانات وحاول مجددًا.'));
         return;
       }
       final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      await _clearPersistedSession();
       _showMessage('تم حفظ الطلب ${decoded['orderNumber'] ?? ''} بنجاح.');
     } catch (error) {
       debugPrint('Order creation failed: $error');
       _showMessage('تعذر الاتصال بالخادم لحفظ الطلب.');
     } finally {
       if (mounted) setState(() => _savingOrder = false);
-    }
-  }
-
-  Future<void> _persistMeasurements() async {
-    final api = MeasurementsApi(baseUrl: _baseUrl);
-    for (final entry in measurementValuesByType.entries) {
-      final values = <String, double>{};
-      for (final measurement in entry.value.entries) {
-        final value = double.tryParse(measurement.value.replaceAll(',', '.'));
-        if (value != null && value >= 0) values[measurement.key] = value;
-      }
-      if (values.isNotEmpty) {
-        await api.upsert(currentCustomerId, entry.key, values);
-      }
     }
   }
 
@@ -432,7 +560,118 @@ class _SalesScreenState extends State<SalesScreen> {
             paidAmountController.text.trim().replaceAll(',', '.')) ??
         0;
     remainingAmountController.text =
-        (total - discount - paid).clamp(0, double.infinity).toStringAsFixed(2);
+        (total - discount - paid).toStringAsFixed(2);
+  }
+
+  void _syncDeliveryDaysFromDate(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      if (deliveryDaysController.text.trim().isNotEmpty) {
+        deliveryDaysController.clear();
+      }
+      return;
+    }
+
+    final parsedDate = DateTime.tryParse(trimmed);
+    if (parsedDate == null) {
+      return;
+    }
+
+    final baseDate = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+    final deltaDays = parsedDate.difference(baseDate).inDays;
+    final nextDaysValue = deltaDays >= 0 ? deltaDays.toString() : '';
+    if (deliveryDaysController.text.trim() != nextDaysValue) {
+      deliveryDaysController.text = nextDaysValue;
+    }
+  }
+
+  void _applyDeliveryDaysShortcut(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return;
+    }
+
+    final days = int.tryParse(trimmed);
+    if (days == null || days < 0) {
+      return;
+    }
+
+    final nextDate = calculateDeliveryDateFromDays(days);
+    final nextDateText = intl.DateFormat('yyyy-MM-dd').format(nextDate);
+    if (deliveryDateController.text.trim() != nextDateText) {
+      deliveryDateController.text = nextDateText;
+    }
+  }
+
+  void _recalculateOrderTotal() {
+    final total = _pricingQuotes.fold<double>(
+      0,
+      (sum, quote) =>
+          sum + (quote?.isReady == true ? quote!.finalPriceTotal : 0),
+    );
+    totalAmountController.text = total.toStringAsFixed(2);
+    totalAmount = totalAmountController.text;
+    _updateRemainingAmount('');
+  }
+
+  void _invalidatePricing(int pieceIndex) {
+    if (pieceIndex >= _pricingVersions.length) return;
+    _pricingVersions[pieceIndex]++;
+    _pricingQuotes[pieceIndex] = null;
+    _recalculateOrderTotal();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _schedulePricing(int pieceIndex) async {
+    if (pieceIndex >= _pricingVersions.length) return;
+    final version = ++_pricingVersions[pieceIndex];
+    _pricingQuotes[pieceIndex] = null;
+    _recalculateOrderTotal();
+    if (mounted) setState(() {});
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    if (!mounted || version != _pricingVersions[pieceIndex]) return;
+    await _requestPricing(pieceIndex, version);
+  }
+
+  Future<void> _requestPricing(int pieceIndex, int version) async {
+    final productTypeId =
+        _productTypeIdsByType[_normalizePieceTypeKey(pieceTypes[pieceIndex])];
+    final fabricCode = fabricCodeControllers[pieceIndex].text.trim();
+    final quantity =
+        int.tryParse(quantityControllers[pieceIndex].text.trim()) ?? 0;
+    final totalConsumption = _calculatedConsumptions[pieceIndex];
+    final unit = _consumptionUnits[pieceIndex];
+    if (productTypeId == null ||
+        fabricCode.isEmpty ||
+        quantity <= 0 ||
+        totalConsumption == null) return;
+    final response = await http.post(
+      Uri.parse('$_baseUrl/pricing-engine/calculate'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'productTypeId': productTypeId,
+        'fabricCode': fabricCode,
+        'consumption': totalConsumption,
+        'consumptionUnit': unit,
+        'quantity': quantity,
+        'pieceProfitPercentage': 0,
+        'globalProfitPercentage': 0,
+      }),
+    );
+    if (!mounted || version != _pricingVersions[pieceIndex]) return;
+    final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
+    setState(() {
+      _pricingQuotes[pieceIndex] = response.statusCode >= 200 &&
+              response.statusCode < 300 &&
+              decoded is Map<String, dynamic>
+          ? _SalesPricingQuote.fromJson(decoded)
+          : _SalesPricingQuote.notReady('تعذر الاتصال بمحرك التسعير المركزي.');
+      _recalculateOrderTotal();
+    });
   }
 
   void _showMessage(String message) {
@@ -440,6 +679,24 @@ class _SalesScreenState extends State<SalesScreen> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+
+  String _apiErrorMessage(String body, String fallback) {
+    if (body.trim().isEmpty) return fallback;
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is String && decoded.trim().isNotEmpty) return decoded;
+      if (decoded is Map<String, dynamic>) {
+        for (final key in ['message', 'detail', 'title']) {
+          final value = decoded[key]?.toString().trim();
+          if (value != null && value.isNotEmpty) return value;
+        }
+      }
+    } catch (_) {
+      final value = body.trim();
+      if (value.isNotEmpty) return value;
+    }
+    return fallback;
   }
 
   void _fillCustomerControllers() {
@@ -456,11 +713,106 @@ class _SalesScreenState extends State<SalesScreen> {
     discountAmountController.text = discountAmount;
     remainingAmountController.text = remainingAmount;
     deliveryDateController.text = deliveryDate;
+    _syncDeliveryDaysFromDate(deliveryDateController.text);
+  }
+
+  void _updateCurrentOrderPoints() {
+    var total = 0.0;
+    for (var index = 0; index < _expectedLoyaltyPoints.length; index++) {
+      final points = _expectedLoyaltyPoints[index];
+      final quantity = index < quantityControllers.length
+          ? int.tryParse(quantityControllers[index].text.trim()) ?? 0
+          : 0;
+      if (points != null && quantity > 0) {
+        total += points * quantity;
+      }
+    }
+    currentPoints = _formatCustomerNumber(total);
+    currentPointsController.text = currentPoints;
   }
 
   Future<void> loadSelectedCustomer() async {
     _fillCustomerControllers();
     await loadMeasurementPreview();
+  }
+
+  Future<void> _restorePersistedSession() async {
+    final raw = await _sessionStorage.read(key: _activeSessionStorageKey);
+    if (raw == null || raw.trim().isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return;
+      final draft = _SalesDraft.fromJson(decoded);
+      if (!mounted) return;
+      setState(() {
+        _applyDraftToCurrentState(draft);
+      });
+      await _refreshRestoredSessionData();
+    } catch (_) {
+      await _sessionStorage.delete(key: _activeSessionStorageKey);
+    }
+  }
+
+  Future<void> _saveCurrentSessionToStorage() async {
+    if (!_hasMeaningfulSessionData()) {
+      await _sessionStorage.delete(key: _activeSessionStorageKey);
+      return;
+    }
+
+    final draft = _captureDraft(_nextSessionNumber);
+    final payload = jsonEncode(draft.toJson());
+    await _sessionStorage.write(key: _activeSessionStorageKey, value: payload);
+  }
+
+  Future<void> _clearPersistedSession() async {
+    await _sessionStorage.delete(key: _activeSessionStorageKey);
+  }
+
+  void _applyDraftToCurrentState(_SalesDraft draft) {
+    currentCustomerId = draft.customerId;
+    customerFound = draft.customerFound;
+    currentCustomerName = draft.customerName;
+    currentCustomerCode = draft.customerCode;
+    currentCustomerPhone = draft.phone;
+    piecesCount = draft.pieceTypes.length;
+    _selectedPieceIndex = null;
+    _resizePieceControllers(piecesCount);
+    pieceTypes.setAll(0, draft.pieceTypes);
+    _setControllerValues(quantityControllers, draft.quantities);
+    _setControllerValues(fabricCodeControllers, draft.fabricCodes);
+    _setControllerValues(fabricTypeControllers, draft.fabricTypes);
+    _setControllerValues(fabricColorControllers, draft.fabricColors);
+    _setControllerValues(catalogNumberControllers, draft.catalogNumbers);
+    _setControllerValues(availableInchesControllers, draft.availableInches);
+    _setControllerValues(notes1Controllers, draft.notes1);
+    _setControllerValues(notes2Controllers, draft.notes2);
+    _setControllerValues(specialRequestsControllers, draft.specialRequests);
+    customerNameController.text = draft.customerName;
+    customerCodeController.text = draft.customerCode;
+    customerIdController.text =
+        draft.customerId == 0 ? '' : '${draft.customerId}';
+    phoneController.text = draft.phone;
+    referrerController.text = draft.referrer;
+    relationshipController.text = draft.relationship;
+    currentPoints = '0';
+    accumulatedPoints = '0';
+    treeCustomerCount = '0';
+    currentPointsController.text = currentPoints;
+    accumulatedPointsController.text = accumulatedPoints;
+    treeCustomerCountController.text = treeCustomerCount;
+    totalAmountController.text = draft.total;
+    paidAmountController.text = draft.paid;
+    discountAmountController.text = draft.discount;
+    remainingAmountController.text = draft.remaining;
+    deliveryDateController.text = draft.deliveryDate;
+    _syncDeliveryDaysFromDate(deliveryDateController.text);
+    measurementValuesByType
+      ..clear()
+      ..addAll({
+        for (final entry in draft.measurements.entries)
+          entry.key: Map<String, String>.from(entry.value),
+      });
   }
 
   void _updateProfitAmount() {
@@ -484,6 +836,13 @@ class _SalesScreenState extends State<SalesScreen> {
       notes1Controllers.add(TextEditingController());
       notes2Controllers.add(TextEditingController());
       specialRequestsControllers.add(TextEditingController());
+      _calculatedConsumptions.add(null);
+      _consumptionUnits.add('');
+      _consumptionMessages.add('');
+      _pricingQuotes.add(null);
+      _pricingVersions.add(0);
+      _expectedLoyaltyPoints.add(0);
+      _expectedLoyaltyPointVersions.add(0);
     }
     if (pieceTypes.length > piecesCount) {
       for (final controllers in [
@@ -503,7 +862,73 @@ class _SalesScreenState extends State<SalesScreen> {
         controllers.removeRange(piecesCount, controllers.length);
       }
       pieceTypes.removeRange(piecesCount, pieceTypes.length);
+      _calculatedConsumptions.removeRange(
+          piecesCount, _calculatedConsumptions.length);
+      _consumptionUnits.removeRange(piecesCount, _consumptionUnits.length);
+      _consumptionMessages.removeRange(
+          piecesCount, _consumptionMessages.length);
+      _pricingQuotes.removeRange(piecesCount, _pricingQuotes.length);
+      _pricingVersions.removeRange(piecesCount, _pricingVersions.length);
+      _expectedLoyaltyPoints.removeRange(
+          piecesCount, _expectedLoyaltyPoints.length);
+      _expectedLoyaltyPointVersions.removeRange(
+          piecesCount, _expectedLoyaltyPointVersions.length);
     }
+  }
+
+  Future<void> _loadExpectedLoyaltyPoints(int pieceIndex) async {
+    if (pieceIndex >= pieceTypes.length ||
+        pieceIndex >= _expectedLoyaltyPoints.length) return;
+    final version = ++_expectedLoyaltyPointVersions[pieceIndex];
+    final productTypeId =
+        _productTypeIdsByType[_normalizePieceTypeKey(pieceTypes[pieceIndex])];
+    if (productTypeId == null) {
+      if (mounted) {
+        setState(() {
+          _expectedLoyaltyPoints[pieceIndex] = 0;
+          _updateCurrentOrderPoints();
+        });
+      }
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _expectedLoyaltyPoints[pieceIndex] = null;
+        _updateCurrentOrderPoints();
+      });
+    }
+    try {
+      final points = await _loyaltyRepository.evaluateOfficialProductPoints(
+        productTypeId: productTypeId,
+      );
+      if (!mounted ||
+          pieceIndex >= pieceTypes.length ||
+          version != _expectedLoyaltyPointVersions[pieceIndex] ||
+          _productTypeIdsByType[
+                  _normalizePieceTypeKey(pieceTypes[pieceIndex])] !=
+              productTypeId) return;
+      setState(() {
+        _expectedLoyaltyPoints[pieceIndex] = points;
+        _updateCurrentOrderPoints();
+      });
+    } catch (error) {
+      debugPrint('Failed to load expected loyalty points: $error');
+      if (mounted &&
+          pieceIndex < _expectedLoyaltyPoints.length &&
+          version == _expectedLoyaltyPointVersions[pieceIndex]) {
+        setState(() {
+          _expectedLoyaltyPoints[pieceIndex] = 0;
+          _updateCurrentOrderPoints();
+        });
+      }
+    }
+  }
+
+  String _formatExpectedLoyaltyPoints(double? points) {
+    if (points == null) return '...';
+    return points == points.roundToDouble()
+        ? points.toStringAsFixed(0)
+        : points.toStringAsFixed(2);
   }
 
   Future<void> _loadFabricStockData() async {
@@ -519,19 +944,43 @@ class _SalesScreenState extends State<SalesScreen> {
       final entries = decoded.whereType<Map<String, dynamic>>();
       final nextStock = <String, _FabricStockSnapshot>{};
       for (final entry in entries) {
-        final code = (entry['fabricCode'] ?? entry['FabricCode'] ?? entry['itemCode'] ?? entry['ItemCode'])?.toString();
+        final code = (entry['fabricCode'] ??
+                entry['FabricCode'] ??
+                entry['itemCode'] ??
+                entry['ItemCode'])
+            ?.toString();
         if (code == null || code.trim().isEmpty) {
           continue;
         }
         final normalizedCode = code.trim().toUpperCase();
-        final quantityInchRaw = entry['quantityInch'] ?? entry['QuantityInch'] ?? entry['availableQuantity'] ?? entry['AvailableQuantity'];
-        final quantityInch = double.tryParse(quantityInchRaw?.toString() ?? '') ?? 0;
-        final fallbackYards = double.tryParse((entry['availableQuantity'] ?? entry['AvailableQuantity'] ?? entry['quantityYard'] ?? entry['QuantityYard'])?.toString() ?? '') ?? 0;
+        final quantityInchRaw = entry['availableInches'] ??
+            entry['AvailableInches'] ??
+            entry['quantityInch'] ??
+            entry['QuantityInch'] ??
+            entry['availableQuantity'] ??
+            entry['AvailableQuantity'];
+        final quantityInch =
+            double.tryParse(quantityInchRaw?.toString() ?? '') ?? 0;
         nextStock[normalizedCode] = _FabricStockSnapshot(
-          fabricType: (entry['fabricName'] ?? entry['FabricName'] ?? entry['fabricType'] ?? entry['FabricType'])?.toString() ?? '',
-          fabricColor: (entry['color'] ?? entry['Color'] ?? entry['fabricColor'] ?? entry['FabricColor'])?.toString() ?? '',
-          catalogNumber: (entry['catalogNumber'] ?? entry['CatalogNumber'] ?? entry['barcode'] ?? entry['Barcode'])?.toString() ?? '',
-          availableInches: quantityInch > 0 ? quantityInch : fallbackYards * 36,
+          fabricType: (entry['fabricType'] ??
+                      entry['FabricType'] ??
+                      entry['fabricName'] ??
+                      entry['FabricName'])
+                  ?.toString() ??
+              '',
+          fabricColor: (entry['fabricColor'] ??
+                      entry['FabricColor'] ??
+                      entry['color'] ??
+                      entry['Color'])
+                  ?.toString() ??
+              '',
+          catalogNumber: (entry['catalogNumber'] ??
+                      entry['CatalogNumber'] ??
+                      entry['barcode'] ??
+                      entry['Barcode'])
+                  ?.toString() ??
+              '',
+          availableInches: quantityInch,
         );
       }
       if (!mounted) return;
@@ -572,7 +1021,8 @@ class _SalesScreenState extends State<SalesScreen> {
       fabricTypeController.text = refreshed.fabricType;
       fabricColorController.text = refreshed.fabricColor;
       catalogController.text = refreshed.catalogNumber;
-      availableController.text = _formatFabricAvailable(refreshed.availableInches);
+      availableController.text =
+          _formatFabricAvailable(refreshed.availableInches);
       return;
     }
 
@@ -582,66 +1032,201 @@ class _SalesScreenState extends State<SalesScreen> {
     availableController.text = _formatFabricAvailable(snapshot.availableInches);
   }
 
-  double _estimatedConsumptionForPiece(int pieceIndex) {
-    final quantity = int.tryParse(quantityControllers[pieceIndex].text.trim()) ?? 1;
-    return _estimatedConsumption(pieceTypes[pieceIndex], quantity);
+  double? _calculatedConsumptionForPiece(int pieceIndex) =>
+      _calculatedConsumptions[pieceIndex];
+
+  String _pieceMeasurementKey(int pieceIndex) => 'piece_$pieceIndex';
+
+  Future<void> _calculateConsumption(int pieceIndex) async {
+    final pieceType = pieceTypes[pieceIndex];
+    final productTypeId =
+        _productTypeIdsByType[_normalizePieceTypeKey(pieceType)];
+    if (pieceType.isEmpty || productTypeId == null) {
+      if (mounted)
+        setState(() {
+          _calculatedConsumptions[pieceIndex] = null;
+          _consumptionMessages[pieceIndex] = 'نوع القطعة غير مرتبط بمصدر رسمي.';
+        });
+      return;
+    }
+    final values = <String, double>{};
+    final names =
+        measurementValuesByType[_pieceMeasurementKey(pieceIndex)] ?? const {};
+    final codes =
+        _measurementCodesByType[_normalizePieceTypeKey(pieceType)] ?? const {};
+    for (final entry in names.entries) {
+      final value = double.tryParse(entry.value.replaceAll(',', '.'));
+      final code = codes[entry.key] ?? entry.key;
+      if (value != null && value >= 0) values[code] = value;
+    }
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/consumption-rules/evaluate'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(
+            {'productTypeId': productTypeId, 'measurements': values}),
+      );
+      if (!mounted) return;
+      final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          decoded is Map<String, dynamic>) {
+        final unit = decoded['unit']?.toString() ?? '';
+        final result = double.tryParse(decoded['value']?.toString() ?? '');
+        setState(() {
+          _calculatedConsumptions[pieceIndex] = result;
+          _consumptionUnits[pieceIndex] = unit;
+          _consumptionMessages[pieceIndex] = '';
+        });
+        await _schedulePricing(pieceIndex);
+      } else {
+        final message = decoded is Map<String, dynamic>
+            ? decoded['message']?.toString()
+            : null;
+        setState(() {
+          _calculatedConsumptions[pieceIndex] = null;
+          _consumptionMessages[pieceIndex] = message ?? 'تعذر حساب الاستهلاك.';
+        });
+        _invalidatePricing(pieceIndex);
+      }
+    } catch (_) {
+      if (mounted)
+        setState(() {
+          _calculatedConsumptions[pieceIndex] = null;
+          _consumptionMessages[pieceIndex] =
+              'تعذر الاتصال بخدمة قواعد الاستهلاك.';
+        });
+      _invalidatePricing(pieceIndex);
+    }
   }
 
-  double _estimatedConsumption(String pieceType, int quantity) {
-    final type = pieceType.toLowerCase();
-    final base = type.contains('قميص') || type.contains('ثوب') || type.contains('فستان')
-        ? 1.5
-        : type.contains('بنطلون') || type.contains('سروال') || type.contains('شورت')
-            ? 1.8
-            : type.contains('جاكيت') || type.contains('بالطو') || type.contains('سترة')
-                ? 2.2
-                : 1.0;
-    return base * quantity;
-  }
+  String _formatFabricAvailable(double value) =>
+      value <= 0 ? '0' : value.toStringAsFixed(1);
 
-  String _formatFabricAvailable(double value) => value <= 0 ? '0' : value.toStringAsFixed(1);
+  List<String> get _pieceTypeOptions => _officialPieceTypeOptions.isNotEmpty
+      ? _officialPieceTypeOptions
+      : _fallbackPieceTypeOptions;
 
   Future<void> _loadOfficialMeasurementFields() async {
     final nextFields = <String, List<String>>{};
+    final nextCodes = <String, Map<String, String>>{};
+    final nextOptions = <String>[];
+    final nextProductTypeIds = <String, int>{};
+
     try {
       final response = await http.get(Uri.parse('$_baseUrl/consumption-rules'));
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map<String, dynamic>) {
-          final productTypes = (decoded['productTypes'] as List? ?? const [])
-              .whereType<Map<String, dynamic>>()
-              .toList();
-          final productTypeNames = <int, String>{
-            for (final item in productTypes)
-              (int.tryParse(item['productTypeId']?.toString() ?? '') ?? 0):
-                  (item['nameAr']?.toString() ?? '').trim(),
-          };
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('HTTP ${response.statusCode}');
+      }
 
-          final groupedFields = <int, List<String>>{};
-          for (final item in ((decoded['measurementFields'] as List?) ?? const [])
-              .whereType<Map<String, dynamic>>()) {
-            final productTypeId = int.tryParse(item['productTypeId']?.toString() ?? '') ?? 0;
-            final name = (item['nameAr']?.toString() ?? '').trim();
-            if (productTypeId <= 0 || name.isEmpty) continue;
-            groupedFields.putIfAbsent(productTypeId, () => <String>[]).add(name);
-          }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception('Invalid consumption-rules payload');
+      }
 
-          for (final entry in groupedFields.entries) {
-            final productTypeName = productTypeNames[entry.key] ?? '';
-            final pieceType = _normalizePieceTypeKey(productTypeName);
-            if (pieceType.isEmpty) continue;
-            nextFields[pieceType] = <String>[...entry.value.toSet().toList()];
-          }
+      final productTypes = (decoded['productTypes'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      final productTypeNames = <int, String>{
+        for (final item in productTypes)
+          (int.tryParse(item['productTypeId']?.toString() ?? '') ?? 0):
+              (item['nameAr']?.toString() ?? '').trim(),
+      };
+
+      final seenOptionKeys = <String>{};
+      for (final item in productTypes) {
+        final name = (item['nameAr']?.toString() ?? '').trim();
+        final productTypeId =
+            int.tryParse(item['productTypeId']?.toString() ?? '') ?? 0;
+        if (name.isEmpty || productTypeId <= 0) continue;
+
+        final key = _normalizePieceTypeKey(name);
+        if (key.isEmpty || seenOptionKeys.contains(key)) continue;
+        seenOptionKeys.add(key);
+        nextOptions.add(name);
+        nextProductTypeIds[key] = productTypeId;
+      }
+
+      final groupedFields = <int, List<String>>{};
+      for (final item in ((decoded['measurementFields'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()) {
+        final productTypeId =
+            int.tryParse(item['productTypeId']?.toString() ?? '') ?? 0;
+        final name = (item['nameAr']?.toString() ?? '').trim();
+        if (productTypeId <= 0 || name.isEmpty) continue;
+
+        groupedFields.putIfAbsent(productTypeId, () => <String>[]).add(name);
+
+        final productTypeName = productTypeNames[productTypeId] ?? '';
+        final normalizedKey = _normalizePieceTypeKey(productTypeName);
+        if (normalizedKey.isEmpty) continue;
+        final codes =
+            nextCodes.putIfAbsent(normalizedKey, () => <String, String>{});
+        codes[name] = item['code']?.toString() ?? name;
+      }
+
+      for (final entry in groupedFields.entries) {
+        final productTypeName = productTypeNames[entry.key] ?? '';
+        final pieceType = _normalizePieceTypeKey(productTypeName);
+        if (pieceType.isEmpty) continue;
+        nextFields[pieceType] = <String>[...entry.value.toSet().toList()];
+        if (!nextProductTypeIds.containsKey(pieceType)) {
+          nextProductTypeIds[pieceType] = entry.key;
         }
       }
     } catch (error) {
       debugPrint('Failed to load official measurement fields: $error');
+      if (mounted && _officialPieceTypeOptions.isEmpty) {
+        setState(() {
+          _officialPieceTypeOptions
+            ..clear()
+            ..addAll(_fallbackPieceTypeOptions);
+        });
+      }
+      return;
     }
 
-    if (nextFields.isNotEmpty) {
+    if (!mounted) return;
+    setState(() {
       _officialMeasurementFieldsByType
         ..clear()
         ..addAll(nextFields);
+      _measurementCodesByType
+        ..clear()
+        ..addAll(nextCodes);
+      _officialPieceTypeOptions
+        ..clear()
+        ..addAll(
+            nextOptions.isNotEmpty ? nextOptions : _fallbackPieceTypeOptions);
+      _productTypeIdsByType
+        ..clear()
+        ..addAll(nextProductTypeIds);
+    });
+
+    for (var index = 0; index < pieceTypes.length; index++) {
+      await _loadExpectedLoyaltyPoints(index);
+      await _calculateConsumption(index);
+    }
+  }
+
+  Future<void> _refreshOfficialCatalog() async {
+    if (_isRefreshingOfficialCatalog) return;
+    setState(() => _isRefreshingOfficialCatalog = true);
+    try {
+      await _loadOfficialMeasurementFields();
+      if (mounted) {
+        _showMessage(
+            'تم تحديث أنواع القطع والقياسات والقواعد من المصدر الرسمي.');
+      }
+    } catch (error) {
+      debugPrint('Failed to refresh official catalog: $error');
+      if (mounted) {
+        _showMessage('تعذر تحديث أنواع القطع من المصدر الرسمي.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshingOfficialCatalog = false);
+      }
     }
   }
 
@@ -678,9 +1263,14 @@ class _SalesScreenState extends State<SalesScreen> {
   Future<void> loadMeasurementPreview() async {
     measurementValuesByType.clear();
     for (final type in _uniquePieceTypes()) {
-      measurementValuesByType[type] = {
+      final fields = {
         for (final field in _measurementFieldsForPiece(type)) field: '---',
       };
+      for (var index = 0; index < pieceTypes.length; index++) {
+        if (pieceTypes[index] == type)
+          measurementValuesByType[_pieceMeasurementKey(index)] =
+              Map<String, String>.from(fields);
+      }
     }
     if (currentCustomerId > 0) {
       try {
@@ -694,11 +1284,16 @@ class _SalesScreenState extends State<SalesScreen> {
               final type = item['pieceType']?.toString();
               final name = item['measurementName']?.toString();
               final value = item['measurementValue']?.toString() ?? '';
-              if (type != null &&
-                  name != null &&
-                  measurementValuesByType[type]?[name] == '---') {
-                measurementValuesByType[type]![name] =
-                    value.isEmpty ? '---' : value;
+              if (type != null && name != null) {
+                for (var index = 0; index < pieceTypes.length; index++) {
+                  if (pieceTypes[index] == type &&
+                      measurementValuesByType[_pieceMeasurementKey(index)]
+                              ?[name] ==
+                          '---') {
+                    measurementValuesByType[_pieceMeasurementKey(index)]![
+                        name] = value.isEmpty ? '---' : value;
+                  }
+                }
               }
             }
           }
@@ -708,6 +1303,9 @@ class _SalesScreenState extends State<SalesScreen> {
       }
     }
     if (mounted) setState(() {});
+    for (var index = 0; index < pieceTypes.length; index++) {
+      await _calculateConsumption(index);
+    }
   }
 
   List<String> _measurementFieldsForPiece(String pieceType) {
@@ -768,11 +1366,15 @@ class _SalesScreenState extends State<SalesScreen> {
       'مقطب': ['الطول', 'العرض'],
       'طاقية': ['دوران الرأس', 'ارتفاع الحزام'],
     };
-    return fieldsByPieceType[normalizedKey] ?? fieldsByPieceType[pieceType] ?? const [];
+    return fieldsByPieceType[normalizedKey] ??
+        fieldsByPieceType[pieceType] ??
+        const [];
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_saveCurrentSessionToStorage());
     ScreenChromeState.instance.setHideTopChrome(false);
     for (final controller in [
       customerNameController,
@@ -780,6 +1382,7 @@ class _SalesScreenState extends State<SalesScreen> {
       customerIdController,
       phoneController,
       referrerController,
+      relationshipController,
       currentPointsController,
       accumulatedPointsController,
       treeCustomerCountController,
@@ -788,6 +1391,7 @@ class _SalesScreenState extends State<SalesScreen> {
       discountAmountController,
       remainingAmountController,
       deliveryDateController,
+      deliveryDaysController,
       profitPercentageController,
       profitAmountController,
     ]) {
@@ -812,12 +1416,22 @@ class _SalesScreenState extends State<SalesScreen> {
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_saveCurrentSessionToStorage());
+    }
+  }
+
   void _handleSalesViewModeChanged() {
     final nextMode = salesViewModeNotifier.value;
     if (!mounted || _salesViewMode == nextMode) return;
     setState(() {
       _salesViewMode = nextMode;
-      ScreenChromeState.instance.setHideTopChrome(nextMode == SalesViewMode.fullscreen);
+      ScreenChromeState.instance
+          .setHideTopChrome(nextMode == SalesViewMode.fullscreen);
     });
   }
 
@@ -838,19 +1452,59 @@ class _SalesScreenState extends State<SalesScreen> {
     }
 
     final showTabs = _salesViewMode != SalesViewMode.fullscreen &&
-        (_salesViewMode == SalesViewMode.tabs || _salesViewMode == SalesViewMode.all);
+        (_salesViewMode == SalesViewMode.tabs ||
+            _salesViewMode == SalesViewMode.all);
     final showHeader = _salesViewMode != SalesViewMode.fullscreen &&
         _selectedTab != 2 &&
-        (_salesViewMode == SalesViewMode.sessions || _salesViewMode == SalesViewMode.all);
+        (_salesViewMode == SalesViewMode.sessions ||
+            _salesViewMode == SalesViewMode.all);
 
     return Scaffold(
       backgroundColor: screenBackground,
-      body: Column(
+      body: Stack(
         children: [
-          if (showTabs) _buildSalesTabs(context),
-          if (showTabs && showHeader) const SizedBox(height: 2),
-          if (showHeader) _buildSalesHeader(context),
-          Expanded(child: _buildSelectedTab(context)),
+          Column(
+            children: [
+              if (showTabs) _buildSalesTabs(context),
+              if (showTabs && showHeader) const SizedBox(height: 2),
+              if (showHeader) _buildSalesHeader(context),
+              Expanded(child: _buildSelectedTab(context)),
+            ],
+          ),
+          if (_isInitialLoading)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Color(0xB30C1420),
+                child: Center(
+                  child: Container(
+                    width: 112,
+                    height: 112,
+                    decoration: BoxDecoration(
+                      color: _surfaceCard,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: _primaryBlue, width: 1.2),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x66000000),
+                          blurRadius: 20,
+                          offset: Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 46,
+                        height: 46,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 4,
+                          color: _primaryBlue,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -864,9 +1518,12 @@ class _SalesScreenState extends State<SalesScreen> {
       SalesViewMode.fullscreen: 'ملء الشاشة',
     };
     final isLightTheme = Theme.of(context).brightness == Brightness.light;
-    final chipBackground = isLightTheme ? const Color(0xFFEAF1F7) : const Color(0xFF1A2633);
-    final chipBorder = isLightTheme ? const Color(0xFFD8E1F0) : const Color(0xFF32475E);
-    final textColor = isLightTheme ? const Color(0xFF0F172A) : const Color(0xFFEAF2FF);
+    final chipBackground =
+        isLightTheme ? const Color(0xFFEAF1F7) : const Color(0xFF1A2633);
+    final chipBorder =
+        isLightTheme ? const Color(0xFFD8E1F0) : const Color(0xFF32475E);
+    final textColor =
+        isLightTheme ? const Color(0xFF0F172A) : const Color(0xFFEAF2FF);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -883,14 +1540,16 @@ class _SalesScreenState extends State<SalesScreen> {
             onSelected: (_) => _applySalesViewMode(entry.key),
             selectedColor: const Color.fromARGB(255, 2, 225, 180),
             backgroundColor: chipBackground,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             labelStyle: TextStyle(
               color: selected ? const Color.fromARGB(255, 0, 0, 0) : textColor,
               fontWeight: FontWeight.w700,
               fontSize: _supportingFontSize,
             ),
             side: BorderSide(
-              color: selected ? const Color.fromARGB(255, 2, 225, 180) : chipBorder,
+              color: selected
+                  ? const Color.fromARGB(255, 2, 225, 180)
+                  : chipBorder,
             ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(5),
@@ -905,11 +1564,19 @@ class _SalesScreenState extends State<SalesScreen> {
     final theme = Theme.of(context);
     final isLightTheme = theme.brightness == Brightness.light;
     final headerColors = isLightTheme
-        ? <Color>[const Color(0xFFEAF3FF), const Color(0xFFDBF4EF), const Color(0xFFDDECF7)]
-        : const <Color>[Color.fromARGB(255, 10, 16, 22), Color.fromARGB(255, 10, 16, 22), Color.fromARGB(255, 10, 16, 22)];
+        ? <Color>[
+            const Color(0xFFEAF3FF),
+            const Color(0xFFDBF4EF),
+            const Color(0xFFDDECF7)
+          ]
+        : const <Color>[
+            Color.fromARGB(255, 10, 16, 22),
+            Color.fromARGB(255, 10, 16, 22),
+            Color.fromARGB(255, 10, 16, 22)
+          ];
     final textColor = isLightTheme ? const Color(0xFF0F172A) : _textMain;
     return Container(
-      height: 30,
+      height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -931,6 +1598,38 @@ class _SalesScreenState extends State<SalesScreen> {
         ],
       ),
       child: Row(children: [
+        IconButton(
+          tooltip: 'تحديث أنواع القطع والقياسات من المصدر الرسمي',
+          onPressed:
+              _isRefreshingOfficialCatalog ? null : _refreshOfficialCatalog,
+          splashRadius: 18,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          style: IconButton.styleFrom(
+            backgroundColor: const Color.fromARGB(255, 13, 36, 34),
+            side: const BorderSide(
+              color: Color.fromARGB(255, 2, 225, 180),
+              width: 1,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(5),
+            ),
+          ),
+          icon: _isRefreshingOfficialCatalog
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color.fromARGB(255, 2, 225, 180),
+                  ),
+                )
+              : const Icon(
+                  Icons.refresh,
+                  size: 18,
+                  color: Color.fromARGB(255, 2, 225, 180),
+                ),
+        ),
+        const SizedBox(width: 8),
         FilledButton.icon(
           style: FilledButton.styleFrom(
             backgroundColor: const Color.fromARGB(255, 2, 225, 180),
@@ -943,10 +1642,11 @@ class _SalesScreenState extends State<SalesScreen> {
           ),
           onPressed: _startNewSession,
           iconAlignment: IconAlignment.end,
-          icon: const Icon(Icons.add, size: 20, color: Color.fromARGB(255, 23, 22, 37)),
+          icon: const Icon(Icons.add,
+              size: 20, color: Color.fromARGB(255, 23, 22, 37)),
           label: const Text('جلسة جديدة'),
         ),
-        const SizedBox(width: 8), 
+        const SizedBox(width: 8),
         Text(
           '',
           style: UiPalette.adaptiveTextStyle(
@@ -985,11 +1685,13 @@ class _SalesScreenState extends State<SalesScreen> {
                     children: [
                       IconButton(
                         padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                        constraints:
+                            const BoxConstraints(minWidth: 18, minHeight: 18),
                         splashRadius: 12,
                         tooltip: 'حذف الجلسة',
                         onPressed: () => _cancelDraft(index),
-                        icon: const Icon(Icons.close, size: 12, color: _textSoft),
+                        icon:
+                            const Icon(Icons.close, size: 12, color: _textSoft),
                       ),
                       const SizedBox(width: 1),
                       Text(
@@ -1042,7 +1744,9 @@ class _SalesScreenState extends State<SalesScreen> {
             label,
             style: UiPalette.adaptiveTextStyle(
               context,
-              backgroundColor: selected ? const Color.fromARGB(255, 13, 25, 23) : const Color.fromARGB(255, 12, 26, 23),
+              backgroundColor: selected
+                  ? const Color.fromARGB(255, 13, 25, 23)
+                  : const Color.fromARGB(255, 12, 26, 23),
               fontSize: _tabFontSize,
               fontWeight: FontWeight.bold,
             ),
@@ -1054,10 +1758,12 @@ class _SalesScreenState extends State<SalesScreen> {
 
   Widget _buildSelectedTab(BuildContext context) {
     if (_selectedTab == 1) {
-      return const Padding(padding: EdgeInsets.all(8), child: ReadySalesScreen());
+      return const Padding(
+          padding: EdgeInsets.all(8), child: ReadySalesScreen());
     }
     if (_selectedTab == 2) {
-      return const Padding(padding: EdgeInsets.all(8), child: ReadyMadeProductionScreen());
+      return const Padding(
+          padding: EdgeInsets.all(8), child: ReadyMadeProductionScreen());
     }
     final theme = Theme.of(context);
     return SingleChildScrollView(
@@ -1083,7 +1789,8 @@ class _SalesScreenState extends State<SalesScreen> {
             child: _savingOrder
                 ? SizedBox.square(
                     dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: theme.colorScheme.onPrimary),
                   )
                 : const Text('حفظ الطلب'),
           ),
@@ -1094,8 +1801,11 @@ class _SalesScreenState extends State<SalesScreen> {
 
   void _startNewSession() {
     FocusScope.of(context).unfocus();
+    final draft = _captureDraft(_nextSessionNumber);
+    _drafts.add(draft);
+    _nextSessionNumber++;
+    unawaited(_clearPersistedSession());
     setState(() {
-      _drafts.add(_captureDraft(_nextSessionNumber++));
       _clearCurrentSession();
     });
     loadMeasurementPreview();
@@ -1110,6 +1820,7 @@ class _SalesScreenState extends State<SalesScreen> {
         customerCode: customerCodeController.text,
         phone: phoneController.text,
         referrer: referrerController.text,
+        relationship: relationshipController.text,
         total: totalAmountController.text,
         paid: paidAmountController.text,
         discount: discountAmountController.text,
@@ -1120,6 +1831,10 @@ class _SalesScreenState extends State<SalesScreen> {
         fabricCodes: fabricCodeControllers.map((item) => item.text).toList(),
         fabricTypes: fabricTypeControllers.map((item) => item.text).toList(),
         fabricColors: fabricColorControllers.map((item) => item.text).toList(),
+        catalogNumbers:
+            catalogNumberControllers.map((item) => item.text).toList(),
+        availableInches:
+            availableInchesControllers.map((item) => item.text).toList(),
         notes1: notes1Controllers.map((item) => item.text).toList(),
         notes2: notes2Controllers.map((item) => item.text).toList(),
         specialRequests:
@@ -1146,19 +1861,31 @@ class _SalesScreenState extends State<SalesScreen> {
       customerIdController,
       phoneController,
       referrerController,
+      relationshipController,
+      currentPointsController,
+      accumulatedPointsController,
+      treeCustomerCountController,
       totalAmountController,
       paidAmountController,
       discountAmountController,
       remainingAmountController,
-      deliveryDateController
+      deliveryDateController,
+      deliveryDaysController,
     ]) {
       controller.clear();
     }
     quantityControllers[0].text = '1';
+    currentPoints = '0';
+    accumulatedPoints = '0';
+    treeCustomerCount = '0';
+    _expectedLoyaltyPoints[0] = 0;
+    _updateCurrentOrderPoints();
     for (final controller in [
       fabricCodeControllers[0],
       fabricTypeControllers[0],
       fabricColorControllers[0],
+      catalogNumberControllers[0],
+      availableInchesControllers[0],
       notes1Controllers[0],
       notes2Controllers[0],
       specialRequestsControllers[0]
@@ -1166,48 +1893,85 @@ class _SalesScreenState extends State<SalesScreen> {
       controller.clear();
     }
     measurementValuesByType.clear();
+    for (var index = 0; index < _pricingQuotes.length; index++) {
+      _pricingVersions[index]++;
+      _pricingQuotes[index] = null;
+      _calculatedConsumptions[index] = null;
+      _consumptionUnits[index] = '';
+      _consumptionMessages[index] = '';
+    }
+    _recalculateOrderTotal();
   }
 
-  void _restoreDraft(int index) {
+  Future<void> _restoreDraft(int index) async {
     final draft = _drafts.removeAt(index);
     setState(() {
-      currentCustomerId = draft.customerId;
-      customerFound = draft.customerFound;
-      currentCustomerName = draft.customerName;
-      currentCustomerCode = draft.customerCode;
-      currentCustomerPhone = draft.phone;
-      piecesCount = draft.pieceTypes.length;
-      _selectedPieceIndex = null;
-      _resizePieceControllers(piecesCount);
-      pieceTypes.setAll(0, draft.pieceTypes);
-      _setControllerValues(quantityControllers, draft.quantities);
-      _setControllerValues(fabricCodeControllers, draft.fabricCodes);
-      _setControllerValues(fabricTypeControllers, draft.fabricTypes);
-      _setControllerValues(fabricColorControllers, draft.fabricColors);
-      _setControllerValues(notes1Controllers, draft.notes1);
-      _setControllerValues(notes2Controllers, draft.notes2);
-      _setControllerValues(specialRequestsControllers, draft.specialRequests);
-      customerNameController.text = draft.customerName;
-      customerCodeController.text = draft.customerCode;
-      customerIdController.text =
-          draft.customerId == 0 ? '' : '${draft.customerId}';
-      phoneController.text = draft.phone;
-      referrerController.text = draft.referrer;
-      totalAmountController.text = draft.total;
-      paidAmountController.text = draft.paid;
-      discountAmountController.text = draft.discount;
-      remainingAmountController.text = draft.remaining;
-      deliveryDateController.text = draft.deliveryDate;
-      measurementValuesByType
-        ..clear()
-        ..addAll({
-          for (final entry in draft.measurements.entries)
-            entry.key: Map<String, String>.from(entry.value)
-        });
+      _applyDraftToCurrentState(draft);
     });
+    await _refreshRestoredSessionData();
   }
 
-  void _cancelDraft(int index) => setState(() => _drafts.removeAt(index));
+  Future<void> _refreshRestoredSessionData() async {
+    for (var pieceIndex = 0; pieceIndex < piecesCount; pieceIndex++) {
+      await _loadExpectedLoyaltyPoints(pieceIndex);
+      await _calculateConsumption(pieceIndex);
+    }
+    if (currentCustomerId > 0) {
+      await _loadCustomerSummary(currentCustomerId);
+    } else {
+      _updateCurrentOrderPoints();
+      _fillCustomerControllers();
+    }
+  }
+
+  bool _hasMeaningfulSessionData() {
+    if (customerNameController.text.trim().isNotEmpty ||
+        customerCodeController.text.trim().isNotEmpty ||
+        phoneController.text.trim().isNotEmpty ||
+        referrerController.text.trim().isNotEmpty ||
+        deliveryDateController.text.trim().isNotEmpty ||
+        totalAmountController.text.trim() != '0.00' ||
+        paidAmountController.text.trim() != '0.00' ||
+        discountAmountController.text.trim() != '0.00' ||
+        remainingAmountController.text.trim() != '0.00') {
+      return true;
+    }
+
+    if (pieceTypes.any((pieceType) => pieceType.trim().isNotEmpty)) {
+      return true;
+    }
+
+    for (final controller in [
+      ...quantityControllers,
+      ...fabricCodeControllers,
+      ...fabricTypeControllers,
+      ...fabricColorControllers,
+      ...catalogNumberControllers,
+      ...availableInchesControllers,
+      ...notes1Controllers,
+      ...notes2Controllers,
+      ...specialRequestsControllers,
+    ]) {
+      if (controller.text.trim().isNotEmpty) {
+        return true;
+      }
+    }
+
+    for (final values in measurementValuesByType.values) {
+      if (values.values
+          .any((value) => value.trim().isNotEmpty && value != '---')) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  void _cancelDraft(int index) {
+    if (index < 0 || index >= _drafts.length) return;
+    _drafts.removeAt(index);
+    setState(() {});
+  }
 
   void _setControllerValues(
       List<TextEditingController> controllers, List<String> values) {
@@ -1225,26 +1989,35 @@ class _SalesScreenState extends State<SalesScreen> {
         builder: (context, constraints) {
           final now = DateTime.now();
           final cards = <Widget>[
-            _statValue(context, 'تاريخ اليوم', intl.DateFormat('yyyy/MM/dd').format(now)),
+            _statValue(context, 'تاريخ اليوم',
+                intl.DateFormat('yyyy/MM/dd').format(now)),
             _statValue(context, 'اسم اليوم', _arabicDayName(now.weekday)),
             _statValue(context, 'إجمالي الطلبات', totalOrdersCount),
             _statValue(context, 'طلبات اليوم', todayOrdersCount),
-            _statInput(context, 'إجمالي الربح', profitAmountController, readOnly: true),
-            _statInput(context, 'نسبة ربح الطلب', profitPercentageController, suffix: '%', onChanged: (_) => _updateProfitAmount()),
+            _statInput(context, 'LUMAR ERP ', profitAmountController,
+                readOnly: true),
+            _statInput(context, 'LUMAR ', profitPercentageController,
+                suffix: '%', onChanged: (_) => _updateProfitAmount()),
           ];
           final columns = constraints.maxWidth < 900 ? 2 : 6;
           const spacing = 6.0;
-          final width = (constraints.maxWidth - spacing * (columns - 1)) / columns;
+          final width =
+              (constraints.maxWidth - spacing * (columns - 1)) / columns;
           return Wrap(
             spacing: spacing,
             runSpacing: 6,
-            children: cards.map((card) => SizedBox(width: width, child: card)).toList(),
+            children: cards
+                .map((card) => SizedBox(width: width, child: card))
+                .toList(),
           );
         },
       );
 
-  Widget _statInput(BuildContext context, String label, TextEditingController controller,
-      {bool readOnly = false, String? suffix, ValueChanged<String>? onChanged}) {
+  Widget _statInput(
+      BuildContext context, String label, TextEditingController controller,
+      {bool readOnly = false,
+      String? suffix,
+      ValueChanged<String>? onChanged}) {
     final theme = Theme.of(context);
     return SizedBox(
       height: _dashboardCardHeight,
@@ -1253,10 +2026,11 @@ class _SalesScreenState extends State<SalesScreen> {
         color: theme.colorScheme.surfaceContainer,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(5),
-          side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
+          side: BorderSide(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
           child: TextFormField(
             controller: controller,
             readOnly: readOnly,
@@ -1285,31 +2059,46 @@ class _SalesScreenState extends State<SalesScreen> {
         color: theme.colorScheme.surfaceContainer,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(5),
-          side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
+          side: BorderSide(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
           child: InputDecorator(
             decoration: _statDecoration(context, label, null),
-            child: Center(child: Text(value, style: theme.textTheme.bodyMedium?.copyWith(fontSize: _kpiValueFontSize, fontWeight: FontWeight.bold))),
+            child: Center(
+                child: Text(value,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                        fontSize: _kpiValueFontSize,
+                        fontWeight: FontWeight.bold))),
           ),
         ),
       ),
     );
   }
 
-  InputDecoration _statDecoration(BuildContext context, String label, String? suffix) {
+  InputDecoration _statDecoration(
+      BuildContext context, String label, String? suffix) {
     final theme = Theme.of(context);
     return InputDecoration(
       labelText: label,
       suffixText: suffix,
       floatingLabelBehavior: FloatingLabelBehavior.always,
-      labelStyle: theme.textTheme.labelSmall?.copyWith(fontSize: _fieldLabelFontSize, color: _textSoft),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: Color.fromARGB(255, 207, 211, 211))),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: Color.fromARGB(255, 44, 105, 103))),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: _primaryBlue, width: 1.6)),
+      labelStyle: theme.textTheme.labelSmall
+          ?.copyWith(fontSize: _fieldLabelFontSize, color: _textSoft),
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide:
+              const BorderSide(color: Color.fromARGB(255, 207, 211, 211))),
+      enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide:
+              const BorderSide(color: Color.fromARGB(255, 44, 105, 103))),
+      focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: const BorderSide(color: _primaryBlue, width: 1.6)),
       isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
     );
   }
 
@@ -1351,7 +2140,9 @@ class _SalesScreenState extends State<SalesScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(children: [
-              Expanded(child: Text('معلومات العميل', style: _sectionTitleStyle(context))),
+              Expanded(
+                  child: Text('معلومات العميل',
+                      style: _sectionTitleStyle(context))),
               SizedBox(
                 height: 32,
                 child: FilledButton.icon(
@@ -1364,41 +2155,86 @@ class _SalesScreenState extends State<SalesScreen> {
                       borderRadius: BorderRadius.circular(5),
                     ),
                   ),
-                  onPressed: () {
-                    _clearCustomer();
-                    _fillCustomerControllers();
-                    FocusScope.of(context).requestFocus();
-                  },
-                  icon: const Icon(Icons.person_add_alt_1, size: 15, color: Colors.black),
-                  label: const Text('إنشاء عميل', style: TextStyle(fontSize: _buttonFontSize, color: Colors.black)),
+                  onPressed: _openCustomerCreation,
+                  icon: const Icon(Icons.person_add_alt_1,
+                      size: 15, color: Colors.black),
+                  label: const Text('إنشاء عميل',
+                      style: TextStyle(
+                          fontSize: _buttonFontSize, color: Colors.black)),
                 ),
               ),
             ]),
             const SizedBox(height: 8),
             _customerField(context, 'رقم الهاتف', phoneController,
                 onChanged: (value) => currentCustomerPhone = value,
-                onEditingComplete: () => _searchCustomerAndNextFocus(phoneController.text.trim())),
+                onEditingComplete: () =>
+                    _searchCustomerAndNextFocus(phoneController.text.trim())),
             _customerField(context, 'اسم العميل', customerNameController,
-                onEditingComplete: () => _searchCustomerAndNextFocus(customerNameController.text.trim())),
+                onEditingComplete: () => _searchCustomerAndNextFocus(
+                    customerNameController.text.trim())),
             _customerField(context, 'كود العميل', customerCodeController,
-                onEditingComplete: () => _searchCustomerAndNextFocus(customerCodeController.text.trim())),
-            _customerField(context, 'العميل المعرف', referrerController),
-            _customerField(context, 'صلة القرابة', null),
-            _customerField(context, 'النقاط الحالية', currentPointsController, readOnly: true),
-            _customerField(context, 'النقاط التراكمية', accumulatedPointsController, readOnly: true),
-            _customerField(context, 'عدد العملاء في الشجرة', treeCustomerCountController, readOnly: true),
-            Divider(height: 14, thickness: 1, color: Theme.of(context).colorScheme.outlineVariant),
-            _customerField(context, 'القيمة الإجمالية', totalAmountController, onChanged: _updateRemainingAmount),
-            _customerField(context, 'المدفوع مقدماً', paidAmountController, onChanged: _updateRemainingAmount),
-            _customerField(context, 'الخصم', discountAmountController, onChanged: _updateRemainingAmount),
-            _customerField(context, 'المتبقي بعد الخصم', remainingAmountController, readOnly: true),
-            _customerField(context, 'تاريخ الاستلام YYYY-MM-DD', deliveryDateController),
+                onEditingComplete: () => _searchCustomerAndNextFocus(
+                    customerCodeController.text.trim())),
+            _customerField(context, 'اسم العميل المحيل', referrerController,
+                readOnly: true),
+            _customerField(context, 'صلة القرابة', relationshipController,
+                readOnly: true),
+            _customerField(context, 'النقاط الحالية', currentPointsController,
+                readOnly: true),
+            _customerField(
+                context, 'النقاط التراكمية', accumulatedPointsController,
+                readOnly: true),
+            _customerField(
+                context, 'عدد العملاء في الشجرة', treeCustomerCountController,
+                readOnly: true),
+            Divider(
+                height: 14,
+                thickness: 1,
+                color: Theme.of(context).colorScheme.outlineVariant),
+            _customerField(context, 'القيمة الإجمالية', totalAmountController,
+                readOnly: true),
+            _customerField(context, 'المدفوع مقدماً', paidAmountController,
+                onChanged: _updateRemainingAmount),
+            _customerField(context, 'الخصم', discountAmountController,
+                onChanged: _updateRemainingAmount),
+            _customerField(
+                context, 'المتبقي بعد الخصم', remainingAmountController,
+                readOnly: true),
+            Row(
+              children: [
+                Expanded(
+                  child: _customerField(
+                    context,
+                    'عدد أيام الاستلام',
+                    deliveryDaysController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: _applyDeliveryDaysShortcut,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _customerField(
+                    context,
+                    'تاريخ الاستلام YYYY-MM-DD',
+                    deliveryDateController,
+                    keyboardType: TextInputType.datetime,
+                    onChanged: _syncDeliveryDaysFromDate,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       );
 
-  Widget _customerField(BuildContext context, String label, TextEditingController? controller,
-      {bool readOnly = false, ValueChanged<String>? onChanged, VoidCallback? onEditingComplete}) {
+  Widget _customerField(
+      BuildContext context, String label, TextEditingController? controller,
+      {bool readOnly = false,
+      ValueChanged<String>? onChanged,
+      VoidCallback? onEditingComplete,
+      TextInputType? keyboardType,
+      List<TextInputFormatter>? inputFormatters}) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -1406,8 +2242,11 @@ class _SalesScreenState extends State<SalesScreen> {
         controller: controller,
         readOnly: readOnly,
         onChanged: onChanged,
-        onEditingComplete: onEditingComplete ?? () => FocusScope.of(context).nextFocus(),
+        onEditingComplete:
+            onEditingComplete ?? () => FocusScope.of(context).nextFocus(),
         textInputAction: TextInputAction.next,
+        keyboardType: keyboardType ?? TextInputType.text,
+        inputFormatters: inputFormatters,
         textAlign: TextAlign.right,
         decoration: InputDecoration(
           labelText: label,
@@ -1418,12 +2257,21 @@ class _SalesScreenState extends State<SalesScreen> {
           filled: true,
           fillColor: const Color.fromARGB(255, 13, 19, 28),
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: Color.fromARGB(255, 43, 104, 101))),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: _borderSoft)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: _primaryBlue, width: 1.5)),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(5),
+              borderSide:
+                  const BorderSide(color: Color.fromARGB(255, 43, 104, 101))),
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(5),
+              borderSide: const BorderSide(color: _borderSoft)),
+          focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(5),
+              borderSide: const BorderSide(color: _primaryBlue, width: 1.5)),
         ),
-        style: theme.textTheme.bodyMedium?.copyWith(fontSize: _fieldFontSize, color: _textMain),
+        style: theme.textTheme.bodyMedium
+            ?.copyWith(fontSize: _fieldFontSize, color: _textMain),
       ),
     );
   }
@@ -1448,6 +2296,7 @@ class _SalesScreenState extends State<SalesScreen> {
       piecesCount++;
       _syncPieceTypesWithCount();
     });
+    _updateCurrentOrderPoints();
     await loadMeasurementPreview();
   }
 
@@ -1482,9 +2331,17 @@ class _SalesScreenState extends State<SalesScreen> {
       ]) {
         controllers.removeAt(pieceIndex).dispose();
       }
+      _calculatedConsumptions.removeAt(pieceIndex);
+      _consumptionUnits.removeAt(pieceIndex);
+      _consumptionMessages.removeAt(pieceIndex);
+      _pricingQuotes.removeAt(pieceIndex);
+      _pricingVersions.removeAt(pieceIndex);
+      _expectedLoyaltyPoints.removeAt(pieceIndex);
+      _expectedLoyaltyPointVersions.removeAt(pieceIndex);
       piecesCount--;
       _selectedPieceIndex = null;
     });
+    _updateCurrentOrderPoints();
     await loadMeasurementPreview();
   }
 
@@ -1497,7 +2354,9 @@ class _SalesScreenState extends State<SalesScreen> {
       (_) => MeasurementEntryScreen(
         pieceType: pieceType,
         fields: fields,
-        initialValues: measurementValuesByType[pieceType] ?? const {},
+        initialValues:
+            measurementValuesByType[_pieceMeasurementKey(pieceIndex)] ??
+                const {},
         onSave: currentCustomerId > 0
             ? (values) => MeasurementsApi(baseUrl: _baseUrl)
                 .upsert(currentCustomerId, pieceType, values)
@@ -1505,7 +2364,9 @@ class _SalesScreenState extends State<SalesScreen> {
       ),
     );
     if (values != null && mounted) {
-      setState(() => measurementValuesByType[pieceType] = values);
+      setState(() =>
+          measurementValuesByType[_pieceMeasurementKey(pieceIndex)] = values);
+      await _calculateConsumption(pieceIndex);
     }
   }
 
@@ -1514,9 +2375,13 @@ class _SalesScreenState extends State<SalesScreen> {
     final pieceType = pieceTypes[pieceIndex];
     final selected = _selectedPieceIndex == pieceIndex;
     final theme = Theme.of(context);
-    final requiredConsumption = _estimatedConsumptionForPiece(pieceIndex);
+    final consumptionPerPiece = _calculatedConsumptionForPiece(pieceIndex) ?? 0;
+    final quantity =
+        int.tryParse(quantityControllers[pieceIndex].text.trim()) ?? 1;
+    final requiredConsumption = consumptionPerPiece * quantity;
     final availableInches = _fabricAvailableInches(pieceIndex);
-    final isFabricShortage = availableInches != null && availableInches < requiredConsumption;
+    final isFabricShortage =
+        availableInches != null && availableInches < requiredConsumption;
     final isMeasurementsHidden = _hiddenMeasurementRows[pieceIndex] ?? false;
     final canToggleMeasurements = pieceType.isNotEmpty;
 
@@ -1527,7 +2392,9 @@ class _SalesScreenState extends State<SalesScreen> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(5),
         side: BorderSide(
-          color: selected ? const Color(0xFF7DE7D1) : const Color.fromARGB(255, 102, 203, 197),
+          color: selected
+              ? const Color(0xFF7DE7D1)
+              : const Color.fromARGB(255, 102, 203, 197),
           width: selected ? 1.8 : 1,
         ),
       ),
@@ -1538,7 +2405,9 @@ class _SalesScreenState extends State<SalesScreen> {
         hoverColor: Colors.transparent,
         focusColor: Colors.transparent,
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-        onTap: pieceType.isEmpty ? null : () => setState(() => _selectedPieceIndex = pieceIndex),
+        onTap: pieceType.isEmpty
+            ? null
+            : () => setState(() => _selectedPieceIndex = pieceIndex),
         child: Padding(
           padding: const EdgeInsets.all(8),
           child: Column(
@@ -1548,10 +2417,12 @@ class _SalesScreenState extends State<SalesScreen> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: const Color.fromARGB(255, 10, 18, 28),
-                      border: Border.all(color: const Color(0xFF7DE7D1), width: 1.2),
+                      border: Border.all(
+                          color: const Color(0xFF7DE7D1), width: 1.2),
                       borderRadius: BorderRadius.circular(5),
                     ),
                     child: Text(
@@ -1564,6 +2435,12 @@ class _SalesScreenState extends State<SalesScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 7),
+                  SizedBox(
+                    width: 130,
+                    height: 40,
+                    child: _pricingStatusField(context, pieceIndex),
+                  ),
                   const Spacer(),
                   if (index == 1)
                     Expanded(
@@ -1574,11 +2451,13 @@ class _SalesScreenState extends State<SalesScreen> {
                             backgroundColor: _primaryBlue,
                             foregroundColor: const Color.fromARGB(255, 0, 0, 1),
                             padding: const EdgeInsets.symmetric(horizontal: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(5)),
                           ),
                           onPressed: _addPiece,
                           icon: const Icon(Icons.add, size: 16),
-                          label: const Text('إضافة قطعة', style: TextStyle(fontSize: 11)),
+                          label: const Text('إضافة قطعة',
+                              style: TextStyle(fontSize: 11)),
                         ),
                       ),
                     ),
@@ -1587,28 +2466,62 @@ class _SalesScreenState extends State<SalesScreen> {
                     const SizedBox(width: 8),
                     Container(
                       decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFF7DE7D1), width: 1.2),
+                        border: Border.all(
+                            color: const Color(0xFF7DE7D1), width: 1.2),
                         borderRadius: BorderRadius.circular(5),
                         color: const Color.fromARGB(255, 10, 18, 28),
                       ),
                       child: IconButton(
-                        tooltip: isMeasurementsHidden ? 'إظهار صف المقاسات' : 'إخفاء صف المقاسات',
+                        tooltip: isMeasurementsHidden
+                            ? 'إظهار صف المقاسات'
+                            : 'إخفاء صف المقاسات',
                         visualDensity: VisualDensity.compact,
-                        color: isMeasurementsHidden ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                        color: isMeasurementsHidden
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface,
                         onPressed: () => setState(() {
-                          _hiddenMeasurementRows[pieceIndex] = !isMeasurementsHidden;
+                          _hiddenMeasurementRows[pieceIndex] =
+                              !isMeasurementsHidden;
                         }),
                         icon: Icon(
-                          isMeasurementsHidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                          isMeasurementsHidden
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
                           size: 18,
                         ),
                       ),
                     ),
                   ],
                   const SizedBox(width: 8),
+                  SizedBox(
+                    width: 130,
+                    height: 40,
+                    child: InputDecorator(
+                      decoration: _pieceDecoration(context, 'معرف القطعة')
+                          .copyWith(
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 9),
+                          ),
+                      child: Text(
+                        _productTypeIdsByType[_normalizePieceTypeKey(pieceType)]
+                                ?.toString() ??
+                            '',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontSize: _fieldFontSize,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFF7DE7D1), width: 1.2),
+                      border: Border.all(
+                          color: const Color(0xFF7DE7D1), width: 1.2),
                       borderRadius: BorderRadius.circular(5),
                       color: const Color.fromARGB(255, 10, 18, 28),
                     ),
@@ -1616,52 +2529,103 @@ class _SalesScreenState extends State<SalesScreen> {
                       tooltip: 'حذف القطعة',
                       visualDensity: VisualDensity.compact,
                       color: theme.colorScheme.error,
-                      onPressed: piecesCount == 1 ? null : () => _removePiece(pieceIndex),
+                      onPressed: piecesCount == 1
+                          ? null
+                          : () => _removePiece(pieceIndex),
                       icon: const Icon(Icons.delete_outline, size: 18),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 7),
               FocusTraversalGroup(
                 policy: OrderedTraversalPolicy(),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     const spacing = 6.0;
                     final row1Columns = constraints.maxWidth < 700 ? 2 : 7;
-                    final row1Width = (constraints.maxWidth - spacing * (row1Columns - 1)) / row1Columns;
+                    final row1Width =
+                        (constraints.maxWidth - spacing * (row1Columns - 1)) /
+                            row1Columns;
                     final row2Columns = constraints.maxWidth < 600 ? 2 : 6;
-                    final row2Width = (constraints.maxWidth - spacing * (row2Columns - 1)) / row2Columns;
+                    final row2Width =
+                        (constraints.maxWidth - spacing * (row2Columns - 1)) /
+                            row2Columns;
+                    const row1ContentPadding =
+                      EdgeInsets.symmetric(horizontal: 6, vertical: 4);
 
                     final row1Fields = <Widget>[
                       FocusTraversalOrder(
                         order: const NumericFocusOrder(1),
                         child: Focus(
-                          onKeyEvent: (_, event) => _moveToNextFieldOnEnter(context, event),
-                          onFocusChange: (hasFocus) => _setEditableFieldFocusState(pieceIndex, 'type', hasFocus),
+                          onKeyEvent: (_, event) =>
+                              _moveToNextFieldOnEnter(context, event),
+                          onFocusChange: (hasFocus) =>
+                              _setEditableFieldFocusState(
+                                  pieceIndex, 'type', hasFocus),
                           child: DropdownButtonFormField<String>(
-                            initialValue: pieceType.isEmpty ? null : pieceType,
-                            hint: const Text('اختر', style: TextStyle(fontSize: _fieldLabelFontSize)),
+                            initialValue: pieceType.isEmpty ||
+                                    !_pieceTypeOptions.contains(pieceType)
+                                ? null
+                                : pieceType,
+                            hint: const Text('اختر',
+                                style:
+                                    TextStyle(fontSize: _fieldLabelFontSize)),
                             isExpanded: true,
                             dropdownColor: const Color(0xFF101820),
-                            style: theme.textTheme.bodySmall?.copyWith(fontSize: _fieldFontSize, color: _textMain),
-                            decoration: _pieceDecoration(context, 'نوع القطعة', selected: _isEditableFieldFocused(pieceIndex, 'type')),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                fontSize: _fieldFontSize, color: _textMain),
+                            decoration: _pieceDecoration(context, 'نوع القطعة',
+                              selected: _isEditableFieldFocused(
+                                pieceIndex, 'type'),
+                              contentPadding: row1ContentPadding),
                             items: _pieceTypeOptions
-                                .map((type) => DropdownMenuItem(value: type, child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)))
+                                .map((type) => DropdownMenuItem(
+                                    value: type,
+                                    child: Text(type,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis)))
                                 .toList(),
                             onChanged: (value) async {
                               if (value == null) return;
+                              _invalidatePricing(pieceIndex);
                               setState(() {
                                 pieceTypes[pieceIndex] = value;
                                 _selectedPieceIndex = pieceIndex;
                               });
+                              await _loadExpectedLoyaltyPoints(pieceIndex);
                               await loadMeasurementPreview();
+                              await _calculateConsumption(pieceIndex);
                             },
                           ),
                         ),
                       ),
-                      FocusTraversalOrder(order: const NumericFocusOrder(2), child: _legacyReadOnlyField(context, 'النقاط المتوقعة', '')),
-                      FocusTraversalOrder(order: const NumericFocusOrder(3), child: _pieceField(context, 'عدد القطع', quantityControllers[pieceIndex], number: true, pieceIndex: pieceIndex, fieldKey: 'quantity')),
+                      FocusTraversalOrder(
+                          order: const NumericFocusOrder(2),
+                          child: _legacyReadOnlyField(
+                              context,
+                              'النقاط المتوقعة',
+                              _formatExpectedLoyaltyPoints(
+                                  _expectedLoyaltyPoints[pieceIndex]),
+                                contentPadding: row1ContentPadding)),
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(3),
+                        child: _pieceField(
+                          context,
+                          'عدد القطع',
+                          quantityControllers[pieceIndex],
+                          number: true,
+                          pieceIndex: pieceIndex,
+                          fieldKey: 'quantity',
+                          contentPadding: row1ContentPadding,
+                          onChanged: (_) async {
+                            _invalidatePricing(pieceIndex);
+                            _updateCurrentOrderPoints();
+                            await _calculateConsumption(pieceIndex);
+                            if (mounted) setState(() {});
+                          },
+                        ),
+                      ),
                       FocusTraversalOrder(
                         order: const NumericFocusOrder(4),
                         child: _pieceField(
@@ -1670,31 +2634,72 @@ class _SalesScreenState extends State<SalesScreen> {
                           fabricCodeControllers[pieceIndex],
                           pieceIndex: pieceIndex,
                           fieldKey: 'fabricCode',
+                          contentPadding: row1ContentPadding,
                           onChanged: (_) async {
+                            _invalidatePricing(pieceIndex);
                             setState(() {});
                             await _syncFabricDataForPiece(pieceIndex);
+                            await _schedulePricing(pieceIndex);
                           },
                         ),
                       ),
-                      FocusTraversalOrder(order: const NumericFocusOrder(5), child: _legacyReadOnlyField(context, 'نوع القماش', fabricTypeControllers[pieceIndex].text)),
-                      FocusTraversalOrder(order: const NumericFocusOrder(6), child: _legacyReadOnlyField(context, 'لون القماش', fabricColorControllers[pieceIndex].text)),
-                      FocusTraversalOrder(order: const NumericFocusOrder(7), child: _legacyReadOnlyField(context, 'رقم الكتالوج', catalogNumberControllers[pieceIndex].text)),
+                      FocusTraversalOrder(
+                          order: const NumericFocusOrder(5),
+                          child: _legacyReadOnlyField(context, 'نوع القماش',
+                            fabricTypeControllers[pieceIndex].text,
+                            contentPadding: row1ContentPadding)),
+                      FocusTraversalOrder(
+                          order: const NumericFocusOrder(6),
+                          child: _legacyReadOnlyField(context, 'لون القماش',
+                            fabricColorControllers[pieceIndex].text,
+                            contentPadding: row1ContentPadding)),
+                      FocusTraversalOrder(
+                          order: const NumericFocusOrder(7),
+                          child: _legacyReadOnlyField(context, 'رقم الكتالوج',
+                            catalogNumberControllers[pieceIndex].text,
+                            contentPadding: row1ContentPadding)),
                     ];
 
                     final row2Fields = <Widget>[
-                      FocusTraversalOrder(order: const NumericFocusOrder(8), child: _pieceField(context, 'طلب رقم 1', notes1Controllers[pieceIndex], pieceIndex: pieceIndex, fieldKey: 'notes1')),
-                      FocusTraversalOrder(order: const NumericFocusOrder(9), child: _pieceField(context, 'طلب رقم 2', notes2Controllers[pieceIndex], pieceIndex: pieceIndex, fieldKey: 'notes2')),
-                      FocusTraversalOrder(order: const NumericFocusOrder(10), child: _pieceField(context, 'طلبات خاصة', specialRequestsControllers[pieceIndex], pieceIndex: pieceIndex, fieldKey: 'specialRequests')),
-                      _legacyReadOnlyField(context, 'الاستهلاك', requiredConsumption.toStringAsFixed(1)),
-                      _fabricAvailableField(context, pieceIndex, availableInches, requiredConsumption, isFabricShortage),
+                      FocusTraversalOrder(
+                          order: const NumericFocusOrder(8),
+                          child: _pieceField(context, 'طلب رقم 1',
+                              notes1Controllers[pieceIndex],
+                              pieceIndex: pieceIndex, fieldKey: 'notes1')),
+                      FocusTraversalOrder(
+                          order: const NumericFocusOrder(9),
+                          child: _pieceField(context, 'طلب رقم 2',
+                              notes2Controllers[pieceIndex],
+                              pieceIndex: pieceIndex, fieldKey: 'notes2')),
+                      FocusTraversalOrder(
+                          order: const NumericFocusOrder(10),
+                          child: _pieceField(context, 'طلبات خاصة',
+                              specialRequestsControllers[pieceIndex],
+                              pieceIndex: pieceIndex,
+                              fieldKey: 'specialRequests')),
+                      _legacyReadOnlyField(
+                        context,
+                        'الاستهلاك',
+                        requiredConsumption == 0
+                            ? '0 '
+                            : '${requiredConsumption.toStringAsFixed(2)} ${_consumptionUnits[pieceIndex]}',
+                      ),
+                      _fabricAvailableField(
+                          context,
+                          pieceIndex,
+                          availableInches,
+                          requiredConsumption,
+                          isFabricShortage),
                       FocusTraversalOrder(
                         order: const NumericFocusOrder(18),
                         child: SizedBox(
-                          height: 30,
+                          height: 40,
                           child: FilledButton.icon(
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color.fromARGB(255, 2, 225, 180),
-                              foregroundColor: const Color.fromARGB(255, 0, 6, 4),
+                              backgroundColor:
+                                  const Color.fromARGB(255, 2, 225, 180),
+                              foregroundColor:
+                                  const Color.fromARGB(255, 0, 6, 4),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(5),
                               ),
@@ -1702,11 +2707,13 @@ class _SalesScreenState extends State<SalesScreen> {
                             onPressed: pieceType.isEmpty
                                 ? null
                                 : () {
-                                    setState(() => _selectedPieceIndex = pieceIndex);
+                                    setState(
+                                        () => _selectedPieceIndex = pieceIndex);
                                     _openMeasurements(pieceIndex);
                                   },
                             icon: const Icon(Icons.straighten, size: 24),
-                            label: const Text('المقاسات', maxLines: 1, overflow: TextOverflow.ellipsis),
+                            label: const Text('المقاسات',
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
                           ),
                         ),
                       ),
@@ -1718,22 +2725,39 @@ class _SalesScreenState extends State<SalesScreen> {
                         Wrap(
                           spacing: spacing,
                           runSpacing: 1,
-                          children: row1Fields.map((field) => SizedBox(width: row1Width, height: 45, child: field)).toList(),
+                          children: row1Fields
+                              .map((field) => SizedBox(
+                                  width: row1Width, height: 45, child: field))
+                              .toList(),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 7),
                         Wrap(
                           spacing: spacing,
                           runSpacing: 1,
-                          children: row2Fields.map((field) => SizedBox(width: row2Width, height: 45, child: field)).toList(),
+                          children: row2Fields
+                              .map((field) => SizedBox(
+                                  width: row2Width, height: 50, child: field))
+                              .toList(),
                         ),
                       ],
                     );
                   },
                 ),
               ),
-              if (pieceType.isNotEmpty && !(_hiddenMeasurementRows[pieceIndex] ?? false)) ...[
-                const SizedBox(height: 10),
-                _buildInlineMeasurements(context, pieceType),
+              if (pieceType.isNotEmpty &&
+                  !(_hiddenMeasurementRows[pieceIndex] ?? false)) ...[
+                const SizedBox(height: 7),
+                _buildInlineMeasurements(context, pieceType, pieceIndex),
+                if (_consumptionMessages[pieceIndex].isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      _consumptionMessages[pieceIndex],
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 12),
+                    ),
+                  ),
               ],
             ],
           ),
@@ -1743,30 +2767,45 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   double? _fabricAvailableInches(int pieceIndex) {
+    final restoredText = availableInchesControllers[pieceIndex].text.trim();
+    if (restoredText.isNotEmpty && restoredText != '---') {
+      final parsed = double.tryParse(restoredText.replaceAll(',', '.'));
+      if (parsed != null) return parsed;
+    }
+
     final code = fabricCodeControllers[pieceIndex].text.trim();
     if (code.isEmpty) return null;
     final snapshot = _fabricStockByCode[code.toUpperCase()];
     return snapshot?.availableInches;
   }
 
-  Widget _fabricAvailableField(BuildContext context, int pieceIndex, double? availableInches, double requiredConsumption, bool isShortage) {
-    final value = availableInches == null ? '---' : availableInches.toStringAsFixed(1);
+  Widget _fabricAvailableField(BuildContext context, int pieceIndex,
+      double? availableInches, double requiredConsumption, bool isShortage) {
+    final value =
+        availableInches == null ? '---' : availableInches.toStringAsFixed(1);
     return Container(
-      height: 30,
+      height: 40,
       padding: const EdgeInsets.all(1),
       decoration: BoxDecoration(
-        color: isShortage ? const Color.fromARGB(255, 189, 71, 2) : const Color.fromARGB(255, 5, 246, 130),
+        color: isShortage
+            ? const Color.fromARGB(255, 160, 11, 0)
+            : const Color.fromARGB(255, 101, 224, 165),
         borderRadius: BorderRadius.circular(5),
         border: Border.all(
-          color: isShortage ? const Color(0xFFFFC857) : const Color.fromARGB(255, 11, 79, 33),
+          color: isShortage
+              ? const Color.fromARGB(255, 160, 11, 0)
+              : const Color.fromARGB(255, 11, 79, 33),
           width: isShortage ? 1.4 : 1,
         ),
       ),
       child: InputDecorator(
         decoration: _pieceDecoration(context, 'الكمية المتوفرة').copyWith(
           filled: true,
-          fillColor: isShortage ? const Color.fromARGB(255, 1, 16, 31) : const Color.fromARGB(255, 1, 16, 31),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          fillColor: isShortage
+              ? const Color.fromARGB(255, 1, 16, 31)
+              : const Color.fromARGB(255, 1, 16, 31),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1777,24 +2816,51 @@ class _SalesScreenState extends State<SalesScreen> {
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                fontSize: _fieldFontSize,
-                color: isShortage ? const Color(0xFFFFF1C2) : Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
+                    fontSize: _fieldFontSize,
+                    color: isShortage
+                        ? const Color(0xFFFFF1C2)
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
             ),
             if (isShortage)
               Text(
-                'لا يكفي',
+                'القماش لايكفي',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 8,
-                  color: Color(0xFFFFE082),
+                  fontSize: 14,
+                  color: Color.fromARGB(255, 160, 11, 0),
                   fontWeight: FontWeight.w600,
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _pricingStatusField(BuildContext context, int pieceIndex) {
+    final quote = _pricingQuotes[pieceIndex];
+    final text = quote == null
+        ? '---'
+        : quote.isReady
+            ? quote.finalPriceTotal.toStringAsFixed(2)
+            : quote.reason;
+    return InputDecorator(
+      decoration: _pieceDecoration(context, 'سعر البيع').copyWith(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: quote?.isReady == true ? _primaryBlue : _textSoft,
+          fontSize: _fieldFontSize,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -1807,32 +2873,46 @@ class _SalesScreenState extends State<SalesScreen> {
     bool number = false,
     int? pieceIndex,
     String? fieldKey,
+    EdgeInsets? contentPadding,
     ValueChanged<String>? onChanged,
   }) {
-    final key = pieceIndex == null || fieldKey == null ? label : 'piece_${pieceIndex}_$fieldKey';
+    final key = pieceIndex == null || fieldKey == null
+        ? label
+        : 'piece_${pieceIndex}_$fieldKey';
     final isFocused = _focusedEditableFieldStates[key] ?? false;
     return Focus(
-      onFocusChange: (hasFocus) => _setEditableFieldFocusState(pieceIndex, fieldKey, hasFocus),
+      onFocusChange: (hasFocus) =>
+          _setEditableFieldFocusState(pieceIndex, fieldKey, hasFocus),
       child: TextField(
         controller: controller,
         onChanged: onChanged,
-        decoration: _pieceDecoration(context, label, selected: isFocused),
+        decoration: _pieceDecoration(context, label,
+            selected: isFocused, contentPadding: contentPadding),
         keyboardType: number ? TextInputType.number : null,
         textInputAction: TextInputAction.next,
         onSubmitted: (_) => FocusScope.of(context).nextFocus(),
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: _fieldFontSize, color: _textMain),
+        style: Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(fontSize: _fieldFontSize, color: _textMain),
       ),
     );
   }
 
-  Widget _legacyReadOnlyField(BuildContext context, String label, String value) => InputDecorator(
-        decoration: _pieceDecoration(context, label),
+  Widget _legacyReadOnlyField(
+          BuildContext context, String label, String value,
+          {EdgeInsets? contentPadding}) =>
+      InputDecorator(
+        decoration: _pieceDecoration(context, label,
+            contentPadding: contentPadding),
         child: Text(
           value,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: _fieldFontSize, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontSize: _fieldFontSize,
+              color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       );
 
@@ -1846,44 +2926,56 @@ class _SalesScreenState extends State<SalesScreen> {
     return KeyEventResult.ignored;
   }
 
-  Widget _buildInlineMeasurements(BuildContext context, String pieceType) {
+  Widget _buildInlineMeasurements(
+      BuildContext context, String pieceType, int pieceIndex) {
     final fields = _measurementFieldsForPiece(pieceType);
     if (fields.isEmpty) return const SizedBox.shrink();
     return LayoutBuilder(builder: (context, constraints) {
       const spacing = 4.0;
       final count = fields.length;
       final totalSpacing = spacing * (count > 0 ? count - 1 : 0);
-      final itemWidth = count == 0 ? 0.0 : (constraints.maxWidth - totalSpacing) / count;
+      final itemWidth =
+          count == 0 ? 0.0 : (constraints.maxWidth - totalSpacing) / count;
       return Wrap(
         spacing: spacing,
         runSpacing: 1,
         children: fields
             .map((field) => SizedBox(
                   width: itemWidth,
-                  height: 50,
+                  height: 40,
                   child: _measurementSmallField(
                       context: context,
                       label: field,
-                      value: measurementValuesByType[pieceType]?[field] ?? '---'),
+                      value: measurementValuesByType[
+                              _pieceMeasurementKey(pieceIndex)]?[field] ??
+                          '0'),
                 ))
             .toList(),
       );
     });
   }
 
-  Widget _measurementSmallField({required BuildContext context, required String label, required String value}) => InputDecorator(
-        decoration: _pieceDecoration(context, label).copyWith(contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
+  Widget _measurementSmallField(
+          {required BuildContext context,
+          required String label,
+          required String value}) =>
+      InputDecorator(
+        decoration: _pieceDecoration(context, label).copyWith(
+            contentPadding:
+            const EdgeInsets.symmetric(horizontal: 4, vertical: 4)),
         child: Text(
           _formatInches(value),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: _fieldFontSize, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontSize: _fieldFontSize,
+              color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       );
 
   String _formatInches(String value) {
-    if (value == '---' || value.trim().isEmpty) return '---';
+    if (value == '0' || value.trim().isEmpty) return '0';
     final number = double.tryParse(value.replaceAll(',', '.'));
     if (number == null) return value;
     final formatted = number == number.truncateToDouble()
@@ -1895,27 +2987,43 @@ class _SalesScreenState extends State<SalesScreen> {
     return formatted;
   }
 
-  InputDecoration _pieceDecoration(BuildContext context, String label, {bool selected = false}) {
+  InputDecoration _pieceDecoration(BuildContext context, String label,
+      {bool selected = false, EdgeInsets? contentPadding}) {
     final theme = Theme.of(context);
     final isLightTheme = theme.brightness == Brightness.light;
-    final borderColor = selected ? const Color(0xFF7DE7D1) : (isLightTheme ? const Color(0xFFB7C9D9) : const Color.fromARGB(255, 46, 93, 100));
-    final fillColor = isLightTheme ? const Color(0xFFF8FAFC) : const Color.fromARGB(255, 3, 15, 28);
+    final borderColor = selected
+        ? const Color(0xFF7DE7D1)
+        : (isLightTheme
+            ? const Color(0xFFB7C9D9)
+            : const Color.fromARGB(255, 46, 93, 100));
+    final fillColor = isLightTheme
+        ? const Color(0xFFF8FAFC)
+        : const Color.fromARGB(255, 3, 15, 28);
     final labelColor = isLightTheme ? const Color(0xFF475569) : _textSoft;
     return InputDecoration(
       labelText: label,
-      labelStyle: theme.textTheme.labelSmall?.copyWith(fontSize: _fieldLabelFontSize, color: labelColor),
+      labelStyle: theme.textTheme.labelSmall
+          ?.copyWith(fontSize: _fieldLabelFontSize, color: labelColor),
       floatingLabelBehavior: FloatingLabelBehavior.always,
       filled: true,
       fillColor: fillColor,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide(color: borderColor)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide(color: borderColor)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide(color: borderColor, width: 1.6)),
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide(color: borderColor)),
+      enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide(color: borderColor)),
+      focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide(color: borderColor, width: 1.6)),
       isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+        contentPadding: contentPadding ??
+          const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
     );
   }
 
-  void _setEditableFieldFocusState(int? pieceIndex, String? fieldKey, bool hasFocus) {
+  void _setEditableFieldFocusState(
+      int? pieceIndex, String? fieldKey, bool hasFocus) {
     if (pieceIndex == null || fieldKey == null) return;
     final key = 'piece_${pieceIndex}_$fieldKey';
     if (!mounted) return;
@@ -1929,7 +3037,8 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   bool _isEditableFieldFocused(int pieceIndex, String fieldKey) {
-    return _focusedEditableFieldStates['piece_${pieceIndex}_$fieldKey'] ?? false;
+    return _focusedEditableFieldStates['piece_${pieceIndex}_$fieldKey'] ??
+        false;
   }
 
   Widget _darkCard(BuildContext context, Widget child) {
@@ -1940,7 +3049,9 @@ class _SalesScreenState extends State<SalesScreen> {
       shadowColor: Colors.black.withValues(alpha: isLightTheme ? 0.04 : 0.10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(5),
-        side: BorderSide(color: (isLightTheme ? const Color(0xFFE2EAF5) : _borderSoft).withValues(alpha: 0.7)),
+        side: BorderSide(
+            color: (isLightTheme ? const Color(0xFFE2EAF5) : _borderSoft)
+                .withValues(alpha: 0.7)),
       ),
       child: Padding(padding: const EdgeInsets.all(10), child: child),
     );
@@ -1970,6 +3081,39 @@ class _FabricStockSnapshot {
   final double availableInches;
 }
 
+class _SalesPricingQuote {
+  const _SalesPricingQuote({
+    required this.isReady,
+    required this.reason,
+    required this.inchPrice,
+    required this.finalPriceTotal,
+  });
+
+  factory _SalesPricingQuote.fromJson(Map<String, dynamic> json) {
+    final reasons =
+        (json['reasons'] as List?)?.map((item) => item.toString()).join(' ');
+    return _SalesPricingQuote(
+      isReady: json['isReady'] == true,
+      reason:
+          reasons?.isNotEmpty == true ? reasons! : 'تعذر احتساب سعر القطعة.',
+      inchPrice: (json['inchPrice'] as num?)?.toDouble() ?? 0,
+      finalPriceTotal: (json['finalPriceTotal'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  factory _SalesPricingQuote.notReady(String reason) => _SalesPricingQuote(
+        isReady: false,
+        reason: reason,
+        inchPrice: 0,
+        finalPriceTotal: 0,
+      );
+
+  final bool isReady;
+  final String reason;
+  final double inchPrice;
+  final double finalPriceTotal;
+}
+
 class _SalesDraft {
   const _SalesDraft({
     required this.number,
@@ -1979,6 +3123,7 @@ class _SalesDraft {
     required this.customerCode,
     required this.phone,
     required this.referrer,
+    required this.relationship,
     required this.total,
     required this.paid,
     required this.discount,
@@ -1989,11 +3134,110 @@ class _SalesDraft {
     required this.fabricCodes,
     required this.fabricTypes,
     required this.fabricColors,
+    required this.catalogNumbers,
+    required this.availableInches,
     required this.notes1,
     required this.notes2,
     required this.specialRequests,
     required this.measurements,
   });
+
+  factory _SalesDraft.fromJson(Map<String, dynamic> json) => _SalesDraft(
+        number: (json['number'] as num?)?.toInt() ?? 1,
+        customerId: (json['customerId'] as num?)?.toInt() ?? 0,
+        customerFound: json['customerFound'] as bool? ?? false,
+        customerName: json['customerName']?.toString() ?? '',
+        customerCode: json['customerCode']?.toString() ?? '',
+        phone: json['phone']?.toString() ?? '',
+        referrer: json['referrer']?.toString() ?? '',
+        relationship: json['relationship']?.toString() ?? '',
+        total: json['total']?.toString() ?? '0.00',
+        paid: json['paid']?.toString() ?? '0.00',
+        discount: json['discount']?.toString() ?? '0.00',
+        remaining: json['remaining']?.toString() ?? '0.00',
+        deliveryDate: json['deliveryDate']?.toString() ?? '',
+        pieceTypes: (json['pieceTypes'] as List?)
+                ?.map((item) => item.toString())
+                .toList() ??
+            const [''],
+        quantities: (json['quantities'] as List?)
+                ?.map((item) => item.toString())
+                .toList() ??
+            const ['1'],
+        fabricCodes: (json['fabricCodes'] as List?)
+                ?.map((item) => item.toString())
+                .toList() ??
+            const [],
+        fabricTypes: (json['fabricTypes'] as List?)
+                ?.map((item) => item.toString())
+                .toList() ??
+            const [],
+        fabricColors: (json['fabricColors'] as List?)
+                ?.map((item) => item.toString())
+                .toList() ??
+            const [],
+        catalogNumbers: (json['catalogNumbers'] as List?)
+                ?.map((item) => item.toString())
+                .toList() ??
+            const [],
+        availableInches: (json['availableInches'] as List?)
+                ?.map((item) => item.toString())
+                .toList() ??
+            const [],
+        notes1: (json['notes1'] as List?)
+                ?.map((item) => item.toString())
+                .toList() ??
+            const [],
+        notes2: (json['notes2'] as List?)
+                ?.map((item) => item.toString())
+                .toList() ??
+            const [],
+        specialRequests: (json['specialRequests'] as List?)
+                ?.map((item) => item.toString())
+                .toList() ??
+            const [],
+        measurements: ((json['measurements'] as Map?) ?? const {})
+            .map((key, value) => MapEntry(
+                  key.toString(),
+                  (value as Map?)?.map(
+                        (innerKey, innerValue) => MapEntry(
+                            innerKey.toString(), innerValue.toString()),
+                      ) ??
+                      const <String, String>{},
+                )),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'number': number,
+        'customerId': customerId,
+        'customerFound': customerFound,
+        'customerName': customerName,
+        'customerCode': customerCode,
+        'phone': phone,
+        'referrer': referrer,
+        'relationship': relationship,
+        'total': total,
+        'paid': paid,
+        'discount': discount,
+        'remaining': remaining,
+        'deliveryDate': deliveryDate,
+        'pieceTypes': pieceTypes,
+        'quantities': quantities,
+        'fabricCodes': fabricCodes,
+        'fabricTypes': fabricTypes,
+        'fabricColors': fabricColors,
+        'catalogNumbers': catalogNumbers,
+        'availableInches': availableInches,
+        'notes1': notes1,
+        'notes2': notes2,
+        'specialRequests': specialRequests,
+        'measurements': {
+          for (final entry in measurements.entries)
+            entry.key: {
+              for (final inner in entry.value.entries) inner.key: inner.value
+            }
+        },
+      };
 
   final int number;
   final int customerId;
@@ -2002,6 +3246,7 @@ class _SalesDraft {
   final String customerCode;
   final String phone;
   final String referrer;
+  final String relationship;
   final String total;
   final String paid;
   final String discount;
@@ -2012,6 +3257,8 @@ class _SalesDraft {
   final List<String> fabricCodes;
   final List<String> fabricTypes;
   final List<String> fabricColors;
+  final List<String> catalogNumbers;
+  final List<String> availableInches;
   final List<String> notes1;
   final List<String> notes2;
   final List<String> specialRequests;

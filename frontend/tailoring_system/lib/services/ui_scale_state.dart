@@ -3,7 +3,20 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class UiScaleState extends ChangeNotifier {
   static const _storageKey = 'lumar_ui_scale';
-  static const levels = <double>[0.8, 0.9, 1, 1.1, 1.25, 1.5];
+  static const levels = <double>[
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    1,
+    1.1,
+    1.25,
+    1.5
+  ];
 
   final _storage = const FlutterSecureStorage();
   double _scale = 1;

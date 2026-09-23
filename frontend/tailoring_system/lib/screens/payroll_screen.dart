@@ -41,6 +41,8 @@ class _PayrollScreenState extends State<PayrollScreen> {
 		super.dispose();
 	}
 
+	bool _processing = false;
+
 	Future<PayrollOverview> load() async {
 		final data = await repository.getOverview();
 		if (data.periods.isEmpty) {
@@ -58,6 +60,60 @@ class _PayrollScreenState extends State<PayrollScreen> {
 
 	void reload() => setState(() => future = load());
 
+	Future<void> _generateCurrentPeriod(PayrollPeriod period) async {
+		if (_processing) return;
+		setState(() => _processing = true);
+		try {
+			final result = await repository.generatePayroll(startDate: period.startDate, endDate: period.endDate, periodCode: period.code, notes: 'تمت الإضافة من شاشة الرواتب');
+			if (!mounted) return;
+			ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم توليد ${result.employeeCount} سجل راتب للفترة ${result.periodCode}')));
+			reload();
+		} catch (error) {
+			if (!mounted) return;
+			ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر توليد الرواتب: $error')));
+		} finally {
+			if (mounted) setState(() => _processing = false);
+		}
+	}
+
+	Future<void> _approveCurrentPeriod(PayrollPeriod period) async {
+		if (_processing) return;
+		setState(() => _processing = true);
+		try {
+			final result = await repository.approvePayroll(period.id, approvedBy: 'FlutterApp', notes: 'تمت الموافقة من شاشة الرواتب');
+			if (!mounted) return;
+			ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم اعتماد الفترة ${result.code}')));
+			reload();
+		} catch (error) {
+			if (!mounted) return;
+			ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر اعتماد الفترة: $error')));
+		} finally {
+			if (mounted) setState(() => _processing = false);
+		}
+	}
+
+	Future<void> _payCurrentRecord(List<PayrollRecord> records) async {
+		if (_processing || records.isEmpty) {
+			if (records.isEmpty) {
+				ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد سجلات راتب يمكن دفعها في هذه الفترة.')));
+			}
+			return;
+		}
+		final record = records.first;
+		setState(() => _processing = true);
+		try {
+			final result = await repository.payPayroll(record.id, paymentMethod: 'Cash', referenceNumber: 'PAY-${record.id}-${DateTime.now().millisecondsSinceEpoch}', notes: 'دفع من شاشة الرواتب');
+			if (!mounted) return;
+			ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم دفع سجل الراتب رقم ${result.id} بنجاح')));
+			reload();
+		} catch (error) {
+			if (!mounted) return;
+			ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر دفع الراتب: $error')));
+		} finally {
+			if (mounted) setState(() => _processing = false);
+		}
+	}
+
 	bool _insidePeriod(DateTime? value, PayrollPeriod period) => value != null && !value.isBefore(period.startDate) && value.isBefore(period.endDate.add(const Duration(days: 1)));
 
 	@override Widget build(BuildContext context) => FutureBuilder<PayrollOverview>(
@@ -68,9 +124,10 @@ class _PayrollScreenState extends State<PayrollScreen> {
 			final data = snapshot.data!;
 			if (data.periods.isEmpty) return _EmptyPayroll(onRefresh: reload);
 			final period = data.periods.firstWhere((item) => item.id == selectedPeriodId, orElse: () => data.periods.first);
+			final periodRecords = data.records.where((record) => record.periodId == period.id).toList();
 			final employees = {for (final employee in data.employees) employee.id: employee};
 			final departments = {for (final department in data.departments) department.id: department};
-			final allRows = data.records.where((record) => record.periodId == period.id).map((record) {
+			final allRows = periodRecords.map((record) {
 				final employee = employees[record.employeeId];
 				final items = data.itemsByRecord[record.id] ?? const [];
 				final allowances = items.where((item) => item.type.toLowerCase() == 'allowance').fold<double>(0, (sum, item) => sum + item.amount);
@@ -110,7 +167,14 @@ class _PayrollScreenState extends State<PayrollScreen> {
 				const SizedBox(height: 10),
 				_PeriodSummary(period: period),
 				const SizedBox(height: 10),
-				const _PayrollActions(),
+				_PayrollActions(
+					period: period,
+					record: periodRecords.isEmpty ? null : periodRecords.first,
+					busy: _processing,
+					onGenerate: () => _generateCurrentPeriod(period),
+					onApprove: () => _approveCurrentPeriod(period),
+					onPay: () => _payCurrentRecord(periodRecords),
+				),
 				const SizedBox(height: 12),
 				Row(children: [Text('كشف الموظفين', style: Theme.of(context).textTheme.titleMedium), const SizedBox(width: 10), Text('${allRows.length} سجل', style: Theme.of(context).textTheme.bodySmall)]),
 				const SizedBox(height: 8),
@@ -189,27 +253,42 @@ class _StatusChip extends StatelessWidget {
 }
 
 class _PayrollActions extends StatelessWidget {
-	const _PayrollActions();
-	static const readOnlyReason = 'خدمة الرواتب الحالية توفر القراءة فقط وترفض عمليات الكتابة بالحالة 405.';
-	@override Widget build(BuildContext context) => Wrap(spacing: 8, runSpacing: 8, children: const [
-		_DisabledAction('جديد', Icons.add, readOnlyReason),
-		_DisabledAction('حفظ', Icons.save_outlined, readOnlyReason),
-		_DisabledAction('تعديل', Icons.edit_outlined, readOnlyReason),
-		_DisabledAction('حذف', Icons.delete_outline, readOnlyReason),
-		_DisabledAction('توليد الرواتب', Icons.playlist_add_check, readOnlyReason),
-		_DisabledAction('إعادة التوليد', Icons.restart_alt, readOnlyReason),
-		_DisabledAction('مراجعة', Icons.fact_check_outlined, readOnlyReason),
-		_DisabledAction('دفع', Icons.payments_outlined, 'لا توجد خدمة دفع رواتب حالية.'),
-		_DisabledAction('إغلاق', Icons.lock_outline, readOnlyReason),
-	]);
+	const _PayrollActions({required this.period, required this.record, required this.busy, required this.onGenerate, required this.onApprove, required this.onPay});
+	final PayrollPeriod period;
+	final PayrollRecord? record;
+	final bool busy;
+	final Future<void> Function() onGenerate;
+	final Future<void> Function() onApprove;
+	final Future<void> Function() onPay;
+
+	@override Widget build(BuildContext context) {
+		final periodStatus = period.status.toLowerCase();
+		final isApproved = periodStatus == 'approved';
+		final isPaid = record != null && record!.status.toLowerCase() == 'paid';
+		return Wrap(spacing: 8, runSpacing: 8, children: [
+			_ActionButton(label: 'توليد الرواتب', icon: Icons.playlist_add_check, busy: busy, onPressed: onGenerate, enabled: !busy),
+			_ActionButton(label: 'مراجعة', icon: Icons.fact_check_outlined, busy: busy, onPressed: onApprove, enabled: !busy && !isApproved),
+			_ActionButton(label: 'دفع', icon: Icons.payments_outlined, busy: busy, onPressed: onPay, enabled: !busy && !isPaid && record != null),
+		]);
+	}
 }
 
-class _DisabledAction extends StatelessWidget {
-	const _DisabledAction(this.label, this.icon, this.reason);
+class _ActionButton extends StatelessWidget {
+	const _ActionButton({required this.label, required this.icon, required this.busy, required this.onPressed, required this.enabled});
 	final String label;
 	final IconData icon;
-	final String reason;
-	@override Widget build(BuildContext context) => Tooltip(message: reason, child: OutlinedButton.icon(onPressed: null, icon: Icon(icon), label: Text(label)));
+	final bool busy;
+	final Future<void> Function() onPressed;
+	final bool enabled;
+
+	@override Widget build(BuildContext context) => Tooltip(
+		message: enabled ? 'تنفيذ العملية' : 'الإجراء غير متاح في الوقت الحالي',
+		child: FilledButton.icon(
+			onPressed: enabled ? () => onPressed() : null,
+			icon: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(icon),
+			label: Text(label),
+		),
+	);
 }
 
 class _StatementNotice extends StatelessWidget {

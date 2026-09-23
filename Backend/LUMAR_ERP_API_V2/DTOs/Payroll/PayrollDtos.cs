@@ -5,3 +5,10 @@ public sealed record PayrollItemDto(int PayrollItemId, int PayrollRecordId, stri
 public sealed record EmployeePayrollSummaryDto(int EmployeeId, int PayrollPeriodId, decimal BasicSalaryAmount, decimal PieceWageAmount, decimal AttendanceAdjustmentAmount, decimal OvertimeAmount, decimal GrossAmount, decimal DeductionsAmount, decimal NetAmount);
 public sealed record PieceWageRecordDto(int PieceWageRecordId, int OrderId, int OrderItemId, int PieceId, int TrackingEventId, int? EmployeeId, string? EmployeeCode, string PieceType, string Stage, decimal Quantity, decimal WageRate, decimal TotalWage, int? PayrollPeriodId, int? PayrollRecordId, string Status, string? Notes, DateTime CreatedAt);
 public sealed record PieceWageRateDto(int PieceWageRateId, string PieceType, string Stage, decimal WageRate, bool IsActive, string? Notes, DateTime CreatedAt, DateTime? UpdatedAt);
+public sealed record CreatePieceWageRateDto(string PieceType, string Stage, decimal WageRate, bool IsActive = true, string? Notes = null);
+public sealed record UpdatePieceWageRateDto(string PieceType, string Stage, decimal WageRate, bool IsActive, string? Notes = null);
+public sealed record GeneratePayrollRequestDto(DateTime StartDate, DateTime EndDate, string? PeriodCode = null, string? Notes = null);
+public sealed record GeneratePayrollResultDto(int PayrollPeriodId, string PeriodCode, int EmployeeCount, decimal TotalGrossAmount, decimal TotalNetAmount, DateTime GeneratedAt, IReadOnlyList<int> PayrollRecordIds);
+public sealed record ApprovePayrollRequestDto(string? ApprovedBy = null, string? Notes = null);
+public sealed record PayrollPaymentRequestDto(string PaymentMethod, string? ReferenceNumber = null, string? Notes = null, decimal? OverrideAmount = null);
+public sealed record PayrollSettlementDto(int SettlementId, int DrawId, string? EmployeeCode, DateTime SettlementDate, decimal Amount, string? Notes, int? JournalEntryId);

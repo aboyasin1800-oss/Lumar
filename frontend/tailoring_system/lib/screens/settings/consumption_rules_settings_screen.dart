@@ -104,7 +104,14 @@ class _ConsumptionRulesSettingsScreenState
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-                child: CircularProgressIndicator(color: UiPalette.primaryBlue));
+              child: SizedBox(
+                width: 280,
+                child: LinearProgressIndicator(
+                  color: UiPalette.primaryBlue,
+                  backgroundColor: UiPalette.softBlue,
+                ),
+              ),
+            );
           }
 
           if (snapshot.hasError) {

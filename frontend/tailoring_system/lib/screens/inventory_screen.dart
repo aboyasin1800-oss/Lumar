@@ -693,8 +693,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                                             _fabricInfoCard(context, 'اسم المورد', item.supplierName ?? 'غير محدد'),
                                             _fabricInfoCard(context, 'نوع القماش', item.name),
                                             _fabricInfoCard(context, 'لون القماش', item.color ?? 'غير محدد'),
-                                            _fabricInfoCard(context, 'الكمية المدخلة', quantity(item.current)),
-                                            _fabricInfoCard(context, 'الكمية المتوفرة', quantity(item.available)),
+                                            _fabricInfoCard(context, 'الكمية المدخلة بالياردة', quantity(item.current)),
+                                            _fabricInfoCard(context, 'الكمية المتوفرة بالياردة ', quantity(item.available)),
                                             _fabricInfoCard(context, 'عدد البوصات المتوفرة', quantity(item.available * 36)),
                                             _fabricInfoCard(context, 'الكمية المحجوزة', quantity(item.reserved)),
                                             _fabricInfoCard(context, 'سعر الياردة', yardPrice == null ? '-' : money(yardPrice)),
@@ -961,34 +961,50 @@ class InventoryListItem {
   final Widget trailing;
 }
 
-Widget _fabricInfoCard(BuildContext context, String label, String value) => Container(
-      width: 146,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Theme.of(context).dividerColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              fontSize: 10,
+Widget _fabricInfoCard(BuildContext context, String label, String value) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(8, 12, 8, 9),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Theme.of(context).dividerColor),
+              ),
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
+            Positioned(
+              right: 10,
+              top: -7,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                color: Theme.of(context).colorScheme.surface,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
             ),
+          ],
           ),
-        ],
-      ),
+      ],
     );
 
 class InventoryData {

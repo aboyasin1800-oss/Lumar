@@ -1,0 +1,68 @@
+{
+  "routes": [
+    {
+      "pieceType": "MICRO CLOSURE TEST UPDATED",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "بالطو",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "PANTS",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "ثوب حجازي",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "ثوب قطري",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "جاكيت",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "سروال",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "شيالة",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "طاقية",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "فانيلة",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "فستان بناتي",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "SHIRT",
+      "stages": ["Printing", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "SHIRT",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "مريلة",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "مكتب",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    },
+    {
+      "pieceType": "يلق",
+      "stages": ["Printing", "FabricPrep", "Cutting", "Sewing", "Buttons", "Ironing", "Quality", "Assembly"]
+    }
+  ]
+}

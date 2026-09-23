@@ -12,7 +12,9 @@ public interface ICustomerService
     Task<CustomerLoyaltyDto?> GetLoyaltyAsync(int customerId, CancellationToken cancellationToken);
     Task<CustomerReferralDto?> GetReferralsAsync(int customerId, CancellationToken cancellationToken);
     Task<CustomerDetailsDto> CreateAsync(CreateCustomerDto customer, CancellationToken cancellationToken);
+    Task<CustomerCreationResultDto> CreateWithReferralAsync(CreateCustomerWithReferralDto customer, CancellationToken cancellationToken);
     Task<CustomerDetailsDto?> UpdateAsync(int customerId, UpdateCustomerDto customer, CancellationToken cancellationToken);
     Task<IReadOnlyList<CustomerListDto>> SearchAsync(string term, CancellationToken cancellationToken);
+    Task<IReadOnlyList<CustomerReferralCandidateDto>> SearchReferralCandidatesAsync(string term, CancellationToken cancellationToken);
     Task<ReferralHierarchyDto?> GetReferralHierarchyAsync(int customerId, CancellationToken cancellationToken);
 }

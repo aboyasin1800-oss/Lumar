@@ -1,0 +1,34 @@
+name: tailoring_system
+description: Clean LUMAR rebuild foundation.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_secure_storage: ^10.0.0
+  flutter_markdown_plus: ^1.0.12
+  http: ^1.6.0
+  intl: ^0.20.3
+  pdf: ^3.11.1
+  printing: ^5.13.0
+  path_provider: ^2.1.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/fonts/
+  fonts:
+    - family: Tahoma
+      fonts:
+        - asset: assets/fonts/Tahoma.ttf

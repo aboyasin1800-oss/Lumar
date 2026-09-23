@@ -1,0 +1,203 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "RL6 Apply Migration",
+			"type": "shell",
+			"command": "$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; $path='Backend/LUMAR_ERP_API_V2/Migrations/20260918_RL6_LOYALTY_POINTS_SETTINGS_CENTER_01.sql'; if (!(Test-Path $path)) { throw 'Migration file not found' }; $sql=Get-Content $path -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $cmd.ExecuteNonQuery() | Out-Null; Write-Output 'RL6_MIGRATION_APPLIED' } finally { $cn.Close() }",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "RL6 Apply Migration",
+			"type": "shell",
+			"command": "$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; $path='Backend/LUMAR_ERP_API_V2/Migrations/20260918_RL6_LOYALTY_POINTS_SETTINGS_CENTER_01.sql'; if (!(Test-Path $path)) { throw 'Migration file not found' }; $sql=Get-Content $path -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $cmd.ExecuteNonQuery() | Out-Null; Write-Output 'RL6_MIGRATION_APPLIED' } finally { $cn.Close() }",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "RL6 Verify Schema",
+			"type": "shell",
+			"command": "$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True'; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=\"SELECT c.name AS ColumnName FROM sys.columns c WHERE c.object_id=OBJECT_ID('dbo.LoyaltyPiecePointSettings') AND c.name='ProductTypeId'; SELECT t.name AS TableName FROM sys.tables t WHERE t.object_id=OBJECT_ID('dbo.LoyaltyImportedReadyMadeProductPointSettings'); SELECT i.name AS IndexName FROM sys.indexes i WHERE i.object_id=OBJECT_ID('dbo.LoyaltyPiecePointSettings') AND i.name='UX_LoyaltyPiecePointSettings_ProductTypeId'; SELECT fk.name AS ForeignKeyName FROM sys.foreign_keys fk WHERE fk.name IN ('FK_LoyaltyPiecePointSettings_PricingProductTypes_ProductTypeId','FK_LoyaltyImportedReadyMadeProductPointSettings_ImportedReadyMadeProducts');\"; $r=$cmd.ExecuteReader(); while($r.Read()){Write-Output ($r.GetValue(0))}; while($r.NextResult()){while($r.Read()){Write-Output ($r.GetValue(0))}}; $r.Close() } finally {$cn.Close()}",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "RL6 Apply Order Source Keys",
+			"type": "shell",
+			"command": "$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; $path='Backend/LUMAR_ERP_API_V2/Migrations/20260918_RL6_LOYALTY_POINTS_SETTINGS_CENTER_02_ORDER_SOURCE_KEYS.sql'; $sql=Get-Content $path -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try {$cmd=$cn.CreateCommand();$cmd.CommandText=$sql;$cmd.CommandTimeout=120;$cmd.ExecuteNonQuery()|Out-Null;Write-Output 'RL6_ORDER_SOURCE_KEYS_APPLIED'}finally{$cn.Close()}",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "RL6 Backend Build",
+			"type": "shell",
+			"command": "dotnet build Backend/LUMAR_ERP_API_V2/LUMAR_ERP_API_V2.csproj --no-restore",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "RL6 Backend Build",
+			"type": "shell",
+			"command": "dotnet build Backend/LUMAR_ERP_API_V2/LUMAR_ERP_API_V2.csproj --no-restore",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "RL6 Backend Build",
+			"type": "shell",
+			"command": "dotnet build Backend/LUMAR_ERP_API_V2/LUMAR_ERP_API_V2.csproj --no-restore",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "RL6 Backend Tests",
+			"type": "shell",
+			"command": "dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "RL6 Backend Tests",
+			"type": "shell",
+			"command": "dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "RL6 Backend Tests",
+			"type": "shell",
+			"command": "dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "RL6 Backend Tests",
+			"type": "shell",
+			"command": "dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "RL6 Focused Backend Tests",
+			"type": "shell",
+			"command": "dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter \"FullyQualifiedName~PiecePointsPhaseThreeTests|FullyQualifiedName~OrderLoyaltyIntegrationServiceTests\"",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "RL6 Engine Tests",
+			"type": "shell",
+			"command": "dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~PiecePointsPhaseThreeTests",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "RL6 Order Loyalty Tests",
+			"type": "shell",
+			"command": "dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~OrderLoyaltyIntegrationServiceTests",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "RL6 Flutter Analyze Focused",
+			"type": "shell",
+			"command": "flutter analyze lib/models/loyalty_models.dart lib/repositories/loyalty_repository.dart lib/screens/settings/product_loyalty_point_settings_screen.dart lib/screens/settings/ready_made_product_loyalty_point_settings_screen.dart lib/screens/settings/points_settings_screen.dart lib/core/app_routes.dart",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}/frontend/tailoring_system"
+			},
+			"isBackground": false,
+			"problemMatcher": [
+				"$dart-analyzer"
+			]
+		},
+		{
+			"label": "RL6 Apply Ready-Made Product Type Migration",
+			"type": "shell",
+			"command": "$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; $path='Backend/LUMAR_ERP_API_V2/Migrations/20260922_RL6_READY_MADE_PRODUCT_TYPE_POINTS_SETTINGS.sql'; if (!(Test-Path $path)) { throw 'Migration file not found' }; $sql=Get-Content $path -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $cmd.ExecuteNonQuery() | Out-Null; Write-Output 'RL6_READY_MADE_PRODUCT_POINTS_MIGRATION_APPLIED' } finally { $cn.Close() }",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "RL6 Verify Ready-Made Product Type Schema",
+			"type": "shell",
+			"command": "$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True'; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText='SET NOCOUNT ON; SELECT OBJECT_ID(''dbo.LoyaltyReadyMadeProductTypePointSettings'',''U''); SELECT COUNT(*) FROM dbo.PricingProductTypes WHERE IsActive=1; SELECT COUNT(*) FROM dbo.PricingProductTypes pt LEFT JOIN dbo.LoyaltyReadyMadeProductTypePointSettings s ON s.ProductTypeId=pt.ProductTypeId WHERE pt.IsActive=1; SELECT COUNT(*) FROM dbo.PricingProductTypes pt LEFT JOIN dbo.LoyaltyReadyMadeProductTypePointSettings s ON s.ProductTypeId=pt.ProductTypeId WHERE pt.IsActive=1 AND s.ProductTypeId IS NULL; SELECT COUNT(*) FROM dbo.LoyaltyReadyMadeProductTypePointSettings; SELECT COUNT(*) FROM dbo.LoyaltyPiecePointSettings; SELECT COUNT(*) FROM dbo.LoyaltyImportedReadyMadeProductPointSettings; SELECT name FROM sys.key_constraints WHERE parent_object_id=OBJECT_ID(''dbo.LoyaltyReadyMadeProductTypePointSettings'') AND type=''PK''; SELECT name FROM sys.indexes WHERE object_id=OBJECT_ID(''dbo.LoyaltyReadyMadeProductTypePointSettings'') AND name=''IX_LoyaltyReadyMadeProductTypePointSettings_IsActive''; SELECT name FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(''dbo.LoyaltyReadyMadeProductTypePointSettings'') AND name=''FK_LoyaltyReadyMadeProductTypePointSettings_PricingProductTypes_ProductTypeId'';'; $labels=@('TABLE_OBJECT_ID','ACTIVE_PRODUCT_TYPES','READY_MADE_GET_ROWS','READY_MADE_UNCONFIGURED_ROWS','READY_MADE_SETTING_ROWS','TAILORING_SETTING_ROWS','IMPORTED_SETTING_ROWS','PK','INDEX','FK'); $r=$cmd.ExecuteReader(); $i=0; do { while($r.Read()){Write-Output ($labels[$i] + '=' + $r.GetValue(0))}; $i++ } while($r.NextResult()); $r.Close() } finally { $cn.Close() }",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "RMS Apply Foundation Migration",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; $path='Backend/LUMAR_ERP_API_V2/Migrations/20260922_RMS_READY_MADE_SALES_FOUNDATION_01.sql'; if (!(Test-Path $path)) { throw 'Migration file not found' }; $sql=Get-Content $path -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $cmd.ExecuteNonQuery() | Out-Null; Write-Output 'RMS_FOUNDATION_MIGRATION_APPLIED' } finally { $cn.Close() }",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "RMS Verify Foundation Schema",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True'; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText='SET NOCOUNT ON; SELECT c.name FROM sys.columns c WHERE c.object_id=OBJECT_ID(''dbo.ReadyMadeInventoryProducts'') AND c.name IN (''ProductTypeId''); SELECT name FROM sys.foreign_keys WHERE name IN (''FK_ReadyMadeInventoryProducts_PricingProductTypes_ProductTypeId'',''FK_OrderItems_ReadyMadeInventoryProducts_ReadyMadeInventoryProductId'',''FK_Invoice_Details_ReadyMadeInventoryProducts_ReadyMadeInventoryProductId''); SELECT name FROM sys.indexes WHERE name IN (''UX_Orders_SaleReference'',''UX_Invoice_Header_InvoiceNumber'');'; $r=$cmd.ExecuteReader(); while($r.Read()){ Write-Output $r.GetValue(0) }; while($r.NextResult()){ while($r.Read()){ Write-Output $r.GetValue(0) } }; $r.Close() } finally { $cn.Close() }",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "RMS Flutter Analyze Focused",
+			"type": "shell",
+			"command": "flutter analyze lib/screens/ready_sales_screen.dart lib/screens/ready_made_production_screen.dart",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}/frontend/tailoring_system"
+			},
+			"isBackground": false,
+			"problemMatcher": [
+				"$dart-analyzer"
+			]
+		},
+		{
+			"label": "RMS Read Ready Sales Git Baseline",
+			"type": "shell",
+			"command": "git --no-pager show HEAD:frontend/tailoring_system/lib/screens/ready_sales_screen.dart",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

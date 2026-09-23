@@ -597,6 +597,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 				for (final item in _items) {
 					if (item.selectedPieceType.isEmpty && settings.isNotEmpty) {
 						item.selectedPieceType = settings.first.name;
+						item.selectedProductTypeId = settings.first.productTypeId;
 						item.pieceTypeController.text = settings.first.name;
 					}
 					item.loadMeasurementFields();
@@ -617,6 +618,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 		final item = _ReadyMadeDraftItem();
 		if (_pieceCostSettings.isNotEmpty) {
 			item.selectedPieceType = _pieceCostSettings.first.name;
+			item.selectedProductTypeId = _pieceCostSettings.first.productTypeId;
 			item.pieceTypeController.text = _pieceCostSettings.first.name;
 		}
 		item.loadMeasurementFields();
@@ -683,6 +685,10 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 				_scaffoldMessage('ادخل نوع القطعة في البند ${index + 1}.');
 				return;
 			}
+			if (item.selectedProductTypeId <= 0) {
+				_scaffoldMessage('نوع المنتج الرسمي مطلوب في البند ${index + 1}.');
+				return;
+			}
 			if (int.tryParse(item.quantityController.text.trim()) == null || int.parse(item.quantityController.text.trim()) <= 0) {
 				_scaffoldMessage('أدخل كمية صحيحة في البند ${index + 1}.');
 				return;
@@ -702,6 +708,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 					return {
 						'pieceType': item.selectedPieceType.trim(),
 						'quantity': int.parse(item.quantityController.text.trim()),
+						'productTypeId': item.selectedProductTypeId,
 						'fabricCode': item.fabricCodeController.text.trim().isEmpty ? null : item.fabricCodeController.text.trim(),
 						'fabricType': item.fabricTypeController.text.trim().isEmpty ? null : item.fabricTypeController.text.trim(),
 						'fabricColor': item.fabricColorController.text.trim().isEmpty ? null : item.fabricColorController.text.trim(),
@@ -798,8 +805,10 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 				items: _pieceCostSettings.map((option) => DropdownMenuItem<String>(value: option.name, child: Text(option.name))).toList(),
 				onChanged: (value) {
 					if (value == null) return;
+					final option = _pieceCostSettings.firstWhere((entry) => entry.name == value);
 					setState(() {
 						item.selectedPieceType = value;
+						item.selectedProductTypeId = option.productTypeId;
 						item.pieceTypeController.text = value;
 						item.loadMeasurementFields();
 						item.refreshCalculatedValues(_pieceCostSettings, _fabrics);
@@ -993,7 +1002,6 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 
 	@override
 	Widget build(BuildContext context) {
-		final cardColor = UiPalette.surfaceCard;
 		return Directionality(
 			textDirection: TextDirection.rtl,
 			child: Scaffold(
@@ -1099,7 +1107,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 }
 
 class _PieceCostSetting {
-	const _PieceCostSetting({required this.name, required this.totalOperationalCost});
+	const _PieceCostSetting({required this.productTypeId, required this.name, required this.totalOperationalCost});
 
 	factory _PieceCostSetting.fromJson(Map<String, dynamic> json) {
 		final amount = ((json['totalOperationalCost'] ?? json['totalCost'] ?? json['total'] ?? 0) as num?)?.toDouble() ?? 0;
@@ -1108,11 +1116,13 @@ class _PieceCostSetting {
 			((json['ironingAndPackagingCost'] as num?)?.toDouble() ?? 0) +
 			((json['fixedOperatingCost'] as num?)?.toDouble() ?? 0));
 		return _PieceCostSetting(
+			productTypeId: (json['productTypeId'] as num?)?.toInt() ?? 0,
 			name: (json['pieceName'] ?? json['nameAr'] ?? json['name'] ?? 'غير محدد').toString(),
 			totalOperationalCost: amount > 0 ? amount : fallback,
 		);
 	}
 
+	final int productTypeId;
 	final String name;
 	final double totalOperationalCost;
 }
@@ -1165,6 +1175,7 @@ class _ReadyMadeDraftItem {
 	final specialRequestController = TextEditingController();
 	final measurementControllers = <String, TextEditingController>{};
 	String selectedPieceType = '';
+	int selectedProductTypeId = 0;
 	double fabricCostValue = 0;
 	double pieceCostValue = 0;
 	double lineTotalValue = 0;
@@ -1406,7 +1417,7 @@ String _stage(String value) => switch (value) {
 Color _statusColor(String value) => switch (value) {
 	'ReadyForSale' || 'AvailableForSale' => const Color(0xFF1F8F5F),
 	'New' || 'Draft' => const Color(0xFF3B82F6),
-	'Cutting' || 'Sewing' || 'Quality' || 'Assembly' => const Color(0xFF8B5CF6),
+	'Cutting' || 'Sewing' || 'Quality' || 'Assembly' => const Color(0xFF4EC9B0),
 	'Sold' => const Color(0xFFB45309),
 	_ => const Color(0xFF475569),
 };

@@ -1,0 +1,167 @@
+<svg width="1600" height="980" viewBox="0 0 1600 980" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L7,3 z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="980" fill="url(#bgGrad)"/>
+
+  <!-- Top bar -->
+  <rect x="0" y="0" width="1600" height="90" fill="#1E293B"/>
+  <text x="120" y="58" fill="#F8FAFC" font-size="28" font-family="Tahoma, Arial, sans-serif" font-weight="700">مخطط شجرة التسلسل التجاري</text>
+
+  <!-- Search bar -->
+  <rect x="120" y="120" width="1360" height="70" rx="14" fill="#334155"/>
+  <circle cx="170" cy="155" r="14" fill="#F59E0B" opacity="0.9"/>
+  <text x="200" y="163" fill="#E2E8F0" font-size="22" font-family="Tahoma, Arial, sans-serif">ابحث باسم العميل، الكود، أو الهاتف...</text>
+
+  <!-- Tree area -->
+  <g transform="translate(70,210)">
+    <!-- Connection lines -->
+    <g stroke="#94A3B8" stroke-width="3" fill="none" stroke-linecap="round">
+      <line x1="740" y1="120" x2="740" y2="185"/>
+      <line x1="740" y1="185" x2="260" y2="275"/>
+      <line x1="740" y1="185" x2="740" y2="275"/>
+      <line x1="740" y1="185" x2="1220" y2="275"/>
+
+      <line x1="260" y1="275" x2="170" y2="395"/>
+      <line x1="260" y1="275" x2="260" y2="395"/>
+      <line x1="260" y1="275" x2="350" y2="395"/>
+
+      <line x1="740" y1="275" x2="635" y2="395"/>
+      <line x1="740" y1="275" x2="740" y2="395"/>
+      <line x1="740" y1="275" x2="845" y2="395"/>
+
+      <line x1="1220" y1="275" x2="1120" y2="395"/>
+      <line x1="1220" y1="275" x2="1220" y2="395"/>
+      <line x1="1220" y1="275" x2="1320" y2="395"/>
+    </g>
+
+    <!-- Root node -->
+    <g filter="url(#shadow)">
+      <rect x="650" y="20" width="180" height="110" rx="22" fill="#1E3A8A" stroke="#FBBF24" stroke-width="4"/>
+      <text x="740" y="62" text-anchor="middle" fill="#FBBF24" font-size="18" font-weight="700" font-family="Tahoma, Arial, sans-serif">A1</text>
+      <text x="740" y="87" text-anchor="middle" fill="#E5E7EB" font-size="11" font-family="Tahoma, Arial, sans-serif">(الرئيسي)</text>
+      <line x1="670" y1="96" x2="810" y2="96" stroke="#FBBF24" stroke-width="2"/>
+      <text x="740" y="115" text-anchor="middle" fill="#FFFFFF" font-size="14" font-weight="700" font-family="Tahoma, Arial, sans-serif">العميل الرئيسي</text>
+    </g>
+
+    <!-- Level 1 green circles -->
+    <g>
+      <circle cx="260" cy="310" r="48" fill="#15803D" stroke="#86EFAC" stroke-width="3"/>
+      <text x="260" y="318" text-anchor="middle" fill="#FFFFFF" font-size="12" font-weight="700" font-family="Tahoma, Arial, sans-serif">فرع 1</text>
+
+      <circle cx="740" cy="310" r="48" fill="#15803D" stroke="#86EFAC" stroke-width="3"/>
+      <text x="740" y="318" text-anchor="middle" fill="#FFFFFF" font-size="12" font-weight="700" font-family="Tahoma, Arial, sans-serif">فرع 2</text>
+
+      <circle cx="1220" cy="310" r="48" fill="#15803D" stroke="#86EFAC" stroke-width="3"/>
+      <text x="1220" y="318" text-anchor="middle" fill="#FFFFFF" font-size="12" font-weight="700" font-family="Tahoma, Arial, sans-serif">فرع 3</text>
+    </g>
+
+    <!-- Level 2 orange circles -->
+    <g>
+      <circle cx="170" cy="430" r="38" fill="#C2410C" stroke="#FDBA74" stroke-width="3"/>
+      <text x="170" y="438" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700" font-family="Tahoma, Arial, sans-serif">فرع 1-1</text>
+
+      <circle cx="260" cy="430" r="38" fill="#C2410C" stroke="#FDBA74" stroke-width="3"/>
+      <text x="260" y="438" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700" font-family="Tahoma, Arial, sans-serif">فرع 1-2</text>
+
+      <circle cx="350" cy="430" r="38" fill="#C2410C" stroke="#FDBA74" stroke-width="3"/>
+      <text x="350" y="438" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700" font-family="Tahoma, Arial, sans-serif">فرع 1-3</text>
+
+      <circle cx="635" cy="430" r="38" fill="#C2410C" stroke="#FDBA74" stroke-width="3"/>
+      <text x="635" y="438" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700" font-family="Tahoma, Arial, sans-serif">فرع 2-1</text>
+
+      <circle cx="740" cy="430" r="38" fill="#C2410C" stroke="#FDBA74" stroke-width="3"/>
+      <text x="740" y="438" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700" font-family="Tahoma, Arial, sans-serif">فرع 2-2</text>
+
+      <circle cx="845" cy="430" r="38" fill="#C2410C" stroke="#FDBA74" stroke-width="3"/>
+      <text x="845" y="438" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700" font-family="Tahoma, Arial, sans-serif">فرع 2-3</text>
+
+      <circle cx="1120" cy="430" r="38" fill="#C2410C" stroke="#FDBA74" stroke-width="3"/>
+      <text x="1120" y="438" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700" font-family="Tahoma, Arial, sans-serif">فرع 3-1</text>
+
+      <circle cx="1220" cy="430" r="38" fill="#C2410C" stroke="#FDBA74" stroke-width="3"/>
+      <text x="1220" y="438" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700" font-family="Tahoma, Arial, sans-serif">فرع 3-2</text>
+
+      <circle cx="1320" cy="430" r="38" fill="#C2410C" stroke="#FDBA74" stroke-width="3"/>
+      <text x="1320" y="438" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700" font-family="Tahoma, Arial, sans-serif">فرع 3-3</text>
+    </g>
+
+    <!-- Level 3 purple diamonds -->
+    <g>
+      <g transform="translate(145,500)">
+        <rect x="0" y="0" width="58" height="58" rx="12" fill="#7E22CE" stroke="#E9D5FF" stroke-width="2" transform="rotate(45 29 29)"/>
+        <text x="29" y="34" text-anchor="middle" fill="#FFFFFF" font-size="8" font-weight="700" font-family="Tahoma, Arial, sans-serif" transform="rotate(-45 29 34)">فرع 1-1-1</text>
+      </g>
+
+      <g transform="translate(245,500)">
+        <rect x="0" y="0" width="58" height="58" rx="12" fill="#7E22CE" stroke="#E9D5FF" stroke-width="2" transform="rotate(45 29 29)"/>
+        <text x="29" y="34" text-anchor="middle" fill="#FFFFFF" font-size="8" font-weight="700" font-family="Tahoma, Arial, sans-serif" transform="rotate(-45 29 34)">فرع 1-2-1</text>
+      </g>
+
+      <g transform="translate(620,500)">
+        <rect x="0" y="0" width="58" height="58" rx="12" fill="#7E22CE" stroke="#E9D5FF" stroke-width="2" transform="rotate(45 29 29)"/>
+        <text x="29" y="34" text-anchor="middle" fill="#FFFFFF" font-size="8" font-weight="700" font-family="Tahoma, Arial, sans-serif" transform="rotate(-45 29 34)">فرع 2-1-1</text>
+      </g>
+
+      <g transform="translate(735,500)">
+        <rect x="0" y="0" width="58" height="58" rx="12" fill="#7E22CE" stroke="#E9D5FF" stroke-width="2" transform="rotate(45 29 29)"/>
+        <text x="29" y="34" text-anchor="middle" fill="#FFFFFF" font-size="8" font-weight="700" font-family="Tahoma, Arial, sans-serif" transform="rotate(-45 29 34)">فرع 2-2-1</text>
+      </g>
+
+      <g transform="translate(1115,500)">
+        <rect x="0" y="0" width="58" height="58" rx="12" fill="#7E22CE" stroke="#E9D5FF" stroke-width="2" transform="rotate(45 29 29)"/>
+        <text x="29" y="34" text-anchor="middle" fill="#FFFFFF" font-size="8" font-weight="700" font-family="Tahoma, Arial, sans-serif" transform="rotate(-45 29 34)">فرع 3-1-1</text>
+      </g>
+    </g>
+
+    <!-- Level 4 cyan circles -->
+    <g>
+      <circle cx="160" cy="640" r="26" fill="#0E7490" stroke="#A5F3FC" stroke-width="2"/>
+      <text x="160" y="646" text-anchor="middle" fill="#FFFFFF" font-size="7" font-weight="700" font-family="Tahoma, Arial, sans-serif">ن 1</text>
+
+      <circle cx="250" cy="640" r="26" fill="#0E7490" stroke="#A5F3FC" stroke-width="2"/>
+      <text x="250" y="646" text-anchor="middle" fill="#FFFFFF" font-size="7" font-weight="700" font-family="Tahoma, Arial, sans-serif">ن 2</text>
+
+      <circle cx="620" cy="640" r="26" fill="#0E7490" stroke="#A5F3FC" stroke-width="2"/>
+      <text x="620" y="646" text-anchor="middle" fill="#FFFFFF" font-size="7" font-weight="700" font-family="Tahoma, Arial, sans-serif">ن 3</text>
+
+      <circle cx="740" cy="640" r="26" fill="#0E7490" stroke="#A5F3FC" stroke-width="2"/>
+      <text x="740" y="646" text-anchor="middle" fill="#FFFFFF" font-size="7" font-weight="700" font-family="Tahoma, Arial, sans-serif">ن 4</text>
+
+      <circle cx="1115" cy="640" r="26" fill="#0E7490" stroke="#A5F3FC" stroke-width="2"/>
+      <text x="1115" y="646" text-anchor="middle" fill="#FFFFFF" font-size="7" font-weight="700" font-family="Tahoma, Arial, sans-serif">ن 5</text>
+    </g>
+  </g>
+
+  <!-- Legend / controls -->
+  <g transform="translate(1160, 780)">
+    <rect x="0" y="0" width="315" height="130" rx="18" fill="#0F172A" stroke="#475569" stroke-width="2" opacity="0.9"/>
+    <text x="25" y="34" fill="#F8FAFC" font-size="20" font-weight="700" font-family="Tahoma, Arial, sans-serif">التحكم</text>
+    <text x="25" y="64" fill="#A5F3FC" font-size="18" font-family="Tahoma, Arial, sans-serif">Alt + =  تكبير</text>
+    <text x="25" y="92" fill="#A5F3FC" font-size="18" font-family="Tahoma, Arial, sans-serif">Alt + -  تصغير</text>
+    <text x="25" y="120" fill="#A5F3FC" font-size="18" font-family="Tahoma, Arial, sans-serif">الأسهم : تحريك الشجرة</text>
+  </g>
+
+  <!-- Stylized zoom buttons in top-right similar to app -->
+  <g transform="translate(1380, 195)">
+    <rect x="0" y="0" width="128" height="96" rx="20" fill="#111827" opacity="0.75" stroke="#475569"/>
+    <g>
+      <rect x="18" y="18" width="40" height="40" rx="12" fill="#1E293B" stroke="#94A3B8"/>
+      <text x="38" y="46" text-anchor="middle" fill="#F8FAFC" font-size="28" font-weight="700">+</text>
+      <rect x="70" y="18" width="40" height="40" rx="12" fill="#1E293B" stroke="#94A3B8"/>
+      <text x="90" y="46" text-anchor="middle" fill="#F8FAFC" font-size="28" font-weight="700">−</text>
+      <rect x="44" y="66" width="40" height="18" rx="8" fill="#1E293B" stroke="#94A3B8"/>
+      <circle cx="64" cy="75" r="4.5" fill="#F8FAFC"/>
+    </g>
+  </g>
+</svg>

@@ -13,44 +13,74 @@ public sealed class PieceCostSettingRepository(ReadOnlySqlConnectionFactory conn
 
     public async Task<IReadOnlyList<PieceCostSettingDto>> GetAllAsync(CancellationToken cancellationToken)
     {
-        const string sql = """
-            WITH ActiveMatrices AS
-            (
-                SELECT m.CostMatrixId, m.ProductTypeId, m.ChangeReason,
-                       ROW_NUMBER() OVER (PARTITION BY m.ProductTypeId ORDER BY m.Version DESC, m.CostMatrixId DESC) AS RowNumber
-                FROM dbo.PricingCostMatrices m
-                WHERE m.Channel=N'Tailoring' AND m.Status=N'Active' AND m.IsActive=1
-            ), CostValues AS
-            (
-                SELECT mi.CostMatrixId,
-                       SUM(CASE WHEN ci.Code=@sewingCode THEN mi.Quantity * mi.UnitCost ELSE 0 END) AS SewingCost,
-                       SUM(CASE WHEN ci.Code=@consumablesCode THEN mi.Quantity * mi.UnitCost ELSE 0 END) AS ConsumablesCost,
-                       SUM(CASE WHEN ci.Code=@ironingCode THEN mi.Quantity * mi.UnitCost ELSE 0 END) AS IroningCost,
-                       SUM(CASE WHEN ci.Code=@fixedCode THEN mi.Quantity * mi.UnitCost ELSE 0 END) AS FixedCost
-                FROM dbo.PricingCostMatrixItems mi
-                JOIN dbo.PricingCostItems ci ON ci.CostItemId=mi.CostItemId
-                WHERE ci.Code IN (@sewingCode,@consumablesCode,@ironingCode,@fixedCode)
-                GROUP BY mi.CostMatrixId
-            )
-            SELECT pt.ProductTypeId, pt.Code, pt.NameAr,
-                   COALESCE(cv.SewingCost,0), COALESCE(cv.ConsumablesCost,0),
-                   COALESCE(cv.IroningCost,0), COALESCE(cv.FixedCost,0),
-                   am.ChangeReason, CASE WHEN cv.CostMatrixId IS NULL THEN CAST(0 AS bit) ELSE CAST(1 AS bit) END
-            FROM dbo.PricingProductTypes pt
-            LEFT JOIN ActiveMatrices am ON am.ProductTypeId=pt.ProductTypeId AND am.RowNumber=1
-            LEFT JOIN CostValues cv ON cv.CostMatrixId=am.CostMatrixId
-            WHERE pt.IsActive=1 AND pt.Category=N'Garment' AND pt.Scope IN (N'Both',N'Tailoring')
-            ORDER BY pt.NameAr, pt.ProductTypeId
-            """;
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
-        await using var command = new SqlCommand(sql, connection);
-        AddCodes(command);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var results = new List<PieceCostSettingDto>();
-        while (await reader.ReadAsync(cancellationToken)) results.Add(Map(reader));
+
+        var products = new List<(int Id, string Code, string Name)>();
+        const string productsSql = """
+            SELECT ProductTypeId, Code, NameAr
+            FROM dbo.PricingProductTypes
+            WHERE IsActive=1 AND Category=N'Garment' AND Scope IN (N'Both',N'Tailoring')
+            ORDER BY NameAr, ProductTypeId;
+            """;
+        await using (var productsCommand = new SqlCommand(productsSql, connection))
+        await using (var productsReader = await productsCommand.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await productsReader.ReadAsync(cancellationToken))
+            {
+                products.Add((productsReader.GetInt32(0), productsReader.GetString(1), productsReader.GetString(2)));
+            }
+        }
+
+        var settings = new Dictionary<string, string>(StringComparer.Ordinal);
+        const string settingsSql = """
+            SELECT SettingName, SettingValue
+            FROM dbo.System_Settings
+            WHERE SettingName LIKE N'PieceTypeCost.%';
+            """;
+        await using (var settingsCommand = new SqlCommand(settingsSql, connection))
+        await using (var settingsReader = await settingsCommand.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await settingsReader.ReadAsync(cancellationToken))
+            {
+                if (!settingsReader.IsDBNull(0))
+                {
+                    settings[settingsReader.GetString(0)] = settingsReader.IsDBNull(1)
+                        ? "0"
+                        : settingsReader.GetString(1);
+                }
+            }
+        }
+
+        var results = new List<PieceCostSettingDto>(products.Count);
+        foreach (var product in products)
+        {
+            var prefix = $"PieceTypeCost.{Uri.EscapeDataString(product.Name)}.";
+            var sewing = Value(settings, prefix + "Sewing");
+            var consumables = Value(settings, prefix + "ToolsConsumables");
+            var ironing = Value(settings, prefix + "IroningPackaging");
+            var fixedCost = Value(settings, prefix + "FixedOperating");
+            var total = sewing + consumables + ironing + fixedCost;
+            results.Add(new PieceCostSettingDto(
+                product.Id,
+                product.Code,
+                product.Name,
+                sewing,
+                consumables,
+                ironing,
+                fixedCost,
+                null,
+                total,
+                total != 0m));
+        }
+
         return results;
     }
+
+    private static decimal Value(IReadOnlyDictionary<string, string> settings, string key) =>
+        decimal.TryParse(settings.GetValueOrDefault(key), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var value)
+            ? value
+            : 0m;
 
     public async Task<PieceCostSettingDto?> UpsertAsync(int productTypeId, UpsertPieceCostSettingDto setting, CancellationToken cancellationToken)
     {

@@ -6,6 +6,36 @@ namespace LUMAR_ERP_API_V2.Tests;
 public class ConsumptionRulesIntegrityValidatorTests
 {
     [Fact]
+    public void ShouldEvaluateFormulaUsingMeasurementCodes()
+    {
+        var result = ConsumptionFormulaEvaluator.Evaluate(
+            "kot_length + sleeve_length + 10",
+            new Dictionary<string, decimal>
+            {
+                ["kot_length"] = 70.5m,
+                ["sleeve_length"] = 62.25m
+            });
+
+        Assert.True(result.IsSuccessful);
+        Assert.Equal(142.75m, result.Value);
+    }
+
+    [Fact]
+    public void ShouldReportMissingMeasurementAndDivisionByZero()
+    {
+        var missing = ConsumptionFormulaEvaluator.Evaluate(
+            "chest + sleeve",
+            new Dictionary<string, decimal> { ["chest"] = 50m });
+        var zero = ConsumptionFormulaEvaluator.Evaluate(
+            "chest / width",
+            new Dictionary<string, decimal> { ["chest"] = 50m, ["width"] = 0m });
+
+        Assert.Contains("sleeve", missing.MissingMeasurements);
+        Assert.False(zero.IsSuccessful);
+        Assert.Contains("صفر", zero.ErrorMessage);
+    }
+
+    [Fact]
     public void ShouldTreatEqualBoundariesAsConnectedWithoutOverlap()
     {
         var rules = new[]
