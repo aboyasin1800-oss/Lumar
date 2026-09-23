@@ -10,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../core/measurement_snapshot.dart';
+import '../core/document_printing.dart';
 import '../core/ui_palette.dart';
 
 class PrintingScreen extends StatelessWidget {
@@ -1328,8 +1329,18 @@ class _MeasurementCardPdfGenerator {
     _MeasurementHeaderSettings header,
   ) async {
     final pdf = pw.Document();
-    final arabicFont = await _arabicPdfFont();
-    final headerWidget = await _buildHeaderWidget(header, arabicFont);
+    final arabicFont = await DocumentPrintSupport.loadArabicFont();
+    final headerWidget = await DocumentPrintSupport.buildHeader(
+      DocumentPrintHeader(
+        useImage: header.useImage,
+        imageValue: header.imageValue,
+        name: header.name,
+        location: header.location,
+        phone1: header.phone1,
+        phone2: header.phone2,
+      ),
+      arabicFont,
+    );
     final qrValue = piece.qrCode.trim().isNotEmpty ? piece.qrCode : 'LUMAR';
     final barcodeValue =
         piece.barcode.trim().isNotEmpty ? piece.barcode : piece.trackingCode;
@@ -1496,7 +1507,7 @@ class _MeasurementCardPdfGenerator {
 
     pdf.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat(246, 430, marginAll: 6),
+        pageFormat: DocumentPrintSupport.a5Portrait,
         build: (pw.Context context) {
           final rows = <pw.Widget>[];
 
@@ -1672,74 +1683,6 @@ class _MeasurementCardPdfGenerator {
     return pdf.save();
   }
 
-  static Future<pw.Font> _arabicPdfFont() async {
-    final fontData = await rootBundle.load('assets/fonts/Tahoma.ttf');
-    return pw.Font.ttf(fontData);
-  }
-
-  static Future<pw.Widget?> _buildHeaderWidget(
-    _MeasurementHeaderSettings header,
-    pw.Font arabicFont,
-  ) async {
-    if (header.useImage) {
-      final bytes = await _readHeaderImageBytes(header.imageValue);
-      if (bytes != null) {
-        return pw.Container(
-          height: 38,
-          child: pw.Image(pw.MemoryImage(bytes), fit: pw.BoxFit.contain),
-        );
-      }
-    }
-
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Text(
-          header.name,
-          textAlign: pw.TextAlign.right,
-          textDirection: pw.TextDirection.rtl,
-          style: pw.TextStyle(
-              font: arabicFont, fontSize: 12, fontWeight: pw.FontWeight.bold),
-        ),
-        if (header.location.isNotEmpty)
-          pw.Text(
-            header.location,
-            textAlign: pw.TextAlign.right,
-            textDirection: pw.TextDirection.rtl,
-            style: pw.TextStyle(font: arabicFont, fontSize: 7),
-          ),
-        if (header.phone1.isNotEmpty || header.phone2.isNotEmpty)
-          pw.Text(
-            header.phone1.isNotEmpty && header.phone2.isNotEmpty
-                ? '${header.phone1} • ${header.phone2}'
-                : '${header.phone1}${header.phone2}',
-            textAlign: pw.TextAlign.right,
-            textDirection: pw.TextDirection.rtl,
-            style: pw.TextStyle(font: arabicFont, fontSize: 7),
-          ),
-      ],
-    );
-  }
-
-  static Future<Uint8List?> _readHeaderImageBytes(String imageValue) async {
-    final safe = imageValue.trim();
-    if (safe.isEmpty) return null;
-    try {
-      if (safe.startsWith('data:image')) {
-        final data = safe.split(',').last;
-        return base64Decode(data);
-      }
-      if (safe.startsWith('http')) {
-        final response = await http.get(Uri.parse(safe));
-        if (response.statusCode >= 200 && response.statusCode < 300) {
-          return response.bodyBytes;
-        }
-      }
-    } catch (_) {
-      return null;
-    }
-    return null;
-  }
 }
 
 class _InfoRow extends StatelessWidget {

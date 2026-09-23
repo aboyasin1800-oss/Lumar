@@ -206,7 +206,7 @@ class _PrintSettingsContent extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'رأس بطاقة المقاسات',
+                  'رأس المستندات المطبوعة',
                   style: UiPalette.adaptiveTextStyle(
                     context,
                     backgroundColor: UiPalette.surfaceCard,
@@ -219,14 +219,14 @@ class _PrintSettingsContent extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   value: useImage,
                   onChanged: onUseImageChanged,
-                  title: const Text('استخدام شعار الشركة داخل العنوان'),
-                  subtitle: const Text('عند التفعيل يظهر الشعار بدلاً من الاسم فقط.'),
+                  title: const Text('استخدام صورة رأس المستند'),
+                  subtitle: const Text('عند التفعيل تظهر الصورة في المستندات، وإلا يستخدم النظام الرأس النصي.'),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: controllers['MeasurementCardHeaderImage'],
                   decoration: const InputDecoration(
-                    labelText: 'رابط أو مسار الشعار',
+                    labelText: 'رابط أو مسار صورة الرأس',
                     prefixIcon: Icon(Icons.image_outlined),
                     border: OutlineInputBorder(),
                   ),

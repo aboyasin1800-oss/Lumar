@@ -1,14 +1,13 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../core/app_navigation.dart';
+import '../core/document_printing.dart';
 import '../core/ui_palette.dart';
 import '../models/employee_models.dart';
 import '../models/finance_models.dart';
@@ -1368,16 +1367,22 @@ class _ContractTabState extends State<_ContractTab> {
 
   Future<void> _printContract(EmployeeContract contract) async {
     final pdf = pw.Document();
-    final arabicFont = await _loadArabicFont();
+    final arabicFont = await DocumentPrintSupport.loadArabicFont();
+    final header = await DocumentPrintSupport.loadHeaderSettings(
+      _employeeMonthlyApiBaseUrl,
+    );
+    final headerWidget = await DocumentPrintSupport.buildHeader(header, arabicFont);
     final documentText = (contract.text ?? '').trim();
 
     pdf.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.a4,
+        pageFormat: DocumentPrintSupport.a5Portrait,
         build: (pw.Context context) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
+              headerWidget,
+              pw.Divider(),
               pw.Text(
                 'عقد العمل',
                 textAlign: pw.TextAlign.right,
@@ -1435,11 +1440,6 @@ class _ContractTabState extends State<_ContractTab> {
 
     final bytes = await pdf.save();
     await Printing.layoutPdf(onLayout: (_) => bytes);
-  }
-
-  Future<pw.Font> _loadArabicFont() async {
-    final fontData = await rootBundle.load('assets/fonts/Tahoma.ttf');
-    return pw.Font.ttf(fontData);
   }
 
   @override

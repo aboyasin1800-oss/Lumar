@@ -1,12 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+
+import '../core/document_printing.dart';
 
 class ReadySalesScreen extends StatefulWidget {
 	const ReadySalesScreen({super.key});
@@ -284,12 +284,21 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 
 	Future<void> _printInvoice(Map<String, dynamic> result) async {
 		try {
-			final font = pw.Font.ttf(await rootBundle.load('assets/fonts/Tahoma.ttf'));
+			final font = await DocumentPrintSupport.loadArabicFont();
+			final header = await DocumentPrintSupport.loadHeaderSettings(_baseUrl);
+			final headerWidget = await DocumentPrintSupport.buildHeader(header, font);
 			final lines = (result['items'] as List<dynamic>? ?? const []).cast<Map<String, dynamic>>();
+			final totalAmount = (result['totalAmount'] as num?)?.toDouble() ?? 0;
+			final discountAmount = (result['discountAmount'] as num?)?.toDouble() ?? 0;
+			final netAmount = (result['netAmount'] as num?)?.toDouble() ?? 0;
+			final paidAmount = (result['paidAmount'] as num?)?.toDouble() ?? 0;
+			final remainingAmount = (result['remainingAmount'] as num?)?.toDouble() ?? 0;
 			final pdf = pw.Document();
 			pdf.addPage(pw.MultiPage(
-				pageFormat: PdfPageFormat.a4,
+				pageFormat: DocumentPrintSupport.a5Portrait,
 				build: (_) => [
+					headerWidget,
+					pw.Divider(),
 					pw.Directionality(
 						textDirection: pw.TextDirection.rtl,
 						child: pw.Column(
@@ -307,7 +316,13 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 									data: lines.map((line) => [line['itemName'] ?? 'منتج جاهز', line['quantity'] ?? 0, line['unitPrice'] ?? 0, line['totalPrice'] ?? 0]).toList(),
 								),
 								pw.SizedBox(height: 12),
-								pw.Text('الصافي: ${result['netAmount'] ?? 0}', style: pw.TextStyle(font: font, fontWeight: pw.FontWeight.bold)),
+								pw.Text('إجمالي الفاتورة: ${_money(totalAmount)}', style: pw.TextStyle(font: font, fontWeight: pw.FontWeight.bold)),
+								if (discountAmount > 0)
+									pw.Text('الخصم: ${_money(discountAmount)}', style: pw.TextStyle(font: font)),
+								pw.Text('الصافي: ${_money(netAmount)}', style: pw.TextStyle(font: font)),
+								pw.Text('المدفوع: ${_money(paidAmount)}', style: pw.TextStyle(font: font)),
+								pw.Text('المتبقي في ذمة العميل: ${_money(remainingAmount)}', style: pw.TextStyle(font: font, fontWeight: pw.FontWeight.bold)),
+								pw.Text('نوع الدفع: ${DocumentPrintSupport.paymentTypeLabel(result['paymentType'])}', style: pw.TextStyle(font: font)),
 							],
 						),
 					),
