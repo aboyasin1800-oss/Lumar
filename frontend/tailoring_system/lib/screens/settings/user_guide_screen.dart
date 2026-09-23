@@ -83,7 +83,8 @@ class _UserGuideScreenState extends State<UserGuideScreen> {
         'REFERRAL_REWARDS_USER_GUIDE_AR.md'),
     _GuideCategory('أكواد الإحالة', Icons.confirmation_number_outlined, true,
         'REFERRAL_CODES_USER_GUIDE_AR.md'),
-    _GuideCategory('المالية', Icons.account_balance_outlined, false, ''),
+    _GuideCategory('المالية', Icons.account_balance_outlined, true,
+      'FINANCIAL_MANAGEMENT_USER_GUIDE_AR.md'),
     _GuideCategory('التقارير', Icons.bar_chart_outlined, false, ''),
   ];
 

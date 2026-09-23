@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -5,6 +7,7 @@ import '../../core/app_navigation.dart';
 import '../../models/finance_models.dart';
 import '../../providers/finance_provider.dart';
 import '../../repositories/finance_repository.dart';
+import '../customers_screen.dart';
 
 final _money = NumberFormat('#,##0.00');
 final _date = DateFormat('yyyy/MM/dd');
@@ -91,31 +94,63 @@ class _FinanceMetricCard extends StatelessWidget {
 
 class _FinancialReportsTab extends StatelessWidget {
 	const _FinancialReportsTab();
-	@override Widget build(BuildContext context) => ListView(children: [
-		Text('القوائم المالية', style: Theme.of(context).textTheme.titleLarge),
-		const SizedBox(height: 8),
-		const _UnavailableReport('الأرباح والخسائر'),
-		const _UnavailableReport('الميزانية'),
-		const _UnavailableReport('التدفقات النقدية'),
-		const SizedBox(height: 20),
-		Text('التقارير المتقدمة', style: Theme.of(context).textTheme.titleLarge),
-		const SizedBox(height: 8),
-		const _UnavailableReport('الملخص المالي'),
-		const _UnavailableReport('تقييم المخزون'),
-		const _UnavailableReport('تكلفة الإنتاج'),
-		const _UnavailableReport('الذمم الدائنة'),
-		const _UnavailableReport('ملخص الرواتب'),
-		const _UnavailableReport('الملخص التنفيذي'),
+	@override Widget build(BuildContext context) => DefaultTabController(
+		length: 2,
+		child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+			Text('القوائم والتقارير', style: Theme.of(context).textTheme.titleLarge),
+			const SizedBox(height: 8),
+			const TabBar(tabs: [
+				Tab(text: 'القوائم المالية'),
+				Tab(text: 'التقارير المتقدمة'),
+			]),
+			const SizedBox(height: 8),
+			const Expanded(child: TabBarView(children: [
+				_FinancialStatementsTabs(),
+				_AdvancedReportsTab(),
+			])),
+		]),
+	);
+}
+
+class _FinancialStatementsTabs extends StatelessWidget {
+	const _FinancialStatementsTabs();
+	@override Widget build(BuildContext context) => DefaultTabController(
+		length: 3,
+		child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+			const TabBar(tabs: [
+				Tab(text: 'الأرباح والخسائر'),
+				Tab(text: 'الميزانية'),
+				Tab(text: 'التدفقات النقدية'),
+			]),
+			const SizedBox(height: 8),
+			const Expanded(child: TabBarView(children: [
+				_UnavailableReport(title: 'الأرباح والخسائر', message: 'لا توجد خدمة قائمة أرباح وخسائر فعلية في API الحالية.'),
+				_UnavailableReport(title: 'الميزانية', message: 'لا توجد خدمة ميزانية فعلية في API الحالية.'),
+				_UnavailableReport(title: 'التدفقات النقدية', message: 'لا يوجد مصدر تاريخي مكتمل للتدفقات النقدية في API الحالية.'),
+			])),
+		]),
+	);
+}
+
+class _AdvancedReportsTab extends StatelessWidget {
+	const _AdvancedReportsTab();
+	@override Widget build(BuildContext context) => ListView(children: const [
+		_UnavailableReport(title: 'الملخص المالي', message: 'لا توجد خدمة تقرير فعلية لهذا التقرير في النظام الحالي.'),
+		_UnavailableReport(title: 'تقييم المخزون', message: 'لا توجد خدمة تقرير فعلية لهذا التقرير في النظام الحالي.'),
+		_UnavailableReport(title: 'تكلفة الإنتاج', message: 'لا توجد خدمة تقرير فعلية لهذا التقرير في النظام الحالي.'),
+		_UnavailableReport(title: 'الذمم الدائنة', message: 'لا توجد خدمة تقرير فعلية لهذا التقرير في النظام الحالي.'),
+		_UnavailableReport(title: 'ملخص الرواتب', message: 'لا توجد خدمة تقرير فعلية لهذا التقرير في النظام الحالي.'),
 	]);
 }
 
 class _UnavailableReport extends StatelessWidget {
-	const _UnavailableReport(this.title);
+	const _UnavailableReport({required this.title, required this.message});
 	final String title;
+	final String message;
 	@override Widget build(BuildContext context) => ListTile(
 		leading: const Icon(Icons.description_outlined),
 		title: Text(title),
-		subtitle: const Text('لا توجد خدمة تقرير فعلية لهذا التقرير في النظام الحالي.'),
+		subtitle: Text(message),
 		trailing: const Chip(label: Text('غير متاح حالياً')),
 	);
 }
@@ -137,7 +172,7 @@ class _FinancialTransactionsScreenState extends State<FinancialTransactionsScree
 		if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
 		final all = snapshot.data!; final types = all.map((item) => item.transactionType).toSet().toList()..sort();
 		final query = search.text.trim().toLowerCase(); final items = all.where((item) => (type == null || item.transactionType == type) && (from == null || !item.createdAt.isBefore(from!)) && (to == null || item.createdAt.isBefore(to!.add(const Duration(days: 1)))) && (query.isEmpty || item.referenceNumber.toLowerCase().contains(query) || item.transactionType.toLowerCase().contains(query) || (item.description?.toLowerCase().contains(query) ?? false))).toList();
-		return Column(children: [Wrap(spacing: 10, runSpacing: 10, children: [SizedBox(width: 260, child: TextField(controller: search, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'بحث بالمرجع أو الوصف', border: OutlineInputBorder()))), SizedBox(width: 210, child: DropdownButtonFormField<String>(initialValue: type, decoration: const InputDecoration(labelText: 'نوع الحركة', border: OutlineInputBorder()), items: [const DropdownMenuItem(value: null, child: Text('كل الأنواع')), ...types.map((value) => DropdownMenuItem(value: value, child: Text(value)))], onChanged: (value) => setState(() => type = value))), _DateFilter(label: 'من تاريخ', value: from, onChanged: (value) => setState(() => from = value)), _DateFilter(label: 'إلى تاريخ', value: to, onChanged: (value) => setState(() => to = value))]), const SizedBox(height: 12), Expanded(child: _Table(columns: const ['المرجع', 'النوع', 'المبلغ', 'التاريخ', 'الوصف'], rows: items.map((item) => [item.referenceNumber, item.transactionType, _money.format(item.amount), _date.format(item.createdAt), _text(item.description)]).toList(), empty: 'لا توجد حركات مطابقة.'))]);
+		return Column(children: [Wrap(spacing: 10, runSpacing: 10, children: [SizedBox(width: 260, child: TextField(controller: search, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'بحث بالمرجع أو الوصف', border: OutlineInputBorder()))), SizedBox(width: 210, child: DropdownButtonFormField<String>(initialValue: type, decoration: const InputDecoration(labelText: 'نوع الحركة', border: OutlineInputBorder()), items: [const DropdownMenuItem(value: null, child: Text('كل الأنواع')), ...types.map((value) => DropdownMenuItem(value: value, child: Text(value)))], onChanged: (value) => setState(() => type = value))), _DateFilter(label: 'من تاريخ', value: from, onChanged: (value) => setState(() => from = value)), _DateFilter(label: 'إلى تاريخ', value: to, onChanged: (value) => setState(() => to = value))]), const SizedBox(height: 12), Expanded(child: _TransactionList(items: items, empty: 'لا توجد حركات مطابقة.'))]);
 	}));
 }
 
@@ -166,7 +201,7 @@ class _JournalEntriesScreenState extends State<JournalEntriesScreen> {
 				final items = snapshot.data!;
 				return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
 					Row(children: [
-						Tooltip(message: 'إنشاء القيود غير مدعوم لأن خدمة المالية الحالية للقراءة فقط.', child: FilledButton.icon(onPressed: null, icon: const Icon(Icons.add), label: const Text('قيد جديد'))),
+						Tooltip(message: 'إنشاء القيود غير مدعوم لأن خدمة المالية الحالية للقراءة فقط.', child: FilledButton.icon(onPressed: null, icon: const Icon(Icons.add), label: const Text('إنشاء قيد'))),
 						const SizedBox(width: 12),
 						const Expanded(child: Text('اضغط على أي قيد لعرض تفاصيله وأسطره.')),
 					]),
@@ -202,8 +237,8 @@ class _JournalEntryDetailsScreenState extends State<JournalEntryDetailsScreen> {
 	void reload() => setState(() => future = load());
 	@override Widget build(BuildContext context) => _Page(title: 'تفاصيل القيد', onRefresh: reload, child: FutureBuilder(future: future, builder: (context, snapshot) {
 		if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator()); if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
-		final (entry, lines, accounts) = snapshot.data!; final names = {for (final account in accounts) account.id: account.accountName}; final debit = lines.fold<double>(0, (sum, line) => sum + line.debitAmount); final credit = lines.fold<double>(0, (sum, line) => sum + line.creditAmount); final balanced = (debit - credit).abs() < 0.005;
-		return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Card(child: Padding(padding: const EdgeInsets.all(16), child: Wrap(spacing: 28, runSpacing: 8, children: [Text('المرجع: ${entry.referenceNumber}'), Text('تاريخ القيد: ${_date.format(entry.entryDate)}'), Text('إجمالي المدين: ${_money.format(debit)}'), Text('إجمالي الدائن: ${_money.format(credit)}'), Chip(avatar: Icon(balanced ? Icons.check_circle : Icons.warning_amber, color: balanced ? Colors.green : Colors.orange), label: Text(balanced ? 'القيد متوازن' : 'القيد غير متوازن'))]))), const SizedBox(height: 10), Expanded(child: _Table(columns: const ['الحساب', 'المدين', 'الدائن', 'الوصف'], rows: lines.map((line) => [names[line.ledgerAccountId] ?? 'حساب ${line.ledgerAccountId}', _money.format(line.debitAmount), _money.format(line.creditAmount), _text(line.description)]).toList(), empty: 'لا توجد أسطر لهذا القيد.'))]);
+		final (entry, lines, accounts) = snapshot.data!; final names = {for (final account in accounts) account.id: account.accountName}; final debit = lines.fold<double>(0, (sum, line) => sum + line.debitAmount); final credit = lines.fold<double>(0, (sum, line) => sum + line.creditAmount); final balanced = (debit - credit).abs() < 0.005; final statusColor = balanced ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.error;
+		return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Card(child: Padding(padding: const EdgeInsets.all(16), child: Wrap(spacing: 28, runSpacing: 8, children: [Text('المرجع: ${entry.referenceNumber}'), Text('تاريخ القيد: ${_date.format(entry.entryDate)}'), Text('إجمالي المدين: ${_money.format(debit)}'), Text('إجمالي الدائن: ${_money.format(credit)}'), Chip(avatar: Icon(balanced ? Icons.check_circle : Icons.warning_amber, color: statusColor), label: Text(balanced ? 'القيد متوازن' : 'القيد غير متوازن'))]))), const SizedBox(height: 10), Expanded(child: _Table(columns: const ['الحساب', 'المدين', 'الدائن', 'الوصف'], rows: lines.map((line) => [names[line.ledgerAccountId] ?? 'حساب ${line.ledgerAccountId}', _money.format(line.debitAmount), _money.format(line.creditAmount), _text(line.description)]).toList(), empty: 'لا توجد أسطر لهذا القيد.'))]);
 	}));
 }
 
@@ -212,16 +247,257 @@ class LedgerAccountsScreen extends StatelessWidget {
 	final bool embedded;
 	@override Widget build(BuildContext context) => _SimpleListPage<LedgerAccount>(title: 'دليل الحسابات', embedded: embedded, load: FinanceRepository().getLedgerAccounts, columns: const ['رمز الحساب', 'اسم الحساب', 'نوع الحساب', 'الحالة'], row: (item) => [item.accountCode, item.accountName, item.accountType, item.isActive ? 'نشط' : 'غير نشط'], toolbar: const _LedgerActions());
 }
-class CashAccountsScreen extends StatelessWidget {
+class CashAccountsScreen extends StatefulWidget {
 	const CashAccountsScreen({this.embedded = false, super.key});
 	final bool embedded;
-	@override Widget build(BuildContext context) => _SimpleListPage<CashAccount>(title: 'الحسابات النقدية', embedded: embedded, load: FinanceRepository().getCashAccounts, columns: const ['اسم الحساب', 'الرصيد الحالي', 'الحالة'], row: (item) => [item.accountName, _money.format(item.currentBalance), item.isActive ? 'نشط' : 'غير نشط']);
+	@override State<CashAccountsScreen> createState() => _CashAccountsScreenState();
 }
 
-class CustomerLedgerScreen extends StatelessWidget {
+class _CashAccountsScreenState extends State<CashAccountsScreen> {
+	late Future<(List<CashAccount>, List<FinancialTransaction>)> future;
+	final repository = FinanceRepository();
+	@override void initState() { super.initState(); future = load(); }
+	Future<(List<CashAccount>, List<FinancialTransaction>)> load() async {
+		final result = await Future.wait([repository.getCashAccounts(), repository.getTransactions()]);
+		return (result[0] as List<CashAccount>, result[1] as List<FinancialTransaction>);
+	}
+	void reload() => setState(() => future = load());
+	@override Widget build(BuildContext context) => _Page(title: 'النقدية', onRefresh: reload, embedded: widget.embedded, child: FutureBuilder<(List<CashAccount>, List<FinancialTransaction>)>(future: future, builder: (context, snapshot) {
+		if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+		if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
+		final (accounts, transactions) = snapshot.data!;
+		return DefaultTabController(length: 3, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+			const TabBar(tabs: [Tab(text: 'الصندوق'), Tab(text: 'الحسابات النقدية'), Tab(text: 'الحركات والتسويات')]),
+			const SizedBox(height: 8),
+			Expanded(child: TabBarView(children: [
+				_CashSummary(accounts: accounts),
+				_CashAccountsList(accounts: accounts),
+				_TransactionList(items: transactions, empty: 'لا توجد حركات نقدية متاحة.'),
+			])),
+		]));
+	}));
+}
+
+class _CashSummary extends StatelessWidget {
+	const _CashSummary({required this.accounts});
+	final List<CashAccount> accounts;
+	@override Widget build(BuildContext context) {
+		final total = accounts.fold<double>(0, (sum, account) => sum + account.currentBalance);
+		return ListView(padding: const EdgeInsets.only(bottom: 12), children: [
+			_SectionHeading(title: 'الصندوق', description: 'ملخص الأرصدة الحالية كما يوردها النظام.'),
+			_CashValueRow(label: 'إجمالي الأرصدة النقدية', value: _money.format(total)),
+			_CashValueRow(label: 'الحسابات النشطة', value: '${accounts.where((account) => account.isActive).length}'),
+			_CashValueRow(label: 'إجمالي الحسابات', value: '${accounts.length}'),
+		]);
+	}
+}
+
+class _CashAccountsList extends StatelessWidget {
+	const _CashAccountsList({required this.accounts});
+	final List<CashAccount> accounts;
+	@override Widget build(BuildContext context) => ListView(padding: const EdgeInsets.only(bottom: 12), children: [
+		_SectionHeading(title: 'الحسابات النقدية', description: 'الأرصدة الحالية والحالة التشغيلية للحسابات المسجلة.'),
+		...accounts.map((account) => _CashListRow(title: account.accountName, subtitle: account.isActive ? 'نشط' : 'غير نشط', value: _money.format(account.currentBalance))),
+	]);
+}
+
+class _SectionHeading extends StatelessWidget {
+	const _SectionHeading({required this.title, required this.description});
+	final String title;
+	final String description;
+	@override Widget build(BuildContext context) => Padding(
+		padding: const EdgeInsetsDirectional.only(bottom: 10),
+		child: Column(
+			crossAxisAlignment: CrossAxisAlignment.stretch,
+			children: [
+				Text(title, style: Theme.of(context).textTheme.titleLarge),
+				const SizedBox(height: 4),
+				Text(description, style: Theme.of(context).textTheme.bodySmall),
+			],
+		),
+	);
+}
+
+class _CashValueRow extends StatelessWidget {
+	const _CashValueRow({required this.label, required this.value});
+	final String label;
+	final String value;
+	@override Widget build(BuildContext context) => _CashListRow(title: label, value: value);
+}
+
+class _CashListRow extends StatelessWidget {
+	const _CashListRow({required this.title, required this.value, this.subtitle});
+	final String title;
+	final String value;
+	final String? subtitle;
+	@override Widget build(BuildContext context) => Card(child: ListTile(title: Text(title), subtitle: subtitle == null ? null : Text(subtitle!), trailing: Text(value, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold))));
+}
+
+class _TransactionList extends StatelessWidget {
+	const _TransactionList({required this.items, required this.empty});
+	final List<FinancialTransaction> items;
+	final String empty;
+	@override Widget build(BuildContext context) {
+		if (items.isEmpty) return Center(child: Text(empty));
+		return ListView.separated(
+			padding: const EdgeInsets.only(bottom: 12),
+			itemCount: items.length,
+			separatorBuilder: (_, __) => const SizedBox(height: 4),
+			itemBuilder: (context, index) {
+				final item = items[index];
+				return Card(child: ListTile(
+					leading: const Icon(Icons.swap_horiz_outlined),
+					title: Text(item.referenceNumber, maxLines: 1, overflow: TextOverflow.ellipsis),
+					subtitle: Text('${item.transactionType} • ${_date.format(item.createdAt)}${item.description == null ? '' : ' • ${item.description}'}', maxLines: 2, overflow: TextOverflow.ellipsis),
+					trailing: Text(_money.format(item.amount), style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold), textAlign: TextAlign.end),
+				));
+			},
+		);
+	}
+}
+
+class CustomerLedgerScreen extends StatefulWidget {
 	const CustomerLedgerScreen({this.embedded = false, super.key});
 	final bool embedded;
-	@override Widget build(BuildContext context) => _LedgerLookup<CustomerLedgerEntry>(title: 'كشف حساب العميل', partyLabel: 'رقم العميل', embedded: embedded, load: FinanceRepository().getCustomerLedger, row: (item) => [item.referenceNumber, _money.format(item.debitAmount), _money.format(item.creditAmount), _money.format(item.balanceAfterTransaction), _date.format(item.createdAt)]);
+	@override State<CustomerLedgerScreen> createState() => _CustomerLedgerScreenState();
+}
+
+class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
+	final customerApi = CustomerApi();
+	final repository = FinanceRepository();
+	final search = TextEditingController();
+	final filter = TextEditingController();
+	Timer? searchTimer;
+	List<Map<String, dynamic>> suggestions = const [];
+	Map<String, dynamic>? selectedCustomer;
+	Future<List<CustomerLedgerEntry>>? future;
+	Object? searchError;
+	bool searching = false;
+	int searchVersion = 0;
+
+	@override void dispose() {
+		searchTimer?.cancel();
+		customerApi.cancelSearch();
+		search.dispose();
+		filter.dispose();
+		super.dispose();
+	}
+
+	void onSearchChanged(String value) {
+		searchTimer?.cancel();
+		final version = ++searchVersion;
+		final term = value.trim();
+		setState(() {
+			suggestions = const [];
+			searchError = null;
+			searching = term.length >= 2;
+			if (term.isEmpty) {
+				selectedCustomer = null;
+				future = null;
+			}
+		});
+		if (term.length < 2) return;
+		searchTimer = Timer(const Duration(milliseconds: 250), () async {
+			try {
+				final results = await customerApi.search(term);
+				if (!mounted || version != searchVersion) return;
+				setState(() {
+					suggestions = results.take(8).toList();
+					searching = false;
+				});
+			} catch (error) {
+				if (!mounted || version != searchVersion) return;
+				setState(() {
+					searchError = error;
+					searching = false;
+				});
+			}
+		});
+	}
+
+	void selectCustomer(Map<String, dynamic> customer) {
+		searchTimer?.cancel();
+		searchVersion++;
+		final customerId = int.tryParse('${customer['customerId']}');
+		if (customerId == null || customerId <= 0) return;
+		final name = customer['customerName']?.toString().trim();
+		final code = customer['customerCode']?.toString().trim();
+		search.text = (name == null || name.isEmpty) ? (code ?? '') : name;
+		setState(() {
+			selectedCustomer = customer;
+			suggestions = const [];
+			searchError = null;
+			searching = false;
+			future = repository.getCustomerLedger(customerId);
+		});
+	}
+
+	void clearSelection() {
+		searchTimer?.cancel();
+		searchVersion++;
+		search.clear();
+		setState(() {
+			selectedCustomer = null;
+			suggestions = const [];
+			future = null;
+			searchError = null;
+		});
+	}
+
+	void reload() {
+		final customerId = int.tryParse('${selectedCustomer?['customerId']}');
+		if (customerId != null && customerId > 0) {
+			setState(() => future = repository.getCustomerLedger(customerId));
+		}
+	}
+
+	@override Widget build(BuildContext context) => _Page(title: 'أستاذ العميل', onRefresh: reload, embedded: widget.embedded, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+		Text('اختيار العميل', style: Theme.of(context).textTheme.titleLarge),
+		const SizedBox(height: 8),
+		TextField(controller: search, onChanged: onSearchChanged, onSubmitted: onSearchChanged, textInputAction: TextInputAction.search, decoration: InputDecoration(labelText: 'ابحث بكود العميل أو الاسم أو رقم الهاتف', prefixIcon: const Icon(Icons.person_search_outlined), suffixIcon: searching ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))) : search.text.isEmpty ? null : IconButton(tooltip: 'مسح اختيار العميل', onPressed: clearSelection, icon: const Icon(Icons.clear)))) ,
+		if (searchError != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('تعذر البحث عن العميل. حاول مرة أخرى.', style: TextStyle(color: Theme.of(context).colorScheme.error))),
+		if (suggestions.isNotEmpty) ...[
+			const SizedBox(height: 6),
+			_CustomerSuggestionList(items: suggestions, onSelected: selectCustomer),
+		],
+		if (selectedCustomer != null) ...[
+			const SizedBox(height: 12),
+			_SelectedCustomerPanel(customer: selectedCustomer!, onClear: clearSelection),
+		],
+		const SizedBox(height: 12),
+		Expanded(child: future == null ? const Center(child: Text('ابحث عن العميل ثم اختره لعرض الأستاذ.')) : FutureBuilder<List<CustomerLedgerEntry>>(future: future, builder: (context, snapshot) {
+			if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+			if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
+			final query = filter.text.trim().toLowerCase();
+			final rows = (snapshot.data ?? const <CustomerLedgerEntry>[]).where((item) => query.isEmpty || item.referenceNumber.toLowerCase().contains(query) || _money.format(item.balanceAfterTransaction).contains(query)).toList();
+			return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [TextField(controller: filter, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_alt_outlined), labelText: 'تصفية الأستاذ بالمرجع أو الرصيد')), const SizedBox(height: 8), Expanded(child: _Table(columns: const ['المرجع', 'مدين', 'دائن', 'الرصيد', 'التاريخ'], rows: rows.map((item) => [item.referenceNumber, _money.format(item.debitAmount), _money.format(item.creditAmount), _money.format(item.balanceAfterTransaction), _date.format(item.createdAt)]).toList(), empty: 'لا توجد حركات مطابقة لهذا العميل.'))]);
+		}) ),
+	]));
+}
+
+class _CustomerSuggestionList extends StatelessWidget {
+	const _CustomerSuggestionList({required this.items, required this.onSelected});
+	final List<Map<String, dynamic>> items;
+	final ValueChanged<Map<String, dynamic>> onSelected;
+	@override Widget build(BuildContext context) => Card(child: ConstrainedBox(constraints: const BoxConstraints(maxHeight: 240), child: ListView.separated(shrinkWrap: true, itemCount: items.length, separatorBuilder: (_, __) => const Divider(height: 1), itemBuilder: (context, index) {
+		final customer = items[index];
+		final code = customer['customerCode']?.toString() ?? '-';
+		final name = customer['customerName']?.toString() ?? 'عميل';
+		final phone = customer['phoneNumber']?.toString() ?? '';
+		return ListTile(dense: true, leading: const Icon(Icons.person_outline), title: Text('$code  $name'), subtitle: phone.isEmpty ? null : Text(phone), onTap: () => onSelected(customer));
+	})));
+}
+
+class _SelectedCustomerPanel extends StatelessWidget {
+	const _SelectedCustomerPanel({required this.customer, required this.onClear});
+	final Map<String, dynamic> customer;
+	final VoidCallback onClear;
+	@override Widget build(BuildContext context) {
+		final code = customer['customerCode']?.toString() ?? '-';
+		final name = customer['customerName']?.toString() ?? 'عميل';
+		final phone = customer['phoneNumber']?.toString() ?? '-';
+		return Card(child: ListTile(leading: const Icon(Icons.account_circle_outlined), title: Text(name), subtitle: Text('الكود: $code  |  الهاتف: $phone'), trailing: IconButton(tooltip: 'مسح الاختيار', onPressed: onClear, icon: const Icon(Icons.clear))));
+	}
 }
 class SupplierLedgerScreen extends StatelessWidget {
 	const SupplierLedgerScreen({super.key});
@@ -261,21 +537,7 @@ class FinancialReconciliationScreen extends StatelessWidget {
 
 class FinancialStatementsScreen extends StatelessWidget {
 	const FinancialStatementsScreen({super.key});
-	@override Widget build(BuildContext context) => _Page(title: 'القوائم المالية', child: ListView(children: const [
-		_StatusCard('الإيرادات', 'تغطية جزئية', 'Orders وInvoice_Header وFinancialTransactions مصادر متداخلة، ولا يوجد مصدر واحد مكتمل.'),
-		_StatusCard('تكلفة المبيعات', 'تغطية جزئية', 'FinancialTransactions يسجل تكاليف محددة، ولا يغطي دفتر الأستاذ كامل التاريخ.'),
-		_StatusCard('المصروفات', 'تغطية جزئية', 'OperatingExpense موجود ضمن الحركات المالية، لكن التغطية المحاسبية التاريخية غير مكتملة.'),
-		_StatusCard('النقدية', 'رصيد حالي فقط', 'CashAccounts يعرض الرصيد المخزن حاليًا دون سجل كامل قابل لإعادة بناء التدفق.'),
-		_StatusCard('الذمم المدينة', 'تغطية جزئية', 'CustomerLedgerEntries يحفظ الرصيد التاريخي بدلالاته الأصلية ولا يجوز إعادة احتسابه.'),
-		_StatusCard('الذمم الدائنة', 'تغطية جزئية', 'SupplierLedgerEntries وSupplierInvoices لا يمثلان تاريخًا كاملاً موحدًا.'),
-		_StatusCard('المخزون', 'رصيد تشغيلي', 'InventoryItems وReadyMadeInventoryProducts يوفران كميات وتكاليف متفاوتة الاكتمال.'),
-		_StatusCard('الالتزامات الأخرى', 'غير مكتملة', 'تصنيف الحسابات الحالي لا يثبت تغطية جميع الالتزامات التاريخية.'),
-		Divider(height: 28),
-		_StatusCard('ميزان المراجعة', 'غير متاح بدقة', 'القيود متوازنة، لكنها لا تغطي جميع المراجع المالية.'),
-		_StatusCard('الأرباح والخسائر', 'البيانات غير مكتملة', 'عرض رقم نهائي سيجمع مصادر متداخلة أو يهمل حركات تاريخية.'),
-		_StatusCard('الميزانية العمومية', 'البيانات غير مكتملة', 'تصنيف AccountType غير موحد وتغطية القيود جزئية.'),
-		_StatusCard('التدفقات النقدية', 'البيانات غير مكتملة', 'لا يوجد مصدر تاريخي واحد مكتمل للحركات النقدية.'),
-	]));
+	@override Widget build(BuildContext context) => _Page(title: 'القوائم المالية', child: const _FinancialStatementsTabs());
 }
 
 class _StatusCard extends StatelessWidget {
