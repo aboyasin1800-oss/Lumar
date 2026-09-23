@@ -1763,7 +1763,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     }
     if (_selectedTab == 2) {
       return const Padding(
-          padding: EdgeInsets.all(8), child: ReadyMadeProductionScreen());
+          padding: EdgeInsets.all(8),
+          child: ReadyMadeOrderCreateScreen(embedded: true));
     }
     final theme = Theme.of(context);
     return SingleChildScrollView(

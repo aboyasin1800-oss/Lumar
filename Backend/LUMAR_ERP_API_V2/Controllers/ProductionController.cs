@@ -22,6 +22,27 @@ public sealed class ProductionController(IProductionService service, IProduction
         return card is null ? NotFound() : Ok(card);
     }
 
+    [HttpGet("readymade-pieces")]
+    public Task<IReadOnlyList<PieceDto>> GetReadyMadePieces(CancellationToken ct) => service.GetReadyMadePiecesAsync(ct);
+
+    [HttpGet("readymade-pieces/{id:int}/work-card")]
+    public async Task<ActionResult<WorkCardDto>> GetReadyMadeWorkCard(int id, CancellationToken ct)
+    {
+        if (id <= 0) return BadRequest("Ready-made piece id must be positive.");
+        var card = await service.GetReadyMadeWorkCardAsync(id, ct);
+        return card is null ? NotFound() : Ok(card);
+    }
+
+    [HttpGet("readymade-pieces/route")]
+    public async Task<ActionResult<ProductionTrackingRouteDto>> GetReadyMadePieceRoute([FromQuery] int? pieceId, [FromQuery] string? trackingCode, CancellationToken ct)
+    {
+        if (pieceId is null && string.IsNullOrWhiteSpace(trackingCode)) return BadRequest("Either pieceId or trackingCode is required.");
+        var route = pieceId is > 0
+            ? await service.GetReadyMadePieceRouteAsync(pieceId.Value, ct)
+            : await service.GetReadyMadePieceRouteByTrackingCodeAsync(trackingCode!, ct);
+        return route is null ? NotFound() : Ok(route);
+    }
+
     [HttpGet("pieces/{id:int}/tracking")]
     public async Task<ActionResult<IReadOnlyList<TrackingEventDto>>> GetTracking(int id, CancellationToken ct)
     {
@@ -136,6 +157,19 @@ public sealed class ProductionController(IProductionService service, IProduction
             return BadRequest("Piece type could not be resolved for the supplied piece information.");
 
         var result = await service.AdvancePieceStageAsync(resolvedRequest, ct);
+        if (result is null) return NotFound();
+        if (!result.Updated) return BadRequest(result);
+        return Ok(result);
+    }
+
+    [HttpPost("readymade-pieces/advance")]
+    public async Task<ActionResult<ProductionTrackingAdvanceResultDto>> AdvanceReadyMadePiece([FromBody] ProductionTrackingAdvanceRequestDto request, CancellationToken ct)
+    {
+        if (request is null) return BadRequest("Request body is required.");
+        if (request.PieceId is null && string.IsNullOrWhiteSpace(request.TrackingCode)) return BadRequest("Either PieceId or TrackingCode is required.");
+        if (string.IsNullOrWhiteSpace(request.RequestedStage)) return BadRequest("Requested stage is required.");
+        if (request.ProductTypeId <= 0) return BadRequest("ProductTypeId is required.");
+        var result = await service.AdvancePieceStageAsync(request with { IsReadyMade = true }, ct);
         if (result is null) return NotFound();
         if (!result.Updated) return BadRequest(result);
         return Ok(result);

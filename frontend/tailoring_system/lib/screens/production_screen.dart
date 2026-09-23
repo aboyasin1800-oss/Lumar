@@ -275,6 +275,7 @@ class _ProductionScreenState extends State<ProductionScreen>
               pieces: [],
               orders: [],
               orderItems: [],
+              readyPieces: [],
               readyOrders: [],
               readyInventory: [],
               wages: [],
@@ -360,6 +361,7 @@ class _ProductionScreenState extends State<ProductionScreen>
                   ReadyMadeTab(
                     orders: activeData.readyOrders,
                     inventory: activeData.readyInventory,
+                    readyPieces: activeData.readyPieces,
                     api: _api,
                   ),
                 ],
@@ -3248,6 +3250,7 @@ class _ProductionScanningTabState extends State<ProductionScanningTab> {
         requestedStage: nextStage,
         scannerCode: scannerCode,
         employeeCode: employeeCode,
+        isReadyMade: routeData?['isReadyMade'] == true,
       );
 
       setState(() => lastResult = result);
@@ -3474,10 +3477,12 @@ class ReadyMadeTab extends StatefulWidget {
   const ReadyMadeTab(
       {required this.orders,
       required this.inventory,
+      required this.readyPieces,
       required this.api,
       super.key});
   final List<Map<String, dynamic>> orders;
   final List<Map<String, dynamic>> inventory;
+  final List<Map<String, dynamic>> readyPieces;
   final ProductionApi api;
 
   @override
@@ -3574,6 +3579,7 @@ class _ReadyMadeTabState extends State<ReadyMadeTab> {
                                             (_) => ReadyMadeDetailsScreen(
                                               item: item,
                                               inventory: widget.inventory,
+                                              readyPieces: widget.readyPieces,
                                               api: widget.api,
                                             ),
                                           ),
@@ -3597,17 +3603,25 @@ class ReadyMadeDetailsScreen extends StatelessWidget {
   const ReadyMadeDetailsScreen(
       {required this.item,
       required this.inventory,
+      required this.readyPieces,
       required this.api,
       super.key});
   final Map<String, dynamic> item;
   final List<Map<String, dynamic>> inventory;
+  final List<Map<String, dynamic>> readyPieces;
   final ProductionApi api;
   @override
-  Widget build(BuildContext context) => Scaffold(
+    Widget build(BuildContext context) {
+    final itemId = item['readyMadeProductionOrderItemId'] as int;
+    final knownPieces = readyPieces
+      .where((piece) => piece['orderItemId'] == itemId)
+      .toList();
+    return Scaffold(
       appBar: AppBar(title: Text('${item['pieceType']}')),
       body: FutureBuilder<List<Map<String, dynamic>>>(
-          future:
-              api.readyPieces(item['readyMadeProductionOrderItemId'] as int),
+        future: knownPieces.isNotEmpty
+          ? Future<List<Map<String, dynamic>>>.value(knownPieces)
+          : api.readyPieces(itemId),
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done)
               return const Center(child: CircularProgressIndicator());
@@ -3629,8 +3643,13 @@ class ReadyMadeDetailsScreen extends StatelessWidget {
                       break;
                     }
                   }
-                  return Card(
-                      child: Padding(
+                    return InkWell(
+                      onTap: () => AppNavigation.push(
+                        context,
+                        (_) => ReadyMadePieceDetailsScreen(
+                          piece: piece, api: api)),
+                      child: Card(
+                        child: Padding(
                           padding: const EdgeInsets.all(14),
                           child: Wrap(spacing: 18, runSpacing: 10, children: [
                             DetailField('رقم القطعة', piece['pieceNumber']),
@@ -3643,9 +3662,144 @@ class ReadyMadeDetailsScreen extends StatelessWidget {
                                 stock?['suggestedSellingPrice']),
                             DetailField('حالة المخزون',
                                 stock?['status'] ?? 'لم تدخل المخزون')
-                          ])));
+                          ]))));
                 });
-          }));
+            }));
+          }
+}
+
+class ReadyMadePieceDetailsScreen extends StatefulWidget {
+  const ReadyMadePieceDetailsScreen({required this.piece, required this.api, super.key});
+
+  final Map<String, dynamic> piece;
+  final ProductionApi api;
+
+  @override
+  State<ReadyMadePieceDetailsScreen> createState() => _ReadyMadePieceDetailsScreenState();
+}
+
+class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScreen> {
+  late Future<_ReadyMadePieceDetails> _future;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<_ReadyMadePieceDetails> _load() async {
+    final pieceId = widget.piece['readyMadeProductionOrderPieceInstanceId'] as int;
+    final results = await Future.wait([
+      widget.api.getReadyMadeWorkCard(pieceId),
+      widget.api.get('/production/readymade-pieces/route?pieceId=$pieceId'),
+      widget.api.getReadyMadePieceTracking(pieceId),
+    ]);
+    return _ReadyMadePieceDetails(
+      card: results[0] as Map<String, dynamic>,
+      route: results[1] as Map<String, dynamic>,
+      history: results[2] as List<Map<String, dynamic>>,
+    );
+  }
+
+  Future<void> _advance(String stage, _ReadyMadePieceDetails data) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.api.advancePiece(
+        trackingCode: (data.card['trackingCode'] ?? '').toString(),
+        pieceType: (data.route['pieceType'] ?? data.card['pieceType'] ?? '').toString(),
+        productTypeId: (data.route['productTypeId'] as num).toInt(),
+        requestedStage: stage,
+        scannerCode: '',
+        employeeCode: '',
+        operationReference: 'ExecutionSource=ManualTest;Operation=ReadyMadeProductionAdvance',
+        isReadyMade: true,
+      );
+      if (mounted) setState(() => _future = _load());
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error is ProductionApiException ? (error.message ?? 'تعذر تنفيذ المرحلة.') : 'تعذر تنفيذ المرحلة.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+          title: Text('${widget.piece['trackingCode'] ?? 'قطعة إنتاج جاهز'}'),
+          actions: [
+            IconButton(
+              tooltip: 'بطاقة التشغيل',
+              icon: const Icon(Icons.badge_outlined),
+              onPressed: () => AppNavigation.push(
+                context,
+                (_) => WorkCardPreviewScreen(
+                  pieceId: widget.piece['readyMadeProductionOrderPieceInstanceId'] as int,
+                  readyMade: true,
+                ),
+              ),
+            ),
+          ],
+        ),
+        body: FutureBuilder<_ReadyMadePieceDetails>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return ProductionError(onRetry: () => setState(() => _future = _load()));
+            }
+            final data = snapshot.data!;
+            final currentStage = (data.card['pieceStatus'] ?? 'New').toString();
+            final stages = _buildManualStages(data.route);
+            final nextStage = _resolveManualNextStage(currentStage, data.route);
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Wrap(spacing: 12, runSpacing: 12, children: [
+                  DetailField('كود التتبع', data.card['trackingCode']),
+                  DetailField('نوع القطعة', data.card['pieceType']),
+                  DetailField('الحالة', _productionDisplayLabel(currentStage)),
+                  DetailField('رقم أمر الإنتاج', data.card['orderNumber']),
+                ]),
+                const SizedBox(height: 16),
+                Text('التتبع الرسمي', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                ManualTrackingStepper(
+                  stages: stages,
+                  currentStage: currentStage,
+                  nextStage: nextStage,
+                  isBusy: _busy,
+                  onAdvance: (stage) => _advance(stage, data),
+                ),
+                const SizedBox(height: 16),
+                Text('القياسات', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                MeasurementsView(values: parseMeasurements(data.card['measurementSnapshot'] as String?)),
+                const SizedBox(height: 16),
+                Text('تاريخ التتبع', style: Theme.of(context).textTheme.titleLarge),
+                ...data.history.map((event) => ListTile(
+                      title: Text('${event['stage']} - ${event['status']}'),
+                      subtitle: Text(formatDateTime(event['eventTime'])),
+                    )),
+              ],
+            );
+          },
+        ),
+      );
+}
+
+class _ReadyMadePieceDetails {
+  const _ReadyMadePieceDetails({required this.card, required this.route, required this.history});
+  final Map<String, dynamic> card;
+  final Map<String, dynamic> route;
+  final List<Map<String, dynamic>> history;
 }
 
 class PieceWagesTab extends StatelessWidget {
@@ -3860,6 +4014,7 @@ class ProductionData {
     required this.pieces,
     this.orders = const [],
     this.orderItems = const [],
+    this.readyPieces = const [],
     required this.readyOrders,
     required this.readyInventory,
     required this.wages,
@@ -3873,6 +4028,7 @@ class ProductionData {
   final List<Map<String, dynamic>> pieces;
   final List<Map<String, dynamic>> orders;
   final List<Map<String, dynamic>> orderItems;
+  final List<Map<String, dynamic>> readyPieces;
   final List<Map<String, dynamic>> readyOrders;
   final List<Map<String, dynamic>> readyInventory;
   final List<Map<String, dynamic>> wages;
@@ -3925,6 +4081,7 @@ class ProductionApi {
     final values = await _withTimeout(Future.wait([
       get('/production/dashboard'),
       list('/production/pieces'),
+      list('/production/readymade-pieces'),
       get('/settings/production-routes'),
       list('/production/readymade-orders'),
       list('/inventory/readymade'),
@@ -3938,13 +4095,14 @@ class ProductionApi {
       pieces: values[1] as List<Map<String, dynamic>>,
       orders: orders,
       orderItems: orderItems,
-      readyOrders: values[3] as List<Map<String, dynamic>>,
-      readyInventory: values[4] as List<Map<String, dynamic>>,
-      wages: values[5] as List<Map<String, dynamic>>,
-      scanners: values[6] as List<Map<String, dynamic>>,
-      scans: values[7] as List<Map<String, dynamic>>,
-      deliveries: values[8] as List<Map<String, dynamic>>,
-      routesByProductTypeId: _parseProductionRoutes(values[2]),
+      readyOrders: values[4] as List<Map<String, dynamic>>,
+      readyInventory: values[5] as List<Map<String, dynamic>>,
+      wages: values[6] as List<Map<String, dynamic>>,
+      scanners: values[7] as List<Map<String, dynamic>>,
+      scans: values[8] as List<Map<String, dynamic>>,
+      deliveries: values[9] as List<Map<String, dynamic>>,
+      readyPieces: values[2] as List<Map<String, dynamic>>,
+      routesByProductTypeId: _parseProductionRoutes(values[3]),
     );
   }
 
@@ -3973,11 +4131,25 @@ class ProductionApi {
       list('/production/readymade-order-items/$id/pieces');
 
   Future<Map<String, dynamic>> getPieceRouteByTrackingCode(
-      String trackingCode) async {
+      String trackingCode, {bool readyMade = false}) async {
     final encoded = Uri.encodeComponent(trackingCode.trim());
-    return (await get('/production/pieces/route?trackingCode=$encoded'))
-        as Map<String, dynamic>;
+    if (readyMade) {
+      return (await get('/production/readymade-pieces/route?trackingCode=$encoded')) as Map<String, dynamic>;
+    }
+    try {
+      return (await get('/production/pieces/route?trackingCode=$encoded')) as Map<String, dynamic>;
+    } on ProductionApiException catch (error) {
+      if (error.statusCode != 404) rethrow;
+      return (await get('/production/readymade-pieces/route?trackingCode=$encoded')) as Map<String, dynamic>;
+    }
   }
+
+    Future<Map<String, dynamic>> getReadyMadeWorkCard(int pieceId) async =>
+      (await get('/production/readymade-pieces/$pieceId/work-card'))
+        as Map<String, dynamic>;
+
+    Future<List<Map<String, dynamic>>> getReadyMadePieceTracking(int pieceId) =>
+      list('/production/readymade-pieces/$pieceId/tracking');
 
   Future<Map<String, dynamic>> advancePiece({
     required String trackingCode,
@@ -3987,8 +4159,11 @@ class ProductionApi {
     required String scannerCode,
     required String employeeCode,
     String? operationReference,
+    bool isReadyMade = false,
   }) async {
-    final uri = Uri.parse('$baseUrl/production/pieces/advance');
+    final uri = Uri.parse(isReadyMade
+        ? '$baseUrl/production/readymade-pieces/advance'
+        : '$baseUrl/production/pieces/advance');
     final payload = {
       'trackingCode': trackingCode,
       'pieceType': pieceType,
@@ -3998,6 +4173,7 @@ class ProductionApi {
       'employeeCode': employeeCode,
       'operationReference':
           operationReference ?? 'Flutter production manual tracking',
+        'isReadyMade': isReadyMade,
     };
 
     final response = await http.post(

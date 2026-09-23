@@ -8,8 +8,11 @@ public sealed class ProductionService(
     IOrderLoyaltyIntegrationService orderLoyaltyIntegrationService) : IProductionService
 {
     public Task<IReadOnlyList<PieceDto>> GetPiecesAsync(CancellationToken ct) => repository.GetPiecesAsync(ct);
+    public Task<IReadOnlyList<PieceDto>> GetReadyMadePiecesAsync(CancellationToken ct) => repository.GetReadyMadePiecesAsync(ct);
     public Task<PieceDto?> GetPieceByIdAsync(int id, CancellationToken ct) => repository.GetPieceByIdAsync(id, ct);
+    public Task<PieceDto?> GetReadyMadePieceByIdAsync(int id, CancellationToken ct) => repository.GetReadyMadePieceByIdAsync(id, ct);
     public Task<WorkCardDto?> GetWorkCardAsync(int id, CancellationToken ct) => repository.GetWorkCardAsync(id, ct);
+    public Task<WorkCardDto?> GetReadyMadeWorkCardAsync(int id, CancellationToken ct) => repository.GetReadyMadeWorkCardAsync(id, ct);
     public Task<IReadOnlyList<TrackingEventDto>> GetPieceTrackingAsync(int id, CancellationToken ct) => repository.GetPieceTrackingAsync(id, ct);
     public Task<IReadOnlyList<ProductionStageDto>> GetStagesAsync(CancellationToken ct) => repository.GetStagesAsync(ct);
     public Task<ProductionDashboardDto> GetDashboardAsync(CancellationToken ct) => repository.GetDashboardAsync(ct);
@@ -23,10 +26,12 @@ public sealed class ProductionService(
     public Task<IReadOnlyList<ProductionDeliveryDto>> GetDeliveriesAsync(CancellationToken ct) => repository.GetDeliveriesAsync(ct);
     public Task<ProductionTrackingRouteDto?> GetPieceRouteAsync(int pieceId, CancellationToken ct) => repository.GetPieceRouteAsync(pieceId, ct);
     public Task<ProductionTrackingRouteDto?> GetPieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken ct) => repository.GetPieceRouteByTrackingCodeAsync(trackingCode, ct);
+    public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteAsync(int pieceId, CancellationToken ct) => repository.GetReadyMadePieceRouteAsync(pieceId, ct);
+    public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken ct) => repository.GetReadyMadePieceRouteByTrackingCodeAsync(trackingCode, ct);
     public async Task<ProductionTrackingAdvanceResultDto?> AdvancePieceStageAsync(ProductionTrackingAdvanceRequestDto request, CancellationToken ct)
     {
         var result = await repository.AdvancePieceStageAsync(request, ct);
-        if (result?.Updated == true && result.PieceId is > 0)
+        if (result?.Updated == true && !result.IsReadyMade && result.PieceId is > 0)
         {
             var piece = await repository.GetPieceByIdAsync(result.PieceId.Value, ct);
             if (piece is not null)

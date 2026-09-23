@@ -57,6 +57,9 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
     if (ordersResponse.statusCode < 200 || ordersResponse.statusCode >= 300) {
       throw Exception('تعذر تحميل الطلبات.');
     }
+    final readyOrdersResponse = await http.get(
+      Uri.parse('$_baseUrl/production/readymade-orders'),
+    );
 
     final customersResponse = await http.get(Uri.parse('$_baseUrl/customers'));
     final Map<int, _CustomerSnapshot> customers = {};
@@ -83,6 +86,15 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
         .map((entry) => _OrderSummary.fromJson(entry, customers))
         .toList()
       ..sort((a, b) => b.orderDate.compareTo(a.orderDate));
+    if (readyOrdersResponse.statusCode >= 200 &&
+        readyOrdersResponse.statusCode < 300) {
+      orderList.addAll(
+        (jsonDecode(readyOrdersResponse.body) as List)
+            .cast<Map<String, dynamic>>()
+            .map((entry) => _OrderSummary.fromReadyMadeJson(entry)),
+      );
+      orderList.sort((a, b) => b.orderDate.compareTo(a.orderDate));
+    }
 
     final header = await _loadHeaderSettings();
     return _PrintingCenterState(
@@ -315,7 +327,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
 
       for (final order in widget.orders) {
         if (order.isCancelled) continue;
-        final pieces = await _fetchOrderPiecesOnce(order.orderId);
+        final pieces = await _fetchOrderPiecesOnce(order);
         final unprinted = pieces.where((piece) => !piece.isPrinted).length;
         if (unprinted > 0) {
           ordersWithUnprinted += 1;
@@ -345,10 +357,10 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     }
   }
 
-  Future<List<_OrderPieceDetail>> _fetchOrderPiecesOnce(int orderId) async {
-    final response = await http.get(
-      Uri.parse('${widget.baseUrl}/orders/$orderId/pieces'),
-    );
+  Future<List<_OrderPieceDetail>> _fetchOrderPiecesOnce(_OrderSummary order) async {
+    final response = await http.get(Uri.parse(order.isReadyMade
+      ? '${widget.baseUrl}/production/readymade-orders/${order.orderId}/items'
+      : '${widget.baseUrl}/orders/${order.orderId}/pieces'));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       return const [];
     }
@@ -357,13 +369,26 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     final pieces = <_OrderPieceDetail>[];
     for (final entry in piecesJson) {
       if (entry is Map<String, dynamic>) {
-        final pieceId = (entry['pieceId'] as int?) ?? 0;
-        if (pieceId <= 0) continue;
-        try {
-          final piece = await _loadPieceCard(pieceId);
-          pieces.add(piece);
-        } catch (_) {
-          // ignore unreadable pieces in aggregated summary
+        if (order.isReadyMade) {
+          final itemId = (entry['readyMadeProductionOrderItemId'] as int?) ?? 0;
+          if (itemId <= 0) continue;
+          final pieceResponse = await http.get(Uri.parse(
+              '${widget.baseUrl}/production/readymade-order-items/$itemId/pieces'));
+          if (pieceResponse.statusCode < 200 || pieceResponse.statusCode >= 300) continue;
+          for (final pieceJson in (jsonDecode(pieceResponse.body) as List).cast<Map<String, dynamic>>()) {
+            final pieceId = (pieceJson['readyMadeProductionOrderPieceInstanceId'] as int?) ?? 0;
+            if (pieceId > 0) {
+              try { pieces.add(await _loadPieceCard(pieceId, readyMade: true)); } catch (_) {}
+            }
+          }
+        } else {
+          final pieceId = (entry['pieceId'] as int?) ?? 0;
+          if (pieceId <= 0) continue;
+          try {
+            pieces.add(await _loadPieceCard(pieceId));
+          } catch (_) {
+            // ignore unreadable pieces in aggregated summary
+          }
         }
       }
     }
@@ -396,9 +421,9 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     });
 
     try {
-      final response = await http.get(
-        Uri.parse('${widget.baseUrl}/orders/${order.orderId}/pieces'),
-      );
+      final response = await http.get(Uri.parse(order.isReadyMade
+          ? '${widget.baseUrl}/production/readymade-orders/${order.orderId}/items'
+          : '${widget.baseUrl}/orders/${order.orderId}/pieces'));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('تعذر تحميل قطع الطلب.');
       }
@@ -407,10 +432,21 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
       final pieces = <_OrderPieceDetail>[];
       for (final entry in piecesJson) {
         if (entry is Map<String, dynamic>) {
-          final pieceId = (entry['pieceId'] as int?) ?? 0;
-          if (pieceId <= 0) continue;
-          final cardInfo = await _loadPieceCard(pieceId);
-          pieces.add(cardInfo);
+          if (order.isReadyMade) {
+            final itemId = (entry['readyMadeProductionOrderItemId'] as int?) ?? 0;
+            if (itemId <= 0) continue;
+            final pieceResponse = await http.get(Uri.parse(
+                '${widget.baseUrl}/production/readymade-order-items/$itemId/pieces'));
+            if (pieceResponse.statusCode < 200 || pieceResponse.statusCode >= 300) continue;
+            for (final pieceJson in (jsonDecode(pieceResponse.body) as List).cast<Map<String, dynamic>>()) {
+              final pieceId = (pieceJson['readyMadeProductionOrderPieceInstanceId'] as int?) ?? 0;
+              if (pieceId > 0) pieces.add(await _loadPieceCard(pieceId, readyMade: true));
+            }
+          } else {
+            final pieceId = (entry['pieceId'] as int?) ?? 0;
+            if (pieceId <= 0) continue;
+            pieces.add(await _loadPieceCard(pieceId));
+          }
         }
       }
 
@@ -459,9 +495,11 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     }
   }
 
-  Future<_OrderPieceDetail> _loadPieceCard(int pieceId) async {
+  Future<_OrderPieceDetail> _loadPieceCard(int pieceId, {bool readyMade = false}) async {
     final response = await http.get(
-      Uri.parse('${widget.baseUrl}/production/pieces/$pieceId/work-card'),
+      Uri.parse(readyMade
+          ? '${widget.baseUrl}/production/readymade-pieces/$pieceId/work-card'
+          : '${widget.baseUrl}/production/pieces/$pieceId/work-card'),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('تعذر تحميل تفاصيل القطعة.');
@@ -683,7 +721,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
 
     for (final order in widget.orders) {
       if (order.isCancelled) continue;
-      final pieces = await _fetchOrderPiecesOnce(order.orderId);
+      final pieces = await _fetchOrderPiecesOnce(order);
       for (final piece in pieces.where((entry) => !entry.isPrinted)) {
         await _PrintService.execute(
           context: stateContext,
@@ -1966,6 +2004,7 @@ class _OrderSummary {
     required this.customerPhone,
     required this.orderDate,
     required this.orderStatus,
+    this.isReadyMade = false,
   });
 
   factory _OrderSummary.fromJson(
@@ -1991,12 +2030,24 @@ class _OrderSummary {
     );
   }
 
+  factory _OrderSummary.fromReadyMadeJson(Map<String, dynamic> json) =>
+      _OrderSummary(
+        orderId: (json['readyMadeProductionOrderId'] as num?)?.toInt() ?? 0,
+        orderNumber: (json['productionOrderNumber'] ?? '').toString(),
+        customerName: 'إنتاج جاهز',
+        customerPhone: '',
+        orderDate: DateTime.tryParse((json['createdAt'] ?? '').toString()) ?? DateTime.now(),
+        orderStatus: (json['status'] ?? 'New').toString(),
+        isReadyMade: true,
+      );
+
   final int orderId;
   final String orderNumber;
   final String customerName;
   final String customerPhone;
   final DateTime orderDate;
   final String orderStatus;
+  final bool isReadyMade;
 
   bool get isCancelled => orderStatus.trim().toLowerCase() == 'cancelled';
 }

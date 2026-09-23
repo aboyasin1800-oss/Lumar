@@ -34,6 +34,27 @@ public sealed class ProductionRepository(
 
     public Task<IReadOnlyList<PieceDto>> GetPiecesAsync(CancellationToken ct) => QueryAsync($"{EffectivePieceStatusSql} ORDER BY p.CreatedDate DESC, p.PieceID DESC", MapPiece, null, ct);
     public async Task<PieceDto?> GetPieceByIdAsync(int id, CancellationToken ct) => (await QueryAsync($"{EffectivePieceStatusSql} WHERE p.PieceID = @id", MapPiece, id, ct)).SingleOrDefault();
+
+    public Task<IReadOnlyList<PieceDto>> GetReadyMadePiecesAsync(CancellationToken ct) => QueryAsync(@"
+        SELECT p.ReadyMadeProductionOrderPieceInstanceId, p.ReadyMadeProductionOrderItemId,
+               p.TrackingCode, p.PieceStatus, p.PieceNumber, p.CreatedAt,
+               i.PieceType, o.ReadyMadeProductionOrderId, o.ProductionOrderNumber,
+               i.ProductTypeId
+        FROM dbo.ReadyMadeProductionOrderPieceInstances p WITH (NOLOCK)
+        INNER JOIN dbo.ReadyMadeProductionOrderItems i ON i.ReadyMadeProductionOrderItemId = p.ReadyMadeProductionOrderItemId
+        INNER JOIN dbo.ReadyMadeProductionOrders o ON o.ReadyMadeProductionOrderId = i.ReadyMadeProductionOrderId
+        ORDER BY p.CreatedAt DESC, p.ReadyMadeProductionOrderPieceInstanceId DESC", MapReadyMadePiece, null, ct);
+
+    public async Task<PieceDto?> GetReadyMadePieceByIdAsync(int id, CancellationToken ct) =>
+        (await QueryAsync(@"
+            SELECT p.ReadyMadeProductionOrderPieceInstanceId, p.ReadyMadeProductionOrderItemId,
+                   p.TrackingCode, p.PieceStatus, p.PieceNumber, p.CreatedAt,
+                   i.PieceType, o.ReadyMadeProductionOrderId, o.ProductionOrderNumber,
+                   i.ProductTypeId
+            FROM dbo.ReadyMadeProductionOrderPieceInstances p WITH (NOLOCK)
+            INNER JOIN dbo.ReadyMadeProductionOrderItems i ON i.ReadyMadeProductionOrderItemId = p.ReadyMadeProductionOrderItemId
+            INNER JOIN dbo.ReadyMadeProductionOrders o ON o.ReadyMadeProductionOrderId = i.ReadyMadeProductionOrderId
+            WHERE p.ReadyMadeProductionOrderPieceInstanceId = @id", MapReadyMadePiece, id, ct)).SingleOrDefault();
     public async Task<ProductionTrackingRouteDto?> GetPieceRouteAsync(int pieceId, CancellationToken ct)
     {
         await using var connection = connections.Create();
@@ -105,6 +126,37 @@ public sealed class ProductionRepository(
         return new ProductionTrackingRouteDto(identity.ProductTypeId, identity.Code, identity.NameAr, pieceType, route, current, ProductionTrackingEngine.GetNextStage(identity.ProductTypeId, current));
     }
 
+    public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteAsync(int pieceId, CancellationToken ct) =>
+        GetReadyMadePieceRouteCoreAsync("p.ReadyMadeProductionOrderPieceInstanceId = @id", pieceId, null, ct);
+
+    public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken ct) =>
+        GetReadyMadePieceRouteCoreAsync("p.TrackingCode = @trackingCode", null, trackingCode, ct);
+
+    private async Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteCoreAsync(string predicate, int? pieceId, string? trackingCode, CancellationToken ct)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        var sql = $@"
+            SELECT p.PieceStatus, i.PieceType, i.ProductTypeId, p.TrackingCode
+            FROM dbo.ReadyMadeProductionOrderPieceInstances p WITH (NOLOCK)
+            INNER JOIN dbo.ReadyMadeProductionOrderItems i ON i.ReadyMadeProductionOrderItemId = p.ReadyMadeProductionOrderItemId
+            WHERE {predicate};";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@id", pieceId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@trackingCode", string.IsNullOrWhiteSpace(trackingCode) ? (object)DBNull.Value : trackingCode.Trim());
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        var current = reader.GetString(0);
+        var pieceType = reader.GetString(1);
+        var productTypeId = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2);
+        await reader.CloseAsync();
+        var identity = await identities.ResolveAsync(connection, null, productTypeId, pieceType, pieceType, null, ct);
+        if (identity is null) return null;
+        var route = ProductionTrackingEngine.GetRoute(identity.ProductTypeId);
+        if (route.Count == 0) return null;
+        return new ProductionTrackingRouteDto(identity.ProductTypeId, identity.Code, identity.NameAr, pieceType, route, current, ProductionTrackingEngine.GetNextStage(identity.ProductTypeId, current), true);
+    }
+
     public async Task<ProductionTrackingAdvanceResultDto?> AdvancePieceStageAsync(ProductionTrackingAdvanceRequestDto request, CancellationToken ct)
     {
         if (request is null) return null;
@@ -120,7 +172,9 @@ public sealed class ProductionRepository(
 
         try
         {
-            var pieceContext = await LoadPieceContextAsync(connection, transaction, request.PieceId, request.TrackingCode, ct);
+            var pieceContext = request.IsReadyMade
+                ? await LoadReadyMadePieceContextAsync(connection, transaction, request.PieceId, request.TrackingCode, ct)
+                : await LoadPieceContextAsync(connection, transaction, request.PieceId, request.TrackingCode, ct);
             if (pieceContext is null)
             {
                 await transaction.RollbackAsync(CancellationToken.None);
@@ -175,7 +229,9 @@ public sealed class ProductionRepository(
                 return new ProductionTrackingAdvanceResultDto(pieceContext.PieceId, pieceContext.TrackingCode, pieceContext.PieceStatus, pieceContext.PieceStatus, validation.NextStage, validation.Message, false);
             }
 
-            var disposition = await GetDispositionAsync(connection, transaction, pieceContext.PieceId, ct);
+            var disposition = pieceContext.IsReadyMade
+                ? null
+                : await GetDispositionAsync(connection, transaction, pieceContext.PieceId, ct);
             if (string.Equals(disposition?.Decision, "StopAndHold", StringComparison.OrdinalIgnoreCase))
             {
                 await transaction.RollbackAsync(CancellationToken.None);
@@ -230,7 +286,7 @@ public sealed class ProductionRepository(
                 request.TrackingCode,
                 ct);
 
-            var shouldCreateWage = executionSource == "Scanner" && RequiresPieceWage(finalStage);
+            var shouldCreateWage = !pieceContext.IsReadyMade && executionSource == "Scanner" && RequiresPieceWage(finalStage);
             if (shouldCreateWage)
             {
                 var wageInsert = await CreatePieceWageRecordAsync(
@@ -249,13 +305,14 @@ public sealed class ProductionRepository(
                 }
             }
 
-            var updatedRows = await UpdatePieceStatusAsync(connection, transaction, pieceContext.PieceId, finalStage, ct);
+            var updatedRows = await UpdatePieceStatusAsync(connection, transaction, pieceContext.PieceId, finalStage, pieceContext.IsReadyMade, ct);
             if (updatedRows == 0)
             {
                 throw new InvalidOperationException("The piece update did not affect the expected row.");
             }
 
-            var isOrderReadyForDelivery = await MaybeUpdateOrderReadyForDeliveryAsync(connection, transaction, pieceContext.OrderId, pieceContext.OrderStatus, ct);
+            var isOrderReadyForDelivery = !pieceContext.IsReadyMade && pieceContext.OrderId > 0
+                && await MaybeUpdateOrderReadyForDeliveryAsync(connection, transaction, pieceContext.OrderId, pieceContext.OrderStatus, ct);
             await transaction.CommitAsync(ct);
 
             return new ProductionTrackingAdvanceResultDto(
@@ -265,7 +322,8 @@ public sealed class ProductionRepository(
                 finalStage,
                 nextStage,
                 isOrderReadyForDelivery ? "Production stage completed and order is ready for delivery." : "Production stage recorded successfully.",
-                true);
+                true,
+                pieceContext.IsReadyMade);
         }
         catch
         {
@@ -299,6 +357,34 @@ public sealed class ProductionRepository(
         var orderStatus = reader.GetString(6);
         var orderNumber = reader.GetString(7);
         return new PieceContext(pieceIdValue, orderItemId, trackingCodeValue, pieceStatus, pieceType, orderId, orderStatus, orderNumber);
+    }
+
+    private static async Task<PieceContext?> LoadReadyMadePieceContextAsync(SqlConnection connection, SqlTransaction transaction, int? pieceId, string? trackingCode, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT p.ReadyMadeProductionOrderPieceInstanceId, p.ReadyMadeProductionOrderItemId,
+                   p.TrackingCode, p.PieceStatus, i.PieceType, o.ReadyMadeProductionOrderId,
+                   o.Status, o.ProductionOrderNumber
+            FROM dbo.ReadyMadeProductionOrderPieceInstances p WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.ReadyMadeProductionOrderItems i ON i.ReadyMadeProductionOrderItemId = p.ReadyMadeProductionOrderItemId
+            INNER JOIN dbo.ReadyMadeProductionOrders o ON o.ReadyMadeProductionOrderId = i.ReadyMadeProductionOrderId
+            WHERE (@pieceId IS NOT NULL AND p.ReadyMadeProductionOrderPieceInstanceId = @pieceId)
+               OR (@trackingCode IS NOT NULL AND p.TrackingCode = @trackingCode);";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pieceId", pieceId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@trackingCode", string.IsNullOrWhiteSpace(trackingCode) ? (object)DBNull.Value : trackingCode.Trim());
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        return new PieceContext(
+            reader.GetInt32(0),
+            reader.GetInt32(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetInt32(5),
+            reader.GetString(6),
+            reader.GetString(7),
+            true);
     }
 
     private static async Task<CancelledPieceDispositionRow?> GetDispositionAsync(SqlConnection connection, SqlTransaction transaction, int pieceId, CancellationToken ct)
@@ -457,25 +543,28 @@ public sealed class ProductionRepository(
             INSERT INTO dbo.TrackingEvents
                 (OrderItemID, OrderID, TrackingCode, Stage, Status, EventTime, EmployeeCode, Notes, IsReverted, RevertedAt, PieceID, ReadyMadeProductionOrderPieceInstanceId)
             OUTPUT INSERTED.TrackingEventID
-            VALUES (@orderItemId, @orderId, @trackingCode, @stage, @status, @eventTime, @employeeCode, @notes, 0, NULL, @pieceId, NULL);";
+            VALUES (@orderItemId, @orderId, @trackingCode, @stage, @status, @eventTime, @employeeCode, @notes, 0, NULL, @pieceId, @readyMadePieceInstanceId);";
 
         await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("@orderItemId", pieceContext.OrderItemId);
-        command.Parameters.AddWithValue("@orderId", pieceContext.OrderId);
+        command.Parameters.AddWithValue("@orderItemId", pieceContext.IsReadyMade ? (object)DBNull.Value : pieceContext.OrderItemId);
+        command.Parameters.AddWithValue("@orderId", pieceContext.IsReadyMade ? (object)DBNull.Value : pieceContext.OrderId);
         command.Parameters.AddWithValue("@trackingCode", pieceContext.TrackingCode);
         command.Parameters.AddWithValue("@stage", stage);
         command.Parameters.AddWithValue("@status", NormalizeStageForStatus(requestedStage));
         command.Parameters.AddWithValue("@eventTime", DateTime.UtcNow);
         command.Parameters.AddWithValue("@employeeCode", string.IsNullOrWhiteSpace(employeeCode) ? (object)DBNull.Value : employeeCode.Trim());
         command.Parameters.AddWithValue("@notes", string.IsNullOrWhiteSpace(operationReference) ? (object)DBNull.Value : operationReference.Trim());
-        command.Parameters.AddWithValue("@pieceId", pieceContext.PieceId);
+        command.Parameters.AddWithValue("@pieceId", pieceContext.IsReadyMade ? (object)DBNull.Value : pieceContext.PieceId);
+        command.Parameters.AddWithValue("@readyMadePieceInstanceId", pieceContext.IsReadyMade ? (object)pieceContext.PieceId : DBNull.Value);
         var result = await command.ExecuteScalarAsync(ct);
         return Convert.ToInt32(result);
     }
 
-    private static async Task<int> UpdatePieceStatusAsync(SqlConnection connection, SqlTransaction transaction, int pieceId, string stage, CancellationToken ct)
+    private static async Task<int> UpdatePieceStatusAsync(SqlConnection connection, SqlTransaction transaction, int pieceId, string stage, bool isReadyMade, CancellationToken ct)
     {
-        const string sql = "UPDATE dbo.Pieces SET PieceStatus = @pieceStatus WHERE PieceID = @pieceId";
+        var sql = isReadyMade
+            ? "UPDATE dbo.ReadyMadeProductionOrderPieceInstances SET PieceStatus = @pieceStatus WHERE ReadyMadeProductionOrderPieceInstanceId = @pieceId"
+            : "UPDATE dbo.Pieces SET PieceStatus = @pieceStatus WHERE PieceID = @pieceId";
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@pieceStatus", stage);
         command.Parameters.AddWithValue("@pieceId", pieceId);
@@ -566,7 +655,7 @@ public sealed class ProductionRepository(
         _ => stage.Trim(),
     };
 
-    private sealed record PieceContext(int PieceId, int OrderItemId, string TrackingCode, string PieceStatus, string PieceType, int OrderId, string OrderStatus, string OrderNumber);
+    private sealed record PieceContext(int PieceId, int OrderItemId, string TrackingCode, string PieceStatus, string PieceType, int OrderId, string OrderStatus, string OrderNumber, bool IsReadyMade = false);
     private sealed record CancelledPieceDispositionRow(int PieceId, string Decision, string? TransferStatus);
     private sealed record PieceWageInsertOutcome(bool IsCreated, string Message);
     private sealed record ScannerValidationResult(bool IsValid, string Message)
@@ -574,6 +663,66 @@ public sealed class ProductionRepository(
         public static ScannerValidationResult Valid(string employeeCode) => new(true, employeeCode);
         public static ScannerValidationResult Invalid(string message) => new(false, message);
     }
+    public async Task<WorkCardDto?> GetReadyMadeWorkCardAsync(int id, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT p.ReadyMadeProductionOrderPieceInstanceId, p.ReadyMadeProductionOrderItemId,
+                   o.ReadyMadeProductionOrderId, o.ProductionOrderNumber, p.PieceNumber, p.TrackingCode,
+                   i.PieceType, i.Quantity, i.FabricType, i.FabricColor, i.FabricCode, i.CatalogNumber,
+                   i.MeasurementSnapshot, p.PieceStatus
+            FROM dbo.ReadyMadeProductionOrderPieceInstances p
+            INNER JOIN dbo.ReadyMadeProductionOrderItems i ON i.ReadyMadeProductionOrderItemId = p.ReadyMadeProductionOrderItemId
+            INNER JOIN dbo.ReadyMadeProductionOrders o ON o.ReadyMadeProductionOrderId = i.ReadyMadeProductionOrderId
+            WHERE p.ReadyMadeProductionOrderPieceInstanceId = @id;";
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@id", id);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        var itemId = reader.GetInt32(1);
+        var orderId = reader.GetInt32(2);
+        var orderNumber = reader.GetString(3);
+        var pieceNumber = reader.GetInt32(4);
+        var trackingCode = reader.GetString(5);
+        var pieceType = reader.GetString(6);
+        var quantity = reader.GetInt32(7);
+        var fabricType = reader.NullableString("FabricType");
+        var fabricColor = reader.NullableString("FabricColor");
+        var fabricCode = reader.NullableString("FabricCode");
+        var catalogNumber = reader.NullableString("CatalogNumber");
+        var measurementSnapshot = reader.NullableString("MeasurementSnapshot");
+        var pieceStatus = reader.GetString(14);
+        await reader.CloseAsync();
+
+        var history = await GetReadyMadePieceTrackingAsync(id, ct);
+        return new WorkCardDto(
+            id,
+            itemId,
+            orderId,
+            orderNumber,
+            pieceNumber,
+            trackingCode,
+            null,
+            null,
+            null,
+            pieceType,
+            quantity,
+            fabricType,
+            fabricColor,
+            fabricCode,
+            catalogNumber,
+            null,
+            null,
+            null,
+            null,
+            null,
+            measurementSnapshot,
+            null,
+            pieceStatus,
+            history);
+    }
+
     public async Task<WorkCardDto?> GetWorkCardAsync(int id, CancellationToken ct)
     {
         const string sql = """
@@ -971,6 +1120,7 @@ public sealed class ProductionRepository(
     public Task<IReadOnlyList<ProductionDeliveryDto>> GetDeliveriesAsync(CancellationToken ct) => QueryAsync("SELECT o.OrderID,o.OrderNumber,o.CustomerID,c.CustomerCode,c.CustomerName,c.PhoneNumber,o.OrderStatus,o.DeliveryDate FROM dbo.Orders o INNER JOIN dbo.Customers c ON c.CustomerID=o.CustomerID ORDER BY CASE WHEN o.DeliveryDate IS NULL THEN 1 ELSE 0 END,o.DeliveryDate,o.OrderID DESC", reader => new ProductionDeliveryDto(reader.GetInt32(0),reader.GetString(1),reader.GetInt32(2),reader.NullableString("CustomerCode"),reader.NullableString("CustomerName"),reader.NullableString("PhoneNumber"),reader.GetString(6),reader.NullableDateTime("DeliveryDate")), null, ct);
 
     private static PieceDto MapPiece(SqlDataReader reader) => new(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetString(3), reader.GetInt32(4), reader.GetDateTime(5), reader.GetString(6), reader.GetInt32(7), reader.GetString(8), reader.NullableInt32("ProductTypeId"));
+    private static PieceDto MapReadyMadePiece(SqlDataReader reader) => new(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetString(3), reader.GetInt32(4), reader.GetDateTime(5), reader.GetString(6), reader.GetInt32(7), reader.GetString(8), reader.NullableInt32("ProductTypeId"), true, reader.GetInt32(0));
 
     private static async Task<string> GetNextReadyMadeOrderNumberAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken ct)
     {

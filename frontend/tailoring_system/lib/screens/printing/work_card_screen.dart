@@ -1,8 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../../core/app_navigation.dart';
 
@@ -38,7 +42,7 @@ class _WorkCardScreenState extends State<WorkCardScreen> {
 							leading: CircleAvatar(child: Text('${piece.pieceNumber}')),
 							title: Text('${piece.pieceType} - ${piece.trackingCode}'),
 							subtitle: Text('الحالة: ${piece.status}'),
-							trailing: IconButton(tooltip: 'معاينة البطاقة', icon: const Icon(Icons.visibility_outlined), onPressed: () => AppNavigation.push(context, (_) => WorkCardPreviewScreen(pieceId: piece.id))),
+							trailing: IconButton(tooltip: 'معاينة البطاقة', icon: const Icon(Icons.visibility_outlined), onPressed: () => AppNavigation.push(context, (_) => WorkCardPreviewScreen(pieceId: piece.id, readyMade: piece.readyMade))),
 						));
 					},
 				);
@@ -48,17 +52,39 @@ class _WorkCardScreenState extends State<WorkCardScreen> {
 }
 
 class WorkCardPreviewScreen extends StatefulWidget {
-	const WorkCardPreviewScreen({required this.pieceId, super.key}); final int pieceId;
+	const WorkCardPreviewScreen({required this.pieceId, this.readyMade = false, super.key}); final int pieceId; final bool readyMade;
 	@override State<WorkCardPreviewScreen> createState() => _WorkCardPreviewScreenState();
 }
 
 class _WorkCardPreviewScreenState extends State<WorkCardPreviewScreen> {
 	final api = WorkCardApi(); late Future<WorkCard> future;
-	@override void initState() { super.initState(); future = api.getWorkCard(widget.pieceId); }
-	void reload() { setState(() { future = api.getWorkCard(widget.pieceId); }); }
-	void printPlaceholder() => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الطباعة الفعلية ستكون متاحة في مرحلة PDF والطباعة.')));
+	@override void initState() { super.initState(); future = api.getWorkCard(widget.pieceId, readyMade: widget.readyMade); }
+	void reload() { setState(() { future = api.getWorkCard(widget.pieceId, readyMade: widget.readyMade); }); }
+	Future<void> printCard(WorkCard card) async {
+		final font = pw.Font.ttf(await rootBundle.load('assets/fonts/Tahoma.ttf'));
+		final pdf = pw.Document();
+		pdf.addPage(pw.MultiPage(
+			pageFormat: PdfPageFormat.a5,
+			build: (_) => [
+				pw.Directionality(
+					textDirection: pw.TextDirection.rtl,
+					child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+						pw.Text('بطاقة تشغيل', style: pw.TextStyle(font: font, fontSize: 18, fontWeight: pw.FontWeight.bold)),
+						pw.Text('كود التتبع: ${card.trackingCode}', style: pw.TextStyle(font: font)),
+						pw.Text('نوع القطعة: ${card.pieceType}', style: pw.TextStyle(font: font)),
+						pw.Text('الحالة: ${card.status}', style: pw.TextStyle(font: font)),
+						pw.Divider(),
+						pw.Text('القياسات', style: pw.TextStyle(font: font, fontWeight: pw.FontWeight.bold)),
+						...card.measurements.entries.map((entry) => pw.Text('${entry.key}: ${entry.value}', style: pw.TextStyle(font: font))),
+					]),
+				),
+			],
+		));
+		final bytes = await pdf.save();
+		await Printing.layoutPdf(onLayout: (_) async => bytes);
+	}
 	@override Widget build(BuildContext context) => Scaffold(
-		appBar: AppBar(title: const Text('معاينة بطاقة التشغيل'), actions: [IconButton(tooltip: 'تحديث', onPressed: reload, icon: const Icon(Icons.refresh)), IconButton(tooltip: 'طباعة', onPressed: printPlaceholder, icon: const Icon(Icons.print_outlined))]),
+		appBar: AppBar(title: const Text('معاينة بطاقة التشغيل'), actions: [IconButton(tooltip: 'تحديث', onPressed: reload, icon: const Icon(Icons.refresh)), FutureBuilder<WorkCard>(future: future, builder: (context, snapshot) => IconButton(tooltip: 'طباعة', onPressed: snapshot.hasData ? () => printCard(snapshot.data!) : null, icon: const Icon(Icons.print_outlined))) ]),
 		body: FutureBuilder<WorkCard>(future: future, builder: (context, snapshot) {
 			if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
 			if (snapshot.hasError) return _WorkCardError(onRetry: reload, message: snapshot.error is WorkCardApiException && (snapshot.error as WorkCardApiException).statusCode == 404 ? 'خادم الإنتاج الحالي لا يوفر بطاقة التشغيل. يلزم تشغيل إصدار Backend المطابق للكود الحالي.' : 'تعذر تحميل بطاقة التشغيل.');
@@ -84,7 +110,7 @@ class _WorkCardPreviewScreenState extends State<WorkCardPreviewScreen> {
 						),
 					),
 				)),
-				const SizedBox(height: 14), Align(alignment: Alignment.center, child: FilledButton.icon(onPressed: printPlaceholder, icon: const Icon(Icons.print_outlined), label: const Text('طباعة'))),
+				const SizedBox(height: 14), Align(alignment: Alignment.center, child: FilledButton.icon(onPressed: () => printCard(card), icon: const Icon(Icons.print_outlined), label: const Text('طباعة'))),
 			]);
 		}),
 	);
@@ -106,13 +132,18 @@ class _WorkCardError extends StatelessWidget {
 class WorkCardApi {
 	static const _baseUrl = String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5093');
 	Future<dynamic> _get(String path) async { final response = await http.get(Uri.parse('$_baseUrl$path')); if (response.statusCode < 200 || response.statusCode >= 300) throw WorkCardApiException(response.statusCode); return jsonDecode(response.body); }
-	Future<List<WorkCardPiece>> getPieces() async => ((await _get('/production/pieces')) as List).cast<Map<String, dynamic>>().map(WorkCardPiece.fromJson).toList();
-	Future<WorkCard> getWorkCard(int pieceId) async => WorkCard.fromJson((await _get('/production/pieces/$pieceId/work-card')) as Map<String, dynamic>);
+	Future<List<WorkCardPiece>> getPieces() async {
+		final normal = ((await _get('/production/pieces')) as List).cast<Map<String, dynamic>>().map(WorkCardPiece.fromJson).toList();
+		final ready = ((await _get('/production/readymade-pieces')) as List).cast<Map<String, dynamic>>().map(WorkCardPiece.fromJson).toList();
+		return [...normal, ...ready];
+	}
+	Future<WorkCard> getWorkCard(int pieceId, {bool readyMade = false}) async => WorkCard.fromJson((await _get(readyMade ? '/production/readymade-pieces/$pieceId/work-card' : '/production/pieces/$pieceId/work-card')) as Map<String, dynamic>);
 }
 class WorkCardPiece {
-	const WorkCardPiece({required this.id, required this.pieceNumber, required this.trackingCode, required this.status, required this.pieceType});
-	factory WorkCardPiece.fromJson(Map<String, dynamic> json) => WorkCardPiece(id: json['pieceId'] as int, pieceNumber: json['pieceNumber'] as int, trackingCode: json['trackingCode'] as String, status: json['pieceStatus'] as String, pieceType: json['pieceType']?.toString() ?? '-');
+	const WorkCardPiece({required this.id, required this.pieceNumber, required this.trackingCode, required this.status, required this.pieceType, required this.readyMade});
+	factory WorkCardPiece.fromJson(Map<String, dynamic> json) => WorkCardPiece(id: json['pieceId'] as int, pieceNumber: json['pieceNumber'] as int, trackingCode: json['trackingCode'] as String, status: json['pieceStatus'] as String, pieceType: json['pieceType']?.toString() ?? '-', readyMade: json['isReadyMade'] == true);
 	final int id; final int pieceNumber; final String trackingCode; final String status; final String pieceType;
+	final bool readyMade;
 }
 class WorkCard {
 	const WorkCard({required this.orderNumber, required this.pieceNumber, required this.trackingCode, required this.customerCode, required this.customerName, required this.phoneNumber, required this.pieceType, required this.quantity, required this.fabricType, required this.fabricColor, required this.notes1, required this.notes2, required this.measurements, required this.deliveryDate, required this.status, required this.history});

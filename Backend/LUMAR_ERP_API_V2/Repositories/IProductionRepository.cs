@@ -5,8 +5,11 @@ namespace LUMAR_ERP_API_V2.Repositories;
 public interface IProductionRepository
 {
     Task<IReadOnlyList<PieceDto>> GetPiecesAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<PieceDto>> GetReadyMadePiecesAsync(CancellationToken cancellationToken);
     Task<PieceDto?> GetPieceByIdAsync(int pieceId, CancellationToken cancellationToken);
+    Task<PieceDto?> GetReadyMadePieceByIdAsync(int pieceId, CancellationToken cancellationToken);
     Task<WorkCardDto?> GetWorkCardAsync(int pieceId, CancellationToken cancellationToken);
+    Task<WorkCardDto?> GetReadyMadeWorkCardAsync(int pieceId, CancellationToken cancellationToken);
     Task<IReadOnlyList<TrackingEventDto>> GetPieceTrackingAsync(int pieceId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProductionStageDto>> GetStagesAsync(CancellationToken cancellationToken);
     Task<ProductionDashboardDto> GetDashboardAsync(CancellationToken cancellationToken);
@@ -20,5 +23,7 @@ public interface IProductionRepository
     Task<IReadOnlyList<ProductionDeliveryDto>> GetDeliveriesAsync(CancellationToken cancellationToken);
     Task<ProductionTrackingRouteDto?> GetPieceRouteAsync(int pieceId, CancellationToken cancellationToken);
     Task<ProductionTrackingRouteDto?> GetPieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken cancellationToken);
+    Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteAsync(int pieceId, CancellationToken cancellationToken);
+    Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken cancellationToken);
     Task<ProductionTrackingAdvanceResultDto?> AdvancePieceStageAsync(ProductionTrackingAdvanceRequestDto request, CancellationToken cancellationToken);
 }

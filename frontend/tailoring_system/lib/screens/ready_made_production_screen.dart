@@ -529,7 +529,9 @@ class _Detail extends StatelessWidget {
 }
 
 class ReadyMadeOrderCreateScreen extends StatefulWidget {
-	const ReadyMadeOrderCreateScreen({super.key});
+	const ReadyMadeOrderCreateScreen({super.key, this.embedded = false});
+
+	final bool embedded;
 
 	@override
 	State<ReadyMadeOrderCreateScreen> createState() => _ReadyMadeOrderCreateScreenState();
@@ -733,7 +735,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 				ScaffoldMessenger.of(context).showSnackBar(
 					SnackBar(content: Text('تم إنشاء أمر الإنتاج بنجاح.')),
 				);
-				Navigator.of(context).pop();
+				if (!widget.embedded) Navigator.of(context).pop();
 			}
 		} catch (error) {
 			debugPrint('Create ready-made order failed: $error');
@@ -1002,106 +1004,141 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 
 	@override
 	Widget build(BuildContext context) {
-		return Directionality(
-			textDirection: TextDirection.rtl,
-			child: Scaffold(
-				backgroundColor: UiPalette.screenBackground,
-				appBar: AppBar(
-					title: Text(
-						'إنشاء أمر إنتاج جاهز',
-						style: UiPalette.adaptiveTextStyle(
-							context,
-							backgroundColor: UiPalette.surfaceCard,
-							fontSize: 18,
-							fontWeight: FontWeight.w700,
-						),
-					),
-					backgroundColor: UiPalette.surfaceCard,
-					foregroundColor: UiPalette.textMain,
-					iconTheme: const IconThemeData(color: UiPalette.textMain),
-				),
-				body: SafeArea(
-					child: Form(
-						key: _formKey,
-						child: LayoutBuilder(
-							builder: (context, constraints) {
-								final isWide = constraints.maxWidth >= 980;
-								final itemList = [
-									..._items.asMap().entries.map((entry) => _buildItemCard(entry.value, entry.key)),
-									const SizedBox(height: 12),
-									SizedBox(
-										height: 50,
-										child: FilledButton.icon(
-											onPressed: _addItem,
-											icon: const Icon(Icons.add_circle_outline_rounded),
-											label: const Text('إضافة بند جديد'),
-											style: FilledButton.styleFrom(
-												backgroundColor: const Color.fromARGB(255, 18, 247, 216),
-												foregroundColor: const Color.fromARGB(255, 0, 2, 5),
+		final content = SafeArea(
+			child: Form(
+				key: _formKey,
+				child: LayoutBuilder(
+					builder: (context, constraints) {
+						final isWide = constraints.maxWidth >= 980;
+						final itemList = [
+							..._items.asMap().entries.map((entry) => _buildItemCard(entry.value, entry.key)),
+							const SizedBox(height: 12),
+							SizedBox(
+								height: 50,
+								child: FilledButton.icon(
+									onPressed: _addItem,
+									icon: const Icon(Icons.add_circle_outline_rounded),
+									label: const Text('إضافة بند جديد'),
+									style: FilledButton.styleFrom(
+										backgroundColor: const Color.fromARGB(255, 18, 247, 216),
+										foregroundColor: const Color.fromARGB(255, 0, 2, 5),
+									),
+								),
+							),
+							const SizedBox(height: 18),
+							SizedBox(
+								height: 48,
+								child: FilledButton.icon(
+									onPressed: _saving ? null : _save,
+									icon: _saving
+										? const SizedBox(
+												width: 18,
+												height: 18,
+												child: CircularProgressIndicator(strokeWidth: 2),
+											)
+										: const Icon(Icons.save_alt_rounded),
+									label: Text(_saving ? 'جاري الحفظ...' : 'حفظ الأمر'),
+									style: FilledButton.styleFrom(
+										backgroundColor: const Color.fromARGB(255, 17, 251, 231),
+										foregroundColor: const Color.fromARGB(255, 0, 3, 8),
+									),
+								),
+							),
+						];
+
+						if (isWide) {
+							return Padding(
+								padding: const EdgeInsets.all(16),
+								child: Row(
+									crossAxisAlignment: CrossAxisAlignment.start,
+									children: [
+										Expanded(
+											flex: 3,
+											child: ListView(
+												padding: EdgeInsets.zero,
+												children: itemList,
 											),
+										),
+										const SizedBox(width: 18),
+										Expanded(flex: 1, child: _buildOrderSummaryCard()),
+									],
+								),
+							);
+						}
+
+						if (widget.embedded) {
+							return Padding(
+								padding: const EdgeInsets.all(16),
+								child: ListView(
+									padding: EdgeInsets.zero,
+									children: [
+										...itemList,
+										const SizedBox(height: 18),
+										_buildOrderSummaryCard(),
+									],
+								),
+							);
+						}
+
+						return Padding(
+							padding: const EdgeInsets.all(16),
+							child: Column(
+								children: [
+									Expanded(
+										child: ListView(
+											padding: EdgeInsets.zero,
+											children: itemList,
 										),
 									),
 									const SizedBox(height: 18),
-									SizedBox(
-										height: 48,
-										child: FilledButton.icon(
-											onPressed: _saving ? null : _save,
-											icon: _saving
-												? const SizedBox(
-														width: 18,
-														height: 18,
-														child: CircularProgressIndicator(strokeWidth: 2),
-													)
-												: const Icon(Icons.save_alt_rounded),
-											label: Text(_saving ? 'جاري الحفظ...' : 'حفظ الأمر'),
-											style: FilledButton.styleFrom(
-												backgroundColor: const Color.fromARGB(255, 17, 251, 231),
-												foregroundColor: const Color.fromARGB(255, 0, 3, 8),
-											),
-										),
-									),
-								];
-
-								if (isWide) {
-									return Padding(
-										padding: const EdgeInsets.all(16),
-										child: Row(
-											crossAxisAlignment: CrossAxisAlignment.start,
-											children: [
-												Expanded(
-													flex: 3,
-													child: ListView(
-														padding: EdgeInsets.zero,
-														children: itemList,
-													),
-												),
-												const SizedBox(width: 18),
-												Expanded(flex: 1, child: _buildOrderSummaryCard()),
-											],
-										),
-									);
-								}
-
-								return Padding(
-									padding: const EdgeInsets.all(16),
-									child: Column(
-										children: [
-											Expanded(
-												child: ListView(
-													padding: EdgeInsets.zero,
-													children: itemList,
-												),
-											),
-											const SizedBox(height: 18),
-											_buildOrderSummaryCard(),
-										],
-									),
-								);
-							},
-						),
-					),
+									_buildOrderSummaryCard(),
+								],
+							),
+						);
+					},
 				),
 			),
+		);
+		final page = widget.embedded
+			? Column(
+					crossAxisAlignment: CrossAxisAlignment.stretch,
+					children: [
+						Padding(
+							padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+							child: Text(
+								'إنشاء أمر إنتاج جاهز',
+								style: UiPalette.adaptiveTextStyle(
+									context,
+									backgroundColor: UiPalette.screenBackground,
+									fontSize: 20,
+									fontWeight: FontWeight.w800,
+								),
+							),
+						),
+						Expanded(child: content),
+					],
+				)
+			: Scaffold(
+					backgroundColor: UiPalette.screenBackground,
+					appBar: AppBar(
+						title: Text(
+							'إنشاء أمر إنتاج جاهز',
+							style: UiPalette.adaptiveTextStyle(
+								context,
+								backgroundColor: UiPalette.surfaceCard,
+								fontSize: 18,
+								fontWeight: FontWeight.w700,
+							),
+						),
+						backgroundColor: UiPalette.surfaceCard,
+						foregroundColor: UiPalette.textMain,
+						iconTheme: const IconThemeData(color: UiPalette.textMain),
+					),
+					body: content,
+				);
+		return Directionality(
+			textDirection: TextDirection.rtl,
+			child: page,
 		);
 	}
 }
