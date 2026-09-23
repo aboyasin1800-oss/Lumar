@@ -24,6 +24,26 @@ class ReferralTreeScreen extends StatefulWidget {
 }
 
 class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
+  static const _treeZoomLevels = <double>[
+    0.05,
+    0.10,
+    0.20,
+    0.30,
+    0.40,
+    0.50,
+    0.60,
+    0.70,
+    0.80,
+    1.00,
+    1.20,
+    1.40,
+    1.60,
+    1.80,
+    2.00,
+    2.20,
+    2.40,
+  ];
+
   late final ReferralRepository _repository;
   final TextEditingController _searchController = TextEditingController();
   final Map<int, bool> _expandedNodes = <int, bool>{};
@@ -177,15 +197,45 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
         _altPressed = isAltPressed;
       });
     }
+
+    if (event is RawKeyDownEvent) {
+      final movement = switch (event.logicalKey) {
+        LogicalKeyboardKey.arrowLeft => const Offset(-60, 0),
+        LogicalKeyboardKey.arrowRight => const Offset(60, 0),
+        LogicalKeyboardKey.arrowUp => const Offset(0, -60),
+        LogicalKeyboardKey.arrowDown => const Offset(0, 60),
+        _ => null,
+      };
+      if (movement != null) {
+        _panTree(movement.dx, movement.dy);
+      }
+    }
   }
 
-  void _zoomTree(double delta) {
+  void _changeTreeScale(int direction) {
     if (!_isAltPressed) {
       return;
     }
 
+    var currentIndex = 0;
+    var smallestDistance = double.infinity;
+    for (var index = 0; index < _treeZoomLevels.length; index++) {
+      final distance = (_treeZoomLevels[index] - _treeScale).abs();
+      if (distance < smallestDistance) {
+        currentIndex = index;
+        smallestDistance = distance;
+      }
+    }
+    final nextIndex = (currentIndex + direction).clamp(
+      0,
+      _treeZoomLevels.length - 1,
+    );
+    if (nextIndex == currentIndex) {
+      return;
+    }
+
     setState(() {
-      _treeScale = (_treeScale + delta).clamp(0.6, 2.4);
+      _treeScale = _treeZoomLevels[nextIndex];
       _applyTreeTransform();
     });
   }
@@ -200,11 +250,7 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
       return;
     }
 
-    final step = delta < 0 ? 0.12 : -0.12;
-    setState(() {
-      _treeScale = (_treeScale + step).clamp(0.6, 2.4);
-      _applyTreeTransform();
-    });
+    _changeTreeScale(delta < 0 ? 1 : -1);
   }
 
   void _panTree(double dx, double dy) {
@@ -950,81 +996,7 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
             ),
           ),
         ),
-        Positioned(
-          right: 18,
-          bottom: 22,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.32),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _treeControlButton(
-                          Icons.add, () => _zoomTree(0.15), 'ALT + تكبير'),
-                      const SizedBox(width: 8),
-                      _treeControlButton(
-                          Icons.remove, () => _zoomTree(-0.15), 'ALT + تصغير'),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(width: 38),
-                      _treeControlButton(Icons.keyboard_arrow_up,
-                          () => _panTree(0, -60), 'أعلى'),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _treeControlButton(Icons.keyboard_arrow_left,
-                          () => _panTree(-60, 0), 'يسار'),
-                      _treeControlButton(Icons.keyboard_arrow_down,
-                          () => _panTree(0, 60), 'أسفل'),
-                      _treeControlButton(Icons.keyboard_arrow_right,
-                          () => _panTree(60, 0), 'يمين'),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
       ],
-    );
-  }
-
-  Widget _treeControlButton(
-      IconData icon, VoidCallback onPressed, String tooltip) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: UiPalette.primary.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(12),
-              border:
-                  Border.all(color: UiPalette.primary.withValues(alpha: 0.45)),
-            ),
-            child: Icon(icon, color: UiPalette.primary, size: 22),
-          ),
-        ),
-      ),
     );
   }
 
