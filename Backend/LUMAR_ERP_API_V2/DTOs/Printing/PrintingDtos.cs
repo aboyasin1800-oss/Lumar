@@ -1,0 +1,49 @@
+namespace LUMAR_ERP_API_V2.DTOs.Printing;
+
+public sealed record PrepareMeasurementCardPrintDto(
+    Guid? PrintRequestId,
+    string? ReprintReasonCode,
+    string? DamageReason,
+    int? ResponsibleEmployeeId,
+    string? Notes,
+    decimal? SaleAmount,
+    string? SalePaymentType,
+    int? SaleCustomerId);
+
+public sealed record FailMeasurementCardPrintDto(string? FailureReason);
+
+public sealed record MeasurementCardPrintHistoryDto(
+    int PrintHistoryId,
+    Guid PrintRequestId,
+    string PrintStatus,
+    int? OrderId,
+    int? OrderItemId,
+    int? PieceId,
+    int? ReadyMadeProductionOrderId,
+    int? ReadyMadeProductionOrderItemId,
+    int? ReadyMadePieceId,
+    string TrackingCode,
+    DateTime? PrintedAtUtc,
+    int PrintedByUserId,
+    string PrintedByDisplayName,
+    int CopyNumber,
+    string? ReprintReasonCode,
+    string? DamageReason,
+    int? ResponsibleEmployeeId,
+    string? Notes,
+    decimal? SaleAmount,
+    string? SalePaymentType,
+    int? SaleCustomerId,
+    string? FinancialTransactionReference,
+    int? FinancialTransactionId,
+    int? JournalEntryId,
+    int? CustomerLedgerEntryId,
+    int? PaymentId,
+    string? PaymentReferenceNumber,
+    int? PaymentFinancialTransactionId,
+    int? PaymentJournalEntryId,
+    int? PaymentCustomerLedgerEntryId,
+    DateTime? CompletedAtUtc,
+    DateTime? FailedAtUtc,
+    string? FailureReason,
+    DateTime CreatedAt);

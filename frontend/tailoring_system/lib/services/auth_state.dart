@@ -26,6 +26,7 @@ class AuthState extends ChangeNotifier {
 	String? _token;
 	bool initialized = false;
 	bool get signedIn => user != null;
+	String? get token => _token;
 	String? get rememberedUsername => _rememberedUsername;
 	String? _rememberedUsername;
 

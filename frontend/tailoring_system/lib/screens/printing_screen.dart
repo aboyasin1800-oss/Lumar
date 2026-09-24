@@ -12,16 +12,21 @@ import 'package:printing/printing.dart';
 import '../core/measurement_snapshot.dart';
 import '../core/document_printing.dart';
 import '../core/ui_palette.dart';
+import '../services/auth_state.dart';
 
 class PrintingScreen extends StatelessWidget {
-  const PrintingScreen({super.key});
+  const PrintingScreen({required this.auth, super.key});
+
+  final AuthState auth;
 
   @override
-  Widget build(BuildContext context) => const PrintingCenterScreen();
+  Widget build(BuildContext context) => PrintingCenterScreen(auth: auth);
 }
 
 class PrintingCenterScreen extends StatefulWidget {
-  const PrintingCenterScreen({super.key});
+  const PrintingCenterScreen({required this.auth, super.key});
+
+  final AuthState auth;
 
   @override
   State<PrintingCenterScreen> createState() => _PrintingCenterScreenState();
@@ -241,6 +246,7 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
                         orders: filtered,
                         header: state.header,
                         baseUrl: _baseUrl,
+                        auth: widget.auth,
                         onRefresh: _refresh,
                       ),
                       _PlaceholderTab(
@@ -272,12 +278,14 @@ class _MeasurementCardsTab extends StatefulWidget {
     required this.orders,
     required this.header,
     required this.baseUrl,
+    required this.auth,
     required this.onRefresh,
   });
 
   final List<_OrderSummary> orders;
   final _MeasurementHeaderSettings header;
   final String baseUrl;
+  final AuthState auth;
   final Future<void> Function() onRefresh;
 
   @override
@@ -291,7 +299,9 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   final Map<int, String> _pieceTypeLabels = {};
   bool _loadingPieces = false;
   bool _loadingUnprintedSummary = false;
+  bool _loadingPrintAction = false;
   int _allUnprintedCards = 0;
+  final Map<int, List<_PrintHistoryRecord>> _printHistoryCache = {};
 
   @override
   void initState() {
@@ -480,89 +490,469 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     }
 
     final json = jsonDecode(response.body) as Map<String, dynamic>;
-    return _OrderPieceDetail.fromJson(json);
+    return _OrderPieceDetail.fromJson(json, readyMade: readyMade);
   }
 
-  Future<void> _showReprintDialog(_OrderPieceDetail piece) async {
-    final stateContext = context;
-    final reasonController = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: stateContext,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('إعادة الطباعة'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('يرجى إدخال سبب إعادة الطباعة ثم تأكيد التنفيذ.'),
-              const SizedBox(height: 12),
-              TextField(
-                controller: reasonController,
-                minLines: 2,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'سبب إعادة الطباعة',
-                ),
+  Map<String, String> get _authHeaders {
+    final token = widget.auth.token;
+    return {
+      'Content-Type': 'application/json',
+      if (token != null && token.trim().isNotEmpty)
+        'Authorization': 'Bearer ${token.trim()}',
+    };
+  }
+
+  bool _isPiecePrinted(_OrderPieceDetail piece) {
+    final history = _printHistoryCache[piece.pieceId];
+    return piece.isPrinted ||
+        (history?.any((entry) => entry.printStatus == 'Completed') ?? false);
+  }
+
+  Future<List<_PrintHistoryRecord>> _fetchPrintHistory(
+      _OrderPieceDetail piece) async {
+    final path = piece.isReadyMade
+        ? '${widget.baseUrl}/printing/readymade-pieces/${piece.pieceId}/history'
+        : '${widget.baseUrl}/printing/pieces/${piece.pieceId}/history';
+    final response = await http.get(Uri.parse(path), headers: _authHeaders);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_readApiError(response));
+    }
+    final body = jsonDecode(response.body);
+    final history = body is List
+        ? body
+            .whereType<Map<String, dynamic>>()
+            .map(_PrintHistoryRecord.fromJson)
+            .toList()
+        : <_PrintHistoryRecord>[];
+    _printHistoryCache[piece.pieceId] = history;
+    return history;
+  }
+
+  Future<List<_EmployeeOption>> _fetchEmployees() async {
+    final response = await http.get(
+      Uri.parse('${widget.baseUrl}/employees'),
+      headers: _authHeaders,
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_readApiError(response));
+    }
+    final body = jsonDecode(response.body);
+    if (body is! List) return const [];
+    return body
+        .whereType<Map<String, dynamic>>()
+        .map(_EmployeeOption.fromJson)
+        .where((employee) => employee.isActive)
+        .toList();
+  }
+
+  Future<List<_CustomerOption>> _fetchCustomers() async {
+    final response = await http.get(
+      Uri.parse('${widget.baseUrl}/customers'),
+      headers: _authHeaders,
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_readApiError(response));
+    }
+    final body = jsonDecode(response.body);
+    if (body is! List) return const [];
+    return body
+        .whereType<Map<String, dynamic>>()
+        .map(_CustomerOption.fromJson)
+        .toList();
+  }
+
+  Future<_PrintHistoryRecord> _preparePrint(
+    _OrderPieceDetail piece,
+    _ReprintFormData? form,
+  ) async {
+    final path = piece.isReadyMade
+        ? '${widget.baseUrl}/printing/readymade-pieces/${piece.pieceId}/prepare'
+        : '${widget.baseUrl}/printing/pieces/${piece.pieceId}/prepare';
+    final response = await http.post(
+      Uri.parse(path),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'reprintReasonCode': form?.reasonCode,
+        'damageReason': form?.damageReason,
+        'responsibleEmployeeId': form?.responsibleEmployeeId,
+        'notes': form?.notes,
+        'saleAmount': form?.saleAmount,
+        'salePaymentType': form?.paymentType,
+        'saleCustomerId': form?.saleCustomerId,
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_readApiError(response));
+    }
+    final record = _PrintHistoryRecord.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
+    final history = [...?_printHistoryCache[piece.pieceId]];
+    history.removeWhere((entry) => entry.printHistoryId == record.printHistoryId);
+    history.add(record);
+    _printHistoryCache[piece.pieceId] = history;
+    return record;
+  }
+
+  Future<_PrintHistoryRecord> _completePrint(
+      _OrderPieceDetail piece, int printHistoryId) async {
+    final response = await http.post(
+      Uri.parse('${widget.baseUrl}/printing/history/$printHistoryId/complete'),
+      headers: _authHeaders,
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_readApiError(response));
+    }
+    final record = _PrintHistoryRecord.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
+    final history = [...?_printHistoryCache[piece.pieceId]];
+    history.removeWhere((entry) => entry.printHistoryId == record.printHistoryId);
+    history.add(record);
+    _printHistoryCache[piece.pieceId] = history;
+    return record;
+  }
+
+  Future<void> _failPrint(int printHistoryId, String reason) async {
+    await http.post(
+      Uri.parse('${widget.baseUrl}/printing/history/$printHistoryId/fail'),
+      headers: _authHeaders,
+      body: jsonEncode({'failureReason': reason}),
+    );
+  }
+
+  String _readApiError(http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      if (body is String && body.trim().isNotEmpty) return body;
+      if (body is Map<String, dynamic>) {
+        final message = body['message'] ?? body['title'] ?? body['detail'];
+        if (message is String && message.trim().isNotEmpty) return message;
+      }
+    } catch (_) {
+      // Use the Arabic fallback for non-JSON API failures.
+    }
+    return 'تعذر تنفيذ عملية سجل الطباعة.';
+  }
+
+  Future<bool> _confirmReprint(
+      _OrderPieceDetail piece, List<_PrintHistoryRecord> history) async {
+    final completed = history
+        .where((entry) => entry.printStatus == 'Completed')
+        .toList()
+      ..sort((a, b) => (b.printedAtUtc ?? b.createdAt)
+          .compareTo(a.printedAtUtc ?? a.createdAt));
+    final copyCount = completed.isNotEmpty
+        ? completed.length
+        : piece.isPrinted
+            ? 1
+            : 0;
+    final latest = completed.isEmpty
+        ? 'لا يوجد تاريخ رسمي سابق'
+        : DateFormat('yyyy/MM/dd HH:mm')
+            .format(completed.first.printedAtUtc ?? completed.first.createdAt);
+
+    return await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('إعادة الطباعة'),
+            content: Text(
+              'هذه البطاقة مطبوعة سابقاً. هل تريد إعادة طباعتها؟\n\n'
+              'عدد النسخ المسجلة: $copyCount\nآخر طباعة: $latest',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('إلغاء'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('متابعة'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('إلغاء'),
+        ) ??
+        false;
+  }
+
+  Future<_ReprintFormData?> _showReprintForm(
+      _OrderPieceDetail piece) async {
+    final employees = await _fetchEmployees();
+    final customers = piece.isReadyMade ? await _fetchCustomers() : const <_CustomerOption>[];
+    final damageController = TextEditingController();
+    final saleAmountController = TextEditingController();
+    final notesController = TextEditingController();
+    String? reasonCode;
+    int? responsibleEmployeeId;
+    int? saleCustomerId;
+    var paymentType = 'Cash';
+    String? errorText;
+
+    final result = await showDialog<_ReprintFormData>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final isDamagedPiece = reasonCode == 'DamagedPiece';
+          final isPieceSold = reasonCode == 'PieceSold';
+          return AlertDialog(
+            title: const Text('بيانات إعادة الطباعة'),
+            content: SizedBox(
+              width: 460,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text('اختر سبب إعادة الطباعة قبل المتابعة.'),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: reasonCode,
+                      decoration: const InputDecoration(
+                        labelText: 'سبب إعادة الطباعة',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                            value: 'DamagedCard', child: Text('البطاقة تالفة')),
+                        DropdownMenuItem(
+                            value: 'LostCard', child: Text('البطاقة مفقودة')),
+                        DropdownMenuItem(
+                            value: 'DamagedPiece', child: Text('القطعة تالفة')),
+                        DropdownMenuItem(
+                            value: 'PieceSold', child: Text('تم بيع القطعة')),
+                      ],
+                      onChanged: (value) => setDialogState(() {
+                        reasonCode = value;
+                        errorText = null;
+                      }),
+                    ),
+                    if (isDamagedPiece) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: damageController,
+                        minLines: 2,
+                        maxLines: 4,
+                        decoration: const InputDecoration(
+                          labelText: 'سبب تلف القطعة',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int>(
+                        value: responsibleEmployeeId,
+                        decoration: const InputDecoration(
+                          labelText: 'الموظف المسؤول',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: employees
+                            .map((employee) => DropdownMenuItem<int>(
+                                  value: employee.id,
+                                  child: Text(
+                                      '${employee.name} • ${employee.code}'),
+                                ))
+                            .toList(),
+                        onChanged: (value) => setDialogState(() {
+                          responsibleEmployeeId = value;
+                          errorText = null;
+                        }),
+                      ),
+                    ],
+                    if (isPieceSold) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: saleAmountController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'قيمة البيع الفعلية',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: paymentType,
+                        decoration: const InputDecoration(
+                          labelText: 'طريقة الدفع',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'Cash', child: Text('نقداً')),
+                          DropdownMenuItem(
+                              value: 'Credit', child: Text('آجلاً')),
+                        ],
+                        onChanged: (value) => setDialogState(() {
+                          paymentType = value ?? 'Cash';
+                          errorText = null;
+                        }),
+                      ),
+                      if (piece.isReadyMade) ...[
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<int>(
+                          value: saleCustomerId,
+                          decoration: const InputDecoration(
+                            labelText: 'عميل البيع',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: customers
+                              .map((customer) => DropdownMenuItem<int>(
+                                    value: customer.id,
+                                    child: Text(customer.name),
+                                  ))
+                              .toList(),
+                          onChanged: (value) => setDialogState(() {
+                            saleCustomerId = value;
+                            errorText = null;
+                          }),
+                        ),
+                      ],
+                    ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: notesController,
+                      minLines: 1,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'ملاحظات اختيارية',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    if (errorText != null) ...[
+                      const SizedBox(height: 8),
+                      Text(errorText!,
+                          style: const TextStyle(color: Colors.redAccent)),
+                    ],
+                  ],
+                ),
+              ),
             ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('تأكيد وإعادة الطباعة'),
-            ),
-          ],
-        );
-      },
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('إلغاء'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final saleAmount =
+                      double.tryParse(saleAmountController.text.trim());
+                  if (reasonCode == null) {
+                    setDialogState(() => errorText = 'اختيار سبب إعادة الطباعة مطلوب.');
+                    return;
+                  }
+                  if (isDamagedPiece &&
+                      (damageController.text.trim().isEmpty ||
+                          responsibleEmployeeId == null)) {
+                    setDialogState(() => errorText =
+                        'سبب التلف والموظف المسؤول مطلوبان قبل المتابعة.');
+                    return;
+                  }
+                  if (isPieceSold &&
+                      (saleAmount == null || saleAmount <= 0 ||
+                          (piece.isReadyMade && saleCustomerId == null))) {
+                    setDialogState(() => errorText =
+                        'قيمة البيع وعميل البيع المطلوبان قبل المتابعة.');
+                    return;
+                  }
+                  Navigator.of(dialogContext).pop(_ReprintFormData(
+                    reasonCode: reasonCode!,
+                    damageReason: isDamagedPiece
+                        ? damageController.text.trim()
+                        : null,
+                    responsibleEmployeeId:
+                        isDamagedPiece ? responsibleEmployeeId : null,
+                    notes: notesController.text.trim().isEmpty
+                        ? null
+                        : notesController.text.trim(),
+                    saleAmount: isPieceSold ? saleAmount : null,
+                    paymentType: isPieceSold ? paymentType : null,
+                    saleCustomerId: isPieceSold ? saleCustomerId : null,
+                  ));
+                },
+                child: const Text('موافق وطباعة'),
+              ),
+            ],
+          );
+        },
+      ),
     );
 
-    if (confirmed != true || !mounted) return;
+    damageController.dispose();
+    saleAmountController.dispose();
+    notesController.dispose();
+    return result;
+  }
 
-    final reason = reasonController.text.trim();
-    if (reason.isEmpty) {
-      final messenger = ScaffoldMessenger.maybeOf(stateContext);
-      messenger?.showSnackBar(
-        const SnackBar(
-            content: Text('يجب إدخال سبب إعادة الطباعة قبل المتابعة.')),
+  Future<void> _executePrint(
+    _OrderPieceDetail piece,
+    _ReprintFormData? form,
+    _PrintTarget target,
+  ) async {
+    if (_loadingPrintAction || !mounted) return;
+    setState(() => _loadingPrintAction = true);
+    _PrintHistoryRecord? prepared;
+    try {
+      prepared = await _preparePrint(piece, form);
+      await _PrintService.execute(
+        context: context,
+        piece: piece,
+        header: widget.header,
+        target: target,
+        copyNumber: prepared.copyNumber,
       );
-      return;
+      await _completePrint(piece, prepared.printHistoryId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(form == null
+                  ? 'تم اعتماد الطباعة الأولى.'
+                  : 'تم اعتماد إعادة الطباعة بالنسخة ${prepared!.copyNumber}.')),
+        );
+      }
+    } catch (error) {
+      if (prepared != null && prepared.printStatus == 'Reserved') {
+        try {
+          await _failPrint(prepared.printHistoryId, error.toString());
+        } catch (_) {
+          // The backend remains the source of truth for failed reservations.
+        }
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر اعتماد الطباعة: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingPrintAction = false);
     }
-
-    final messenger = ScaffoldMessenger.maybeOf(stateContext);
-    messenger?.showSnackBar(
-      SnackBar(content: Text('تم تسجيل سبب إعادة الطباعة: $reason')),
-    );
-
-    await _PrintService.execute(
-      context: stateContext,
-      piece: piece,
-      header: widget.header,
-      target: _PrintTarget.officePrinter,
-    );
   }
 
   Future<void> _printSelectedPiece(_OrderPieceDetail piece) async {
-    if (!mounted) return;
+    if (!mounted || _loadingPrintAction) return;
 
-    final target = await _showPrintOptionsDialog(title: 'طباعة بطاقة محددة');
-    if (target == null || !mounted) return;
-
-    if (piece.isPrinted && target == _PrintTarget.officePrinter) {
-      await _showReprintDialog(piece);
+    List<_PrintHistoryRecord> history;
+    try {
+      history = await _fetchPrintHistory(piece);
+    } catch (error) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('تعذر قراءة سجل الطباعة: $error')));
       return;
     }
 
-    await _PrintService.execute(
-      context: context,
-      piece: piece,
-      header: widget.header,
-      target: target,
-    );
+    _ReprintFormData? form;
+    if (_isPiecePrinted(piece)) {
+      if (!await _confirmReprint(piece, history) || !mounted) return;
+      try {
+        form = await _showReprintForm(piece);
+      } catch (error) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('تعذر تحميل بيانات إعادة الطباعة: $error')));
+        return;
+      }
+      if (form == null || !mounted) return;
+    }
+
+    final target = await _showPrintOptionsDialog(
+        title: form == null ? 'طباعة بطاقة محددة' : 'إعادة طباعة بطاقة محددة');
+    if (target == null || !mounted) return;
+    await _executePrint(piece, form, target);
   }
 
   Future<_PrintTarget?> _showPrintOptionsDialog({required String title}) async {
@@ -625,13 +1015,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     for (final order in widget.orders) {
       if (order.isCancelled) continue;
       final pieces = await _fetchOrderPiecesOnce(order);
-      for (final piece in pieces.where((entry) => !entry.isPrinted)) {
-        await _PrintService.execute(
-          context: stateContext,
-          piece: piece,
-          header: widget.header,
-          target: target,
-        );
+      for (final piece in pieces.where((entry) => !_isPiecePrinted(entry))) {
+        await _executePrint(piece, null, target);
       }
     }
   }
@@ -796,7 +1181,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final piece = _pieces[index];
-        final isPrinted = piece.isPrinted;
+        final isPrinted = _isPiecePrinted(piece);
         final title = _pieceTypeLabels[piece.pieceId]?.trim().isNotEmpty == true
             ? _pieceTypeLabels[piece.pieceId]!
             : piece.pieceType.trim().isNotEmpty
@@ -1980,9 +2365,13 @@ class _OrderPieceDetail {
     required this.specialRequest,
     required this.measurements,
     required this.pieceStatus,
+      this.isReadyMade = false,
   });
 
-  factory _OrderPieceDetail.fromJson(Map<String, dynamic> json) {
+  factory _OrderPieceDetail.fromJson(
+    Map<String, dynamic> json, {
+    bool readyMade = false,
+  }) {
     final snapshotValue = json['measurementSnapshot'];
     final measurementMap = parseMeasurementSnapshot(snapshotValue);
 
@@ -2085,6 +2474,7 @@ class _OrderPieceDetail {
       specialRequest: specialRequest,
       measurements: sanitizedMeasurements,
       pieceStatus: statusValue,
+      isReadyMade: readyMade,
     );
   }
 
@@ -2124,6 +2514,7 @@ class _OrderPieceDetail {
   final String specialRequest;
   final Map<String, dynamic> measurements;
   final String pieceStatus;
+  final bool isReadyMade;
 
   String get consumptionDisplay {
     if (consumption == 0 && consumptionUnit.trim().isEmpty) return '';

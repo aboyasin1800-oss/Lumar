@@ -48,7 +48,7 @@ Widget screenForIndex(
   if (index == 3) return const OrdersScreen();
   if (index == 4) return const MeasurementsScreen();
   if (index == 5) return ProductionScreen(themeState: themeState);
-  if (index == 6) return const PrintingScreen();
+  if (index == 6) return PrintingScreen(auth: auth);
   if (index == 7) return const InventoryScreen();
   if (index == 8) return const SupplierPurchasingScreen();
   if (index == 9) return const EmployeesScreen(initialTab: 0);
