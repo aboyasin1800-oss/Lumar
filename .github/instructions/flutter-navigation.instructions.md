@@ -38,11 +38,17 @@ Every new navigable Flutter screen must follow both project policies below.
 ## Standard Palette Policy
 
 - Use the project palette values in every new screen: `screenBackground`, `surfaceCard`, `softBlue`, `primaryBlue`, `primaryDark`, `purpleAccent`, `textMain`, `textSoft`, and `borderSoft`.
-- Keep the visual identity consistent across screens: dark backgrounds with luminous accents and readable contrast.
+- The core LUMAR brand color is `const Color.fromARGB(255, 78, 201, 176)` (`#4EC9B0`) and is the dominant visual accent for all new, rebuilt, or substantially modified screens.
+- Do not use blue or purple as the primary accent for new, rebuilt, or substantially modified screens. Replace that visual emphasis with turquoise-green shades derived from the LUMAR brand color.
+- Semantic Success, Warning, and Error colors remain permitted only when they communicate their respective states.
+- Keep the visual identity consistent across screens: LUMAR turquoise-green accents and readable contrast.
 - Reuse the shared palette instead of introducing local ad hoc colors in new screens.
-- The core LUMAR brand color is `const Color.fromARGB(255, 78, 201, 176)`.
 - Primary buttons use a light green variant derived from the primary color; borders and form elements use a darker green derivative.
-- Dark Mode and Light Mode must both be supported and verified before any screen is accepted.
+- Dark Mode and Light Mode must both be supported and verified before any new, rebuilt, substantially modified, or user-requested screen is accepted. Correct incomplete support in either mode as part of that task.
+
+## Theme Verification Policy
+
+Before closing any task that affects a Flutter screen, verify that the screen works in both Dark Mode and Light Mode, including readable text and icons, sufficient color contrast, and no hidden or unreadable elements in either mode.
 
 ## Central Design System Reference
 

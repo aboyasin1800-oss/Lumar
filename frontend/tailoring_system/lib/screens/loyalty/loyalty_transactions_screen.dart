@@ -136,7 +136,7 @@ class _LoyaltyTransactionsScreenState extends State<LoyaltyTransactionsScreen> {
   void _clearCustomerSearch() {
     _searchTimer?.cancel();
     _searchVersion++;
-    _searchController.clear();
+    _searchController.clear();    
     setState(() {
       _customerId = _initialCustomerId;
       _suggestionsFuture = null;
