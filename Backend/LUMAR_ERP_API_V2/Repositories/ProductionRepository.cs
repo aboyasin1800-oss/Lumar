@@ -222,6 +222,35 @@ public sealed class ProductionRepository(
                 return new ProductionTrackingAdvanceResultDto(pieceContext.PieceId, pieceContext.TrackingCode, pieceContext.PieceStatus, pieceContext.PieceStatus, null, "No approved production route exists for this piece type.", false);
             }
 
+            var finalStage = NormalizeStageForStatus(request.RequestedStage);
+            var isFinalReadyMadeStage = pieceContext.IsReadyMade
+                && string.Equals(finalStage, route[^1], StringComparison.OrdinalIgnoreCase);
+            var sameStageAlreadyApplied = string.Equals(pieceContext.PieceStatus, finalStage, StringComparison.OrdinalIgnoreCase);
+
+            if (sameStageAlreadyApplied && isFinalReadyMadeStage)
+            {
+                var recovery = await EnsureReadyMadeInventoryProductAsync(
+                    connection, transaction, pieceContext, identity.ProductTypeId, ct);
+                if (!recovery.IsAvailableForSale)
+                {
+                    throw new InvalidOperationException("The ready-made inventory product could not be ensured for the completed piece.");
+                }
+
+                await SynchronizeReadyMadeProductionStatusesAsync(connection, transaction, pieceContext.OrderId, ct);
+                await transaction.CommitAsync(ct);
+                return new ProductionTrackingAdvanceResultDto(
+                    pieceContext.PieceId,
+                    pieceContext.TrackingCode,
+                    pieceContext.PieceStatus,
+                    pieceContext.PieceStatus,
+                    null,
+                    recovery.Created
+                        ? "Final stage was already recorded; ready-made inventory was created successfully."
+                        : "Final stage and ready-made inventory are already recorded.",
+                    true,
+                    true);
+            }
+
             var validation = ProductionTrackingEngine.ValidateTransition(identity.ProductTypeId, pieceContext.PieceStatus, request.RequestedStage);
             if (!validation.IsAllowed)
             {
@@ -260,10 +289,7 @@ public sealed class ProductionRepository(
                 return new ProductionTrackingAdvanceResultDto(pieceContext.PieceId, pieceContext.TrackingCode, pieceContext.PieceStatus, pieceContext.PieceStatus, validation.NextStage, "ScannerCode is required for the requested production stage.", false);
             }
 
-            var finalStage = NormalizeStageForStatus(request.RequestedStage);
             var nextStage = validation.NextStage;
-
-            var sameStageAlreadyApplied = string.Equals(pieceContext.PieceStatus, finalStage, StringComparison.OrdinalIgnoreCase);
             if (sameStageAlreadyApplied)
             {
                 await transaction.RollbackAsync(CancellationToken.None);
@@ -311,6 +337,19 @@ public sealed class ProductionRepository(
                 throw new InvalidOperationException("The piece update did not affect the expected row.");
             }
 
+            var readyMadeInventory = pieceContext.IsReadyMade && isFinalReadyMadeStage
+                ? await EnsureReadyMadeInventoryProductAsync(connection, transaction, pieceContext, identity.ProductTypeId, ct)
+                : ReadyMadeInventoryTransferOutcome.NotRequired;
+            if (!readyMadeInventory.IsAvailableForSale)
+            {
+                throw new InvalidOperationException("The completed ready-made piece was not transferred to ready-made inventory.");
+            }
+
+            if (pieceContext.IsReadyMade)
+            {
+                await SynchronizeReadyMadeProductionStatusesAsync(connection, transaction, pieceContext.OrderId, ct);
+            }
+
             var isOrderReadyForDelivery = !pieceContext.IsReadyMade && pieceContext.OrderId > 0
                 && await MaybeUpdateOrderReadyForDeliveryAsync(connection, transaction, pieceContext.OrderId, pieceContext.OrderStatus, ct);
             await transaction.CommitAsync(ct);
@@ -321,7 +360,11 @@ public sealed class ProductionRepository(
                 pieceContext.PieceStatus,
                 finalStage,
                 nextStage,
-                isOrderReadyForDelivery ? "Production stage completed and order is ready for delivery." : "Production stage recorded successfully.",
+                readyMadeInventory.Created
+                    ? "Production stage recorded and piece transferred to ready-made inventory."
+                    : isOrderReadyForDelivery
+                        ? "Production stage completed and order is ready for delivery."
+                        : "Production stage recorded successfully.",
                 true,
                 pieceContext.IsReadyMade);
         }
@@ -571,6 +614,162 @@ public sealed class ProductionRepository(
         return await command.ExecuteNonQueryAsync(ct);
     }
 
+    private static async Task<ReadyMadeInventoryTransferOutcome> EnsureReadyMadeInventoryProductAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        PieceContext pieceContext,
+        int productTypeId,
+        CancellationToken ct)
+    {
+        const string existingSql = @"
+            SELECT ReadyMadeInventoryProductId
+            FROM dbo.ReadyMadeInventoryProducts WITH (UPDLOCK, HOLDLOCK)
+            WHERE ReadyMadeProductionOrderPieceInstanceId = @pieceId;";
+        await using var existingCommand = new SqlCommand(existingSql, connection, transaction);
+        existingCommand.Parameters.AddWithValue("@pieceId", pieceContext.PieceId);
+        var existingProductId = await existingCommand.ExecuteScalarAsync(ct);
+        if (existingProductId is not null)
+        {
+            return new ReadyMadeInventoryTransferOutcome(Convert.ToInt32(existingProductId), false, true);
+        }
+
+        const string contextSql = @"
+            SELECT o.ProductionOrderNumber, o.ProductionName, o.SuggestedSellingPrice,
+                   i.ReadyMadeProductionOrderItemId, i.ProductTypeId, i.PieceType,
+                   i.FabricCode, i.FabricType, i.FabricColor, i.CatalogNumber,
+                   i.PieceCost, i.MeasurementSnapshot,
+                   p.PieceNumber, p.TrackingCode
+            FROM dbo.ReadyMadeProductionOrderPieceInstances p WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.ReadyMadeProductionOrderItems i ON i.ReadyMadeProductionOrderItemId = p.ReadyMadeProductionOrderItemId
+            INNER JOIN dbo.ReadyMadeProductionOrders o ON o.ReadyMadeProductionOrderId = i.ReadyMadeProductionOrderId
+            WHERE p.ReadyMadeProductionOrderPieceInstanceId = @pieceId;";
+        await using var contextCommand = new SqlCommand(contextSql, connection, transaction);
+        contextCommand.Parameters.AddWithValue("@pieceId", pieceContext.PieceId);
+        await using var reader = await contextCommand.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+        {
+            return ReadyMadeInventoryTransferOutcome.Failed;
+        }
+
+        var productionOrderNumber = reader.GetString(0);
+        var productionName = reader.GetString(1);
+        var suggestedSellingPrice = reader.GetDecimal(2);
+        var itemId = reader.GetInt32(3);
+        var officialProductTypeId = reader.IsDBNull(4) ? 0 : reader.GetInt32(4);
+        var pieceType = reader.GetString(5);
+        var fabricCode = reader.NullableString("FabricCode");
+        var fabricType = reader.NullableString("FabricType");
+        var fabricColor = reader.NullableString("FabricColor");
+        var catalogNumber = reader.NullableString("CatalogNumber");
+        var actualCost = reader.NullableDecimal("PieceCost") ?? 0m;
+        var measurementSnapshot = reader.NullableString("MeasurementSnapshot");
+        var pieceNumber = reader.GetInt32(12);
+        var trackingCode = reader.GetString(13);
+        await reader.CloseAsync();
+
+        if (officialProductTypeId != productTypeId)
+        {
+            throw new InvalidOperationException("The ready-made piece ProductTypeId does not match its official item ProductTypeId.");
+        }
+
+        const string insertSql = @"
+            INSERT INTO dbo.ReadyMadeInventoryProducts
+                (ReadyMadeProductionOrderId, ReadyMadeProductionOrderItemId, ReadyMadeProductionOrderPieceInstanceId,
+                 ProductTypeId, ProductionOrderNumber, ProductionName, PieceType, PieceNumber, TrackingCode,
+                 FabricCode, FabricType, FabricColor, CatalogNumber, FabricUnit, FabricWidth, FabricWidthUnit,
+                 ActualCost, SuggestedSellingPrice, MeasurementSnapshot, ReadyForSaleAt, Status, Source, Notes, IsActive, CreatedAt)
+            OUTPUT INSERTED.ReadyMadeInventoryProductId
+            VALUES
+                (@orderId, @itemId, @pieceId,
+                 @productTypeId, @productionOrderNumber, @productionName, @pieceType, @pieceNumber, @trackingCode,
+                 @fabricCode, @fabricType, @fabricColor, @catalogNumber, N'Piece', NULL, NULL,
+                 @actualCost, @suggestedSellingPrice, @measurementSnapshot, @now, N'AvailableForSale', N'OurProduction', N'Automatically transferred after the final production stage.', 1, @now);";
+        await using var insertCommand = new SqlCommand(insertSql, connection, transaction);
+        insertCommand.Parameters.AddWithValue("@orderId", pieceContext.OrderId);
+        insertCommand.Parameters.AddWithValue("@itemId", itemId);
+        insertCommand.Parameters.AddWithValue("@pieceId", pieceContext.PieceId);
+        insertCommand.Parameters.AddWithValue("@productTypeId", officialProductTypeId);
+        insertCommand.Parameters.AddWithValue("@productionOrderNumber", productionOrderNumber);
+        insertCommand.Parameters.AddWithValue("@productionName", productionName);
+        insertCommand.Parameters.AddWithValue("@pieceType", pieceType);
+        insertCommand.Parameters.AddWithValue("@pieceNumber", pieceNumber);
+        insertCommand.Parameters.AddWithValue("@trackingCode", trackingCode);
+        AddNullable(insertCommand, "@fabricCode", fabricCode);
+        AddNullable(insertCommand, "@fabricType", fabricType);
+        AddNullable(insertCommand, "@fabricColor", fabricColor);
+        AddNullable(insertCommand, "@catalogNumber", catalogNumber);
+        insertCommand.Parameters.AddWithValue("@actualCost", actualCost);
+        insertCommand.Parameters.AddWithValue("@suggestedSellingPrice", suggestedSellingPrice);
+        AddNullable(insertCommand, "@measurementSnapshot", measurementSnapshot);
+        insertCommand.Parameters.AddWithValue("@now", DateTime.UtcNow);
+        var productId = await insertCommand.ExecuteScalarAsync(ct);
+        return productId is null
+            ? ReadyMadeInventoryTransferOutcome.Failed
+            : new ReadyMadeInventoryTransferOutcome(Convert.ToInt32(productId), true, true);
+    }
+
+    private static async Task SynchronizeReadyMadeProductionStatusesAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int orderId,
+        CancellationToken ct)
+    {
+        const string piecesSql = @"
+            SELECT i.ReadyMadeProductionOrderItemId, i.ProductTypeId, p.PieceStatus
+            FROM dbo.ReadyMadeProductionOrderItems i WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.ReadyMadeProductionOrderPieceInstances p ON p.ReadyMadeProductionOrderItemId = i.ReadyMadeProductionOrderItemId
+            WHERE i.ReadyMadeProductionOrderId = @orderId;";
+        await using var piecesCommand = new SqlCommand(piecesSql, connection, transaction);
+        piecesCommand.Parameters.AddWithValue("@orderId", orderId);
+        await using var reader = await piecesCommand.ExecuteReaderAsync(ct);
+        var statusesByItem = new Dictionary<int, List<(int ProductTypeId, string Status)>>();
+        while (await reader.ReadAsync(ct))
+        {
+            var itemId = reader.GetInt32(0);
+            var productTypeId = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+            var status = reader.GetString(2);
+            if (!statusesByItem.TryGetValue(itemId, out var statuses))
+            {
+                statuses = [];
+                statusesByItem[itemId] = statuses;
+            }
+            statuses.Add((productTypeId, status));
+        }
+        await reader.CloseAsync();
+
+        var allCompleted = statusesByItem.Count > 0;
+        var anyProgress = false;
+        foreach (var (itemId, statuses) in statusesByItem)
+        {
+            var itemCompleted = statuses.Count > 0 && statuses.All(status =>
+            {
+                var route = ProductionTrackingEngine.GetRoute(status.ProductTypeId);
+                return route.Count > 0 && string.Equals(status.Status, route[^1], StringComparison.OrdinalIgnoreCase);
+            });
+            var itemHasProgress = statuses.Any(status => !string.Equals(status.Status, "New", StringComparison.OrdinalIgnoreCase));
+            anyProgress |= itemHasProgress;
+            allCompleted &= itemCompleted;
+
+            var itemStatus = itemCompleted ? "Completed" : itemHasProgress ? "InProduction" : "New";
+            await using var itemCommand = new SqlCommand(
+                "UPDATE dbo.ReadyMadeProductionOrderItems SET PieceStatus = @status WHERE ReadyMadeProductionOrderItemId = @itemId",
+                connection,
+                transaction);
+            itemCommand.Parameters.AddWithValue("@status", itemStatus);
+            itemCommand.Parameters.AddWithValue("@itemId", itemId);
+            await itemCommand.ExecuteNonQueryAsync(ct);
+        }
+
+        var orderStatus = allCompleted ? "Completed" : anyProgress ? "InProduction" : "New";
+        await using var orderCommand = new SqlCommand(
+            "UPDATE dbo.ReadyMadeProductionOrders SET Status = @status WHERE ReadyMadeProductionOrderId = @orderId",
+            connection,
+            transaction);
+        orderCommand.Parameters.AddWithValue("@status", orderStatus);
+        orderCommand.Parameters.AddWithValue("@orderId", orderId);
+        await orderCommand.ExecuteNonQueryAsync(ct);
+    }
+
     private async Task<bool> MaybeUpdateOrderReadyForDeliveryAsync(SqlConnection connection, SqlTransaction transaction, int orderId, string currentOrderStatus, CancellationToken ct)
     {
         if (string.Equals(currentOrderStatus, "Cancelled", StringComparison.OrdinalIgnoreCase))
@@ -656,6 +855,11 @@ public sealed class ProductionRepository(
     };
 
     private sealed record PieceContext(int PieceId, int OrderItemId, string TrackingCode, string PieceStatus, string PieceType, int OrderId, string OrderStatus, string OrderNumber, bool IsReadyMade = false);
+    private sealed record ReadyMadeInventoryTransferOutcome(int? ProductId, bool Created, bool IsAvailableForSale)
+    {
+        public static ReadyMadeInventoryTransferOutcome NotRequired { get; } = new(null, false, true);
+        public static ReadyMadeInventoryTransferOutcome Failed { get; } = new(null, false, false);
+    }
     private sealed record CancelledPieceDispositionRow(int PieceId, string Decision, string? TransferStatus);
     private sealed record PieceWageInsertOutcome(bool IsCreated, string Message);
     private sealed record ScannerValidationResult(bool IsValid, string Message)

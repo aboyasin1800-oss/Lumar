@@ -27,6 +27,16 @@ Every new navigable Flutter screen must follow both project policies below.
 - Text fields keep their own Enter behavior. Use `textInputAction` and `onSubmitted` for field-to-field movement or form submission.
 - Do not add screen-specific raw Enter listeners when standard focus and activation actions can implement the behavior.
 
+## Arabic UI Language Policy
+
+- Arabic is the only language permitted for text visible to end users in every Flutter screen.
+- This applies to screen names, tabs, buttons, fields, headings, filters, tables, messages, alerts, record states, order states, piece states, success and failure messages, tooltips, empty states, loading states, SnackBars, and dialogs.
+- Do not expose English UI words or raw backend values such as `New`, `Printing`, `Assembly`, `Ready`, `Cancelled`, `Success`, `Failed`, `Error`, `Save`, `Close`, `Search`, `Tracking`, or `Production`.
+- Any English value received from a database, API, enum, or backend must be translated to Arabic before it is rendered.
+- Required state translations include: `New` -> `جديد`, `Printing` -> `الطباعة`, `Assembly` -> `التجميع`, `ReadyForSale` -> `جاهز للبيع`, `AvailableForSale` -> `متاح للبيع`, `Cancelled` -> `ملغي`, `Completed` -> `مكتمل`, `Failed` -> `فشل`, and `Success` -> `نجاح`.
+- English remains permitted inside implementation-only elements such as code, classes, methods, tables, columns, DTOs, APIs, logs, backend code, database objects, and reference IDs, provided it is never rendered as user-facing text.
+- This policy applies to new screens, rebuilt screens, substantially modified screens, and every screen requested for improvement. When modifying a legacy screen, translate any visible English encountered within the same task.
+
 ## Adaptive Foreground Policy
 
 - Every screen must use the shared palette constants defined in `UiPalette` for base colors.
@@ -48,7 +58,17 @@ Every new navigable Flutter screen must follow both project policies below.
 
 ## Theme Verification Policy
 
-Before closing any task that affects a Flutter screen, verify that the screen works in both Dark Mode and Light Mode, including readable text and icons, sufficient color contrast, and no hidden or unreadable elements in either mode.
+- Implement screens with theme-aware colors, text, icons, and layout so they support the project's Light and Dark themes.
+- Visual verification of Light Mode and Dark Mode, contrast, alignment, clipping, controls, and manual behavior is performed by Yasin through the running application.
+- Do not require screenshots, runtime inspection, or visual evidence from the coding agent before closing the implementation portion of the task.
+
+## Flutter UI Task Verification Policy
+
+- سعد is responsible for implementing the requested UI change only, running `flutter analyze` on modified files, fixing analysis errors caused by the change, and reporting the modified files and analysis result.
+- Run one Flutter build only when technically necessary or when Yasin explicitly requests it. Do not repeat Flutter builds by default.
+- Yasin alone is responsible for starting the application, opening the screen, visual testing, Light Mode and Dark Mode testing through the UI, evaluating colors, layout, alignment, buttons, and fields, and giving final visual and manual approval.
+- Unless Yasin explicitly requests it, do not run the application or `flutter run`, perform Hot Reload or Hot Restart for visual verification, use Flutter Driver or Widget Inspector, capture before/after screenshots, move or resize the application window, bring it to the foreground, use desktop capture tools, or perform manual or visual tests.
+- The implementation report must remain concise: list modified files and the focused `flutter analyze` result. Do not claim visual or manual verification performed by سعد.
 
 ## Central Design System Reference
 

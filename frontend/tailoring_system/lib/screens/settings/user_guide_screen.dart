@@ -37,6 +37,8 @@ class _UserGuideScreenState extends State<UserGuideScreen> {
         'SALES_PRICING_INTEGRATION_DOCUMENTATION_AR.md'),
     _GuideCategory('مبيعات المنتجات الجاهزة', Icons.point_of_sale_outlined, true,
       'READY_MADE_SALES_SCREEN_GUIDE_AR.md'),
+    _GuideCategory('إنشاء أوامر الإنتاج الجاهز', Icons.factory_outlined, true,
+      'READY_MADE_PRODUCTION_ORDER_CREATE_GUIDE_AR.md'),
     _GuideCategory('الطلبات', Icons.receipt_long_outlined, true,
         'ORDERS_SCREEN_USER_GUIDE_AR.md'),
     _GuideCategory('الإنتاج', Icons.factory_outlined, true,

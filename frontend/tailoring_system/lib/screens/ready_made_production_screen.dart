@@ -7,6 +7,10 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart' hide TextDirection;
 
 import '../core/app_navigation.dart';
+import '../core/theme/app_dimensions.dart';
+import '../core/theme/app_spacing.dart';
+import '../core/theme/app_surface.dart';
+import '../core/theme/app_typography.dart';
 
 class ReadyMadeProductionScreen extends StatefulWidget {
 	const ReadyMadeProductionScreen({super.key});
@@ -751,48 +755,37 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 	}
 
 	Widget _buildOrderSummaryCard() {
-		final cardColor = UiPalette.surfaceCard;
-		return Container(
-			padding: const EdgeInsets.all(18),
-			decoration: BoxDecoration(
-				gradient: LinearGradient(
-					begin: Alignment.topCenter,
-					end: Alignment.bottomCenter,
-					colors: [UiPalette.surfaceCard, const Color.fromARGB(255, 0, 7, 14).withValues(alpha: 0.32)],
-				),
-				borderRadius: BorderRadius.circular(22),
-				boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 18, offset: const Offset(0, 8))],
-				border: Border.all(color: UiPalette.borderSoft.withValues(alpha: 0.55)),
-			),
+		final cardColor = Theme.of(context).cardColor;
+		final textColor = Theme.of(context).colorScheme.onSurface;
+		return AppSurface(
+			color: cardColor,
+			borderColor: Theme.of(context).colorScheme.outline,
+			margin: EdgeInsets.zero,
+			padding: const EdgeInsets.all(AppSpacing.lg),
 			child: Column(
 				crossAxisAlignment: CrossAxisAlignment.stretch,
 				children: [
 					Text(
 						'ملخص الأمر',
-						style: UiPalette.adaptiveTextStyle(
-							context,
-							backgroundColor: cardColor,
-							fontSize: 20,
-							fontWeight: FontWeight.w800,
-						),
+						style: AppTypography.title.copyWith(color: textColor),
 					),
-					const SizedBox(height: 16),
+					const SizedBox(height: AppSpacing.md),
 					_paddingField(
 						controller: _nameController,
 						label: 'اسم الإنتاج',
 						validator: (value) => (value == null || value.trim().isEmpty) ? 'اسم الإنتاج مطلوب' : null,
 					),
-					const SizedBox(height: 12),
+					const SizedBox(height: AppSpacing.sm),
 					_paddingField(controller: _totalCostController, label: 'إجمالي التكلفة', readOnly: true),
-					const SizedBox(height: 12),
+					const SizedBox(height: AppSpacing.sm),
 					_paddingField(
 						controller: _profitController,
 						label: 'نسبة الربح %',
 						onChanged: (_) => _updateAutoPrice(),
 					),
-					const SizedBox(height: 12),
+					const SizedBox(height: AppSpacing.sm),
 					_paddingField(controller: _priceController, label: 'سعر البيع المقترح', readOnly: true),
-					const SizedBox(height: 12),
+					const SizedBox(height: AppSpacing.sm),
 					_paddingField(controller: _notesController, label: 'ملاحظات', maxLines: 3),
 				],
 			),
@@ -842,19 +835,13 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 				}).toList()
 			: <Widget>[];
 
-		return Container(
-			margin: const EdgeInsets.only(bottom: 18),
-			padding: const EdgeInsets.all(18),
-			decoration: BoxDecoration(
-				gradient: LinearGradient(
-					begin: Alignment.topCenter,
-					end: Alignment.bottomCenter,
-					colors: [const Color.fromARGB(255, 18, 18, 20), const Color.fromARGB(255, 33, 33, 36)],
-				),
-				borderRadius: BorderRadius.circular(24),
-				boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.24), blurRadius: 18, offset: const Offset(0, 9))],
-				border: Border.all(color: const Color.fromARGB(255, 80, 80, 82).withValues(alpha: 0.7)),
-			),
+		final cardColor = Theme.of(context).cardColor;
+		final textColor = Theme.of(context).colorScheme.onSurface;
+		return AppSurface(
+			color: cardColor,
+			borderColor: Theme.of(context).colorScheme.outline,
+			margin: const EdgeInsets.only(bottom: AppSpacing.md),
+			padding: const EdgeInsets.all(AppSpacing.md),
 			child: Column(
 				crossAxisAlignment: CrossAxisAlignment.stretch,
 				children: [
@@ -863,12 +850,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 							Expanded(
 								child: Text(
 									'البند ${index + 1}',
-									style: UiPalette.adaptiveTextStyle(
-										context,
-										backgroundColor: const Color.fromARGB(255, 18, 18, 20),
-										fontSize: 18,
-										fontWeight: FontWeight.w800,
-									),
+									style: AppTypography.title.copyWith(color: textColor),
 								),
 							),
 							if (_items.length > 1)
@@ -879,12 +861,12 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 								),
 						],
 					),
-					const SizedBox(height: 16),
+					const SizedBox(height: AppSpacing.md),
 					_buildFieldGrid(row1),
-					const SizedBox(height: 14),
+					const SizedBox(height: AppSpacing.md),
 					_buildFieldGrid(row2),
 					if (measurementFields.isNotEmpty) ...[
-						const SizedBox(height: 14),
+						const SizedBox(height: AppSpacing.md),
 						_buildFieldGrid(measurementFields),
 					],
 				],
@@ -896,11 +878,11 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 		if (fields.isEmpty) return const SizedBox.shrink();
 		return LayoutBuilder(
 			builder: (context, constraints) {
-				final spacing = 12.0;
+				final spacing = AppSpacing.sm;
 				final usableWidth = constraints.maxWidth - (spacing * (fields.length - 1));
 				final itemWidth = usableWidth / fields.length;
 				return Wrap(
-					runSpacing: 12,
+					runSpacing: AppSpacing.sm,
 					spacing: spacing,
 					alignment: WrapAlignment.start,
 					children: fields
@@ -920,15 +902,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 		void Function(String)? onChanged,
 		String? Function(String?)? validator,
 	}) {
-		return Container(
-			padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-			decoration: BoxDecoration(
-				color: readOnly ? const Color.fromARGB(255, 17, 17, 19).withValues(alpha: 0.55) : const Color.fromARGB(255, 12, 12, 14).withValues(alpha: 0.90),
-				borderRadius: BorderRadius.circular(14),
-				border: Border.all(color: readOnly ? const Color.fromARGB(255, 84, 84, 88).withValues(alpha: 0.5) : const Color.fromARGB(255, 78, 78, 82).withValues(alpha: 0.35)),
-				boxShadow: [BoxShadow(color: const Color.fromARGB(255, 0, 0, 0).withValues(alpha: readOnly ? 0.12 : 0.20), blurRadius: readOnly ? 8 : 12, offset: const Offset(0, 5))],
-			),
-			child: TextFormField(
+		return TextFormField(
 				controller: controller,
 				readOnly: readOnly,
 				keyboardType: keyboardType,
@@ -937,25 +911,15 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 				validator: validator,
 				decoration: InputDecoration(
 					labelText: label,
-					labelStyle: UiPalette.adaptiveTextStyle(
-						context,
-						backgroundColor: const Color.fromARGB(255, 12, 12, 14),
-						fontSize: 12,
-						fontWeight: FontWeight.w600,
-					),
-					border: InputBorder.none,
-					enabledBorder: InputBorder.none,
-					focusedBorder: InputBorder.none,
-					contentPadding: EdgeInsets.zero,
+					filled: true,
+					fillColor: readOnly
+						? Theme.of(context).colorScheme.surfaceContainerHighest
+						: null,
 				),
-				style: UiPalette.adaptiveTextStyle(
-					context,
-					backgroundColor: const Color.fromARGB(255, 12, 12, 14),
-					fontSize: 14,
-					fontWeight: FontWeight.w600,
+				style: AppTypography.body.copyWith(
+					color: Theme.of(context).colorScheme.onSurface,
 				),
-			),
-		);
+			);
 	}
 
 	Widget _dropdownField({
@@ -965,41 +929,20 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 		required void Function(String?) onChanged,
 		String? Function(String?)? validator,
 	}) {
-		return Container(
-			padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-			decoration: BoxDecoration(
-				color: UiPalette.surfaceCard.withValues(alpha: 0.80),
-				borderRadius: BorderRadius.circular(14),
-				border: Border.all(color: UiPalette.primaryBlue.withValues(alpha: 0.35)),
-				boxShadow: const [BoxShadow(color: Color.fromARGB(25, 0, 0, 0), blurRadius: 12, offset: Offset(0, 5))],
-			),
-			child: DropdownButtonFormField<String>(
+		return DropdownButtonFormField<String>(
 				initialValue: value,
 				isExpanded: true,
 				decoration: InputDecoration(
 					labelText: label,
-					labelStyle: UiPalette.adaptiveTextStyle(
-						context,
-						backgroundColor: UiPalette.surfaceCard,
-						fontSize: 12,
-						fontWeight: FontWeight.w600,
-					),
-					border: InputBorder.none,
-					enabledBorder: InputBorder.none,
-					focusedBorder: InputBorder.none,
-					contentPadding: EdgeInsets.zero,
+					filled: true,
 				),
 				items: items,
 				onChanged: onChanged,
 				validator: validator,
-				style: UiPalette.adaptiveTextStyle(
-					context,
-					backgroundColor: UiPalette.surfaceCard,
-					fontSize: 14,
-					fontWeight: FontWeight.w600,
+				style: AppTypography.body.copyWith(
+					color: Theme.of(context).colorScheme.onSurface,
 				),
-			),
-		);
+			);
 	}
 
 	@override
@@ -1012,22 +955,18 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 						final isWide = constraints.maxWidth >= 980;
 						final itemList = [
 							..._items.asMap().entries.map((entry) => _buildItemCard(entry.value, entry.key)),
-							const SizedBox(height: 12),
+							const SizedBox(height: AppSpacing.sm),
 							SizedBox(
-								height: 50,
+								height: AppDimensions.buttonHeight,
 								child: FilledButton.icon(
 									onPressed: _addItem,
 									icon: const Icon(Icons.add_circle_outline_rounded),
 									label: const Text('إضافة بند جديد'),
-									style: FilledButton.styleFrom(
-										backgroundColor: const Color.fromARGB(255, 18, 247, 216),
-										foregroundColor: const Color.fromARGB(255, 0, 2, 5),
-									),
 								),
 							),
-							const SizedBox(height: 18),
+							const SizedBox(height: AppSpacing.md),
 							SizedBox(
-								height: 48,
+								height: AppDimensions.buttonHeight,
 								child: FilledButton.icon(
 									onPressed: _saving ? null : _save,
 									icon: _saving
@@ -1038,17 +977,13 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 											)
 										: const Icon(Icons.save_alt_rounded),
 									label: Text(_saving ? 'جاري الحفظ...' : 'حفظ الأمر'),
-									style: FilledButton.styleFrom(
-										backgroundColor: const Color.fromARGB(255, 17, 251, 231),
-										foregroundColor: const Color.fromARGB(255, 0, 3, 8),
-									),
 								),
 							),
 						];
 
 						if (isWide) {
 							return Padding(
-								padding: const EdgeInsets.all(16),
+									padding: AppSpacing.all,
 								child: Row(
 									crossAxisAlignment: CrossAxisAlignment.start,
 									children: [
@@ -1059,7 +994,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 												children: itemList,
 											),
 										),
-										const SizedBox(width: 18),
+										const SizedBox(width: AppSpacing.md),
 										Expanded(flex: 1, child: _buildOrderSummaryCard()),
 									],
 								),
@@ -1068,12 +1003,12 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 
 						if (widget.embedded) {
 							return Padding(
-								padding: const EdgeInsets.all(16),
+								padding: AppSpacing.all,
 								child: ListView(
 									padding: EdgeInsets.zero,
 									children: [
 										...itemList,
-										const SizedBox(height: 18),
+										const SizedBox(height: AppSpacing.md),
 										_buildOrderSummaryCard(),
 									],
 								),
@@ -1081,7 +1016,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 						}
 
 						return Padding(
-							padding: const EdgeInsets.all(16),
+							padding: AppSpacing.all,
 							child: Column(
 								children: [
 									Expanded(
@@ -1090,7 +1025,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 											children: itemList,
 										),
 									),
-									const SizedBox(height: 18),
+									const SizedBox(height: AppSpacing.md),
 									_buildOrderSummaryCard(),
 								],
 							),
@@ -1104,14 +1039,11 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 					crossAxisAlignment: CrossAxisAlignment.stretch,
 					children: [
 						Padding(
-							padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+							padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
 							child: Text(
 								'إنشاء أمر إنتاج جاهز',
-								style: UiPalette.adaptiveTextStyle(
-									context,
-									backgroundColor: UiPalette.screenBackground,
-									fontSize: 20,
-									fontWeight: FontWeight.w800,
+								style: AppTypography.title.copyWith(
+									color: Theme.of(context).colorScheme.onSurface,
 								),
 							),
 						),
@@ -1119,20 +1051,14 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 					],
 				)
 			: Scaffold(
-					backgroundColor: UiPalette.screenBackground,
+					backgroundColor: Theme.of(context).scaffoldBackgroundColor,
 					appBar: AppBar(
 						title: Text(
 							'إنشاء أمر إنتاج جاهز',
-							style: UiPalette.adaptiveTextStyle(
-								context,
-								backgroundColor: UiPalette.surfaceCard,
-								fontSize: 18,
-								fontWeight: FontWeight.w700,
+							style: AppTypography.title.copyWith(
+								color: Theme.of(context).colorScheme.onSurface,
 							),
 						),
-						backgroundColor: UiPalette.surfaceCard,
-						foregroundColor: UiPalette.textMain,
-						iconTheme: const IconThemeData(color: UiPalette.textMain),
 					),
 					body: content,
 				);

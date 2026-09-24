@@ -363,6 +363,7 @@ class _ProductionScreenState extends State<ProductionScreen>
                     inventory: activeData.readyInventory,
                     readyPieces: activeData.readyPieces,
                     api: _api,
+                    onRefresh: reload,
                   ),
                 ],
               ),
@@ -1189,6 +1190,12 @@ String _resolveOrderStatusFromOrder(Map<String, dynamic> order) {
   switch (_normalizeOrderStatusKey(status)) {
     case 'new':
       return 'جديد';
+    case 'completed':
+      return 'مكتمل';
+    case 'availableforsale':
+      return 'متاح للبيع';
+    case 'sold':
+      return 'مباع';
     case 'in_production':
       return 'قيد الإنتاج';
     case 'ready_for_delivery':
@@ -2965,6 +2972,12 @@ String _productionDisplayLabel(Object? value) {
   switch (raw.toLowerCase().replaceAll(' ', '')) {
     case 'new':
       return 'جديد';
+    case 'completed':
+      return 'مكتمل';
+    case 'availableforsale':
+      return 'متاح للبيع';
+    case 'sold':
+      return 'مباع';
     case 'ready':
     case 'readyfordelivery':
       return 'جاهزة للتسليم';
@@ -3479,11 +3492,13 @@ class ReadyMadeTab extends StatefulWidget {
       required this.inventory,
       required this.readyPieces,
       required this.api,
+      required this.onRefresh,
       super.key});
   final List<Map<String, dynamic>> orders;
   final List<Map<String, dynamic>> inventory;
   final List<Map<String, dynamic>> readyPieces;
   final ProductionApi api;
+  final VoidCallback onRefresh;
 
   @override
   State<ReadyMadeTab> createState() => _ReadyMadeTabState();
@@ -3542,7 +3557,8 @@ class _ReadyMadeTabState extends State<ReadyMadeTab> {
                       child: ExpansionTile(
                         title: Text(
                             '${order['productionOrderNumber']} - ${order['productionName']}'),
-                        subtitle: Text('الحالة: ${order['status']}'),
+                        subtitle: Text(
+                          'الحالة: ${_productionDisplayLabel(order['status'])}'),
                         children: [
                           FutureBuilder<List<Map<String, dynamic>>>(
                             future: widget.api.readyItems(
@@ -3570,7 +3586,7 @@ class _ReadyMadeTabState extends State<ReadyMadeTab> {
                                             '${item['pieceType']}  •  الكمية ${item['quantity']}',
                                           ),
                                           subtitle: Text(
-                                            'القماش: ${item['fabricType'] ?? '-'}  •  الحالة: ${item['pieceStatus']}',
+                                            'القماش: ${item['fabricType'] ?? '-'}  •  الحالة: ${_productionDisplayLabel(item['pieceStatus'])}',
                                           ),
                                           trailing:
                                               const Icon(Icons.chevron_left),
@@ -3581,6 +3597,7 @@ class _ReadyMadeTabState extends State<ReadyMadeTab> {
                                               inventory: widget.inventory,
                                               readyPieces: widget.readyPieces,
                                               api: widget.api,
+                                              onRefresh: widget.onRefresh,
                                             ),
                                           ),
                                         ))
@@ -3605,11 +3622,13 @@ class ReadyMadeDetailsScreen extends StatelessWidget {
       required this.inventory,
       required this.readyPieces,
       required this.api,
+      required this.onRefresh,
       super.key});
   final Map<String, dynamic> item;
   final List<Map<String, dynamic>> inventory;
   final List<Map<String, dynamic>> readyPieces;
   final ProductionApi api;
+  final VoidCallback onRefresh;
   @override
     Widget build(BuildContext context) {
     final itemId = item['readyMadeProductionOrderItemId'] as int;
@@ -3647,7 +3666,10 @@ class ReadyMadeDetailsScreen extends StatelessWidget {
                       onTap: () => AppNavigation.push(
                         context,
                         (_) => ReadyMadePieceDetailsScreen(
-                          piece: piece, api: api)),
+                          piece: piece,
+                          api: api,
+                          onRefreshed: onRefresh,
+                        )),
                       child: Card(
                         child: Padding(
                           padding: const EdgeInsets.all(14),
@@ -3660,8 +3682,11 @@ class ReadyMadeDetailsScreen extends StatelessWidget {
                                 formatDate(piece['createdAt'])),
                             DetailField('سعر البيع المقترح',
                                 stock?['suggestedSellingPrice']),
-                            DetailField('حالة المخزون',
-                                stock?['status'] ?? 'لم تدخل المخزون')
+                            DetailField(
+                              'حالة المخزون',
+                              stock == null
+                                ? 'لم تدخل المخزون'
+                                : _productionDisplayLabel(stock['status']))
                           ]))));
                 });
             }));
@@ -3669,10 +3694,16 @@ class ReadyMadeDetailsScreen extends StatelessWidget {
 }
 
 class ReadyMadePieceDetailsScreen extends StatefulWidget {
-  const ReadyMadePieceDetailsScreen({required this.piece, required this.api, super.key});
+  const ReadyMadePieceDetailsScreen({
+    required this.piece,
+    required this.api,
+    required this.onRefreshed,
+    super.key,
+  });
 
   final Map<String, dynamic> piece;
   final ProductionApi api;
+  final VoidCallback onRefreshed;
 
   @override
   State<ReadyMadePieceDetailsScreen> createState() => _ReadyMadePieceDetailsScreenState();
@@ -3681,6 +3712,7 @@ class ReadyMadePieceDetailsScreen extends StatefulWidget {
 class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScreen> {
   late Future<_ReadyMadePieceDetails> _future;
   bool _busy = false;
+  bool _transferredToInventory = false;
 
   @override
   void initState() {
@@ -3706,7 +3738,7 @@ class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScree
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await widget.api.advancePiece(
+      final result = await widget.api.advancePiece(
         trackingCode: (data.card['trackingCode'] ?? '').toString(),
         pieceType: (data.route['pieceType'] ?? data.card['pieceType'] ?? '').toString(),
         productTypeId: (data.route['productTypeId'] as num).toInt(),
@@ -3716,17 +3748,73 @@ class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScree
         operationReference: 'ExecutionSource=ManualTest;Operation=ReadyMadeProductionAdvance',
         isReadyMade: true,
       );
-      if (mounted) setState(() => _future = _load());
+      if (result['updated'] != true) {
+        throw ProductionApiException(
+          400,
+          result['message']?.toString() ?? 'تعذر تنفيذ المرحلة.',
+        );
+      }
+      widget.onRefreshed();
+      if (!mounted) return;
+      final isFinalStage = _isFinalStage(stage, data.route);
+      setState(() {
+        _transferredToInventory = isFinalStage;
+        _future = _load();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isFinalStage
+                ? 'تم التجميع وترحيل القطعة إلى المخزن بنجاح.'
+                : 'تم تنفيذ مرحلة ${_stageLabel(stage)} بنجاح.',
+          ),
+          backgroundColor: UiPalette.primaryBlue,
+        ),
+      );
     } catch (error) {
+      try {
+        final refreshed = await _load();
+        if (_hasStageBeenRecorded(refreshed, stage)) {
+          widget.onRefreshed();
+          if (!mounted) return;
+          final isFinalStage = _isFinalStage(stage, refreshed.route);
+          setState(() {
+            _transferredToInventory = isFinalStage;
+            _future = Future<_ReadyMadePieceDetails>.value(refreshed);
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                isFinalStage
+                    ? 'تم التجميع وترحيل القطعة إلى المخزن بنجاح.'
+                    : 'تم تنفيذ مرحلة ${_stageLabel(stage)} بنجاح.',
+              ),
+              backgroundColor: UiPalette.primaryBlue,
+            ),
+          );
+          return;
+        }
+      } catch (_) {
+        // Keep the original failure when the persisted state cannot be read.
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error is ProductionApiException ? (error.message ?? 'تعذر تنفيذ المرحلة.') : 'تعذر تنفيذ المرحلة.')),
+          const SnackBar(content: Text('تعذر تنفيذ المرحلة.')),
         );
       }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  bool _isFinalStage(String stage, Map<String, dynamic> route) {
+    final stages = _buildManualStages(route);
+    return stages.isNotEmpty && stage == stages.last;
+  }
+
+  bool _hasStageBeenRecorded(_ReadyMadePieceDetails data, String stage) =>
+      (data.card['pieceStatus'] ?? '').toString() == stage &&
+      data.history.any((event) => (event['stage'] ?? '').toString() == stage);
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -3778,6 +3866,31 @@ class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScree
                   isBusy: _busy,
                   onAdvance: (stage) => _advance(stage, data),
                 ),
+                if (_transferredToInventory) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: UiPalette.primaryBlue,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.inventory_2_outlined),
+                        const SizedBox(width: 8),
+                        Text(
+                          'تم الترحيل إلى المخزن',
+                          style: UiPalette.adaptiveTextStyle(
+                            context,
+                            backgroundColor: UiPalette.primaryBlue,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 Text('القياسات', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 8),
@@ -3785,7 +3898,9 @@ class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScree
                 const SizedBox(height: 16),
                 Text('تاريخ التتبع', style: Theme.of(context).textTheme.titleLarge),
                 ...data.history.map((event) => ListTile(
-                      title: Text('${event['stage']} - ${event['status']}'),
+                      title: Text(
+                        '${_stageLabel((event['stage'] ?? '').toString())} - ${_productionDisplayLabel(event['status'])}',
+                      ),
                       subtitle: Text(formatDateTime(event['eventTime'])),
                     )),
               ],

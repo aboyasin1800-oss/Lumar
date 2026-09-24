@@ -1715,7 +1715,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
 
   Widget _buildSalesTabs(BuildContext context) {
     return Container(
-      color: const Color(0xFF101820),
+      color: Theme.of(context).colorScheme.surface,
       child: Row(children: [
         _salesTab(context, 0, 'مبيعات التفصيل'),
         _salesTab(context, 1, 'المبيعات الجاهزة'),
@@ -1726,6 +1726,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
 
   Widget _salesTab(BuildContext context, int index, String label) {
     final selected = _selectedTab == index;
+    final colorScheme = Theme.of(context).colorScheme;
     return Expanded(
       child: InkWell(
         onTap: () => setState(() => _selectedTab = index),
@@ -1735,18 +1736,19 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
-                color: selected ? _primaryBlue : _borderSoft,
+                color: selected
+                    ? UiPalette.primary
+                    : colorScheme.outlineVariant,
                 width: selected ? 4 : 1,
               ),
             ),
           ),
           child: Text(
             label,
-            style: UiPalette.adaptiveTextStyle(
-              context,
-              backgroundColor: selected
-                  ? const Color.fromARGB(255, 13, 25, 23)
-                  : const Color.fromARGB(255, 12, 26, 23),
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: selected
+                  ? colorScheme.onSurface
+                  : colorScheme.onSurfaceVariant,
               fontSize: _tabFontSize,
               fontWeight: FontWeight.bold,
             ),
