@@ -692,7 +692,7 @@ public sealed class ProductionRepository(
         var fabricCode = reader.NullableString("FabricCode");
         var catalogNumber = reader.NullableString("CatalogNumber");
         var measurementSnapshot = reader.NullableString("MeasurementSnapshot");
-        var pieceStatus = reader.GetString(14);
+        var pieceStatus = reader.GetString(13);
         await reader.CloseAsync();
 
         var history = await GetReadyMadePieceTrackingAsync(id, ct);

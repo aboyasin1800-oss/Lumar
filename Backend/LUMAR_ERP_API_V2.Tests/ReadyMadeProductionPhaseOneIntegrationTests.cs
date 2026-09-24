@@ -55,6 +55,11 @@ public sealed class ReadyMadeProductionPhaseOneIntegrationTests
         Assert.Single(items);
         var pieces = await repository.GetReadyMadeItemPiecesAsync(items[0].ReadyMadeProductionOrderItemId, CancellationToken.None);
         var piece = Assert.Single(pieces);
+        var workCard = await repository.GetReadyMadeWorkCardAsync(piece.ReadyMadeProductionOrderPieceInstanceId, CancellationToken.None);
+        Assert.NotNull(workCard);
+        Assert.Equal(piece.TrackingCode, workCard!.TrackingCode);
+        Assert.Equal(measurementSnapshot, workCard.MeasurementSnapshot);
+        Assert.Equal("New", workCard.PieceStatus);
         var route = await repository.GetReadyMadePieceRouteByTrackingCodeAsync(piece.TrackingCode, CancellationToken.None);
         Assert.NotNull(route);
         Assert.Equal(productType.ProductTypeId, route!.ProductTypeId);
