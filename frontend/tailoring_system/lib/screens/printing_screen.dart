@@ -291,8 +291,6 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   final Map<int, String> _pieceTypeLabels = {};
   bool _loadingPieces = false;
   bool _loadingUnprintedSummary = false;
-  bool _showPiecePicker = false;
-  int _allOrdersWithUnprinted = 0;
   int _allUnprintedCards = 0;
 
   @override
@@ -322,29 +320,23 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     });
 
     try {
-      int ordersWithUnprinted = 0;
       int totalUnprintedCards = 0;
 
       for (final order in widget.orders) {
         if (order.isCancelled) continue;
         final pieces = await _fetchOrderPiecesOnce(order);
         final unprinted = pieces.where((piece) => !piece.isPrinted).length;
-        if (unprinted > 0) {
-          ordersWithUnprinted += 1;
-          totalUnprintedCards += unprinted;
-        }
+        totalUnprintedCards += unprinted;
       }
 
       if (mounted) {
         setState(() {
-          _allOrdersWithUnprinted = ordersWithUnprinted;
           _allUnprintedCards = totalUnprintedCards;
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
-          _allOrdersWithUnprinted = 0;
           _allUnprintedCards = 0;
         });
       }
@@ -396,27 +388,9 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     return pieces;
   }
 
-  bool _isPrintedStatus(String value) {
-    final normalized = value.trim().toLowerCase();
-    return normalized == 'printed' ||
-        normalized == 'printed_again' ||
-        normalized == 'reprinted' ||
-        normalized == 'completed' ||
-        normalized == 'done' ||
-        normalized.contains('printed') ||
-        normalized.contains('completed');
-  }
-
-  int _countUnprinted(List<_OrderPieceDetail> pieces) =>
-      pieces.where((piece) => !_isPrintedStatus(piece.pieceStatus)).length;
-
-  int _countPrinted(List<_OrderPieceDetail> pieces) =>
-      pieces.where((piece) => _isPrintedStatus(piece.pieceStatus)).length;
-
   Future<void> _selectOrder(_OrderSummary order) async {
     setState(() {
       _selectedOrder = order;
-      _showPiecePicker = false;
       _loadingPieces = true;
     });
 
@@ -591,77 +565,6 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     );
   }
 
-  Future<void> _confirmAndPrintAllOrderCards() async {
-    if (_selectedOrder == null || _pieces.isEmpty) return;
-
-    if (_selectedOrder!.isCancelled) {
-      await _confirmConvertCancelledOrderToReadyPrint();
-      return;
-    }
-
-    final stateContext = context;
-    final target =
-        await _showPrintOptionsDialog(title: 'طباعة كل بطاقات الطلب');
-    if (target == null || !mounted) return;
-
-    for (final piece in _pieces) {
-      await _PrintService.execute(
-        context: stateContext,
-        piece: piece,
-        header: widget.header,
-        target: target,
-      );
-    }
-  }
-
-  Future<void> _confirmConvertCancelledOrderToReadyPrint() async {
-    final stateContext = context;
-    if (_selectedOrder == null) return;
-
-    final confirmed = await showDialog<bool>(
-      context: stateContext,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('طلب ملغي - تحويل إلى الجاهز'),
-        content: const Text(
-          'هذا الطلب ملغي، ويمكن طباعته فقط بعد تحويله إلى مخزون المنتجات الجاهزة.\n\nهل تريد تحويل الطلب إلى الجاهز ثم المتابعة في الطباعة؟',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('نعم، تحويل إلى الجاهز والطباعة'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    final target = await _showPrintOptionsDialog(
-        title: 'تحويل الطلب الملغي إلى الجاهز والطباعة');
-    if (target == null || !mounted) return;
-
-    for (final piece in _pieces) {
-      await _PrintService.execute(
-        context: stateContext,
-        piece: piece,
-        header: widget.header,
-        target: target,
-      );
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(stateContext).showSnackBar(
-        const SnackBar(
-            content: Text(
-                'تم تحويل الطلب الملغي إلى حالة الجاهز، والبطاقات جاهزة للطباعة.')),
-      );
-    }
-  }
-
   Future<_PrintTarget?> _showPrintOptionsDialog({required String title}) async {
     return showModalBottomSheet<_PrintTarget>(
       context: context,
@@ -733,6 +636,214 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     }
   }
 
+  Widget _buildOrderList(List<_OrderSummary> filtered) {
+    if (filtered.isEmpty) {
+      return const Center(child: Text('لا توجد طلبات مطابقة للبحث الحالي.'));
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.only(bottom: 8),
+      itemCount: filtered.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final order = filtered[index];
+        final isSelected = order.orderId == _selectedOrder?.orderId &&
+            order.isReadyMade == _selectedOrder?.isReadyMade;
+        final backgroundColor =
+            isSelected ? UiPalette.primaryDark : UiPalette.surfaceCard;
+        final secondaryText = order.customerPhone.trim().isEmpty
+            ? 'بدون رقم هاتف'
+            : order.customerPhone;
+        final orderKind = order.isReadyMade ? 'إنتاج جاهز' : 'طلب تفصيل';
+        final status = order.isCancelled ? 'ملغي' : orderKind;
+
+        return Material(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => _selectOrder(order),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Icon(
+                    order.isReadyMade
+                        ? Icons.inventory_2_outlined
+                        : Icons.receipt_long_outlined,
+                    color: UiPalette.adaptiveTextColor(backgroundColor),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          order.orderNumber.isEmpty
+                              ? 'طلب رقم ${order.orderId}'
+                              : order.orderNumber,
+                          style: UiPalette.adaptiveTextStyle(
+                            context,
+                            backgroundColor: backgroundColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${order.customerName} • $secondaryText',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: UiPalette.adaptiveTextStyle(
+                            context,
+                            backgroundColor: backgroundColor,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${DateFormat('yyyy/MM/dd').format(order.orderDate)} • $status',
+                          style: UiPalette.adaptiveTextStyle(
+                            context,
+                            backgroundColor: backgroundColor,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    isSelected
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.chevron_left_rounded,
+                    color: UiPalette.adaptiveTextColor(backgroundColor),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSelectedOrderHeader(BuildContext context) {
+    final order = _selectedOrder!;
+    final backgroundColor = UiPalette.softBlue;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  order.orderNumber.isEmpty
+                      ? 'طلب رقم ${order.orderId}'
+                      : order.orderNumber,
+                  style: UiPalette.adaptiveTextStyle(
+                    context,
+                    backgroundColor: backgroundColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${order.customerName} • ${order.isReadyMade ? 'إنتاج جاهز' : 'طلب تفصيل'}',
+                  style: UiPalette.adaptiveTextStyle(
+                    context,
+                    backgroundColor: backgroundColor,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () {
+              setState(() {
+                _selectedOrder = null;
+                _pieces = const [];
+                _pieceTypeLabels.clear();
+              });
+            },
+            icon: const Icon(Icons.list_alt_outlined),
+            label: const Text('قائمة الطلبات'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPiecesList(BuildContext context) {
+    if (_loadingPieces) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_pieces.isEmpty) {
+      return const Center(child: Text('لا توجد بطاقات مقاسات لهذا الطلب.'));
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.only(top: 10, bottom: 8),
+      itemCount: _pieces.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final piece = _pieces[index];
+        final isPrinted = piece.isPrinted;
+        final title = _pieceTypeLabels[piece.pieceId]?.trim().isNotEmpty == true
+            ? _pieceTypeLabels[piece.pieceId]!
+            : piece.pieceType.trim().isNotEmpty
+                ? piece.pieceType
+                : 'القطعة ${piece.pieceNumber}';
+        final statusText = isPrinted ? 'مطبوعة - إعادة الطباعة متاحة' : 'غير مطبوعة';
+
+        return Material(
+          color: UiPalette.surfaceCard,
+          borderRadius: BorderRadius.circular(12),
+          child: ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            leading: Icon(
+              isPrinted
+                  ? Icons.check_circle_outline
+                  : Icons.print_disabled_outlined,
+              color: isPrinted ? Colors.greenAccent : Colors.orangeAccent,
+            ),
+            title: Text(
+              title,
+              style: UiPalette.adaptiveTextStyle(
+                context,
+                backgroundColor: UiPalette.surfaceCard,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            subtitle: Text(
+              '$statusText • رقم القطعة ${piece.pieceNumber}',
+              style: UiPalette.adaptiveTextStyle(
+                context,
+                backgroundColor: UiPalette.surfaceCard,
+                fontSize: 12,
+              ),
+            ),
+            trailing: FilledButton.icon(
+              onPressed: () => _printSelectedPiece(piece),
+              icon: const Icon(Icons.print_outlined, size: 17),
+              label: Text(isPrinted ? 'إعادة الطباعة' : 'طباعة'),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = widget.orders.where((order) {
@@ -744,89 +855,26 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
           order.orderId.toString().contains(query);
     }).toList();
 
-    final unprintedForSelected = _countUnprinted(_pieces);
-    final printedForSelected = _countPrinted(_pieces);
-
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          DropdownMenu<_OrderSummary>(
+          TextField(
             controller: _searchController,
-            width: double.infinity,
-            leadingIcon: const Icon(Icons.search_outlined),
-            hintText: 'ابحث باسم العميل أو رقم الهاتف أو رقم الطلب',
-            menuHeight: 260,
-            enableFilter: true,
-            enableSearch: true,
-            requestFocusOnTap: true,
-            inputDecorationTheme: InputDecorationTheme(
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
               filled: true,
               fillColor: UiPalette.surfaceCard,
+              prefixIcon: const Icon(Icons.search_outlined),
+              hintText: 'ابحث باسم العميل أو رقم الهاتف أو رقم الطلب',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             ),
-            onSelected: (order) {
-              if (order != null) {
-                _selectOrder(order);
-              }
-            },
-            dropdownMenuEntries: filtered.map((order) {
-              final isSelected = order.orderId == _selectedOrder?.orderId;
-              return DropdownMenuEntry<_OrderSummary>(
-                value: order,
-                label: '${order.orderNumber} • ${order.customerName}',
-                trailingIcon: isSelected
-                    ? const Icon(Icons.check, size: 16)
-                    : const Icon(Icons.chevron_right_rounded, size: 16),
-              );
-            }).toList(),
           ),
-          const SizedBox(height: 7),
-          if (filtered.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 18),
-              child: Text('لا توجد طلبات مطابقة للبحث الحالي.'),
-            ),
-          const SizedBox(height: 12),
-          if (_selectedOrder != null)
-            Card(
-              color: UiPalette.surfaceCard,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _MetricTile(
-                        label: 'طلبات بها بطاقات غير مطبوعة',
-                        value: unprintedForSelected > 0 ? '1' : '0',
-                        icon: Icons.pending_actions_outlined,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _MetricTile(
-                        label: 'بطاقات غير مطبوعة',
-                        value: '$unprintedForSelected',
-                        icon: Icons.print_disabled_outlined,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _MetricTile(
-                        label: 'بطاقات مطبوعة',
-                        value: '$printedForSelected',
-                        icon: Icons.check_circle_outline,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
@@ -844,107 +892,17 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
             ],
           ),
           const SizedBox(height: 12),
-          if (_selectedOrder != null)
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _selectedOrder == null ||
-                            _selectedOrder!.isCancelled ||
-                            _pieces.isEmpty
-                        ? null
-                        : _confirmAndPrintAllOrderCards,
-                    icon: const Icon(Icons.print_outlined),
-                    label: const Text('طباعة كل بطاقات الطلب'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _selectedOrder == null ||
-                            _selectedOrder!.isCancelled ||
-                            _pieces.isEmpty
-                        ? null
-                        : () {
-                            setState(() {
-                              _showPiecePicker = !_showPiecePicker;
-                            });
-                          },
-                    icon: const Icon(Icons.article_outlined),
-                    label: const Text('طباعة بطاقة محددة'),
-                  ),
-                ),
-              ],
+          if (_selectedOrder != null) ...[
+            _buildSelectedOrderHeader(context),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 210,
+              child: _buildOrderList(filtered),
             ),
-          if (_selectedOrder != null && _selectedOrder!.isCancelled)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: FilledButton.icon(
-                onPressed: _pieces.isEmpty
-                    ? null
-                    : _confirmConvertCancelledOrderToReadyPrint,
-                icon: const Icon(Icons.sync_alt_outlined),
-                label: const Text('تحويل الطلب الملغي إلى الجاهز ثم الطباعة'),
-              ),
-            ),
-          const SizedBox(height: 12),
-          if (_selectedOrder != null && _showPiecePicker && _pieces.isNotEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: UiPalette.surfaceCard,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'اختر القطعة لطباعة بطاقتها:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  ..._pieces.map((piece) {
-                    final title = piece.pieceType.isNotEmpty
-                        ? piece.pieceType
-                        : 'القطعة ${piece.pieceNumber}';
-                    return ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        piece.isPrinted
-                            ? Icons.print_disabled_outlined
-                            : Icons.checklist_rtl_outlined,
-                        color: piece.isPrinted
-                            ? Colors.orange
-                            : UiPalette.primaryBlue,
-                      ),
-                      title: Text(title),
-                      subtitle: Text(
-                        piece.isPrinted
-                            ? 'مطبوعة - إعادة طباعة متاحة'
-                            : 'جاهزة للطباعة',
-                      ),
-                      trailing: FilledButton.icon(
-                        onPressed: () => _printSelectedPiece(piece),
-                        icon: const Icon(Icons.print_outlined, size: 16),
-                        label: const Text('طباعة'),
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-          const SizedBox(height: 12),
-          if (_selectedOrder != null)
-            Expanded(
-              child: _loadingPieces
-                  ? const Center(child: CircularProgressIndicator())
-                  : _pieces.isEmpty
-                      ? const Center(
-                          child: Text('لا توجد بطاقات مقاسات لهذا الطلب.'))
-                      : const SizedBox.shrink(),
-            ),
+            const SizedBox(height: 10),
+            Expanded(child: _buildPiecesList(context)),
+          ] else
+            Expanded(child: _buildOrderList(filtered)),
         ],
       ),
     );
@@ -1861,60 +1819,6 @@ class _BarcodeBox extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 7, color: Colors.black87),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MetricTile extends StatelessWidget {
-  const _MetricTile({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: UiPalette.softBlue,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: UiPalette.primaryBlue),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: UiPalette.adaptiveTextStyle(
-                    context,
-                    backgroundColor: UiPalette.softBlue,
-                    fontSize: 11,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: UiPalette.adaptiveTextStyle(
-                    context,
-                    backgroundColor: UiPalette.softBlue,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),

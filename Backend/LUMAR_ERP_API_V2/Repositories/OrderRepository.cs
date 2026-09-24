@@ -1,13 +1,14 @@
 using System.Globalization;
 using System.Text.Json;
 using LUMAR_ERP_API_V2.Data;
+using LUMAR_ERP_API_V2.DTOs.Consumption;
 using LUMAR_ERP_API_V2.DTOs.Orders;
 using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
 
 namespace LUMAR_ERP_API_V2.Repositories;
 
-public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections) : IOrderRepository
+public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections, IConsumptionRulesRepository? consumptionRules = null) : IOrderRepository
 {
     public Task<IReadOnlyList<OrderListDto>> GetListAsync(CancellationToken cancellationToken) => QueryAsync("SELECT o.OrderID, o.OrderNumber, o.CustomerID, c.CustomerCode, c.CustomerName, c.PhoneNumber, o.OrderDate, o.DeliveryDate, o.TotalAmount, o.PaidAmount, o.RemainingAmount, o.UrgencyStatus, o.OrderStatus, o.SaleCategory FROM dbo.Orders o LEFT JOIN dbo.Customers c ON c.CustomerID = o.CustomerID ORDER BY o.OrderDate DESC, o.OrderID DESC", reader => new OrderListDto(reader.GetInt32(0), reader.GetString(1), reader.GetInt32(2), reader.NullableString("CustomerCode"), reader.NullableString("CustomerName"), reader.NullableString("PhoneNumber"), reader.GetDateTime(6), reader.NullableDateTime("DeliveryDate"), reader.GetDecimal(8), reader.GetDecimal(9), reader.GetDecimal(10), reader.GetString(11), reader.GetString(12), reader.GetString(13)), null, cancellationToken);
 
@@ -30,6 +31,43 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
         {
             if (!await CustomerExistsAsync(order.CustomerId, connection, transaction, cancellationToken)) return null;
             var now = DateTime.UtcNow;
+            if (!string.IsNullOrWhiteSpace(order.RequestReference))
+            {
+                const string existingOrderSql = "SELECT TOP(1) OrderID FROM dbo.Orders WITH (UPDLOCK,HOLDLOCK) WHERE SaleReference=@reference";
+                await using var existingOrderCommand = new SqlCommand(existingOrderSql, connection, transaction);
+                existingOrderCommand.Parameters.AddWithValue("@reference", order.RequestReference.Trim());
+                var existingOrderId = await existingOrderCommand.ExecuteScalarAsync(cancellationToken);
+                if (existingOrderId is int existingId)
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                    return await GetByIdAsync(existingId, cancellationToken);
+                }
+            }
+            var fabricLines = await ResolveOrderFabricLinesAsync(order.Items, cancellationToken);
+            var fabricRequirements = fabricLines
+				.Where(line => line is not null)
+				.Select(line => line!)
+                .GroupBy(line => line.FabricCode, StringComparer.OrdinalIgnoreCase)
+                .Select(group => new OrderFabricRequirement(group.Key, group.Sum(line => line.RequiredInches)))
+                .ToList();
+            var fabricStocks = new Dictionary<string, OrderFabricStock>(StringComparer.OrdinalIgnoreCase);
+            foreach (var requirement in fabricRequirements)
+            {
+                var stock = await LoadOrderFabricStockAsync(connection, transaction, requirement.FabricCode, cancellationToken);
+                if (stock.AvailableInches < requirement.RequiredInches)
+                {
+                    throw new InvalidOperationException($"الكمية المتوفرة للقماش {requirement.FabricCode} لا تكفي للطلب. المتوفر: {stock.AvailableInches:0.##} بوصة، المطلوب: {requirement.RequiredInches:0.##} بوصة.");
+                }
+
+                fabricStocks[requirement.FabricCode] = stock;
+            }
+            fabricLines = fabricLines
+                .Select(line => line is null ? null : line with
+                {
+                    InventoryItemId = fabricStocks[line.FabricCode].InventoryItemId,
+                    InchPrice = fabricStocks[line.FabricCode].InchPrice
+                })
+                .ToList();
             foreach (var productTypeId in order.Items.Select(item => item.ProductTypeId).Distinct())
             {
                 if (!await ProductTypeExistsAsync(productTypeId, connection, transaction, cancellationToken))
@@ -39,7 +77,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             var orderPrefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "OrderCodePrefix", "ORD-", cancellationToken);
             var orderNumber = $"{orderPrefix}{await NextNumberAsync("dbo.Orders", "OrderNumber", orderPrefix, connection, transaction, cancellationToken):D6}";
             var remainingAmount = order.TotalAmount - order.DiscountAmount - order.AdvancePayment;
-            const string orderSql = "INSERT INTO dbo.Orders (OrderNumber,CustomerID,OrderDate,DeliveryDate,TotalAmount,DiscountAmount,PaidAmount,RemainingAmount,UrgencyStatus,OrderStatus,Notes,CreatedDate,SaleCategory) OUTPUT INSERTED.OrderID VALUES (@number,@customerId,@orderDate,@deliveryDate,@total,@discount,@paid,@remaining,@urgency,N'New',@notes,@created,@category)";
+            const string orderSql = "INSERT INTO dbo.Orders (OrderNumber,CustomerID,OrderDate,DeliveryDate,TotalAmount,DiscountAmount,PaidAmount,RemainingAmount,UrgencyStatus,OrderStatus,Notes,CreatedDate,SaleCategory,SaleReference) OUTPUT INSERTED.OrderID VALUES (@number,@customerId,@orderDate,@deliveryDate,@total,@discount,@paid,@remaining,@urgency,N'New',@notes,@created,@category,@requestReference)";
             await using var orderCommand = new SqlCommand(orderSql, connection, transaction);
             orderCommand.Parameters.AddWithValue("@number", orderNumber);
             orderCommand.Parameters.AddWithValue("@customerId", order.CustomerId);
@@ -53,17 +91,29 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             AddNullable(orderCommand, "@notes", order.Notes);
             orderCommand.Parameters.AddWithValue("@created", now);
             orderCommand.Parameters.AddWithValue("@category", order.SaleCategory.Trim());
+            AddNullable(orderCommand, "@requestReference", order.RequestReference?.Trim());
             orderId = (int)(await orderCommand.ExecuteScalarAsync(cancellationToken))!;
 
             var trackingPrefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "PieceTrackingPrefix", "TRK-", cancellationToken);
             var nextTracking = await NextNumberAsync("dbo.Pieces", "TrackingCode", trackingPrefix, connection, transaction, cancellationToken);
-            foreach (var item in order.Items)
+            for (var itemIndex = 0; itemIndex < order.Items.Count; itemIndex++)
             {
+                var item = order.Items[itemIndex];
                 var itemTracking = $"{trackingPrefix}{nextTracking++:D6}";
                 var orderItemId = await InsertOrderItemAsync(orderId, item, itemTracking, now, connection, transaction, cancellationToken);
                 for (var pieceNumber = 1; pieceNumber <= item.Quantity; pieceNumber++)
                     await InsertPieceAsync(orderItemId, $"{trackingPrefix}{nextTracking++:D6}", pieceNumber, now, connection, transaction, cancellationToken);
-                if (item.Fabric is not null) await InsertFabricAsync(orderItemId, item.Fabric, now, connection, transaction, cancellationToken);
+                if (item.Fabric is not null)
+                {
+                    var fabricLine = fabricLines[itemIndex];
+                    if (fabricLine is null) throw new InvalidOperationException("تعذر تحديد متطلبات القماش الرسمية للبند.");
+                    await InsertFabricAsync(orderItemId, item.Fabric, fabricLine, now, connection, transaction, cancellationToken);
+                }
+            }
+
+            foreach (var requirement in fabricRequirements)
+            {
+                await DeductOrderFabricAsync(connection, transaction, orderId, orderNumber, requirement, fabricStocks[requirement.FabricCode], now, cancellationToken);
             }
 
             if (order.AdvancePayment > 0)
@@ -598,6 +648,11 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             var reversalRequested = OrderCancellationFinancialMovementResolver.ShouldCreateRevenueReversal(snapshot.RevenueRecognized, snapshot.RevenueReversalCreated, snapshot.OrderStatus);
             var now = DateTime.UtcNow;
 
+            if (await CanReverseTailoringFabricAsync(connection, transaction, orderId, cancellationToken))
+            {
+                await ReverseTailoringFabricAsync(connection, transaction, orderId, snapshot.OrderNumber, now, cancellationToken);
+            }
+
             if (refundRequested)
             {
                 var refundReference = $"{snapshot.OrderNumber}:OrderCancellationRefund";
@@ -707,6 +762,148 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
     public static bool ShouldRollbackAfterFailure(bool committed, bool transactionUsable)
         => !committed && transactionUsable;
 
+    private async Task<IReadOnlyList<OrderFabricLine?>> ResolveOrderFabricLinesAsync(
+        IReadOnlyList<CreateOrderItemDto> items,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<OrderFabricLine?>(items.Count);
+        foreach (var item in items)
+        {
+            if (item.Fabric is null)
+            {
+                result.Add(null);
+                continue;
+            }
+
+            if (consumptionRules is null)
+                throw new InvalidOperationException("خدمة قواعد استهلاك القماش غير مهيأة.");
+
+            var fabricCode = item.Fabric.FabricCode?.Trim();
+            if (string.IsNullOrWhiteSpace(fabricCode))
+                throw new InvalidOperationException("كود القماش مطلوب عند تسجيل استهلاك القماش.");
+
+            var evaluation = await consumptionRules.EvaluateAsync(
+                new EvaluateConsumptionRequestDto(item.ProductTypeId, ParseMeasurementSnapshot(item.MeasurementSnapshot)),
+                cancellationToken);
+            if (evaluation is null || !IsInchUnit(evaluation.Unit))
+                throw new InvalidOperationException("تعذر حساب استهلاك القماش الرسمي بالبوصة لهذا البند.");
+
+            var requiredInches = evaluation.Value * item.Quantity;
+            if (requiredInches <= 0m)
+                throw new InvalidOperationException("كمية استهلاك القماش الرسمية غير صالحة.");
+
+            result.Add(new OrderFabricLine(fabricCode.ToUpperInvariant(), requiredInches, null, 0m));
+        }
+
+        return result;
+    }
+
+    private static Dictionary<string, decimal> ParseMeasurementSnapshot(string? snapshot)
+    {
+        var values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(snapshot)) return values;
+        try
+        {
+            using var document = JsonDocument.Parse(snapshot);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return values;
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (property.Name.StartsWith('_')) continue;
+                var raw = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString() : property.Value.ToString();
+                if (decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var value) && value >= 0m)
+                    values[property.Name] = value;
+            }
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException("بيانات المقاسات المحفوظة غير صالحة.");
+        }
+
+        return values;
+    }
+
+    private static bool IsInchUnit(string? unit) =>
+        string.Equals(unit?.Trim(), "Inch", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(unit?.Trim(), "Inches", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(unit?.Trim(), "بوصة", StringComparison.OrdinalIgnoreCase);
+
+    private static async Task<OrderFabricStock> LoadOrderFabricStockAsync(SqlConnection connection, SqlTransaction transaction, string fabricCode, CancellationToken cancellationToken)
+    {
+        int? legacyCode = int.TryParse(fabricCode, out var parsedCode) ? parsedCode : null;
+        decimal legacyAvailableInches = decimal.MaxValue;
+        decimal legacyFactor = 36m;
+        if (legacyCode is not null)
+        {
+            const string legacySql = "SELECT TOP(1) Unit, AvailableQuantity FROM dbo.Fabrics_Inventory WITH (UPDLOCK,HOLDLOCK) WHERE FabricCode=@fabricCode";
+            await using var legacy = new SqlCommand(legacySql, connection, transaction);
+            legacy.Parameters.AddWithValue("@fabricCode", legacyCode.Value);
+            await using var reader = await legacy.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                legacyFactor = StorageUnitToInches(reader.NullableString("Unit"));
+                legacyAvailableInches = (reader.NullableDecimal("AvailableQuantity") ?? 0m) * legacyFactor;
+            }
+            await reader.CloseAsync();
+        }
+
+        const string itemSql = "SELECT TOP(1) InventoryItemID, Unit, AvailableQuantity, InchPrice, YardPrice FROM dbo.InventoryItems WITH (UPDLOCK,HOLDLOCK) WHERE ItemCode=@fabricCode AND IsActive=1";
+        await using var itemCommand = new SqlCommand(itemSql, connection, transaction);
+        itemCommand.Parameters.AddWithValue("@fabricCode", fabricCode);
+        await using var itemReader = await itemCommand.ExecuteReaderAsync(cancellationToken);
+        if (!await itemReader.ReadAsync(cancellationToken))
+            throw new InvalidOperationException($"كود القماش {fabricCode} غير مرتبط بسجل مخزون فعال.");
+
+        var inventoryItemId = itemReader.GetInt32(0);
+        var unit = itemReader.NullableString("Unit") ?? "Yard";
+        var factor = StorageUnitToInches(unit);
+        var available = (itemReader.NullableDecimal("AvailableQuantity") ?? 0m) * factor;
+        var inchPrice = itemReader.NullableDecimal("InchPrice") ?? ((itemReader.NullableDecimal("YardPrice") ?? 0m) / 36m);
+        await itemReader.CloseAsync();
+        return new OrderFabricStock(fabricCode, legacyCode, inventoryItemId, factor, Math.Min(legacyAvailableInches, available), inchPrice, legacyFactor);
+    }
+
+    private static decimal StorageUnitToInches(string? unit) => unit?.Trim().ToLowerInvariant() switch
+    {
+        "inch" or "inches" or "بوصة" => 1m,
+        _ => 36m,
+    };
+
+    private static async Task DeductOrderFabricAsync(SqlConnection connection, SqlTransaction transaction, int orderId, string orderNumber, OrderFabricRequirement requirement, OrderFabricStock stock, DateTime now, CancellationToken cancellationToken)
+    {
+        if (stock.AvailableInches < requirement.RequiredInches)
+            throw new InvalidOperationException($"الكمية المتوفرة للقماش {requirement.FabricCode} لا تكفي للطلب.");
+
+        if (stock.LegacyFabricCode is not null)
+        {
+            const string legacySql = "UPDATE dbo.Fabrics_Inventory SET AvailableQuantity=AvailableQuantity-@quantity, UsedQuantity=ISNULL(UsedQuantity,0)+@quantity WHERE FabricCode=@fabricCode AND AvailableQuantity>=@quantity";
+            await using var legacy = new SqlCommand(legacySql, connection, transaction);
+            legacy.Parameters.AddWithValue("@fabricCode", stock.LegacyFabricCode.Value);
+            legacy.Parameters.AddWithValue("@quantity", requirement.RequiredInches / stock.LegacyUnitFactor);
+            if (await legacy.ExecuteNonQueryAsync(cancellationToken) != 1) throw new InvalidOperationException("تعذر خصم القماش من السجل الرسمي.");
+        }
+
+        const string inventorySql = "UPDATE dbo.InventoryItems SET CurrentQuantity=CurrentQuantity-@quantity, AvailableQuantity=AvailableQuantity-@quantity, UpdatedAt=@updatedAt WHERE InventoryItemID=@inventoryItemId AND AvailableQuantity>=@quantity";
+        await using var inventory = new SqlCommand(inventorySql, connection, transaction);
+        inventory.Parameters.AddWithValue("@quantity", requirement.RequiredInches / stock.InventoryUnitFactor);
+        inventory.Parameters.AddWithValue("@updatedAt", now);
+        inventory.Parameters.AddWithValue("@inventoryItemId", stock.InventoryItemId);
+        if (await inventory.ExecuteNonQueryAsync(cancellationToken) != 1) throw new InvalidOperationException("تعذر خصم القماش من المخزون التشغيلي.");
+
+        const string movementSql = @"
+            IF NOT EXISTS (SELECT 1 FROM dbo.InventoryTransactions WITH (UPDLOCK,HOLDLOCK) WHERE ReferenceNumber=@reference AND TransactionType=N'TailoringFabricConsumption')
+            INSERT INTO dbo.InventoryTransactions (InventoryItemID,TransactionType,Quantity,ReferenceNumber,Notes,CreatedAt,TotalCostImpact,UnitCost)
+            VALUES (@inventoryItemId,N'TailoringFabricConsumption',@quantity,@reference,@notes,@createdAt,@totalCost,@unitCost);";
+        await using var movement = new SqlCommand(movementSql, connection, transaction);
+        movement.Parameters.AddWithValue("@inventoryItemId", stock.InventoryItemId);
+        movement.Parameters.AddWithValue("@quantity", requirement.RequiredInches / stock.InventoryUnitFactor);
+        movement.Parameters.AddWithValue("@reference", $"{orderNumber}:Fabric:{requirement.FabricCode}");
+        movement.Parameters.AddWithValue("@notes", $"OrderId:{orderId}|خصم قماش تفصيل|الكمية بالبوصة:{requirement.RequiredInches:0.##}");
+        movement.Parameters.AddWithValue("@createdAt", now);
+        movement.Parameters.AddWithValue("@totalCost", requirement.RequiredInches * stock.InchPrice);
+        movement.Parameters.AddWithValue("@unitCost", stock.InchPrice);
+        await movement.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static string? TryExtractSnapshotValue(string? measurementSnapshot, params string[] keys)
     {
         if (string.IsNullOrWhiteSpace(measurementSnapshot)) return null;
@@ -794,7 +991,128 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             reader.IsDBNull(6) ? null : reader.GetString(6));
     }
 
+    private sealed record OrderFabricLine(string FabricCode, decimal RequiredInches, int? InventoryItemId, decimal InchPrice);
+    private sealed record OrderFabricRequirement(string FabricCode, decimal RequiredInches);
+    private sealed record OrderFabricStock(string FabricCode, int? LegacyFabricCode, int InventoryItemId, decimal InventoryUnitFactor, decimal AvailableInches, decimal InchPrice, decimal LegacyUnitFactor);
     private sealed record OrderCancellationSnapshot(string OrderNumber, decimal TotalAmount, decimal PaidAmount, bool RevenueRecognized, bool RevenueReversalCreated, string OrderStatus, string? CancellationReason);
+
+    private static async Task<bool> CanReverseTailoringFabricAsync(SqlConnection connection, SqlTransaction transaction, int orderId, CancellationToken cancellationToken)
+    {
+        const string sql = @"
+            SELECT CASE WHEN EXISTS (
+                SELECT 1
+                FROM dbo.Pieces p
+                INNER JOIN dbo.OrderItems oi ON oi.OrderItemID=p.OrderItemID
+                WHERE oi.OrderID=@orderId
+                  AND p.PieceStatus NOT IN (N'New',N'Printing')
+            ) OR EXISTS (
+                SELECT 1
+                FROM dbo.TrackingEvents te
+                INNER JOIN dbo.Pieces p ON p.PieceID=te.PieceID
+                INNER JOIN dbo.OrderItems oi ON oi.OrderItemID=p.OrderItemID
+                WHERE oi.OrderID=@orderId
+                  AND te.IsReverted=0
+                  AND te.Stage<>N'Printing'
+            ) THEN 0 ELSE 1 END;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@orderId", orderId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken)) == 1;
+    }
+
+    private static async Task ReverseTailoringFabricAsync(SqlConnection connection, SqlTransaction transaction, int orderId, string orderNumber, DateTime now, CancellationToken cancellationToken)
+    {
+        const string linesSql = @"
+            SELECT f.InventoryItemID, f.FabricCode, SUM(f.Quantity), MAX(f.Unit), MAX(f.UnitCost)
+            FROM dbo.OrderItemFabrics f
+            INNER JOIN dbo.OrderItems oi ON oi.OrderItemID=f.OrderItemID
+            WHERE oi.OrderID=@orderId
+            GROUP BY f.InventoryItemID, f.FabricCode;";
+        await using var linesCommand = new SqlCommand(linesSql, connection, transaction);
+        linesCommand.Parameters.AddWithValue("@orderId", orderId);
+        await using var reader = await linesCommand.ExecuteReaderAsync(cancellationToken);
+        var lines = new List<(int? InventoryItemId, string FabricCode, decimal QuantityInches, string Unit, decimal UnitCost)>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            lines.Add((reader.NullableInt32("InventoryItemID"), reader.NullableString("FabricCode") ?? string.Empty, reader.GetDecimal(2), reader.GetString(3), reader.GetDecimal(4)));
+        }
+        await reader.CloseAsync();
+
+        foreach (var line in lines.Where(item => !string.IsNullOrWhiteSpace(item.FabricCode)))
+        {
+            var reference = $"{orderNumber}:FabricReversal:{line.FabricCode.Trim().ToUpperInvariant()}";
+            var consumptionReference = $"{orderNumber}:Fabric:{line.FabricCode.Trim().ToUpperInvariant()}";
+            await using var consumptionExistsCommand = new SqlCommand(
+                "SELECT COUNT(*) FROM dbo.InventoryTransactions WITH (UPDLOCK,HOLDLOCK) WHERE ReferenceNumber=@reference AND TransactionType=N'TailoringFabricConsumption'",
+                connection,
+                transaction);
+            consumptionExistsCommand.Parameters.AddWithValue("@reference", consumptionReference);
+            if (Convert.ToInt32(await consumptionExistsCommand.ExecuteScalarAsync(cancellationToken)) == 0) continue;
+
+            await using var existsCommand = new SqlCommand(
+                "SELECT COUNT(*) FROM dbo.InventoryTransactions WITH (UPDLOCK,HOLDLOCK) WHERE ReferenceNumber=@reference AND TransactionType=N'TailoringFabricReversal'",
+                connection,
+                transaction);
+            existsCommand.Parameters.AddWithValue("@reference", reference);
+            if (Convert.ToInt32(await existsCommand.ExecuteScalarAsync(cancellationToken)) > 0) continue;
+
+            var inventoryItemId = line.InventoryItemId;
+            if (inventoryItemId is null)
+            {
+                const string findItemSql = "SELECT TOP(1) InventoryItemID FROM dbo.InventoryItems WITH (UPDLOCK,HOLDLOCK) WHERE ItemCode=@code AND IsActive=1";
+                await using var findItem = new SqlCommand(findItemSql, connection, transaction);
+                findItem.Parameters.AddWithValue("@code", line.FabricCode.Trim());
+                var value = await findItem.ExecuteScalarAsync(cancellationToken);
+                inventoryItemId = value is int id ? id : null;
+            }
+
+            if (inventoryItemId is null) throw new InvalidOperationException($"لا يوجد سجل مخزون لعكس قماش {line.FabricCode}.");
+            var stock = await ReadInventoryUnitAsync(connection, transaction, inventoryItemId.Value, cancellationToken);
+            var inventoryQuantity = line.QuantityInches / StorageUnitToInches(stock.Unit);
+
+            const string inventorySql = "UPDATE dbo.InventoryItems SET CurrentQuantity=CurrentQuantity+@quantity, AvailableQuantity=AvailableQuantity+@quantity, UpdatedAt=@updatedAt WHERE InventoryItemID=@id";
+            await using var inventory = new SqlCommand(inventorySql, connection, transaction);
+            inventory.Parameters.AddWithValue("@quantity", inventoryQuantity);
+            inventory.Parameters.AddWithValue("@updatedAt", now);
+            inventory.Parameters.AddWithValue("@id", inventoryItemId.Value);
+            await inventory.ExecuteNonQueryAsync(cancellationToken);
+
+            if (int.TryParse(line.FabricCode.Trim(), out var legacyCode))
+            {
+                const string legacySql = "UPDATE dbo.Fabrics_Inventory SET AvailableQuantity=AvailableQuantity+@quantity, UsedQuantity=CASE WHEN ISNULL(UsedQuantity,0)>=@quantity THEN ISNULL(UsedQuantity,0)-@quantity ELSE 0 END WHERE FabricCode=@code";
+                await using var legacy = new SqlCommand(legacySql, connection, transaction);
+                legacy.Parameters.AddWithValue("@quantity", line.QuantityInches / stock.LegacyUnitFactor);
+                legacy.Parameters.AddWithValue("@code", legacyCode);
+                await legacy.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            const string movementSql = @"
+                INSERT INTO dbo.InventoryTransactions
+                    (InventoryItemID,TransactionType,Quantity,ReferenceNumber,Notes,CreatedAt,TotalCostImpact,UnitCost)
+                VALUES (@id,N'TailoringFabricReversal',@quantity,@reference,@notes,@createdAt,@cost,@unitCost);";
+            await using var movement = new SqlCommand(movementSql, connection, transaction);
+            movement.Parameters.AddWithValue("@id", inventoryItemId.Value);
+            movement.Parameters.AddWithValue("@quantity", inventoryQuantity);
+            movement.Parameters.AddWithValue("@reference", reference);
+            movement.Parameters.AddWithValue("@notes", $"OrderId:{orderId}|عكس خصم قماش قبل نقطة اللاعودة");
+            movement.Parameters.AddWithValue("@createdAt", now);
+            movement.Parameters.AddWithValue("@cost", line.QuantityInches * line.UnitCost);
+            movement.Parameters.AddWithValue("@unitCost", stock.InchPrice);
+            await movement.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    private static async Task<(string Unit, decimal LegacyUnitFactor, decimal InchPrice)> ReadInventoryUnitAsync(SqlConnection connection, SqlTransaction transaction, int inventoryItemId, CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT Unit, InchPrice, YardPrice FROM dbo.InventoryItems WITH (UPDLOCK,HOLDLOCK) WHERE InventoryItemID=@id";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@id", inventoryItemId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException("سجل المخزون غير موجود.");
+        var unit = reader.NullableString("Unit") ?? "Yard";
+        var inchPrice = reader.NullableDecimal("InchPrice") ?? ((reader.NullableDecimal("YardPrice") ?? 0m) / 36m);
+        await reader.CloseAsync();
+        return (unit, StorageUnitToInches(unit), inchPrice);
+    }
 
     private static async Task<bool> CustomerExistsAsync(int customerId, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
     {
@@ -900,19 +1218,19 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task InsertFabricAsync(int orderItemId, CreateOrderFabricDto fabric, DateTime now, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
+    private static async Task InsertFabricAsync(int orderItemId, CreateOrderFabricDto fabric, OrderFabricLine fabricLine, DateTime now, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
     {
         const string sql = "INSERT INTO dbo.OrderItemFabrics (OrderItemID,InventoryItemID,FabricCode,FabricType,FabricColor,Quantity,Unit,UnitCost,TotalCost,ConsumedQuantity,CreatedDate) VALUES (@itemId,@inventoryId,@code,@type,@color,@quantity,@unit,@unitCost,@totalCost,0,@created)";
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@itemId", orderItemId);
-        AddNullable(command, "@inventoryId", fabric.InventoryItemId);
+        AddNullable(command, "@inventoryId", fabricLine.InventoryItemId);
         AddNullable(command, "@code", fabric.FabricCode);
         AddNullable(command, "@type", fabric.FabricType);
         AddNullable(command, "@color", fabric.FabricColor);
-        command.Parameters.AddWithValue("@quantity", fabric.Quantity);
-        command.Parameters.AddWithValue("@unit", fabric.Unit.Trim());
-        command.Parameters.AddWithValue("@unitCost", fabric.UnitCost);
-        command.Parameters.AddWithValue("@totalCost", fabric.Quantity * fabric.UnitCost);
+        command.Parameters.AddWithValue("@quantity", fabricLine.RequiredInches);
+        command.Parameters.AddWithValue("@unit", "Inch");
+        command.Parameters.AddWithValue("@unitCost", fabricLine.InchPrice);
+        command.Parameters.AddWithValue("@totalCost", fabricLine.RequiredInches * fabricLine.InchPrice);
         command.Parameters.AddWithValue("@created", now);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

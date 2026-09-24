@@ -100,6 +100,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   String totalOrdersCount = '1200';
   String todayOrdersCount = '24';
   bool _savingOrder = false;
+  String? _orderRequestReference;
   bool _isInitialLoading = true;
   bool _isRefreshingOfficialCatalog = false;
   int _selectedTab = 0;
@@ -507,6 +508,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     }
     setState(() => _savingOrder = true);
     try {
+      _orderRequestReference ??= 'ORD-UI-${DateTime.now().microsecondsSinceEpoch}';
       final delivery = deliveryDateController.text.trim();
       final response = await http.post(
         Uri.parse('$_baseUrl/orders'),
@@ -523,6 +525,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           'urgencyStatus': 'Normal',
           'saleCategory': 'TailoringOrder',
           'paymentMethod': advance > 0 ? 'Cash' : null,
+          'requestReference': _orderRequestReference,
           'items': items,
         }),
       );
@@ -535,6 +538,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       }
       final decoded = jsonDecode(response.body) as Map<String, dynamic>;
       await _clearPersistedSession();
+      _orderRequestReference = null;
       _showMessage('تم حفظ الطلب ${decoded['orderNumber'] ?? ''} بنجاح.');
     } catch (error) {
       debugPrint('Order creation failed: $error');

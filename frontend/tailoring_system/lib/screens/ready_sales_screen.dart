@@ -394,8 +394,12 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 									return ListTile(
 										dense: true,
 										visualDensity: VisualDensity.compact,
-										title: Text('${product.code} - ${product.name}', maxLines: 1, overflow: TextOverflow.ellipsis),
-										subtitle: Text('${product.source} | المتاح ${_plainNumber(product.availableQuantity)}'),
+										title: Text(product.trackingCode, maxLines: 1, overflow: TextOverflow.ellipsis),
+										subtitle: Text(
+											'${product.name}\nكود القماش: ${product.fabricCode}\nنوع القماش: ${product.fabricType}\nلون القماش: ${product.fabricColor}\nسعر البيع المقترح: ${_money(product.price)}',
+											maxLines: 5,
+											overflow: TextOverflow.ellipsis,
+										),
 										onTap: () => _selectProduct(product),
 									);
 								},
@@ -427,8 +431,8 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 										return ListTile(
 											dense: true,
 											leading: IconButton(tooltip: 'حذف المنتج', icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => setState(() => cart.removeAt(index))),
-											title: Text('${line.product.code} - ${line.product.name}'),
-											subtitle: Text('${_plainNumber(line.quantity)} × ${_money(line.price)}'),
+											title: Text(line.product.trackingCode),
+											subtitle: Text('${line.product.name}\nكود القماش: ${line.product.fabricCode}\nلون القماش: ${line.product.fabricColor}\nسعر القطعة: ${_money(line.price)}'),
 											trailing: Text(_money(line.quantity * line.price), style: const TextStyle(fontWeight: FontWeight.bold)),
 										);
 									},
@@ -478,7 +482,7 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 				expand: true,
 				child: Column(children: [
 					DropdownButtonFormField<String>(
-						value: selectedEmployeeCode,
+						initialValue: selectedEmployeeCode,
 						decoration: _decoration('الموظف المسؤول'),
 						hint: const Text('غير محدد'),
 						isExpanded: true,
@@ -583,15 +587,20 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 }
 
 class _ReadyProduct {
-	const _ReadyProduct({required this.id, required this.localId, required this.importedId, required this.productTypeId, required this.code, required this.name, required this.source, required this.availableQuantity, required this.price});
+	const _ReadyProduct({required this.id, required this.localId, required this.importedId, required this.productTypeId, required this.trackingCode, required this.name, required this.productTypeName, required this.fabricCode, required this.fabricType, required this.fabricColor, required this.status, required this.source, required this.availableQuantity, required this.price});
 
 	factory _ReadyProduct.fromOurProduction(Map<String, dynamic> json) => _ReadyProduct(
 		id: 'our-${json['readyMadeInventoryProductId']}',
 		localId: (json['readyMadeInventoryProductId'] as num?)?.toInt(),
 		importedId: null,
 		productTypeId: (json['productTypeId'] as num?)?.toInt(),
-		code: json['trackingCode']?.toString() ?? '-',
-		name: json['productionName']?.toString() ?? json['pieceType']?.toString() ?? '-',
+		trackingCode: json['trackingCode']?.toString() ?? '-',
+		name: json['pieceType']?.toString() ?? json['productionName']?.toString() ?? '-',
+		productTypeName: json['productTypeName']?.toString() ?? json['pieceType']?.toString() ?? '-',
+		fabricCode: json['fabricCode']?.toString() ?? '-',
+		fabricType: json['fabricType']?.toString() ?? '-',
+		fabricColor: json['fabricColor']?.toString() ?? '-',
+		status: json['status']?.toString() ?? '-',
 		source: 'إنتاجنا',
 		availableQuantity: json['status'] == 'AvailableForSale' && json['isActive'] == true ? 1 : 0,
 		price: (json['suggestedSellingPrice'] as num?)?.toDouble() ?? 0,
@@ -602,8 +611,13 @@ class _ReadyProduct {
 		localId: null,
 		importedId: (json['importedReadyMadeProductId'] as num?)?.toInt(),
 		productTypeId: null,
-		code: json['productCode']?.toString() ?? '-',
+		trackingCode: json['productCode']?.toString() ?? '-',
 		name: json['productName']?.toString() ?? '-',
+		productTypeName: json['productType']?.toString() ?? '-',
+		fabricCode: '-',
+		fabricType: json['productType']?.toString() ?? '-',
+		fabricColor: '-',
+		status: json['isActive'] == true ? 'AvailableForSale' : 'Sold',
 		source: 'مستورد',
 		availableQuantity: json['isActive'] == true ? (json['quantity'] as num?)?.toDouble() ?? 0 : 0,
 		price: (json['sellingPrice'] as num?)?.toDouble() ?? 0,
@@ -613,13 +627,19 @@ class _ReadyProduct {
 	final int? localId;
 	final int? importedId;
 	final int? productTypeId;
-	final String code;
+	final String trackingCode;
 	final String name;
+	final String productTypeName;
+	final String fabricCode;
+	final String fabricType;
+	final String fabricColor;
+	final String status;
 	final String source;
 	final double availableQuantity;
 	final double price;
 
-	String get searchText => '$code $name $source'.toLowerCase();
+	String get code => trackingCode;
+	String get searchText => '$trackingCode $name $productTypeName $fabricCode $fabricType $fabricColor $source'.toLowerCase();
 }
 
 class _Customer {

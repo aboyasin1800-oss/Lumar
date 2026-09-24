@@ -17,6 +17,7 @@ public class CreateOrderDto
     public string? Notes { get; init; }
     [Required, StringLength(50)] public string SaleCategory { get; init; } = "TailoringOrder";
     [StringLength(50)] public string? PaymentMethod { get; init; }
+    [StringLength(100)] public string? RequestReference { get; init; }
     [Required, MinLength(1)] public IReadOnlyList<CreateOrderItemDto> Items { get; init; } = [];
 }
 

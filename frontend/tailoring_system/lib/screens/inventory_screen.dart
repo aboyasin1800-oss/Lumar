@@ -317,6 +317,66 @@ class _InventoryScreenState extends State<InventoryScreen>
     );
   }
 
+  Future<void> _showReadyMadeDetails(ReadyMadeItem item) async {
+    final statusText = statusLabel(item.status);
+    final isSold = item.status == 'Sold';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Row(
+          children: [
+            Expanded(child: Text('تفاصيل المنتج الجاهز')),
+            if (isSold)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade700,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text('مباع', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _readyMadeDetail('كود التتبع', item.trackingCode),
+              _readyMadeDetail('اسم القطعة', item.product),
+              _readyMadeDetail('معرف نوع المنتج', item.productTypeId?.toString() ?? '-'),
+              _readyMadeDetail('نوع القطعة', item.productTypeName),
+              _readyMadeDetail('معرف منتج المخزون', item.inventoryProductId.toString()),
+              _readyMadeDetail('كود القماش', item.fabricCode),
+              _readyMadeDetail('نوع القماش', item.fabricType),
+              _readyMadeDetail('لون القماش', item.fabricColor),
+              _readyMadeDetail('الاستهلاك', item.consumption == null ? '-' : '${numberFormat.format(item.consumption)} بوصة'),
+              _readyMadeDetail('تكلفة القماش', money(item.fabricCost)),
+              _readyMadeDetail('تكلفة التشغيل', money(item.operatingCost)),
+              _readyMadeDetail('التكلفة الكاملة', money(item.fullCost ?? item.actualCost)),
+              _readyMadeDetail('سعر البيع المقترح', money(item.price)),
+              _readyMadeDetail('التكلفة الفعلية', money(item.actualCost)),
+              _readyMadeDetail('الحالة', statusText),
+              _readyMadeDetail('تاريخ الإنشاء', item.createdAt == null ? '-' : DateFormat('yyyy/MM/dd').format(item.createdAt!)),
+            ],
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('إغلاق'))],
+      ),
+    );
+  }
+
+  Widget _readyMadeDetail(String label, String value) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700))),
+            const SizedBox(width: 12),
+            Flexible(child: SelectableText(value)),
+          ],
+        ),
+      );
+
   Future<void> _deleteReadyMadeAt(int index) async {
     if (_data == null) return;
     await _confirmDelete(
@@ -733,8 +793,10 @@ class _InventoryScreenState extends State<InventoryScreen>
                     .map(
                       (item) => InventoryListItem(
                         title: item.product,
-                        subtitle: '${statusLabel(item.status)} • ${item.productType}',
+                        subtitle: '${statusLabel(item.status)} • ${item.productTypeName}',
                         value: money(item.price),
+                        status: item.status,
+                        onTap: () => _showReadyMadeDetails(item),
                         trailing: IconButton(
                           tooltip: 'حذف المنتج',
                           onPressed: () => _deleteReadyMadeAt(data.readyMade.indexOf(item)),
@@ -903,6 +965,7 @@ class _InventoryTabSection extends StatelessWidget {
                     final item = items[index];
                     return Card(
                       child: ListTile(
+                        onTap: item.onTap,
                         title: Text(
                           item.title,
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -914,6 +977,7 @@ class _InventoryTabSection extends StatelessWidget {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (item.status != null) _InventoryStatusBadge(status: item.status!),
                             Text(
                               item.value,
                               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
@@ -953,12 +1017,37 @@ class InventoryListItem {
     required this.subtitle,
     required this.value,
     required this.trailing,
+    this.status,
+    this.onTap,
   });
 
   final String title;
   final String subtitle;
   final String value;
   final Widget trailing;
+  final String? status;
+  final VoidCallback? onTap;
+}
+
+class _InventoryStatusBadge extends StatelessWidget {
+  const _InventoryStatusBadge({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (status) {
+      'AvailableForSale' => ('متاح للبيع', Colors.green),
+      'Reserved' => ('محجوز', Colors.amber.shade800),
+      'Sold' => ('مباع', Colors.red.shade700),
+      _ => (statusLabel(status), Theme.of(context).colorScheme.outline),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(5)),
+      child: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
+    );
+  }
 }
 
 Widget _fabricInfoCard(BuildContext context, String label, String value) => Column(
@@ -1099,23 +1188,74 @@ class FabricItem {
 
 class ReadyMadeItem {
   const ReadyMadeItem({
+    required this.inventoryProductId,
+    required this.trackingCode,
+    required this.productTypeId,
     required this.product,
     required this.productType,
+    required this.productTypeName,
+    required this.fabricCode,
+    required this.fabricType,
+    required this.fabricColor,
+    required this.actualCost,
+    required this.consumption,
+    required this.fabricCost,
+    required this.operatingCost,
+    required this.fullCost,
     required this.status,
     required this.price,
+    required this.createdAt,
   });
 
-  factory ReadyMadeItem.fromJson(Map<String, dynamic> json) => ReadyMadeItem(
-        product: json['productionName']?.toString() ?? json['pieceType']?.toString() ?? '-',
-        productType: json['pieceType']?.toString() ?? '-',
-        status: json['status']?.toString() ?? '-',
-        price: (json['suggestedSellingPrice'] as num?)?.toDouble(),
-      );
+  factory ReadyMadeItem.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic>? pricing;
+    final snapshot = json['measurementSnapshot']?.toString();
+    if (snapshot != null && snapshot.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(snapshot);
+        if (decoded is Map && decoded['_pricing'] is Map) {
+          pricing = (decoded['_pricing'] as Map).cast<String, dynamic>();
+        }
+      } catch (_) {}
+    }
+    return ReadyMadeItem(
+      inventoryProductId: (json['readyMadeInventoryProductId'] as num?)?.toInt() ?? 0,
+      trackingCode: json['trackingCode']?.toString() ?? '-',
+      productTypeId: (json['productTypeId'] as num?)?.toInt(),
+      product: json['productionName']?.toString() ?? json['pieceType']?.toString() ?? '-',
+      productType: json['pieceType']?.toString() ?? '-',
+      productTypeName: json['productTypeName']?.toString() ?? json['pieceType']?.toString() ?? '-',
+      fabricCode: json['fabricCode']?.toString() ?? '-',
+      fabricType: json['fabricType']?.toString() ?? '-',
+      fabricColor: json['fabricColor']?.toString() ?? '-',
+      actualCost: (json['actualCost'] as num?)?.toDouble(),
+      consumption: (pricing?['consumptionPerPiece'] as num?)?.toDouble(),
+      fabricCost: (pricing?['fabricCostPerPiece'] as num?)?.toDouble(),
+      operatingCost: (pricing?['operationalCostPerPiece'] as num?)?.toDouble(),
+      fullCost: (pricing?['fullCostPerPiece'] as num?)?.toDouble(),
+      status: json['status']?.toString() ?? '-',
+      price: (json['suggestedSellingPrice'] as num?)?.toDouble(),
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+    );
+  }
 
+  final int inventoryProductId;
+  final String trackingCode;
+  final int? productTypeId;
   final String product;
   final String productType;
+  final String productTypeName;
+  final String fabricCode;
+  final String fabricType;
+  final String fabricColor;
+  final double? actualCost;
+  final double? consumption;
+  final double? fabricCost;
+  final double? operatingCost;
+  final double? fullCost;
   final String status;
   final double? price;
+  final DateTime? createdAt;
 }
 
 class ImportedItem {
@@ -1197,6 +1337,7 @@ String quantity(double value) => numberFormat.format(value);
 String money(double? value) => value == null ? '-' : moneyFormat.format(value);
 String statusLabel(String status) => switch (status) {
       'AvailableForSale' => 'متاح للبيع',
+  'Reserved' => 'محجوز',
       'Sold' => 'مباع',
       _ => status,
     };
