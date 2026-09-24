@@ -15,66 +15,44 @@ public sealed class PieceCostSettingRepository(ReadOnlySqlConnectionFactory conn
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
-
-        var products = new List<(int Id, string Code, string Name)>();
-        const string productsSql = """
-            SELECT ProductTypeId, Code, NameAr
-            FROM dbo.PricingProductTypes
-            WHERE IsActive=1 AND Category=N'Garment' AND Scope IN (N'Both',N'Tailoring')
-            ORDER BY NameAr, ProductTypeId;
+		const string sql = """
+            WITH active_matrices AS (
+                SELECT CostMatrixId, ProductTypeId,
+                       ROW_NUMBER() OVER (PARTITION BY ProductTypeId ORDER BY Version DESC, CostMatrixId DESC) AS rn
+                FROM dbo.PricingCostMatrices
+                WHERE Channel=N'Tailoring' AND Status=N'Active' AND IsActive=1
+            ), matrix_costs AS (
+                SELECT am.ProductTypeId,
+                       SUM(CASE WHEN ci.Code=N'OP_SEWING' THEN m.UnitCost*m.Quantity ELSE 0 END) AS SewingCost,
+                       SUM(CASE WHEN ci.Code=N'OP_CONSUMABLES' THEN m.UnitCost*m.Quantity ELSE 0 END) AS ConsumablesCost,
+                       SUM(CASE WHEN ci.Code=N'OP_IRON_PACK' THEN m.UnitCost*m.Quantity ELSE 0 END) AS IroningCost,
+                       SUM(CASE WHEN ci.Code=N'OP_FIXED' THEN m.UnitCost*m.Quantity ELSE 0 END) AS FixedCost
+                FROM active_matrices am
+                INNER JOIN dbo.PricingCostMatrixItems m ON m.CostMatrixId=am.CostMatrixId
+                INNER JOIN dbo.PricingCostItems ci ON ci.CostItemId=m.CostItemId AND ci.IsActive=1
+                WHERE am.rn=1
+                GROUP BY am.ProductTypeId
+            )
+            SELECT pt.ProductTypeId, pt.Code, pt.NameAr,
+                   COALESCE(mc.SewingCost,0), COALESCE(mc.ConsumablesCost,0),
+                   COALESCE(mc.IroningCost,0), COALESCE(mc.FixedCost,0)
+            FROM dbo.PricingProductTypes pt
+            LEFT JOIN matrix_costs mc ON mc.ProductTypeId=pt.ProductTypeId
+            WHERE pt.IsActive=1 AND pt.Category=N'Garment' AND pt.Scope IN (N'Both',N'Tailoring')
+            ORDER BY pt.NameAr, pt.ProductTypeId;
             """;
-        await using (var productsCommand = new SqlCommand(productsSql, connection))
-        await using (var productsReader = await productsCommand.ExecuteReaderAsync(cancellationToken))
-        {
-            while (await productsReader.ReadAsync(cancellationToken))
-            {
-                products.Add((productsReader.GetInt32(0), productsReader.GetString(1), productsReader.GetString(2)));
-            }
-        }
-
-        var settings = new Dictionary<string, string>(StringComparer.Ordinal);
-        const string settingsSql = """
-            SELECT SettingName, SettingValue
-            FROM dbo.System_Settings
-            WHERE SettingName LIKE N'PieceTypeCost.%';
-            """;
-        await using (var settingsCommand = new SqlCommand(settingsSql, connection))
-        await using (var settingsReader = await settingsCommand.ExecuteReaderAsync(cancellationToken))
-        {
-            while (await settingsReader.ReadAsync(cancellationToken))
-            {
-                if (!settingsReader.IsDBNull(0))
-                {
-                    settings[settingsReader.GetString(0)] = settingsReader.IsDBNull(1)
-                        ? "0"
-                        : settingsReader.GetString(1);
-                }
-            }
-        }
-
-        var results = new List<PieceCostSettingDto>(products.Count);
-        foreach (var product in products)
-        {
-            var prefix = $"PieceTypeCost.{Uri.EscapeDataString(product.Name)}.";
-            var sewing = Value(settings, prefix + "Sewing");
-            var consumables = Value(settings, prefix + "ToolsConsumables");
-            var ironing = Value(settings, prefix + "IroningPackaging");
-            var fixedCost = Value(settings, prefix + "FixedOperating");
-            var total = sewing + consumables + ironing + fixedCost;
-            results.Add(new PieceCostSettingDto(
-                product.Id,
-                product.Code,
-                product.Name,
-                sewing,
-                consumables,
-                ironing,
-                fixedCost,
-                null,
-                total,
-                total != 0m));
-        }
-
-        return results;
+		await using var command = new SqlCommand(sql, connection);
+		await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+		var results = new List<PieceCostSettingDto>();
+		while (await reader.ReadAsync(cancellationToken))
+		{
+			var total = reader.GetDecimal(3) + reader.GetDecimal(4) + reader.GetDecimal(5) + reader.GetDecimal(6);
+			results.Add(new PieceCostSettingDto(
+				reader.GetInt32(0), reader.GetString(1), reader.GetString(2),
+				reader.GetDecimal(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetDecimal(6),
+				null, total, total != 0m));
+		}
+		return results;
     }
 
     private static decimal Value(IReadOnlyDictionary<string, string> settings, string key) =>

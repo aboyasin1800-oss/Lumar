@@ -12,6 +12,84 @@ public sealed class FinanceRepository(ReadOnlySqlConnectionFactory connections) 
     public Task<IReadOnlyList<SupplierLedgerEntryDto>> GetSupplierLedgerAsync(int id, CancellationToken ct) => QueryAsync("SELECT SupplierLedgerEntryId, SupplierId, ReferenceNumber, DebitAmount, CreditAmount, BalanceAfterTransaction, CreatedAt FROM dbo.SupplierLedgerEntries WHERE SupplierId = @id ORDER BY CreatedAt DESC, SupplierLedgerEntryId DESC", id, r => new SupplierLedgerEntryDto(r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetDecimal(3), r.GetDecimal(4), r.GetDecimal(5), r.GetDateTime(6)), ct);
     public Task<IReadOnlyList<SupplierPaymentDto>> GetSupplierPaymentsAsync(CancellationToken ct) => QueryAsync("SELECT SupplierPaymentId, SupplierId, PaymentNumber, PaymentDate, Amount, PaymentMethod, ReferenceNumber, Notes, CreatedAt, JournalEntryId FROM dbo.SupplierPayments ORDER BY PaymentDate DESC, SupplierPaymentId DESC", null, r => new SupplierPaymentDto(r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetDateTime(3), r.GetDecimal(4), r.NullableString("PaymentMethod"), r.NullableString("ReferenceNumber"), r.NullableString("Notes"), r.GetDateTime(8), r.NullableInt32("JournalEntryId")), ct);
     public Task<IReadOnlyList<SupplierInvoiceDto>> GetSupplierInvoicesAsync(CancellationToken ct) => QueryAsync("SELECT SupplierInvoiceId, SupplierId, PurchaseOrderId, InvoiceNumber, InvoiceDate, DueDate, TotalAmount, AmountPaid, Status, Notes, CreatedAt FROM dbo.SupplierInvoices ORDER BY InvoiceDate DESC, SupplierInvoiceId DESC", null, r => new SupplierInvoiceDto(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), r.GetString(3), r.GetDateTime(4), r.GetDateTime(5), r.GetDecimal(6), r.GetDecimal(7), r.GetString(8), r.NullableString("Notes"), r.GetDateTime(10)), ct);
+    public async Task<FinancialStatementsDto> GetFinancialStatementsAsync(CancellationToken ct)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+
+        const string ledgerSql = @"
+            SELECT la.AccountCode, la.AccountType,
+                   COALESCE(SUM(jl.DebitAmount), 0),
+                   COALESCE(SUM(jl.CreditAmount), 0)
+            FROM dbo.LedgerAccounts la
+            LEFT JOIN dbo.JournalEntryLines jl ON jl.LedgerAccountId = la.LedgerAccountId
+            WHERE la.IsActive = 1
+            GROUP BY la.AccountCode, la.AccountType;";
+        var balances = new Dictionary<string, (string Type, decimal Balance)>(StringComparer.OrdinalIgnoreCase);
+        await using (var ledgerCommand = new SqlCommand(ledgerSql, connection))
+        await using (var reader = await ledgerCommand.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var accountCode = reader.GetString(0);
+                var accountType = reader.GetString(1);
+                var debit = reader.GetDecimal(2);
+                var credit = reader.GetDecimal(3);
+                var normalBalance = accountType.Equals("Asset", StringComparison.OrdinalIgnoreCase)
+                    || accountType.Equals("Expense", StringComparison.OrdinalIgnoreCase)
+                    ? debit - credit
+                    : credit - debit;
+                balances[accountCode] = (accountType, normalBalance);
+            }
+        }
+
+        decimal SumType(string type) => balances.Values
+            .Where(item => item.Type.Equals(type, StringComparison.OrdinalIgnoreCase))
+            .Sum(item => item.Balance);
+        decimal Account(string code) => balances.TryGetValue(code, out var item) ? item.Balance : 0m;
+
+        var assets = SumType("Asset");
+        var liabilities = SumType("Liability");
+        var explicitEquity = SumType("Equity");
+        var equity = explicitEquity != 0m ? explicitEquity : assets - liabilities;
+        var accountsReceivable = Account("1200");
+        var accountsPayable = Account("2100");
+        var inventoryValue = Account("1100") + Account("1110") + Account("1130");
+
+        const string financialSql = @"
+            SELECT TransactionType, COALESCE(SUM(Amount), 0)
+            FROM dbo.FinancialTransactions
+            GROUP BY TransactionType;";
+        var financialTotals = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        await using (var financialCommand = new SqlCommand(financialSql, connection))
+        await using (var reader = await financialCommand.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct)) financialTotals[reader.GetString(0)] = reader.GetDecimal(1);
+        }
+
+        decimal Financial(params string[] types) => types.Sum(type => financialTotals.GetValueOrDefault(type));
+        var cashInflows = Financial("CustomerAdvance", "CustomerPayment", "CashAccountOpening");
+        var refunds = Financial("OrderCancellationRefund");
+        var supplierPayments = await ReadDecimalAsync(connection, "SELECT COALESCE(SUM(Amount), 0) FROM dbo.SupplierPayments", ct);
+        var cashAccountsBalance = await ReadDecimalAsync(connection, "SELECT COALESCE(SUM(CurrentBalance), 0) FROM dbo.CashAccounts WHERE IsActive = 1", ct);
+
+        var revenue = SumType("Revenue");
+        var expenses = SumType("Expense");
+        var costOfGoodsSold = Account("5200");
+
+        return new FinancialStatementsDto(
+            new FinancialBalanceSheetDto(assets, liabilities, accountsReceivable, accountsPayable, inventoryValue, equity),
+            new FinancialCashFlowDto(cashInflows, supplierPayments, refunds, cashAccountsBalance, cashInflows - supplierPayments - refunds),
+            new FinancialProfitLossDto(revenue, expenses, costOfGoodsSold, revenue - costOfGoodsSold, revenue - expenses));
+    }
+
+    private static async Task<decimal> ReadDecimalAsync(SqlConnection connection, string sql, CancellationToken ct)
+    {
+        await using var command = new SqlCommand(sql, connection);
+        var value = await command.ExecuteScalarAsync(ct);
+        return value is decimal decimalValue ? decimalValue : Convert.ToDecimal(value ?? 0m);
+    }
+
     public async Task<FinancialReconciliationDto> GetReconciliationAsync(CancellationToken ct)
     {
         const string sql = """

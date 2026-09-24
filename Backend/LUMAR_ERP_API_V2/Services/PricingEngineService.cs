@@ -30,12 +30,16 @@ public sealed class PricingEngineService(
         {
             reasons.Add("تعذر احتساب السعر: كود القماش غير موجود في مخزن الأقمشة.");
         }
-        else if (matches.Count > 1)
+        else if (matches.GroupBy(fabric => fabric.SourceTable, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
         {
             reasons.Add("تعذر احتساب السعر: يوجد أكثر من سجل للقماش بالكود نفسه. راجع بيانات مخزن الأقمشة.");
         }
 
-        var fabric = matches.Count == 1 ? matches[0] : null;
+        var fabric = matches
+            .OrderBy(item => item.SourceTable.Equals("InventoryItems", StringComparison.OrdinalIgnoreCase) ? 0
+                : item.SourceTable.Equals("Fabrics_Inventory", StringComparison.OrdinalIgnoreCase) ? 1
+                : 2)
+            .FirstOrDefault();
         if (fabric is not null && fabric.IsActive == false)
         {
             reasons.Add("تعذر احتساب السعر: سجل القماش غير نشط في مخزن الأقمشة.");

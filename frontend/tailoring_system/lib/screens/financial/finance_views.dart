@@ -112,23 +112,90 @@ class _FinancialReportsTab extends StatelessWidget {
 	);
 }
 
-class _FinancialStatementsTabs extends StatelessWidget {
+class _FinancialStatementsTabs extends StatefulWidget {
 	const _FinancialStatementsTabs();
-	@override Widget build(BuildContext context) => DefaultTabController(
-		length: 3,
-		child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-			const TabBar(tabs: [
-				Tab(text: 'الأرباح والخسائر'),
-				Tab(text: 'الميزانية'),
-				Tab(text: 'التدفقات النقدية'),
-			]),
+	@override State<_FinancialStatementsTabs> createState() => _FinancialStatementsTabsState();
+}
+
+class _FinancialStatementsTabsState extends State<_FinancialStatementsTabs> {
+	final repository = FinanceRepository();
+	late Future<FinancialStatements> future;
+
+	@override
+	void initState() {
+		super.initState();
+		future = repository.getFinancialStatements();
+	}
+
+	void reload() => setState(() => future = repository.getFinancialStatements());
+
+	@override
+	Widget build(BuildContext context) => FutureBuilder<FinancialStatements>(
+		future: future,
+		builder: (context, snapshot) {
+			if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+			if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
+			final statements = snapshot.data!;
+			return DefaultTabController(
+				length: 3,
+				child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+					Row(children: [
+						const Expanded(child: Text('القوائم المالية من البيانات الفعلية')),
+						IconButton(tooltip: 'تحديث القوائم', onPressed: reload, icon: const Icon(Icons.refresh)),
+					]),
+					const TabBar(tabs: [
+						Tab(text: 'الأرباح والخسائر'),
+						Tab(text: 'الميزانية'),
+						Tab(text: 'التدفقات النقدية'),
+					]),
+					const SizedBox(height: 8),
+					Expanded(child: TabBarView(children: [
+						_FinancialValueList(title: 'الأرباح والخسائر', values: [
+							('الإيرادات', statements.profitLoss.revenue),
+							('تكلفة البضاعة المباعة', statements.profitLoss.costOfGoodsSold),
+							('إجمالي الربح', statements.profitLoss.grossProfit),
+							('المصروفات', statements.profitLoss.expenses),
+							('صافي الربح', statements.profitLoss.netProfit),
+						]),
+						_FinancialValueList(title: 'الميزانية العمومية', values: [
+							('الأصول', statements.balanceSheet.assets),
+							('الالتزامات', statements.balanceSheet.liabilities),
+							('الحسابات المدينة', statements.balanceSheet.accountsReceivable),
+							('الحسابات الدائنة', statements.balanceSheet.accountsPayable),
+							('قيمة المخزون', statements.balanceSheet.inventoryValue),
+							('حقوق الملكية', statements.balanceSheet.equity),
+						]),
+						_FinancialValueList(title: 'التدفقات النقدية', values: [
+							('التدفقات الداخلة', statements.cashFlow.cashInflows),
+							('دفعات الموردين', statements.cashFlow.supplierPayments),
+							('المبالغ المستردة', statements.cashFlow.refunds),
+							('صافي حركة النقد', statements.cashFlow.netCashMovement),
+							('صافي مركز النقد', statements.cashFlow.netCashPosition),
+						]),
+					])),
+				]),
+			);
+		},
+	);
+}
+
+class _FinancialValueList extends StatelessWidget {
+	const _FinancialValueList({required this.title, required this.values});
+	final String title;
+	final List<(String, double)> values;
+
+	@override
+	Widget build(BuildContext context) => ListView(
+		children: [
+			Text(title, style: Theme.of(context).textTheme.titleLarge),
 			const SizedBox(height: 8),
-			const Expanded(child: TabBarView(children: [
-				_UnavailableReport(title: 'الأرباح والخسائر', message: 'لا توجد خدمة قائمة أرباح وخسائر فعلية في API الحالية.'),
-				_UnavailableReport(title: 'الميزانية', message: 'لا توجد خدمة ميزانية فعلية في API الحالية.'),
-				_UnavailableReport(title: 'التدفقات النقدية', message: 'لا يوجد مصدر تاريخي مكتمل للتدفقات النقدية في API الحالية.'),
-			])),
-		]),
+			...values.map((entry) => Card(
+				child: ListTile(
+					title: Text(entry.$1),
+					trailing: Text(_money.format(entry.$2), style: Theme.of(context).textTheme.titleMedium),
+				),
+			)),
+		],
 	);
 }
 

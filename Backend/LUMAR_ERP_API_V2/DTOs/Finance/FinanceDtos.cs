@@ -9,3 +9,7 @@ public sealed record SupplierLedgerEntryDto(int SupplierLedgerEntryId, int Suppl
 public sealed record SupplierPaymentDto(int SupplierPaymentId, int SupplierId, string PaymentNumber, DateTime PaymentDate, decimal Amount, string? PaymentMethod, string? ReferenceNumber, string? Notes, DateTime CreatedAt, int? JournalEntryId);
 public sealed record SupplierInvoiceDto(int SupplierInvoiceId, int SupplierId, int PurchaseOrderId, string InvoiceNumber, DateTime InvoiceDate, DateTime DueDate, decimal TotalAmount, decimal AmountPaid, string Status, string? Notes, DateTime CreatedAt);
 public sealed record FinancialReconciliationDto(int FinancialTransactions, int JournalEntries, int BalancedJournalEntries, int UnbalancedJournalEntries, int SharedReferences, int FinancialReferencesWithoutJournal, int JournalReferencesWithoutTransaction, int OrphanJournalLines);
+public sealed record FinancialStatementsDto(FinancialBalanceSheetDto BalanceSheet, FinancialCashFlowDto CashFlow, FinancialProfitLossDto ProfitLoss);
+public sealed record FinancialBalanceSheetDto(decimal Assets, decimal Liabilities, decimal AccountsReceivable, decimal AccountsPayable, decimal InventoryValue, decimal Equity);
+public sealed record FinancialCashFlowDto(decimal CashInflows, decimal SupplierPayments, decimal Refunds, decimal NetCashPosition, decimal NetCashMovement);
+public sealed record FinancialProfitLossDto(decimal Revenue, decimal Expenses, decimal CostOfGoodsSold, decimal GrossProfit, decimal NetProfit);

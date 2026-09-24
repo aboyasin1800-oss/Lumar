@@ -16,7 +16,15 @@ public sealed record ReadyMadeProductionOrderDto(int ReadyMadeProductionOrderId,
 public sealed record ReadyMadeProductionOrderItemDto(int ReadyMadeProductionOrderItemId, int ReadyMadeProductionOrderId, int? ProductTypeId, string PieceType, int Quantity, string? FabricCode, string? FabricType, string? FabricColor, string? CatalogNumber, decimal? FabricCost, decimal? PieceCost, decimal? LineTotal, string? MeasurementSnapshot, string PieceStatus, DateTime CreatedAt);
 public sealed record ReadyMadeProductionPieceDto(int ReadyMadeProductionOrderPieceInstanceId, int ReadyMadeProductionOrderItemId, int PieceNumber, string TrackingCode, string PieceStatus, DateTime CreatedAt);
 public sealed record ReadyMadeProductionOrderCreateItemDto(string PieceType, int Quantity, int ProductTypeId, string? FabricCode, string? FabricType, string? FabricColor, string? CatalogNumber, decimal? FabricCost, decimal? PieceCost, decimal? LineTotal, string? MeasurementSnapshot, string? Notes);
-public sealed record ReadyMadeProductionOrderCreateDto(string ProductionOrderNumber, string ProductionName, decimal TotalCost, decimal ProfitPercentage, decimal SuggestedSellingPrice, string? Notes, IReadOnlyList<ReadyMadeProductionOrderCreateItemDto> Items);
+public sealed record ReadyMadeProductionOrderCreateDto(
+    string ProductionOrderNumber,
+    string ProductionName,
+    decimal TotalCost,
+    decimal ProfitPercentage,
+    decimal SuggestedSellingPrice,
+    string? Notes,
+    IReadOnlyList<ReadyMadeProductionOrderCreateItemDto> Items,
+    string? RequestReference = null);
 public sealed record ReadyMadeProductionOrderCreateResultDto(int ReadyMadeProductionOrderId, string ProductionOrderNumber, string ProductionName, decimal TotalCost, decimal ProfitPercentage, decimal SuggestedSellingPrice, string Status, DateTime CreatedAt);
 public sealed record ProductionDeliveryDto(int OrderId, string OrderNumber, int CustomerId, string? CustomerCode, string? CustomerName, string? PhoneNumber, string OrderStatus, DateTime? DeliveryDate);
 public sealed record PieceTrackingDto(int TrackingCode, int? InvoiceId, int? CustomerId, string? ItemType, string? Status, string? CuttingEmployee, string? SewingEmployee, string? IroningEmployee, DateTime? CreatedDate, DateTime? CuttingDate, DateTime? SewingDate, DateTime? IroningDate, bool? IsCompleted, bool? IsDelivered, DateTime? DeliveryDate, bool? IsOnHold, string? HoldReason);

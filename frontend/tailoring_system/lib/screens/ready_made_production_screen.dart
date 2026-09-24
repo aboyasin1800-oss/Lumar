@@ -550,15 +550,18 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 	final _formKey = GlobalKey<FormState>();
 	final _nameController = TextEditingController();
 	final _totalCostController = TextEditingController(text: '0');
-	final _profitController = TextEditingController(text: '12');
+	final _profitController = TextEditingController(text: '0');
 	final _priceController = TextEditingController(text: '0');
 	final _notesController = TextEditingController();
 	final List<_ReadyMadeDraftItem> _items = [
 		_ReadyMadeDraftItem(),
 	];
 	bool _saving = false;
+	String? _requestReference;
 	List<_PieceCostSetting> _pieceCostSettings = const [];
+	List<_ProductTypeOption> _productTypes = const [];
 	Map<String, _FabricLookup> _fabrics = const {};
+	Map<int, List<_ConsumptionMeasurementField>> _measurementFieldsByProductType = const {};
 
 	@override
 	void initState() {
@@ -596,17 +599,40 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 					}
 				}
 			}
+			final consumptionResponse = await http.get(Uri.parse('$_baseUrl/consumption-rules'));
+			final measurementFields = <int, List<_ConsumptionMeasurementField>>{};
+			final productTypes = <_ProductTypeOption>[];
+			if (consumptionResponse.statusCode >= 200 && consumptionResponse.statusCode < 300) {
+				final payload = jsonDecode(consumptionResponse.body);
+				if (payload is Map<String, dynamic>) {
+					for (final row in (payload['productTypes'] as List? ?? const []).whereType<Map<String, dynamic>>()) {
+						final option = _ProductTypeOption.fromJson(row);
+						if (option.productTypeId > 0 && option.name.isNotEmpty) productTypes.add(option);
+					}
+					for (final row in (payload['measurementFields'] as List? ?? const []).whereType<Map<String, dynamic>>()) {
+						final field = _ConsumptionMeasurementField.fromJson(row);
+						if (field.productTypeId > 0 && field.code.isNotEmpty) {
+							measurementFields.putIfAbsent(field.productTypeId, () => []).add(field);
+						}
+					}
+					for (final fields in measurementFields.values) {
+						fields.sort((left, right) => left.sequence.compareTo(right.sequence));
+					}
+				}
+			}
 			if (!mounted) return;
 			setState(() {
 				_pieceCostSettings = settings;
+				_productTypes = productTypes;
 				_fabrics = fabrics;
+				_measurementFieldsByProductType = measurementFields;
 				for (final item in _items) {
-					if (item.selectedPieceType.isEmpty && settings.isNotEmpty) {
-						item.selectedPieceType = settings.first.name;
-						item.selectedProductTypeId = settings.first.productTypeId;
-						item.pieceTypeController.text = settings.first.name;
+					if (item.selectedPieceType.isEmpty && productTypes.isNotEmpty) {
+						item.selectedPieceType = productTypes.first.name;
+						item.selectedProductTypeId = productTypes.first.productTypeId;
+						item.pieceTypeController.text = productTypes.first.name;
 					}
-					item.loadMeasurementFields();
+					item.loadMeasurementFields(_measurementFieldsByProductType[item.selectedProductTypeId] ?? const []);
 					item.refreshCalculatedValues(_pieceCostSettings, _fabrics);
 				}
 				_updateAutoPrice();
@@ -615,19 +641,21 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 			if (!mounted) return;
 			setState(() {
 				_pieceCostSettings = const [];
+				_productTypes = const [];
 				_fabrics = const {};
+				_measurementFieldsByProductType = const {};
 			});
 		}
 	}
 
 	void _addItem() => setState(() {
 		final item = _ReadyMadeDraftItem();
-		if (_pieceCostSettings.isNotEmpty) {
-			item.selectedPieceType = _pieceCostSettings.first.name;
-			item.selectedProductTypeId = _pieceCostSettings.first.productTypeId;
-			item.pieceTypeController.text = _pieceCostSettings.first.name;
+		if (_productTypes.isNotEmpty) {
+			item.selectedPieceType = _productTypes.first.name;
+			item.selectedProductTypeId = _productTypes.first.productTypeId;
+			item.pieceTypeController.text = _productTypes.first.name;
 		}
-		item.loadMeasurementFields();
+		item.loadMeasurementFields(_measurementFieldsByProductType[item.selectedProductTypeId] ?? const []);
 		item.refreshCalculatedValues(_pieceCostSettings, _fabrics);
 		_items.add(item);
 		_updateAutoPrice();
@@ -642,7 +670,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 		});
 	}
 
-	void _syncFabricData(_ReadyMadeDraftItem item) {
+	Future<void> _syncFabricData(_ReadyMadeDraftItem item) async {
 		final code = item.fabricCodeController.text.trim();
 		if (code.isEmpty) {
 			item.fabricTypeController.clear();
@@ -652,12 +680,14 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 			item.inchPriceController.clear();
 			item.refreshCalculatedValues(_pieceCostSettings, _fabrics);
 			_updateAutoPrice();
+			await _calculateConsumption(item);
 			return;
 		}
 		final fabric = _fabrics[code.toUpperCase()];
 		if (fabric == null) {
 			item.refreshCalculatedValues(_pieceCostSettings, _fabrics);
 			_updateAutoPrice();
+			await _calculateConsumption(item);
 			return;
 		}
 		item.fabricTypeController.text = fabric.type;
@@ -667,13 +697,128 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 		item.inchPriceController.text = _formatNumber(fabric.unitPrice / 36.0);
 		item.refreshCalculatedValues(_pieceCostSettings, _fabrics);
 		_updateAutoPrice();
+		await _calculateConsumption(item);
+	}
+
+	Future<void> _calculateConsumption(_ReadyMadeDraftItem item) async {
+		if (item.selectedProductTypeId <= 0) {
+			item.consumptionMessage = 'نوع المنتج الرسمي مطلوب لحساب الاستهلاك.';
+			item.consumptionPerPiece = null;
+			item.refreshCalculatedValues(_pieceCostSettings, _fabrics);
+			if (mounted) setState(() {});
+			return;
+		}
+
+		final measurements = <String, double>{};
+		for (final entry in item.measurementsForPayload.entries) {
+			final value = double.tryParse(entry.value.toString().replaceAll(',', '.'));
+			if (value != null && value >= 0) measurements[entry.key] = value;
+		}
+		try {
+			final response = await http.post(
+				Uri.parse('$_baseUrl/consumption-rules/evaluate'),
+				headers: const {'Content-Type': 'application/json'},
+				body: jsonEncode({'productTypeId': item.selectedProductTypeId, 'measurements': measurements}),
+			);
+			final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
+			if (response.statusCode >= 200 && response.statusCode < 300 && decoded is Map<String, dynamic>) {
+				final value = (decoded['value'] as num?)?.toDouble();
+				final unit = (decoded['unit'] ?? '').toString();
+				if (value == null || value <= 0 || !_isInchUnit(unit)) {
+					throw const FormatException('وحدة الاستهلاك الرسمية ليست بوصة.');
+				}
+				item.consumptionPerPiece = value;
+				item.consumptionUnit = 'بوصة';
+				item.consumptionMessage = '';
+				await _calculateOfficialPricing(item);
+			} else {
+				item.consumptionPerPiece = null;
+				item.consumptionMessage = decoded is Map<String, dynamic>
+					? (decoded['message']?.toString() ?? 'تعذر حساب الاستهلاك الرسمي.')
+					: 'تعذر حساب الاستهلاك الرسمي.';
+			}
+		} catch (error) {
+			item.consumptionPerPiece = null;
+			item.consumptionMessage = error is FormatException
+				? error.message
+				: 'تعذر الاتصال بخدمة قواعد الاستهلاك.';
+		}
+		item.refreshCalculatedValues(_pieceCostSettings, _fabrics);
+		_updateAutoPrice();
+		if (mounted) setState(() {});
+	}
+
+	Future<void> _calculateOfficialPricing(_ReadyMadeDraftItem item) async {
+		final fabricCode = item.fabricCodeController.text.trim();
+		if (fabricCode.isEmpty || item.consumptionPerPiece == null) {
+			_clearOfficialPricing(item, 'كود القماش والاستهلاك الرسمي مطلوبان لإصدار السعر.');
+			return;
+		}
+		try {
+			final response = await http.post(
+				Uri.parse('$_baseUrl/pricing-engine/calculate'),
+				headers: const {'Content-Type': 'application/json'},
+				body: jsonEncode({
+					'productTypeId': item.selectedProductTypeId,
+					'fabricCode': fabricCode,
+					'consumption': item.consumptionPerPiece,
+					'consumptionUnit': item.consumptionUnit,
+					'quantity': int.tryParse(item.quantityController.text.trim()) ?? 1,
+					'pieceProfitPercentage': 0,
+					'globalProfitPercentage': 0,
+				}),
+			);
+			final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
+			if (response.statusCode < 200 || response.statusCode >= 300 || decoded is! Map<String, dynamic> || decoded['isReady'] != true) {
+				final reasons = decoded is Map<String, dynamic> && decoded['reasons'] is List
+					? (decoded['reasons'] as List).map((reason) => reason.toString()).join(' ')
+					: 'تعذر إصدار السعر الرسمي.';
+				_clearOfficialPricing(item, reasons.isEmpty ? 'تعذر إصدار السعر الرسمي.' : reasons);
+				return;
+			}
+			item.officialFabricCostPerPiece = (decoded['fabricCostPerPiece'] as num?)?.toDouble();
+			item.officialOperatingCostPerPiece = (decoded['operationalCostPerPiece'] as num?)?.toDouble();
+			item.officialFullCostPerPiece = (decoded['fullCostPerPiece'] as num?)?.toDouble();
+			item.officialSuggestedPricePerPiece = (decoded['finalPricePerPiece'] as num?)?.toDouble();
+			item.officialFullCostTotal = (decoded['fullCostTotal'] as num?)?.toDouble();
+			item.officialSuggestedPriceTotal = (decoded['finalPriceTotal'] as num?)?.toDouble();
+			item.pricingMessage = '';
+			_profitController.text = _formatNumber((decoded['globalProfitPercentage'] as num?)?.toDouble() ?? 0);
+			item.fabricCostPerPieceController.text = _formatNumber(item.officialFabricCostPerPiece ?? 0);
+			item.operatingCostPerPieceController.text = _formatNumber(item.officialOperatingCostPerPiece ?? 0);
+			item.fullCostPerPieceController.text = _formatNumber(item.officialFullCostPerPiece ?? 0);
+			item.suggestedPricePerPieceController.text = _formatNumber(item.officialSuggestedPricePerPiece ?? 0);
+			item.suggestedPriceTotalController.text = _formatNumber(item.officialSuggestedPriceTotal ?? 0);
+		} catch (_) {
+			_clearOfficialPricing(item, 'تعذر الاتصال بمحرك التسعير الرسمي.');
+		}
+	}
+
+	void _clearOfficialPricing(_ReadyMadeDraftItem item, String message) {
+		item.pricingMessage = message;
+		item.officialFabricCostPerPiece = null;
+		item.officialOperatingCostPerPiece = null;
+		item.officialFullCostPerPiece = null;
+		item.officialSuggestedPricePerPiece = null;
+		item.officialFullCostTotal = null;
+		item.officialSuggestedPriceTotal = null;
+		item.fabricCostPerPieceController.text = '0';
+		item.operatingCostPerPieceController.text = '0';
+		item.fullCostPerPieceController.text = '0';
+		item.suggestedPricePerPieceController.text = '0';
+		item.suggestedPriceTotalController.text = '0';
+	}
+
+	bool _isInchUnit(String unit) {
+		final normalized = unit.trim().toLowerCase();
+		return normalized == 'inch' || normalized == 'inches' || normalized == 'بوصة';
 	}
 
 	void _updateAutoPrice() {
-		final totalCost = _items.fold<double>(0, (sum, item) => sum + item.lineTotalValue);
+		final totalCost = _items.fold<double>(0, (sum, item) => sum + (item.officialFullCostTotal ?? 0));
 		_totalCostController.text = _formatNumber(totalCost);
-		final profit = double.tryParse(_profitController.text.replaceAll(',', '.')) ?? 0;
-		_priceController.text = _formatNumber(totalCost * (1 + (profit / 100)));
+		final totalSuggestedPrice = _items.fold<double>(0, (sum, item) => sum + (item.officialSuggestedPriceTotal ?? 0));
+		_priceController.text = _formatNumber(totalSuggestedPrice);
 		for (final item in _items) {
 			item.refreshCalculatedValues(_pieceCostSettings, _fabrics);
 		}
@@ -699,9 +844,33 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 				_scaffoldMessage('أدخل كمية صحيحة في البند ${index + 1}.');
 				return;
 			}
+			await _calculateConsumption(item);
+			if (item.fabricCodeController.text.trim().isEmpty) {
+				_scaffoldMessage('كود القماش مطلوب في البند ${index + 1}.');
+				return;
+			}
+			if (item.consumptionPerPiece == null || item.consumptionMessage.isNotEmpty) {
+				_scaffoldMessage(item.consumptionMessage.isEmpty
+					? 'تعذر حساب استهلاك القماش في البند ${index + 1}.'
+					: item.consumptionMessage);
+				return;
+			}
+			if (item.officialSuggestedPricePerPiece == null || item.officialSuggestedPricePerPiece! <= 0 || item.pricingMessage.isNotEmpty) {
+				_scaffoldMessage(item.pricingMessage.isEmpty ? 'تعذر إصدار السعر الرسمي لهذا البند.' : item.pricingMessage);
+				return;
+			}
+			if (item.availableInches == null) {
+				_scaffoldMessage('كود القماش غير موجود في المخزون في البند ${index + 1}.');
+				return;
+			}
+			if (item.availableInches! < item.requiredInches) {
+				_scaffoldMessage('الكمية المتوفرة لا تكفي لهذا البند.');
+				return;
+			}
 		}
 		setState(() => _saving = true);
 		try {
+			_requestReference ??= 'RMP-UI-${DateTime.now().microsecondsSinceEpoch}';
 			final payload = {
 				'productionOrderNumber': '',
 				'productionName': _nameController.text.trim(),
@@ -709,6 +878,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 				'profitPercentage': double.tryParse(_profitController.text.replaceAll(',', '.')) ?? 0,
 				'suggestedSellingPrice': double.tryParse(_priceController.text.replaceAll(',', '.')) ?? 0,
 				'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+				'requestReference': _requestReference,
 				'items': _items.map((item) {
 					item.refreshCalculatedValues(_pieceCostSettings, _fabrics);
 					return {
@@ -780,8 +950,8 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 					const SizedBox(height: AppSpacing.sm),
 					_paddingField(
 						controller: _profitController,
-						label: 'نسبة الربح %',
-						onChanged: (_) => _updateAutoPrice(),
+						label: 'نسبة الربح العامة الرسمية %',
+						readOnly: true,
 					),
 					const SizedBox(height: AppSpacing.sm),
 					_paddingField(controller: _priceController, label: 'سعر البيع المقترح', readOnly: true),
@@ -796,23 +966,24 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 		final row1 = [
 			_dropdownField(
 				label: 'نوع القطعة',
-				value: item.selectedPieceType.isEmpty ? null : item.selectedPieceType,
-				items: _pieceCostSettings.map((option) => DropdownMenuItem<String>(value: option.name, child: Text(option.name))).toList(),
+				value: item.selectedProductTypeId <= 0 ? null : item.selectedProductTypeId,
+				items: _productTypes.map((option) => DropdownMenuItem<int>(value: option.productTypeId, child: Text(option.name))).toList(),
 				onChanged: (value) {
 					if (value == null) return;
-					final option = _pieceCostSettings.firstWhere((entry) => entry.name == value);
+					final option = _productTypes.firstWhere((entry) => entry.productTypeId == value);
 					setState(() {
-						item.selectedPieceType = value;
+							item.selectedPieceType = option.name;
 						item.selectedProductTypeId = option.productTypeId;
-						item.pieceTypeController.text = value;
-						item.loadMeasurementFields();
+							item.pieceTypeController.text = option.name;
+						item.loadMeasurementFields(_measurementFieldsByProductType[item.selectedProductTypeId] ?? const []);
 						item.refreshCalculatedValues(_pieceCostSettings, _fabrics);
 					});
 					_updateAutoPrice();
+					_calculateConsumption(item);
 				},
-				validator: (value) => value == null || value.trim().isEmpty ? 'نوع القطعة مطلوب' : null,
+				validator: (value) => value == null ? 'نوع القطعة مطلوب' : null,
 			),
-			_paddingField(controller: item.quantityController, label: 'الكمية', keyboardType: TextInputType.number),
+			_paddingField(controller: item.quantityController, label: 'الكمية', keyboardType: TextInputType.number, onChanged: (_) => _calculateConsumption(item)),
 			_paddingField(controller: item.fabricCodeController, label: 'كود القماش', onChanged: (_) => _syncFabricData(item)),
 			_paddingField(controller: item.fabricTypeController, label: 'نوع القماش', readOnly: true),
 			_paddingField(controller: item.fabricColorController, label: 'لون القماش', readOnly: true),
@@ -827,11 +998,22 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 			_paddingField(controller: item.request2Controller, label: 'طلب رقم 2'),
 			_paddingField(controller: item.specialRequestController, label: 'طلب خاص'),
 		];
+		final stockFields = [
+			_paddingField(controller: item.availableQuantityController, label: 'الكمية المتوفرة (بوصة)', readOnly: true),
+			_paddingField(controller: item.requiredQuantityController, label: 'الكمية المطلوبة (بوصة)', readOnly: true),
+			_paddingField(controller: item.remainingQuantityController, label: 'المتبقي بعد الإنشاء (بوصة)', readOnly: true),
+			_stockStatusField(item),
+			_paddingField(controller: item.fabricCostPerPieceController, label: 'تكلفة القماش للقطعة', readOnly: true),
+			_paddingField(controller: item.operatingCostPerPieceController, label: 'تكلفة التشغيل للقطعة', readOnly: true),
+			_paddingField(controller: item.fullCostPerPieceController, label: 'التكلفة الكاملة للقطعة', readOnly: true),
+			_paddingField(controller: item.suggestedPricePerPieceController, label: 'سعر البيع المقترح للقطعة', readOnly: true),
+			_paddingField(controller: item.suggestedPriceTotalController, label: 'إجمالي سعر البند المقترح', readOnly: true),
+		];
 
 		final measurementFields = item.measurementFieldNames.isNotEmpty
 			? item.measurementFieldNames.map((fieldName) {
 					final controller = item.measurementControllers.putIfAbsent(fieldName, () => TextEditingController());
-					return _paddingField(controller: controller, label: fieldName);
+					return _paddingField(controller: controller, label: fieldName, onChanged: (_) => _calculateConsumption(item));
 				}).toList()
 			: <Widget>[];
 
@@ -862,19 +1044,46 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 						],
 					),
 					const SizedBox(height: AppSpacing.md),
-					_buildFieldGrid(row1),
+					_buildFieldGrid(row1, focusStart: index * 1000 + 1),
 					const SizedBox(height: AppSpacing.md),
-					_buildFieldGrid(row2),
+					_buildFieldGrid(row2, focusStart: index * 1000 + 7),
+					const SizedBox(height: AppSpacing.md),
+					_buildFieldGrid(stockFields, focusStart: index * 1000 + 13),
+					if (item.pricingMessage.isNotEmpty) ...[
+						const SizedBox(height: AppSpacing.sm),
+						Text(
+							item.pricingMessage,
+							style: TextStyle(color: Theme.of(context).colorScheme.error),
+						),
+					],
 					if (measurementFields.isNotEmpty) ...[
 						const SizedBox(height: AppSpacing.md),
-						_buildFieldGrid(measurementFields),
+						_buildFieldGrid(measurementFields, focusStart: index * 1000 + 17),
 					],
 				],
 			),
 		);
 	}
 
-	Widget _buildFieldGrid(List<Widget> fields) {
+	Widget _stockStatusField(_ReadyMadeDraftItem item) {
+		final colorScheme = Theme.of(context).colorScheme;
+		final shortage = item.stockStatusController.text == 'الكمية غير كافية';
+		final background = shortage ? colorScheme.errorContainer : colorScheme.surfaceContainerHighest;
+		final foreground = shortage ? colorScheme.onErrorContainer : colorScheme.onSurfaceVariant;
+		return InputDecorator(
+			decoration: InputDecoration(
+				labelText: 'حالة المخزون',
+				filled: true,
+				fillColor: background,
+			),
+			child: Text(
+				item.stockStatusController.text,
+				style: AppTypography.body.copyWith(color: foreground),
+			),
+		);
+	}
+
+	Widget _buildFieldGrid(List<Widget> fields, {required int focusStart}) {
 		if (fields.isEmpty) return const SizedBox.shrink();
 		return LayoutBuilder(
 			builder: (context, constraints) {
@@ -885,8 +1094,14 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 					runSpacing: AppSpacing.sm,
 					spacing: spacing,
 					alignment: WrapAlignment.start,
-					children: fields
-						.map((field) => SizedBox(width: itemWidth.clamp(110.0, constraints.maxWidth), child: field))
+					children: fields.asMap().entries
+						.map((entry) => FocusTraversalOrder(
+							order: NumericFocusOrder(focusStart.toDouble() + entry.key),
+							child: SizedBox(
+								width: itemWidth.clamp(110.0, constraints.maxWidth),
+								child: entry.value,
+							),
+						))
 						.toList(),
 				);
 			},
@@ -905,8 +1120,12 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 		return TextFormField(
 				controller: controller,
 				readOnly: readOnly,
-				keyboardType: keyboardType,
+				keyboardType: maxLines > 1 ? TextInputType.multiline : keyboardType,
 				maxLines: maxLines,
+				textInputAction: maxLines > 1 ? TextInputAction.newline : TextInputAction.next,
+				onFieldSubmitted: maxLines > 1
+					? null
+					: (_) => FocusScope.of(context).nextFocus(),
 				onChanged: onChanged,
 				validator: validator,
 				decoration: InputDecoration(
@@ -922,14 +1141,14 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 			);
 	}
 
-	Widget _dropdownField({
+	Widget _dropdownField<T>({
 		required String label,
-		required String? value,
-		required List<DropdownMenuItem<String>> items,
-		required void Function(String?) onChanged,
-		String? Function(String?)? validator,
+		required T? value,
+		required List<DropdownMenuItem<T>> items,
+		required void Function(T?) onChanged,
+		String? Function(T?)? validator,
 	}) {
-		return DropdownButtonFormField<String>(
+		return DropdownButtonFormField<T>(
 				initialValue: value,
 				isExpanded: true,
 				decoration: InputDecoration(
@@ -948,9 +1167,11 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 	@override
 	Widget build(BuildContext context) {
 		final content = SafeArea(
-			child: Form(
-				key: _formKey,
-				child: LayoutBuilder(
+			child: FocusTraversalGroup(
+				policy: OrderedTraversalPolicy(),
+				child: Form(
+					key: _formKey,
+					child: LayoutBuilder(
 					builder: (context, constraints) {
 						final isWide = constraints.maxWidth >= 980;
 						final itemList = [
@@ -1031,6 +1252,7 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 							),
 						);
 					},
+					),
 				),
 			),
 		);
@@ -1069,6 +1291,20 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 	}
 }
 
+class _ProductTypeOption {
+	const _ProductTypeOption({required this.productTypeId, required this.name, required this.code});
+
+	factory _ProductTypeOption.fromJson(Map<String, dynamic> json) => _ProductTypeOption(
+		productTypeId: (json['productTypeId'] as num?)?.toInt() ?? 0,
+		name: (json['nameAr'] ?? '').toString().trim(),
+		code: (json['code'] ?? '').toString().trim(),
+	);
+
+	final int productTypeId;
+	final String name;
+	final String code;
+}
+
 class _PieceCostSetting {
 	const _PieceCostSetting({required this.productTypeId, required this.name, required this.totalOperationalCost});
 
@@ -1091,7 +1327,7 @@ class _PieceCostSetting {
 }
 
 class _FabricLookup {
-	const _FabricLookup({required this.code, required this.type, required this.color, required this.catalog, required this.unitPrice});
+	const _FabricLookup({required this.code, required this.type, required this.color, required this.catalog, required this.unitPrice, this.availableInches});
 
 	factory _FabricLookup.fromJson(Map<String, dynamic> json) => _FabricLookup(
 		code: (json['fabricCode'] ?? json['inventoryFabricCode'] ?? json['itemCode'] ?? '').toString(),
@@ -1099,6 +1335,7 @@ class _FabricLookup {
 		color: (json['color'] ?? json['fabricColor'] ?? '').toString(),
 		catalog: (json['catalogNumber'] ?? json['catalog'] ?? json['barcode'] ?? '').toString(),
 		unitPrice: ((json['pricePerYard'] ?? json['yardPrice'] ?? json['fabricPrice'] ?? json['unitPrice'] ?? 0) as num?)?.toDouble() ?? 0,
+		availableInches: _availableInches(json),
 	);
 
 	final String code;
@@ -1106,6 +1343,33 @@ class _FabricLookup {
 	final String color;
 	final String catalog;
 	final double unitPrice;
+	final double? availableInches;
+
+	static double? _availableInches(Map<String, dynamic> json) {
+		final raw = json['availableQuantity'] ?? json['AvailableQuantity'];
+		final value = (raw as num?)?.toDouble();
+		if (value == null) return null;
+		final source = (json['sourceTable'] ?? json['SourceTable'] ?? '').toString();
+		final unit = (json['unit'] ?? json['Unit'] ?? '').toString().toLowerCase();
+		final storesYards = source == 'Fabrics_Inventory' || unit.contains('yard') || unit.contains('يارد');
+		return storesYards ? value * 36 : value;
+	}
+}
+
+class _ConsumptionMeasurementField {
+	const _ConsumptionMeasurementField({required this.productTypeId, required this.code, required this.name, required this.sequence});
+
+	factory _ConsumptionMeasurementField.fromJson(Map<String, dynamic> json) => _ConsumptionMeasurementField(
+		productTypeId: (json['productTypeId'] as num?)?.toInt() ?? 0,
+		code: (json['code'] ?? '').toString().trim(),
+		name: (json['nameAr'] ?? json['name'] ?? json['code'] ?? '').toString().trim(),
+		sequence: (json['sequence'] as num?)?.toInt() ?? 0,
+	);
+
+	final int productTypeId;
+	final String code;
+	final String name;
+	final int sequence;
 }
 
 class _ReadyMadeDraftItem {
@@ -1136,14 +1400,39 @@ class _ReadyMadeDraftItem {
 	final request1Controller = TextEditingController();
 	final request2Controller = TextEditingController();
 	final specialRequestController = TextEditingController();
+	final availableQuantityController = TextEditingController(text: '');
+	final requiredQuantityController = TextEditingController(text: '0');
+	final remainingQuantityController = TextEditingController(text: '');
+	final stockStatusController = TextEditingController(text: 'لم يُحدد القماش');
+	final fabricCostPerPieceController = TextEditingController(text: '0');
+	final operatingCostPerPieceController = TextEditingController(text: '0');
+	final fullCostPerPieceController = TextEditingController(text: '0');
+	final suggestedPricePerPieceController = TextEditingController(text: '0');
+	final suggestedPriceTotalController = TextEditingController(text: '0');
 	final measurementControllers = <String, TextEditingController>{};
 	String selectedPieceType = '';
 	int selectedProductTypeId = 0;
+	List<_ConsumptionMeasurementField> officialMeasurementFields = const [];
+	double? consumptionPerPiece;
+	double? availableInches;
+	double requiredInches = 0;
+	String consumptionUnit = 'بوصة';
+	String consumptionMessage = '';
+	String pricingMessage = '';
+	double? officialFabricCostPerPiece;
+	double? officialOperatingCostPerPiece;
+	double? officialFullCostPerPiece;
+	double? officialSuggestedPricePerPiece;
+	double? officialFullCostTotal;
+	double? officialSuggestedPriceTotal;
 	double fabricCostValue = 0;
 	double pieceCostValue = 0;
 	double lineTotalValue = 0;
 
 	List<String> get measurementFieldNames {
+		if (officialMeasurementFields.isNotEmpty) {
+			return officialMeasurementFields.map((field) => field.name).toList();
+		}
 		final type = selectedPieceType.toLowerCase();
 		if (type.contains('كوت')) return const ['الطول', 'الكتف', 'اليد', 'وسع الصدر', 'وسع البطن', 'فتحة اليد', 'وسع المرفق'];
 		if (type.contains('ثوب') || type.contains('فستان')) return const ['الطول', 'الكتف', 'اليد', 'وسع الصدر', 'وسع البطن', 'الرقبة', 'طول الكبك', 'عرض الكبك', 'وسع المرفق', 'فتحة اسفل الثوب'];
@@ -1160,19 +1449,25 @@ class _ReadyMadeDraftItem {
 		return const ['الطول', 'الكتف', 'وسع الصدر', 'وسع البطن'];
 	}
 
+	void loadMeasurementFields(List<_ConsumptionMeasurementField> fields) {
+		officialMeasurementFields = fields;
+		_loadMeasurementControllers();
+	}
+
 	Map<String, dynamic> get measurementsForPayload {
 		final payload = <String, dynamic>{};
 		for (final fieldName in measurementFieldNames) {
 			final controller = measurementControllers[fieldName];
 			final value = controller?.text.trim();
 			if (value != null && value.isNotEmpty) {
-				payload[fieldName] = value;
+				final officialField = officialMeasurementFields.where((field) => field.name == fieldName).firstOrNull;
+				payload[officialField?.code ?? fieldName] = value;
 			}
 		}
 		return payload;
 	}
 
-	void loadMeasurementFields() {
+	void _loadMeasurementControllers() {
 		final names = measurementFieldNames;
 		final current = measurementControllers.keys.toSet();
 		for (final name in current.difference(names.toSet())) {
@@ -1185,17 +1480,22 @@ class _ReadyMadeDraftItem {
 
 	void refreshCalculatedValues(List<_PieceCostSetting> pieceOptions, Map<String, _FabricLookup> fabrics) {
 		final quantity = int.tryParse(quantityController.text.trim()) ?? 1;
-		final selectedOption = pieceOptions.where((option) => option.name == selectedPieceType).isNotEmpty ? pieceOptions.firstWhere((option) => option.name == selectedPieceType) : null;
 		final fabric = fabrics[fabricCodeController.text.trim().toUpperCase()];
-		final consumption = _estimatedConsumption(selectedPieceType, quantity);
+		final consumption = consumptionPerPiece ?? 0;
+		requiredInches = consumption * quantity;
+		availableInches = fabric?.availableInches;
 		final fabricUnitPrice = fabric?.unitPrice ?? 0;
-		fabricCostValue = consumption * fabricUnitPrice;
-		pieceCostValue = (selectedOption?.totalOperationalCost ?? 0) * quantity;
-		lineTotalValue = fabricCostValue + pieceCostValue;
+		fabricCostValue = (officialFabricCostPerPiece ?? 0) * quantity;
+		pieceCostValue = (officialOperatingCostPerPiece ?? 0) * quantity;
+		lineTotalValue = officialFullCostTotal ?? 0;
 		fabricCostController.text = _formatNumber(fabricCostValue);
 		pieceCostController.text = _formatNumber(pieceCostValue);
 		lineTotalController.text = _formatNumber(lineTotalValue);
-		consumedQuantityController.text = _formatNumber(consumption);
+		consumedQuantityController.text = _formatNumber(requiredInches);
+		availableQuantityController.text = availableInches == null ? '' : _formatNumber(availableInches!);
+		requiredQuantityController.text = _formatNumber(requiredInches);
+		remainingQuantityController.text = availableInches == null ? '' : _formatNumber(availableInches! - requiredInches);
+		stockStatusController.text = _stockStatus(availableInches, requiredInches, fabricCodeController.text.trim());
 		yardPriceController.text = _formatNumber(fabricUnitPrice);
 		inchPriceController.text = _formatNumber(fabricUnitPrice / 36.0);
 	}
@@ -1218,26 +1518,32 @@ class _ReadyMadeDraftItem {
 		request1Controller.dispose();
 		request2Controller.dispose();
 		specialRequestController.dispose();
+		availableQuantityController.dispose();
+		requiredQuantityController.dispose();
+		remainingQuantityController.dispose();
+		stockStatusController.dispose();
+		fabricCostPerPieceController.dispose();
+		operatingCostPerPieceController.dispose();
+		fullCostPerPieceController.dispose();
+		suggestedPricePerPieceController.dispose();
+		suggestedPriceTotalController.dispose();
 		for (final controller in measurementControllers.values) {
 			controller.dispose();
 		}
 		measurementControllers.clear();
 	}
+
+	static String _stockStatus(double? available, double required, String code) {
+		if (code.isEmpty) return 'لم يُحدد القماش';
+		if (available == null) return 'القماش غير موجود';
+		if (available < required) return 'الكمية غير كافية';
+		if (available < 100) return 'مخزون منخفض';
+		if (available <= 200) return 'مخزون متوسط';
+		return 'مخزون جيد';
+	}
 }
 
 String _formatNumber(double value) => NumberFormat('#,##0.##').format(value);
-
-double _estimatedConsumption(String pieceType, int quantity) {
-	final type = pieceType.toLowerCase();
-	final base = type.contains('قميص') || type.contains('ثوب') || type.contains('فستان')
-		? 1.5
-		: type.contains('بنطلون') || type.contains('سروال') || type.contains('شورت')
-			? 1.8
-			: type.contains('جاكيت') || type.contains('بالطو') || type.contains('سترة')
-				? 2.2
-				: 1.0;
-	return base * quantity;
-}
 
 class _LoadError extends StatelessWidget {
 	const _LoadError({required this.onRetry});

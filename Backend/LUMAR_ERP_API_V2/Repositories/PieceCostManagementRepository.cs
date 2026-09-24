@@ -24,24 +24,55 @@ public sealed class PieceCostManagementRepository(
         await using var connection = readOnlyConnections.Create();
         await connection.OpenAsync(cancellationToken);
 
-        var products = new List<(int Id, string Code, string Name)>();
-        const string productsSql = """
-            SELECT ProductTypeId, Code, NameAr
-            FROM dbo.PricingProductTypes
-            WHERE IsActive=1 AND Category=N'Garment' AND Scope IN (N'Both',N'Tailoring')
-            ORDER BY NameAr, ProductTypeId;
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        const string sql = """
+            WITH active_matrices AS (
+                SELECT CostMatrixId, ProductTypeId,
+                       ROW_NUMBER() OVER (PARTITION BY ProductTypeId ORDER BY Version DESC, CostMatrixId DESC) AS rn
+                FROM dbo.PricingCostMatrices
+                WHERE Channel=N'Tailoring' AND Status=N'Active' AND IsActive=1
+            ), matrix_costs AS (
+                SELECT am.ProductTypeId,
+                       SUM(CASE WHEN ci.Code=N'OP_SEWING' THEN m.UnitCost * m.Quantity ELSE 0 END) AS SewingCost,
+                       SUM(CASE WHEN ci.Code=N'OP_CONSUMABLES' THEN m.UnitCost * m.Quantity ELSE 0 END) AS ConsumablesCost,
+                       SUM(CASE WHEN ci.Code=N'OP_IRON_PACK' THEN m.UnitCost * m.Quantity ELSE 0 END) AS IroningCost,
+                       SUM(CASE WHEN ci.Code=N'OP_FIXED' THEN m.UnitCost * m.Quantity ELSE 0 END) AS FixedCost
+                FROM active_matrices am
+                INNER JOIN dbo.PricingCostMatrixItems m ON m.CostMatrixId=am.CostMatrixId
+                INNER JOIN dbo.PricingCostItems ci ON ci.CostItemId=m.CostItemId AND ci.IsActive=1
+                WHERE am.rn=1
+                GROUP BY am.ProductTypeId
+            )
+            SELECT pt.ProductTypeId, pt.Code, pt.NameAr,
+                   COALESCE(mc.SewingCost, 0), COALESCE(mc.ConsumablesCost, 0),
+                   COALESCE(mc.IroningCost, 0), COALESCE(mc.FixedCost, 0)
+            FROM dbo.PricingProductTypes pt
+            LEFT JOIN matrix_costs mc ON mc.ProductTypeId=pt.ProductTypeId
+            WHERE pt.IsActive=1 AND pt.Category=N'Garment' AND pt.Scope IN (N'Both',N'Tailoring')
+            ORDER BY pt.NameAr, pt.ProductTypeId;
             """;
-        await using (var command = new SqlCommand(productsSql, connection))
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var results = new List<PieceCostManagementDto>();
+        while (await reader.ReadAsync(cancellationToken))
         {
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                products.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2)));
-            }
+            results.Add(new PieceCostManagementDto(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetDecimal(3),
+                reader.GetDecimal(4),
+                reader.GetDecimal(5),
+                reader.GetDecimal(6),
+                Value(settings, MonthlyKeys[0]),
+                Value(settings, MonthlyKeys[1]),
+                Value(settings, MonthlyKeys[2]),
+                Value(settings, MonthlyKeys[3]),
+                Value(settings, MonthlyKeys[4]),
+                Value(settings, MonthlyKeys[5])));
         }
 
-        var settings = await ReadSettingsAsync(connection, cancellationToken);
-        return products.Select(product => Map(product, settings)).ToList();
+        return results;
     }
 
     public async Task<PieceCostManagementDto?> UpdateAsync(
@@ -119,8 +150,7 @@ public sealed class PieceCostManagementRepository(
         const string sql = """
             SELECT SettingName, SettingValue
             FROM dbo.System_Settings
-            WHERE SettingName LIKE N'PieceTypeCost.%'
-               OR SettingName IN (
+                WHERE SettingName IN (
                     N'MonthlyFixedCostRent', N'MonthlyFixedCostSalaries',
                     N'MonthlyFixedCostElectricity', N'MonthlyFixedCostWater',
                     N'MonthlyFixedCostInternet', N'MonthlyFixedCostDepreciation');

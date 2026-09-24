@@ -124,3 +124,67 @@ class FinancialReconciliation {
 	final int journalReferencesWithoutTransaction;
 	final int orphanJournalLines;
 }
+
+class FinancialStatements {
+	const FinancialStatements({required this.balanceSheet, required this.cashFlow, required this.profitLoss});
+
+	factory FinancialStatements.fromJson(JsonMap json) => FinancialStatements(
+				balanceSheet: FinancialBalanceSheet.fromJson(json['balanceSheet'] as JsonMap),
+				cashFlow: FinancialCashFlow.fromJson(json['cashFlow'] as JsonMap),
+				profitLoss: FinancialProfitLoss.fromJson(json['profitLoss'] as JsonMap),
+			);
+
+	final FinancialBalanceSheet balanceSheet;
+	final FinancialCashFlow cashFlow;
+	final FinancialProfitLoss profitLoss;
+}
+
+class FinancialBalanceSheet {
+	const FinancialBalanceSheet({required this.assets, required this.liabilities, required this.accountsReceivable, required this.accountsPayable, required this.inventoryValue, required this.equity});
+	factory FinancialBalanceSheet.fromJson(JsonMap json) => FinancialBalanceSheet(
+				assets: _amount(json, 'assets'),
+				liabilities: _amount(json, 'liabilities'),
+				accountsReceivable: _amount(json, 'accountsReceivable'),
+				accountsPayable: _amount(json, 'accountsPayable'),
+				inventoryValue: _amount(json, 'inventoryValue'),
+				equity: _amount(json, 'equity'),
+			);
+	final double assets;
+	final double liabilities;
+	final double accountsReceivable;
+	final double accountsPayable;
+	final double inventoryValue;
+	final double equity;
+}
+
+class FinancialCashFlow {
+	const FinancialCashFlow({required this.cashInflows, required this.supplierPayments, required this.refunds, required this.netCashPosition, required this.netCashMovement});
+	factory FinancialCashFlow.fromJson(JsonMap json) => FinancialCashFlow(
+				cashInflows: _amount(json, 'cashInflows'),
+				supplierPayments: _amount(json, 'supplierPayments'),
+				refunds: _amount(json, 'refunds'),
+				netCashPosition: _amount(json, 'netCashPosition'),
+				netCashMovement: _amount(json, 'netCashMovement'),
+			);
+	final double cashInflows;
+	final double supplierPayments;
+	final double refunds;
+	final double netCashPosition;
+	final double netCashMovement;
+}
+
+class FinancialProfitLoss {
+	const FinancialProfitLoss({required this.revenue, required this.expenses, required this.costOfGoodsSold, required this.grossProfit, required this.netProfit});
+	factory FinancialProfitLoss.fromJson(JsonMap json) => FinancialProfitLoss(
+				revenue: _amount(json, 'revenue'),
+				expenses: _amount(json, 'expenses'),
+				costOfGoodsSold: _amount(json, 'costOfGoodsSold'),
+				grossProfit: _amount(json, 'grossProfit'),
+				netProfit: _amount(json, 'netProfit'),
+			);
+	final double revenue;
+	final double expenses;
+	final double costOfGoodsSold;
+	final double grossProfit;
+	final double netProfit;
+}

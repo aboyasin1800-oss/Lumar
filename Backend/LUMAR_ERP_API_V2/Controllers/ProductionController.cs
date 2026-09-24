@@ -86,8 +86,19 @@ public sealed class ProductionController(IProductionService service, IProduction
         if (order.ProfitPercentage < 0) return BadRequest("نسبة الربح غير صالحة.");
         if (order.SuggestedSellingPrice < 0) return BadRequest("سعر البيع المقترح غير صالح.");
 
-        var created = await service.CreateReadyMadeOrderAsync(order, ct);
-        return StatusCode(StatusCodes.Status201Created, created);
+        try
+        {
+            var created = await service.CreateReadyMadeOrderAsync(order, ct);
+            return StatusCode(StatusCodes.Status201Created, created);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(exception.Message);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(exception.Message);
+        }
     }
 
     [HttpGet("readymade-order-items/{id:int}/pieces")]
