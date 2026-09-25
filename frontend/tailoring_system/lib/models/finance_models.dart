@@ -15,13 +15,16 @@ class FinancialTransaction {
 }
 
 class JournalEntry {
-	const JournalEntry({required this.id, required this.referenceNumber, required this.description, required this.entryDate, required this.createdAt});
-	factory JournalEntry.fromJson(JsonMap json) => JournalEntry(id: json['journalEntryId'] as int, referenceNumber: json['referenceNumber'] as String, description: json['description'] as String?, entryDate: _date(json, 'entryDate'), createdAt: _date(json, 'createdAt'));
+	const JournalEntry({required this.id, required this.referenceNumber, required this.description, required this.entryDate, required this.createdAt, required this.totalDebit, required this.totalCredit, required this.lineCount});
+	factory JournalEntry.fromJson(JsonMap json) => JournalEntry(id: json['journalEntryId'] as int, referenceNumber: json['referenceNumber'] as String, description: json['description'] as String?, entryDate: _date(json, 'entryDate'), createdAt: _date(json, 'createdAt'), totalDebit: _amount(json, 'totalDebit'), totalCredit: _amount(json, 'totalCredit'), lineCount: json['lineCount'] as int);
 	final int id;
 	final String referenceNumber;
 	final String? description;
 	final DateTime entryDate;
 	final DateTime createdAt;
+	final double totalDebit;
+	final double totalCredit;
+	final int lineCount;
 }
 
 class JournalEntryLine {
@@ -158,19 +161,25 @@ class FinancialBalanceSheet {
 }
 
 class FinancialCashFlow {
-	const FinancialCashFlow({required this.cashInflows, required this.supplierPayments, required this.refunds, required this.netCashPosition, required this.netCashMovement});
+	const FinancialCashFlow({required this.customerCollections, required this.customerAdvances, required this.refunds, required this.netCashPosition, required this.netCashMovement, required this.generalLedgerCashBalance, required this.cashDifference, required this.isAccountingComplete});
 	factory FinancialCashFlow.fromJson(JsonMap json) => FinancialCashFlow(
-				cashInflows: _amount(json, 'cashInflows'),
-				supplierPayments: _amount(json, 'supplierPayments'),
+				customerCollections: _amount(json, 'customerCollections'),
+				customerAdvances: _amount(json, 'customerAdvances'),
 				refunds: _amount(json, 'refunds'),
 				netCashPosition: _amount(json, 'netCashPosition'),
 				netCashMovement: _amount(json, 'netCashMovement'),
+				generalLedgerCashBalance: _amount(json, 'generalLedgerCashBalance'),
+				cashDifference: _amount(json, 'cashDifference'),
+				isAccountingComplete: json['isAccountingComplete'] as bool,
 			);
-	final double cashInflows;
-	final double supplierPayments;
+	final double customerCollections;
+	final double customerAdvances;
 	final double refunds;
 	final double netCashPosition;
 	final double netCashMovement;
+	final double generalLedgerCashBalance;
+	final double cashDifference;
+	final bool isAccountingComplete;
 }
 
 class FinancialProfitLoss {
@@ -187,4 +196,50 @@ class FinancialProfitLoss {
 	final double costOfGoodsSold;
 	final double grossProfit;
 	final double netProfit;
+}
+
+class FinanceCustomerMetric {
+	const FinanceCustomerMetric({required this.customerId, required this.customerCode, required this.customerName, required this.amount});
+	factory FinanceCustomerMetric.fromJson(JsonMap json) => FinanceCustomerMetric(customerId: json['customerId'] as int, customerCode: json['customerCode'] as String, customerName: json['customerName'] as String, amount: _amount(json, 'amount'));
+	final int customerId;
+	final String customerCode;
+	final String customerName;
+	final double amount;
+}
+
+class FinancialActivity {
+	const FinancialActivity({required this.id, required this.referenceNumber, required this.transactionType, required this.amount, required this.description, required this.createdAt});
+	factory FinancialActivity.fromJson(JsonMap json) => FinancialActivity(id: json['financialTransactionId'] as int, referenceNumber: json['referenceNumber'] as String, transactionType: json['transactionType'] as String, amount: _amount(json, 'amount'), description: json['description'] as String?, createdAt: _date(json, 'createdAt'));
+	final int id;
+	final String referenceNumber;
+	final String transactionType;
+	final double amount;
+	final String? description;
+	final DateTime createdAt;
+}
+
+class FinancialDashboard {
+	const FinancialDashboard({required this.revenue, required this.collections, required this.receivables, required this.cashBalance, required this.journalEntries, required this.financialTransactions, required this.financialCustomers, required this.dailyRevenue, required this.monthlyRevenue, required this.topDebtors, required this.topCollections, required this.recentActivities});
+	factory FinancialDashboard.fromJson(JsonMap json) => FinancialDashboard(revenue: _amount(json, 'revenue'), collections: _amount(json, 'collections'), receivables: _amount(json, 'receivables'), cashBalance: _amount(json, 'cashBalance'), journalEntries: json['journalEntries'] as int, financialTransactions: json['financialTransactions'] as int, financialCustomers: json['financialCustomers'] as int, dailyRevenue: _amount(json, 'dailyRevenue'), monthlyRevenue: _amount(json, 'monthlyRevenue'), topDebtors: (json['topDebtors'] as List).cast<JsonMap>().map(FinanceCustomerMetric.fromJson).toList(), topCollections: (json['topCollections'] as List).cast<JsonMap>().map(FinanceCustomerMetric.fromJson).toList(), recentActivities: (json['recentActivities'] as List).cast<JsonMap>().map(FinancialActivity.fromJson).toList());
+	final double revenue;
+	final double collections;
+	final double receivables;
+	final double cashBalance;
+	final int journalEntries;
+	final int financialTransactions;
+	final int financialCustomers;
+	final double dailyRevenue;
+	final double monthlyRevenue;
+	final List<FinanceCustomerMetric> topDebtors;
+	final List<FinanceCustomerMetric> topCollections;
+	final List<FinancialActivity> recentActivities;
+}
+
+class CashReconciliation {
+	const CashReconciliation({required this.cashAccountsBalance, required this.generalLedgerCashBalance, required this.difference, required this.isReconciled});
+	factory CashReconciliation.fromJson(JsonMap json) => CashReconciliation(cashAccountsBalance: _amount(json, 'cashAccountsBalance'), generalLedgerCashBalance: _amount(json, 'generalLedgerCashBalance'), difference: _amount(json, 'difference'), isReconciled: json['isReconciled'] as bool);
+	final double cashAccountsBalance;
+	final double generalLedgerCashBalance;
+	final double difference;
+	final bool isReconciled;
 }

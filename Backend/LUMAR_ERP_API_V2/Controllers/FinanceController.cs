@@ -13,6 +13,8 @@ namespace LUMAR_ERP_API_V2.Controllers;
     [HttpGet("supplier-payments")] public async Task<ActionResult<IReadOnlyList<SupplierPaymentDto>>> GetSupplierPayments(CancellationToken ct) => Ok(await finance.GetSupplierPaymentsAsync(ct));
     [HttpGet("supplier-invoices")] public async Task<ActionResult<IReadOnlyList<SupplierInvoiceDto>>> GetSupplierInvoices(CancellationToken ct) => Ok(await finance.GetSupplierInvoicesAsync(ct));
     [HttpGet("reconciliation")] public async Task<ActionResult<FinancialReconciliationDto>> GetReconciliation(CancellationToken ct) => Ok(await finance.GetReconciliationAsync(ct));
+    [HttpGet("dashboard")] public async Task<ActionResult<FinancialDashboardDto>> GetDashboard(CancellationToken ct) => Ok(await finance.GetDashboardAsync(ct));
+    [HttpGet("cash-reconciliation")] public async Task<ActionResult<CashReconciliationDto>> GetCashReconciliation(CancellationToken ct) => Ok(await finance.GetCashReconciliationAsync(ct));
     [HttpGet("statements")] public async Task<ActionResult<FinancialStatementsDto>> GetStatements(CancellationToken ct) => Ok(await finance.GetFinancialStatementsAsync(ct));
     [HttpPost] [HttpPut("{id:int}")] [HttpDelete("{id:int}")] [ProducesResponseType(StatusCodes.Status405MethodNotAllowed)] public IActionResult WriteDisabled() => StatusCode(StatusCodes.Status405MethodNotAllowed, "Finance writes are disabled while LUMAR_ERP is read-only.");
 }

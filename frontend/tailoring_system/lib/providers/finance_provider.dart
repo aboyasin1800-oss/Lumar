@@ -14,22 +14,20 @@ class FinanceProvider extends ChangeNotifier {
 	List<JournalEntry> journalEntries = const [];
 	List<LedgerAccount> ledgerAccounts = const [];
 	List<CashAccount> cashAccounts = const [];
-	List<SupplierPayment> supplierPayments = const [];
-	List<SupplierInvoice> supplierInvoices = const [];
+	FinancialDashboard? dashboard;
 
 	Future<void> loadOverview() async {
 		state = FinanceLoadState.loading;
 		error = null;
 		notifyListeners();
 		try {
-			final results = await Future.wait([repository.getTransactions(), repository.getJournalEntries(), repository.getLedgerAccounts(), repository.getCashAccounts(), repository.getSupplierPayments(), repository.getSupplierInvoices()]);
+			final results = await Future.wait([repository.getTransactions(), repository.getJournalEntries(), repository.getLedgerAccounts(), repository.getCashAccounts(), repository.getDashboard()]);
 			transactions = results[0] as List<FinancialTransaction>;
 			journalEntries = results[1] as List<JournalEntry>;
 			ledgerAccounts = results[2] as List<LedgerAccount>;
 			cashAccounts = results[3] as List<CashAccount>;
-			supplierPayments = results[4] as List<SupplierPayment>;
-			supplierInvoices = results[5] as List<SupplierInvoice>;
-			state = results.every((items) => (items as List).isEmpty) ? FinanceLoadState.empty : FinanceLoadState.ready;
+			dashboard = results[4] as FinancialDashboard;
+			state = transactions.isEmpty && journalEntries.isEmpty && ledgerAccounts.isEmpty && cashAccounts.isEmpty ? FinanceLoadState.empty : FinanceLoadState.ready;
 		} catch (caught) {
 			error = caught;
 			state = FinanceLoadState.error;

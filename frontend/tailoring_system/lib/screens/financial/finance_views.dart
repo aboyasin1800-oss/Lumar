@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_navigation.dart';
+import '../../core/finance_ui_text.dart';
 import '../../models/finance_models.dart';
 import '../../providers/finance_provider.dart';
 import '../../repositories/finance_repository.dart';
@@ -58,20 +59,34 @@ class _FinanceStatisticsTab extends StatelessWidget {
 	@override Widget build(BuildContext context) {
 		if (provider.state == FinanceLoadState.loading || provider.state == FinanceLoadState.idle) return const Center(child: CircularProgressIndicator());
 		if (provider.state == FinanceLoadState.error) return _ErrorPanel(onRetry: provider.loadOverview);
+		final dashboard = provider.dashboard;
+		if (dashboard == null) return _ErrorPanel(onRetry: provider.loadOverview);
 		final metrics = [
-			('الحسابات', '${provider.ledgerAccounts.length}', Icons.account_tree_outlined),
-			('القيود', '${provider.journalEntries.length}', Icons.menu_book_outlined),
-			('المعاملات', '${provider.transactions.length}', Icons.swap_horiz_outlined),
-			('الحسابات النقدية', '${provider.cashAccounts.length}', Icons.account_balance_wallet_outlined),
+			('إجمالي الإيرادات', _money.format(dashboard.revenue), Icons.trending_up_outlined),
+			('إجمالي التحصيلات', _money.format(dashboard.collections), Icons.payments_outlined),
+			('الذمم المدينة', _money.format(dashboard.receivables), Icons.person_search_outlined),
+			('النقدية الحالية', _money.format(dashboard.cashBalance), Icons.account_balance_wallet_outlined),
+			('القيود', '${dashboard.journalEntries}', Icons.menu_book_outlined),
+			('الحركات المالية', '${dashboard.financialTransactions}', Icons.swap_horiz_outlined),
+			('العملاء النشطون مالياً', '${dashboard.financialCustomers}', Icons.people_outline),
+			('إيراد اليوم', _money.format(dashboard.dailyRevenue), Icons.today_outlined),
+			('إيراد الشهر', _money.format(dashboard.monthlyRevenue), Icons.calendar_month_outlined),
 		];
 		return ListView(children: [
 			Text('نظرة عامة', style: Theme.of(context).textTheme.titleLarge),
 			const SizedBox(height: 6),
-			const Text('مؤشرات عددية من الخدمات الحالية دون إعادة احتساب أي قيمة مالية.'),
+			const Text('مؤشرات محسوبة من سجلات المالية والعملاء الحالية.'),
 			const SizedBox(height: 16),
 			Wrap(spacing: 12, runSpacing: 12, children: metrics.map((metric) => _FinanceMetricCard(label: metric.$1, value: metric.$2, icon: metric.$3)).toList()),
 			const SizedBox(height: 18),
-			const _StatusCard('الإحصاءات المالية التفصيلية', 'هيكل أولي', 'لا توجد خدمة إحصاءات مالية مستقلة في النظام الحالي، لذلك لم تُنشأ إجماليات أو مؤشرات محاسبية جديدة.'),
+			_SectionHeading(title: 'أعلى العملاء مديونية', description: 'حسب آخر رصيد رسمي في أستاذ العميل.'),
+			...dashboard.topDebtors.map((item) => _CashListRow(title: '${item.customerCode} - ${item.customerName}', value: _money.format(item.amount))),
+			const SizedBox(height: 12),
+			_SectionHeading(title: 'أعلى العملاء تحصيلاً', description: 'حسب الدفعات المسجلة غير المستردة.'),
+			...dashboard.topCollections.map((item) => _CashListRow(title: '${item.customerCode} - ${item.customerName}', value: _money.format(item.amount))),
+			const SizedBox(height: 12),
+			_SectionHeading(title: 'آخر النشاطات المالية', description: 'أحدث الحركات المسجلة.'),
+			...dashboard.recentActivities.map((item) => _CashListRow(title: FinanceUiText.transactionType(item.transactionType), subtitle: '${item.referenceNumber} - ${_date.format(item.createdAt)}', value: _money.format(item.amount))),
 		]);
 	}
 }
@@ -161,17 +176,10 @@ class _FinancialStatementsTabsState extends State<_FinancialStatementsTabs> {
 							('الأصول', statements.balanceSheet.assets),
 							('الالتزامات', statements.balanceSheet.liabilities),
 							('الحسابات المدينة', statements.balanceSheet.accountsReceivable),
-							('الحسابات الدائنة', statements.balanceSheet.accountsPayable),
 							('قيمة المخزون', statements.balanceSheet.inventoryValue),
 							('حقوق الملكية', statements.balanceSheet.equity),
 						]),
-						_FinancialValueList(title: 'التدفقات النقدية', values: [
-							('التدفقات الداخلة', statements.cashFlow.cashInflows),
-							('دفعات الموردين', statements.cashFlow.supplierPayments),
-							('المبالغ المستردة', statements.cashFlow.refunds),
-							('صافي حركة النقد', statements.cashFlow.netCashMovement),
-							('صافي مركز النقد', statements.cashFlow.netCashPosition),
-						]),
+						_CashFlowStatement(cashFlow: statements.cashFlow),
 					])),
 				]),
 			);
@@ -239,7 +247,7 @@ class _FinancialTransactionsScreenState extends State<FinancialTransactionsScree
 		if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
 		final all = snapshot.data!; final types = all.map((item) => item.transactionType).toSet().toList()..sort();
 		final query = search.text.trim().toLowerCase(); final items = all.where((item) => (type == null || item.transactionType == type) && (from == null || !item.createdAt.isBefore(from!)) && (to == null || item.createdAt.isBefore(to!.add(const Duration(days: 1)))) && (query.isEmpty || item.referenceNumber.toLowerCase().contains(query) || item.transactionType.toLowerCase().contains(query) || (item.description?.toLowerCase().contains(query) ?? false))).toList();
-		return Column(children: [Wrap(spacing: 10, runSpacing: 10, children: [SizedBox(width: 260, child: TextField(controller: search, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'بحث بالمرجع أو الوصف', border: OutlineInputBorder()))), SizedBox(width: 210, child: DropdownButtonFormField<String>(initialValue: type, decoration: const InputDecoration(labelText: 'نوع الحركة', border: OutlineInputBorder()), items: [const DropdownMenuItem(value: null, child: Text('كل الأنواع')), ...types.map((value) => DropdownMenuItem(value: value, child: Text(value)))], onChanged: (value) => setState(() => type = value))), _DateFilter(label: 'من تاريخ', value: from, onChanged: (value) => setState(() => from = value)), _DateFilter(label: 'إلى تاريخ', value: to, onChanged: (value) => setState(() => to = value))]), const SizedBox(height: 12), Expanded(child: _TransactionList(items: items, empty: 'لا توجد حركات مطابقة.'))]);
+		return Column(children: [Wrap(spacing: 10, runSpacing: 10, children: [SizedBox(width: 260, child: TextField(controller: search, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'بحث بالمرجع أو الوصف', border: OutlineInputBorder()))), SizedBox(width: 210, child: DropdownButtonFormField<String>(initialValue: type, decoration: const InputDecoration(labelText: 'نوع الحركة', border: OutlineInputBorder()), items: [const DropdownMenuItem(value: null, child: Text('كل الأنواع')), ...types.map((value) => DropdownMenuItem(value: value, child: Text(FinanceUiText.transactionType(value))))], onChanged: (value) => setState(() => type = value))), _DateFilter(label: 'من تاريخ', value: from, onChanged: (value) => setState(() => from = value)), _DateFilter(label: 'إلى تاريخ', value: to, onChanged: (value) => setState(() => to = value))]), const SizedBox(height: 12), Expanded(child: _TransactionList(items: items, empty: 'لا توجد حركات مطابقة.'))]);
 	}));
 }
 
@@ -249,18 +257,15 @@ class JournalEntriesScreen extends StatefulWidget {
 	@override State<JournalEntriesScreen> createState() => _JournalEntriesScreenState();
 }
 class _JournalEntriesScreenState extends State<JournalEntriesScreen> {
-	final repository = FinanceRepository(); late Future<List<_JournalEntrySummary>> future;
+	final repository = FinanceRepository(); late Future<List<JournalEntry>> future;
 	@override void initState() { super.initState(); future = load(); }
-	Future<List<_JournalEntrySummary>> load() async {
-		final entries = await repository.getJournalEntries();
-		return Future.wait(entries.map((entry) async => _JournalEntrySummary(entry, await repository.getJournalEntryLines(entry.id))));
-	}
+	Future<List<JournalEntry>> load() => repository.getJournalEntries();
 	void reload() => setState(() => future = load());
 	@override Widget build(BuildContext context) => _Page(
 		title: 'القيود اليومية',
 		onRefresh: reload,
 		embedded: widget.embedded,
-		child: FutureBuilder<List<_JournalEntrySummary>>(
+		child: FutureBuilder<List<JournalEntry>>(
 			future: future,
 			builder: (context, snapshot) {
 				if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
@@ -275,22 +280,14 @@ class _JournalEntriesScreenState extends State<JournalEntriesScreen> {
 					const SizedBox(height: 10),
 					Expanded(child: _Table(
 						columns: const ['المرجع', 'التاريخ', 'الوصف', 'إجمالي المدين', 'إجمالي الدائن'],
-						rows: items.map((item) => [item.entry.referenceNumber, _date.format(item.entry.entryDate), _text(item.entry.description), _money.format(item.debit), _money.format(item.credit)]).toList(),
+						rows: items.map((item) => [item.referenceNumber, _date.format(item.entryDate), FinanceUiText.description(item.description), _money.format(item.totalDebit), _money.format(item.totalCredit)]).toList(),
 						empty: 'لا توجد قيود مسجلة.',
-						onRowTap: (index) => AppNavigation.push(context, (_) => JournalEntryDetailsScreen(entryId: items[index].entry.id)),
+						onRowTap: (index) => AppNavigation.push(context, (_) => JournalEntryDetailsScreen(entryId: items[index].id)),
 					)),
 				]);
 			},
 		),
 	);
-}
-
-class _JournalEntrySummary {
-	const _JournalEntrySummary(this.entry, this.lines);
-	final JournalEntry entry;
-	final List<JournalEntryLine> lines;
-	double get debit => lines.fold(0, (sum, line) => sum + line.debitAmount);
-	double get credit => lines.fold(0, (sum, line) => sum + line.creditAmount);
 }
 
 class JournalEntryDetailsScreen extends StatefulWidget {
@@ -304,15 +301,15 @@ class _JournalEntryDetailsScreenState extends State<JournalEntryDetailsScreen> {
 	void reload() => setState(() => future = load());
 	@override Widget build(BuildContext context) => _Page(title: 'تفاصيل القيد', onRefresh: reload, child: FutureBuilder(future: future, builder: (context, snapshot) {
 		if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator()); if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
-		final (entry, lines, accounts) = snapshot.data!; final names = {for (final account in accounts) account.id: account.accountName}; final debit = lines.fold<double>(0, (sum, line) => sum + line.debitAmount); final credit = lines.fold<double>(0, (sum, line) => sum + line.creditAmount); final balanced = (debit - credit).abs() < 0.005; final statusColor = balanced ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.error;
-		return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Card(child: Padding(padding: const EdgeInsets.all(16), child: Wrap(spacing: 28, runSpacing: 8, children: [Text('المرجع: ${entry.referenceNumber}'), Text('تاريخ القيد: ${_date.format(entry.entryDate)}'), Text('إجمالي المدين: ${_money.format(debit)}'), Text('إجمالي الدائن: ${_money.format(credit)}'), Chip(avatar: Icon(balanced ? Icons.check_circle : Icons.warning_amber, color: statusColor), label: Text(balanced ? 'القيد متوازن' : 'القيد غير متوازن'))]))), const SizedBox(height: 10), Expanded(child: _Table(columns: const ['الحساب', 'المدين', 'الدائن', 'الوصف'], rows: lines.map((line) => [names[line.ledgerAccountId] ?? 'حساب ${line.ledgerAccountId}', _money.format(line.debitAmount), _money.format(line.creditAmount), _text(line.description)]).toList(), empty: 'لا توجد أسطر لهذا القيد.'))]);
+		final (entry, lines, accounts) = snapshot.data!; final names = {for (final account in accounts) account.id: FinanceUiText.accountName(account.accountCode, account.accountName)}; final debit = lines.fold<double>(0, (sum, line) => sum + line.debitAmount); final credit = lines.fold<double>(0, (sum, line) => sum + line.creditAmount); final balanced = (debit - credit).abs() < 0.005; final statusColor = balanced ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.error;
+		return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Card(child: Padding(padding: const EdgeInsets.all(16), child: Wrap(spacing: 28, runSpacing: 8, children: [Text('المرجع: ${entry.referenceNumber}'), Text('تاريخ القيد: ${_date.format(entry.entryDate)}'), Text('إجمالي المدين: ${_money.format(debit)}'), Text('إجمالي الدائن: ${_money.format(credit)}'), Chip(avatar: Icon(balanced ? Icons.check_circle : Icons.warning_amber, color: statusColor), label: Text(balanced ? 'القيد متوازن' : 'القيد غير متوازن'))]))), const SizedBox(height: 10), Expanded(child: _Table(columns: const ['الحساب', 'المدين', 'الدائن', 'الوصف'], rows: lines.map((line) => [names[line.ledgerAccountId] ?? 'حساب ${line.ledgerAccountId}', _money.format(line.debitAmount), _money.format(line.creditAmount), FinanceUiText.description(line.description)]).toList(), empty: 'لا توجد أسطر لهذا القيد.'))]);
 	}));
 }
 
 class LedgerAccountsScreen extends StatelessWidget {
 	const LedgerAccountsScreen({this.embedded = false, super.key});
 	final bool embedded;
-	@override Widget build(BuildContext context) => _SimpleListPage<LedgerAccount>(title: 'دليل الحسابات', embedded: embedded, load: FinanceRepository().getLedgerAccounts, columns: const ['رمز الحساب', 'اسم الحساب', 'نوع الحساب', 'الحالة'], row: (item) => [item.accountCode, item.accountName, item.accountType, item.isActive ? 'نشط' : 'غير نشط'], toolbar: const _LedgerActions());
+	@override Widget build(BuildContext context) => _SimpleListPage<LedgerAccount>(title: 'دليل الحسابات', embedded: embedded, load: FinanceRepository().getLedgerAccounts, columns: const ['رمز الحساب', 'اسم الحساب', 'نوع الحساب', 'الحالة'], row: (item) => [item.accountCode, FinanceUiText.accountName(item.accountCode, item.accountName), FinanceUiText.accountType(item.accountType), item.isActive ? 'نشط' : 'غير نشط'], toolbar: const _LedgerActions());
 }
 class CashAccountsScreen extends StatefulWidget {
 	const CashAccountsScreen({this.embedded = false, super.key});
@@ -321,23 +318,23 @@ class CashAccountsScreen extends StatefulWidget {
 }
 
 class _CashAccountsScreenState extends State<CashAccountsScreen> {
-	late Future<(List<CashAccount>, List<FinancialTransaction>)> future;
+	late Future<(List<CashAccount>, List<FinancialTransaction>, CashReconciliation)> future;
 	final repository = FinanceRepository();
 	@override void initState() { super.initState(); future = load(); }
-	Future<(List<CashAccount>, List<FinancialTransaction>)> load() async {
-		final result = await Future.wait([repository.getCashAccounts(), repository.getTransactions()]);
-		return (result[0] as List<CashAccount>, result[1] as List<FinancialTransaction>);
+	Future<(List<CashAccount>, List<FinancialTransaction>, CashReconciliation)> load() async {
+		final result = await Future.wait([repository.getCashAccounts(), repository.getTransactions(), repository.getCashReconciliation()]);
+		return (result[0] as List<CashAccount>, result[1] as List<FinancialTransaction>, result[2] as CashReconciliation);
 	}
 	void reload() => setState(() => future = load());
-	@override Widget build(BuildContext context) => _Page(title: 'النقدية', onRefresh: reload, embedded: widget.embedded, child: FutureBuilder<(List<CashAccount>, List<FinancialTransaction>)>(future: future, builder: (context, snapshot) {
+	@override Widget build(BuildContext context) => _Page(title: 'النقدية', onRefresh: reload, embedded: widget.embedded, child: FutureBuilder<(List<CashAccount>, List<FinancialTransaction>, CashReconciliation)>(future: future, builder: (context, snapshot) {
 		if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
 		if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
-		final (accounts, transactions) = snapshot.data!;
+		final (accounts, transactions, reconciliation) = snapshot.data!;
 		return DefaultTabController(length: 3, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
 			const TabBar(tabs: [Tab(text: 'الصندوق'), Tab(text: 'الحسابات النقدية'), Tab(text: 'الحركات والتسويات')]),
 			const SizedBox(height: 8),
 			Expanded(child: TabBarView(children: [
-				_CashSummary(accounts: accounts),
+				_CashSummary(accounts: accounts, reconciliation: reconciliation),
 				_CashAccountsList(accounts: accounts),
 				_TransactionList(items: transactions, empty: 'لا توجد حركات نقدية متاحة.'),
 			])),
@@ -346,8 +343,9 @@ class _CashAccountsScreenState extends State<CashAccountsScreen> {
 }
 
 class _CashSummary extends StatelessWidget {
-	const _CashSummary({required this.accounts});
+	const _CashSummary({required this.accounts, required this.reconciliation});
 	final List<CashAccount> accounts;
+	final CashReconciliation reconciliation;
 	@override Widget build(BuildContext context) {
 		final total = accounts.fold<double>(0, (sum, account) => sum + account.currentBalance);
 		return ListView(padding: const EdgeInsets.only(bottom: 12), children: [
@@ -355,6 +353,9 @@ class _CashSummary extends StatelessWidget {
 			_CashValueRow(label: 'إجمالي الأرصدة النقدية', value: _money.format(total)),
 			_CashValueRow(label: 'الحسابات النشطة', value: '${accounts.where((account) => account.isActive).length}'),
 			_CashValueRow(label: 'إجمالي الحسابات', value: '${accounts.length}'),
+			_CashValueRow(label: 'رصيد دفتر الأستاذ العام', value: _money.format(reconciliation.generalLedgerCashBalance)),
+			_CashValueRow(label: 'فرق المطابقة النقدية', value: _money.format(reconciliation.difference)),
+			if (!reconciliation.isReconciled) Card(color: Theme.of(context).colorScheme.errorContainer, child: const ListTile(leading: Icon(Icons.warning_amber_outlined), title: Text('يوجد فرق بين الحسابات النقدية ودفتر الأستاذ العام'), subtitle: Text('البيانات النقدية تحتاج إلى مراجعة قبل اعتمادها.'))),
 		]);
 	}
 }
@@ -364,7 +365,7 @@ class _CashAccountsList extends StatelessWidget {
 	final List<CashAccount> accounts;
 	@override Widget build(BuildContext context) => ListView(padding: const EdgeInsets.only(bottom: 12), children: [
 		_SectionHeading(title: 'الحسابات النقدية', description: 'الأرصدة الحالية والحالة التشغيلية للحسابات المسجلة.'),
-		...accounts.map((account) => _CashListRow(title: account.accountName, subtitle: account.isActive ? 'نشط' : 'غير نشط', value: _money.format(account.currentBalance))),
+		...accounts.map((account) => _CashListRow(title: FinanceUiText.label(account.accountName, 'حساب نقدي'), subtitle: account.isActive ? 'نشط' : 'غير نشط', value: _money.format(account.currentBalance))),
 	]);
 }
 
@@ -415,7 +416,7 @@ class _TransactionList extends StatelessWidget {
 				return Card(child: ListTile(
 					leading: const Icon(Icons.swap_horiz_outlined),
 					title: Text(item.referenceNumber, maxLines: 1, overflow: TextOverflow.ellipsis),
-					subtitle: Text('${item.transactionType} • ${_date.format(item.createdAt)}${item.description == null ? '' : ' • ${item.description}'}', maxLines: 2, overflow: TextOverflow.ellipsis),
+						subtitle: Text('${FinanceUiText.transactionType(item.transactionType)} • ${_date.format(item.createdAt)}${item.description == null ? '' : ' • ${FinanceUiText.description(item.description)}'}', maxLines: 2, overflow: TextOverflow.ellipsis),
 					trailing: Text(_money.format(item.amount), style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold), textAlign: TextAlign.end),
 				));
 			},
@@ -537,7 +538,10 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
 			if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
 			final query = filter.text.trim().toLowerCase();
 			final rows = (snapshot.data ?? const <CustomerLedgerEntry>[]).where((item) => query.isEmpty || item.referenceNumber.toLowerCase().contains(query) || _money.format(item.balanceAfterTransaction).contains(query)).toList();
-			return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [TextField(controller: filter, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_alt_outlined), labelText: 'تصفية الأستاذ بالمرجع أو الرصيد')), const SizedBox(height: 8), Expanded(child: _Table(columns: const ['المرجع', 'مدين', 'دائن', 'الرصيد', 'التاريخ'], rows: rows.map((item) => [item.referenceNumber, _money.format(item.debitAmount), _money.format(item.creditAmount), _money.format(item.balanceAfterTransaction), _date.format(item.createdAt)]).toList(), empty: 'لا توجد حركات مطابقة لهذا العميل.'))]);
+			final debit = rows.fold<double>(0, (sum, item) => sum + item.debitAmount);
+			final credit = rows.fold<double>(0, (sum, item) => sum + item.creditAmount);
+			final balance = rows.isEmpty ? 0.0 : rows.first.balanceAfterTransaction;
+			return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Wrap(spacing: 16, runSpacing: 8, children: [Text('إجمالي المدين: ${_money.format(debit)}'), Text('إجمالي الدائن: ${_money.format(credit)}'), Text('الرصيد الحالي: ${_money.format(balance)}'), Text('عدد العمليات: ${rows.length}')]), const SizedBox(height: 8), TextField(controller: filter, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_alt_outlined), labelText: 'تصفية الأستاذ بالمرجع أو الرصيد')), const SizedBox(height: 8), Expanded(child: _Table(columns: const ['المرجع', 'مدين', 'دائن', 'الرصيد', 'التاريخ'], rows: rows.map((item) => [item.referenceNumber, _money.format(item.debitAmount), _money.format(item.creditAmount), _money.format(item.balanceAfterTransaction), _date.format(item.createdAt)]).toList(), empty: 'لا توجد حركات مطابقة لهذا العميل.'))]);
 		}) ),
 	]));
 }
@@ -607,11 +611,6 @@ class FinancialStatementsScreen extends StatelessWidget {
 	@override Widget build(BuildContext context) => _Page(title: 'القوائم المالية', child: const _FinancialStatementsTabs());
 }
 
-class _StatusCard extends StatelessWidget {
-	const _StatusCard(this.title, this.status, this.reason); final String title; final String status; final String reason;
-	@override Widget build(BuildContext context) => Card(child: ListTile(leading: const Icon(Icons.info_outline), title: Text(title), subtitle: Text(reason), trailing: Text(status, style: const TextStyle(fontWeight: FontWeight.bold))));
-}
-
 class _LedgerLookup<T> extends StatefulWidget {
 	const _LedgerLookup({required this.title, required this.partyLabel, required this.load, required this.row, this.embedded = false});
 	final String title; final String partyLabel; final Future<List<T>> Function(int) load; final List<String> Function(T) row; final bool embedded;
@@ -671,4 +670,21 @@ class _DateFilter extends StatelessWidget {
 class _ErrorPanel extends StatelessWidget {
 	const _ErrorPanel({required this.onRetry}); final VoidCallback onRetry;
 	@override Widget build(BuildContext context) => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.cloud_off_outlined, size: 42), const SizedBox(height: 10), const Text('تعذر تحميل البيانات المالية.'), const SizedBox(height: 10), FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة'))]));
+}
+
+class _CashFlowStatement extends StatelessWidget {
+	const _CashFlowStatement({required this.cashFlow});
+	final FinancialCashFlow cashFlow;
+	@override Widget build(BuildContext context) => ListView(children: [
+		if (!cashFlow.isAccountingComplete) Card(color: Theme.of(context).colorScheme.errorContainer, child: const ListTile(leading: Icon(Icons.warning_amber_outlined), title: Text('التدفق النقدي غير مكتمل محاسبياً'), subtitle: Text('يوجد فرق مثبت بين الحسابات النقدية ودفتر الأستاذ العام.'))),
+		_FinancialValueList(title: 'التدفقات النقدية', values: [
+			('تحصيلات العملاء', cashFlow.customerCollections),
+			('عربون العملاء', cashFlow.customerAdvances),
+			('المبالغ المستردة', cashFlow.refunds),
+			('صافي حركة النقد', cashFlow.netCashMovement),
+			('صافي مركز النقد', cashFlow.netCashPosition),
+			('رصيد النقدية في الأستاذ العام', cashFlow.generalLedgerCashBalance),
+			('فرق المطابقة النقدية', cashFlow.cashDifference),
+		]),
+	]);
 }

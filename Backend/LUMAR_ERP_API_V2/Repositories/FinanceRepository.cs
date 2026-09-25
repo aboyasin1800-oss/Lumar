@@ -3,11 +3,97 @@ namespace LUMAR_ERP_API_V2.Repositories;
 public sealed class FinanceRepository(ReadOnlySqlConnectionFactory connections) : IFinanceRepository
 {
     public Task<IReadOnlyList<FinancialTransactionDto>> GetTransactionsAsync(CancellationToken ct) => QueryAsync("SELECT FinancialTransactionId, ReferenceNumber, TransactionType, Amount, Description, CreatedAt FROM dbo.FinancialTransactions ORDER BY CreatedAt DESC, FinancialTransactionId DESC", null, r => new FinancialTransactionDto(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetDecimal(3), r.NullableString("Description"), r.GetDateTime(5)), ct);
-    public Task<IReadOnlyList<JournalEntryDto>> GetJournalEntriesAsync(CancellationToken ct) => QueryAsync("SELECT JournalEntryId, ReferenceNumber, Description, EntryDate, CreatedAt FROM dbo.JournalEntries ORDER BY EntryDate DESC, JournalEntryId DESC", null, MapJournal, ct);
-    public async Task<JournalEntryDto?> GetJournalEntryAsync(int id, CancellationToken ct) => (await QueryAsync("SELECT JournalEntryId, ReferenceNumber, Description, EntryDate, CreatedAt FROM dbo.JournalEntries WHERE JournalEntryId = @id", id, MapJournal, ct)).FirstOrDefault();
+    public Task<IReadOnlyList<JournalEntryDto>> GetJournalEntriesAsync(CancellationToken ct) => QueryAsync(JournalSummarySql + " ORDER BY je.EntryDate DESC, je.JournalEntryId DESC", null, MapJournal, ct);
+    public async Task<JournalEntryDto?> GetJournalEntryAsync(int id, CancellationToken ct) => (await QueryAsync(JournalSummarySql + " HAVING je.JournalEntryId = @id", id, MapJournal, ct)).FirstOrDefault();
     public Task<IReadOnlyList<JournalEntryLineDto>> GetJournalLinesAsync(int id, CancellationToken ct) => QueryAsync("SELECT JournalEntryLineId, JournalEntryId, LedgerAccountId, DebitAmount, CreditAmount, Description FROM dbo.JournalEntryLines WHERE JournalEntryId = @id ORDER BY JournalEntryLineId", id, r => new JournalEntryLineDto(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), r.GetDecimal(3), r.GetDecimal(4), r.NullableString("Description")), ct);
     public Task<IReadOnlyList<LedgerAccountDto>> GetLedgerAccountsAsync(CancellationToken ct) => QueryAsync("SELECT LedgerAccountId, AccountCode, AccountName, AccountType, IsActive, CreatedAt, UpdatedAt FROM dbo.LedgerAccounts ORDER BY AccountCode, LedgerAccountId", null, r => new LedgerAccountDto(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetBoolean(4), r.GetDateTime(5), r.NullableDateTime("UpdatedAt")), ct);
     public Task<IReadOnlyList<CashAccountDto>> GetCashAccountsAsync(CancellationToken ct) => QueryAsync("SELECT CashAccountId, AccountName, CurrentBalance, IsActive, CreatedAt FROM dbo.CashAccounts ORDER BY AccountName, CashAccountId", null, r => new CashAccountDto(r.GetInt32(0), r.GetString(1), r.GetDecimal(2), r.GetBoolean(3), r.GetDateTime(4)), ct);
+    public async Task<CashReconciliationDto> GetCashReconciliationAsync(CancellationToken ct)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        const string sql = """
+            SELECT
+                (SELECT COALESCE(SUM(CurrentBalance), 0) FROM dbo.CashAccounts WHERE IsActive = 1),
+                (SELECT COALESCE(SUM(jel.DebitAmount - jel.CreditAmount), 0)
+                 FROM dbo.JournalEntryLines jel
+                 INNER JOIN dbo.LedgerAccounts la ON la.LedgerAccountId = jel.LedgerAccountId
+                 WHERE la.AccountCode = N'1000');
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        await reader.ReadAsync(ct);
+        var cashAccounts = reader.GetDecimal(0);
+        var generalLedger = reader.GetDecimal(1);
+        var difference = cashAccounts - generalLedger;
+        return new CashReconciliationDto(cashAccounts, generalLedger, difference, Math.Abs(difference) < 0.005m);
+    }
+
+    public async Task<FinancialDashboardDto> GetDashboardAsync(CancellationToken ct)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        const string sql = """
+            SELECT
+                COALESCE((SELECT SUM(CASE WHEN ft.TransactionType = N'RevenueRecognized' THEN ft.Amount WHEN ft.TransactionType = N'RevenueReversal' THEN -ft.Amount ELSE 0 END) FROM dbo.FinancialTransactions ft), 0),
+                COALESCE((SELECT SUM(p.Amount) FROM dbo.Payments p WHERE p.PaymentKind NOT IN (N'Refund')), 0),
+                COALESCE((SELECT SUM(x.BalanceAfterTransaction) FROM (SELECT cle.BalanceAfterTransaction, ROW_NUMBER() OVER (PARTITION BY cle.CustomerID ORDER BY cle.CreatedAt DESC, cle.CustomerLedgerEntryId DESC) AS RowNumber FROM dbo.CustomerLedgerEntries cle) x WHERE x.RowNumber = 1 AND x.BalanceAfterTransaction > 0), 0),
+                COALESCE((SELECT SUM(jel.DebitAmount - jel.CreditAmount) FROM dbo.JournalEntryLines jel INNER JOIN dbo.LedgerAccounts la ON la.LedgerAccountId = jel.LedgerAccountId WHERE la.AccountCode = N'1000'), 0),
+                (SELECT COUNT(*) FROM dbo.JournalEntries),
+                (SELECT COUNT(*) FROM dbo.FinancialTransactions),
+                (SELECT COUNT(DISTINCT CustomerID) FROM dbo.CustomerLedgerEntries),
+                COALESCE((SELECT SUM(CASE WHEN ft.TransactionType = N'RevenueRecognized' THEN ft.Amount WHEN ft.TransactionType = N'RevenueReversal' THEN -ft.Amount ELSE 0 END) FROM dbo.FinancialTransactions ft WHERE CAST(ft.CreatedAt AS date) = CAST(SYSUTCDATETIME() AS date)), 0),
+                COALESCE((SELECT SUM(CASE WHEN ft.TransactionType = N'RevenueRecognized' THEN ft.Amount WHEN ft.TransactionType = N'RevenueReversal' THEN -ft.Amount ELSE 0 END) FROM dbo.FinancialTransactions ft WHERE YEAR(ft.CreatedAt) = YEAR(SYSUTCDATETIME()) AND MONTH(ft.CreatedAt) = MONTH(SYSUTCDATETIME())), 0);
+
+            WITH LatestBalance AS (
+                SELECT cle.CustomerID, cle.BalanceAfterTransaction,
+                       ROW_NUMBER() OVER (PARTITION BY cle.CustomerID ORDER BY cle.CreatedAt DESC, cle.CustomerLedgerEntryId DESC) AS RowNumber
+                FROM dbo.CustomerLedgerEntries cle
+            )
+            SELECT TOP (5) c.CustomerID, c.CustomerCode, c.CustomerName, lb.BalanceAfterTransaction
+            FROM LatestBalance lb
+            INNER JOIN dbo.Customers c ON c.CustomerID = lb.CustomerID
+            WHERE lb.RowNumber = 1 AND lb.BalanceAfterTransaction > 0
+            ORDER BY lb.BalanceAfterTransaction DESC, c.CustomerID;
+
+            SELECT TOP (5) c.CustomerID, c.CustomerCode, c.CustomerName, SUM(p.Amount)
+            FROM dbo.Payments p
+            INNER JOIN dbo.Orders o ON o.OrderID = p.OrderID
+            INNER JOIN dbo.Customers c ON c.CustomerID = o.CustomerID
+            WHERE p.PaymentKind <> N'Refund'
+            GROUP BY c.CustomerID, c.CustomerCode, c.CustomerName
+            ORDER BY SUM(p.Amount) DESC, c.CustomerID;
+
+            SELECT TOP (12) FinancialTransactionId, ReferenceNumber, TransactionType, Amount, Description, CreatedAt
+            FROM dbo.FinancialTransactions
+            ORDER BY CreatedAt DESC, FinancialTransactionId DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        await reader.ReadAsync(ct);
+        var revenue = reader.GetDecimal(0);
+        var collections = reader.GetDecimal(1);
+        var receivables = reader.GetDecimal(2);
+        var cashBalance = reader.GetDecimal(3);
+        var journalEntries = reader.GetInt32(4);
+        var financialTransactions = reader.GetInt32(5);
+        var financialCustomers = reader.GetInt32(6);
+        var dailyRevenue = reader.GetDecimal(7);
+        var monthlyRevenue = reader.GetDecimal(8);
+
+        var topDebtors = new List<FinanceCustomerMetricDto>();
+        await reader.NextResultAsync(ct);
+        while (await reader.ReadAsync(ct)) topDebtors.Add(new FinanceCustomerMetricDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetDecimal(3)));
+
+        var topCollections = new List<FinanceCustomerMetricDto>();
+        await reader.NextResultAsync(ct);
+        while (await reader.ReadAsync(ct)) topCollections.Add(new FinanceCustomerMetricDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetDecimal(3)));
+
+        var activities = new List<FinancialActivityDto>();
+        await reader.NextResultAsync(ct);
+        while (await reader.ReadAsync(ct)) activities.Add(new FinancialActivityDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetDecimal(3), reader.NullableString("Description"), reader.GetDateTime(5)));
+        return new FinancialDashboardDto(revenue, collections, receivables, cashBalance, journalEntries, financialTransactions, financialCustomers, dailyRevenue, monthlyRevenue, topDebtors, topCollections, activities);
+    }
     public Task<IReadOnlyList<CustomerLedgerEntryDto>> GetCustomerLedgerAsync(int id, CancellationToken ct) => QueryAsync("SELECT CustomerLedgerEntryId, CustomerID, ReferenceNumber, DebitAmount, CreditAmount, BalanceAfterTransaction, CreatedAt FROM dbo.CustomerLedgerEntries WHERE CustomerID = @id ORDER BY CreatedAt DESC, CustomerLedgerEntryId DESC", id, r => new CustomerLedgerEntryDto(r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetDecimal(3), r.GetDecimal(4), r.GetDecimal(5), r.GetDateTime(6)), ct);
     public Task<IReadOnlyList<SupplierLedgerEntryDto>> GetSupplierLedgerAsync(int id, CancellationToken ct) => QueryAsync("SELECT SupplierLedgerEntryId, SupplierId, ReferenceNumber, DebitAmount, CreditAmount, BalanceAfterTransaction, CreatedAt FROM dbo.SupplierLedgerEntries WHERE SupplierId = @id ORDER BY CreatedAt DESC, SupplierLedgerEntryId DESC", id, r => new SupplierLedgerEntryDto(r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetDecimal(3), r.GetDecimal(4), r.GetDecimal(5), r.GetDateTime(6)), ct);
     public Task<IReadOnlyList<SupplierPaymentDto>> GetSupplierPaymentsAsync(CancellationToken ct) => QueryAsync("SELECT SupplierPaymentId, SupplierId, PaymentNumber, PaymentDate, Amount, PaymentMethod, ReferenceNumber, Notes, CreatedAt, JournalEntryId FROM dbo.SupplierPayments ORDER BY PaymentDate DESC, SupplierPaymentId DESC", null, r => new SupplierPaymentDto(r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetDateTime(3), r.GetDecimal(4), r.NullableString("PaymentMethod"), r.NullableString("ReferenceNumber"), r.NullableString("Notes"), r.GetDateTime(8), r.NullableInt32("JournalEntryId")), ct);
@@ -68,10 +154,12 @@ public sealed class FinanceRepository(ReadOnlySqlConnectionFactory connections) 
         }
 
         decimal Financial(params string[] types) => types.Sum(type => financialTotals.GetValueOrDefault(type));
-        var cashInflows = Financial("CustomerAdvance", "CustomerPayment", "CashAccountOpening");
+        var customerCollections = Financial("CustomerPayment");
+        var customerAdvances = Financial("CustomerAdvance");
         var refunds = Financial("OrderCancellationRefund");
-        var supplierPayments = await ReadDecimalAsync(connection, "SELECT COALESCE(SUM(Amount), 0) FROM dbo.SupplierPayments", ct);
         var cashAccountsBalance = await ReadDecimalAsync(connection, "SELECT COALESCE(SUM(CurrentBalance), 0) FROM dbo.CashAccounts WHERE IsActive = 1", ct);
+        var generalLedgerCashBalance = Account("1000");
+        var cashDifference = cashAccountsBalance - generalLedgerCashBalance;
 
         var revenue = SumType("Revenue");
         var expenses = SumType("Expense");
@@ -79,7 +167,7 @@ public sealed class FinanceRepository(ReadOnlySqlConnectionFactory connections) 
 
         return new FinancialStatementsDto(
             new FinancialBalanceSheetDto(assets, liabilities, accountsReceivable, accountsPayable, inventoryValue, equity),
-            new FinancialCashFlowDto(cashInflows, supplierPayments, refunds, cashAccountsBalance, cashInflows - supplierPayments - refunds),
+            new FinancialCashFlowDto(customerCollections, customerAdvances, refunds, cashAccountsBalance, customerCollections + customerAdvances - refunds, generalLedgerCashBalance, cashDifference, Math.Abs(cashDifference) < 0.005m),
             new FinancialProfitLossDto(revenue, expenses, costOfGoodsSold, revenue - costOfGoodsSold, revenue - expenses));
     }
 
@@ -122,6 +210,15 @@ public sealed class FinanceRepository(ReadOnlySqlConnectionFactory connections) 
         await reader.ReadAsync(ct);
         return new FinancialReconciliationDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetInt32(7));
     }
-    private static JournalEntryDto MapJournal(SqlDataReader reader) => new(reader.GetInt32(0), reader.GetString(1), reader.NullableString("Description"), reader.GetDateTime(3), reader.GetDateTime(4));
+    private const string JournalSummarySql = """
+        SELECT je.JournalEntryId, je.ReferenceNumber, je.Description, je.EntryDate, je.CreatedAt,
+               COALESCE(SUM(jel.DebitAmount), 0) AS TotalDebit,
+               COALESCE(SUM(jel.CreditAmount), 0) AS TotalCredit,
+               COUNT(jel.JournalEntryLineId) AS LineCount
+        FROM dbo.JournalEntries je
+        LEFT JOIN dbo.JournalEntryLines jel ON jel.JournalEntryId = je.JournalEntryId
+        GROUP BY je.JournalEntryId, je.ReferenceNumber, je.Description, je.EntryDate, je.CreatedAt
+        """;
+    private static JournalEntryDto MapJournal(SqlDataReader reader) => new(reader.GetInt32(0), reader.GetString(1), reader.NullableString("Description"), reader.GetDateTime(3), reader.GetDateTime(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetInt32(7));
     private async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, int? id, Func<SqlDataReader, T> map, CancellationToken ct) { await using var connection = connections.Create(); await connection.OpenAsync(ct); await using var command = new SqlCommand(sql, connection); if (id.HasValue) command.Parameters.AddWithValue("@id", id.Value); await using var reader = await command.ExecuteReaderAsync(ct); var items = new List<T>(); while (await reader.ReadAsync(ct)) items.Add(map(reader)); return items; }
 }

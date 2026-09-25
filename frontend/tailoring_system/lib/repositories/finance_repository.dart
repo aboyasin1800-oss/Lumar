@@ -33,6 +33,8 @@ class FinanceRepository {
 	Future<List<SupplierInvoice>> getSupplierInvoices() => _list('/finance/supplier-invoices', SupplierInvoice.fromJson);
 	Future<FinancialReconciliation> getReconciliation() async => FinancialReconciliation.fromJson(await _object('/finance/reconciliation'));
 	Future<FinancialStatements> getFinancialStatements() async => FinancialStatements.fromJson(await _object('/finance/statements'));
+	Future<FinancialDashboard> getDashboard() async => FinancialDashboard.fromJson(await _object('/finance/dashboard'));
+	Future<CashReconciliation> getCashReconciliation() async => CashReconciliation.fromJson(await _object('/finance/cash-reconciliation'));
 }
 
 class FinanceApiException implements Exception {

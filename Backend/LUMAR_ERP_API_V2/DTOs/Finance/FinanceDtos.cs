@@ -1,6 +1,6 @@
 namespace LUMAR_ERP_API_V2.DTOs.Finance;
 public sealed record FinancialTransactionDto(int FinancialTransactionId, string ReferenceNumber, string TransactionType, decimal Amount, string? Description, DateTime CreatedAt);
-public sealed record JournalEntryDto(int JournalEntryId, string ReferenceNumber, string? Description, DateTime EntryDate, DateTime CreatedAt);
+public sealed record JournalEntryDto(int JournalEntryId, string ReferenceNumber, string? Description, DateTime EntryDate, DateTime CreatedAt, decimal TotalDebit, decimal TotalCredit, int LineCount);
 public sealed record JournalEntryLineDto(int JournalEntryLineId, int JournalEntryId, int LedgerAccountId, decimal DebitAmount, decimal CreditAmount, string? Description);
 public sealed record LedgerAccountDto(int LedgerAccountId, string AccountCode, string AccountName, string AccountType, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
 public sealed record CashAccountDto(int CashAccountId, string AccountName, decimal CurrentBalance, bool IsActive, DateTime CreatedAt);
@@ -11,5 +11,9 @@ public sealed record SupplierInvoiceDto(int SupplierInvoiceId, int SupplierId, i
 public sealed record FinancialReconciliationDto(int FinancialTransactions, int JournalEntries, int BalancedJournalEntries, int UnbalancedJournalEntries, int SharedReferences, int FinancialReferencesWithoutJournal, int JournalReferencesWithoutTransaction, int OrphanJournalLines);
 public sealed record FinancialStatementsDto(FinancialBalanceSheetDto BalanceSheet, FinancialCashFlowDto CashFlow, FinancialProfitLossDto ProfitLoss);
 public sealed record FinancialBalanceSheetDto(decimal Assets, decimal Liabilities, decimal AccountsReceivable, decimal AccountsPayable, decimal InventoryValue, decimal Equity);
-public sealed record FinancialCashFlowDto(decimal CashInflows, decimal SupplierPayments, decimal Refunds, decimal NetCashPosition, decimal NetCashMovement);
+public sealed record FinancialCashFlowDto(decimal CustomerCollections, decimal CustomerAdvances, decimal Refunds, decimal NetCashPosition, decimal NetCashMovement, decimal GeneralLedgerCashBalance, decimal CashDifference, bool IsAccountingComplete);
 public sealed record FinancialProfitLossDto(decimal Revenue, decimal Expenses, decimal CostOfGoodsSold, decimal GrossProfit, decimal NetProfit);
+public sealed record FinanceCustomerMetricDto(int CustomerId, string CustomerCode, string CustomerName, decimal Amount);
+public sealed record FinancialActivityDto(int FinancialTransactionId, string ReferenceNumber, string TransactionType, decimal Amount, string? Description, DateTime CreatedAt);
+public sealed record FinancialDashboardDto(decimal Revenue, decimal Collections, decimal Receivables, decimal CashBalance, int JournalEntries, int FinancialTransactions, int FinancialCustomers, decimal DailyRevenue, decimal MonthlyRevenue, IReadOnlyList<FinanceCustomerMetricDto> TopDebtors, IReadOnlyList<FinanceCustomerMetricDto> TopCollections, IReadOnlyList<FinancialActivityDto> RecentActivities);
+public sealed record CashReconciliationDto(decimal CashAccountsBalance, decimal GeneralLedgerCashBalance, decimal Difference, bool IsReconciled);
