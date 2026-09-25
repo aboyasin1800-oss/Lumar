@@ -183,6 +183,7 @@ void main() {
     controller.open(WorkspaceRouteIds.dashboard);
 
     expect(controller.dashboardVisible, isTrue);
+    expect(controller.tasks, hasLength(1));
     expect(controller.taskFor('/customers')!.state, WorkspaceTaskState.minimized);
   });
 }

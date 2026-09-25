@@ -251,6 +251,8 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
 
     public async Task<OrderDetailsDto?> WaiveRemainingBalanceAsync(int orderId, CancellationToken cancellationToken)
     {
+        ThrowIfBalanceWaiverUnavailable();
+
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(cancellationToken);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
@@ -348,6 +350,9 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
 
     private async Task<OrderDetailsDto?> SettleCustomerBalanceCoreAsync(int orderId, decimal amount, decimal settlementDiscount, string? paymentMethod, string? referenceNumber, string? notes, bool requireDelivered, CancellationToken cancellationToken)
     {
+        if (settlementDiscount > 0m)
+            throw new InvalidOperationException("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.");
+
         if (amount < 0m || settlementDiscount < 0m || amount + settlementDiscount <= 0m)
         {
             return null;
@@ -449,7 +454,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                     await financial.ExecuteNonQueryAsync(cancellationToken);
                 }
 
-                await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+                var posting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
                     connection,
                     transaction,
                     financialReference,
@@ -457,6 +462,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                     amount,
                     description,
                     cancellationToken);
+                posting.ThrowIfFailure();
             }
 
             if (settlementDiscount > 0m)
@@ -547,36 +553,14 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             var now = DateTime.UtcNow;
             var deliveryCostAmount = await ResolveOrderDeliveryCostAsync(connection, transaction, orderId, cancellationToken);
             if (deliveryCostAmount > 0m)
-            {
-                var deliveryCostReference = $"{orderNumber}:DeliveryCost";
-                if (!await FinancialTransactionExistsAsync(connection, transaction, deliveryCostReference, "DeliveryCost", cancellationToken))
-                {
-                    const string deliveryCostSql = "INSERT INTO dbo.FinancialTransactions (ReferenceNumber,TransactionType,Amount,Description,CreatedAt) SELECT @reference,@transactionType,@amount,@description,@createdAt WHERE NOT EXISTS (SELECT 1 FROM dbo.FinancialTransactions WITH (UPDLOCK,HOLDLOCK) WHERE ReferenceNumber = @reference AND TransactionType = N'DeliveryCost')";
-                    await using (var cost = new SqlCommand(deliveryCostSql, connection, transaction))
-                    {
-                        cost.Parameters.AddWithValue("@reference", deliveryCostReference);
-                        cost.Parameters.AddWithValue("@transactionType", "DeliveryCost");
-                        cost.Parameters.AddWithValue("@amount", deliveryCostAmount);
-                        cost.Parameters.AddWithValue("@description", $"Delivery cost for {orderNumber}");
-                        cost.Parameters.AddWithValue("@createdAt", now);
-                        await cost.ExecuteNonQueryAsync(cancellationToken);
-                    }
-
-                    await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
-                        connection,
-                        transaction,
-                        deliveryCostReference,
-                        "DeliveryCost",
-                        deliveryCostAmount,
-                        $"Delivery cost for {orderNumber}",
-                        cancellationToken);
-                }
-            }
+                throw new InvalidOperationException("هذه العملية غير متاحة حتى اعتماد عقد تكلفة التوصيل المحاسبي.");
 
             if (!revenueRecognized)
             {
                 var revenueReference = $"{orderNumber}:RevenueRecognized";
                 var revenueAmount = DeliveryRevenueRecognitionResolver.ResolveRevenueAmount(totalAmount, discountAmount);
+                if (await FinancialTransactionExistsAsync(connection, transaction, revenueReference, "RevenueRecognized", cancellationToken))
+                    throw new InvalidOperationException("توجد سجلات مالية متعارضة للعملية الحالية.");
                 const string financialSql = "INSERT INTO dbo.FinancialTransactions (ReferenceNumber,TransactionType,Amount,Description,CreatedAt) SELECT @reference,@transactionType,@amount,@description,@createdAt WHERE NOT EXISTS (SELECT 1 FROM dbo.FinancialTransactions WITH (UPDLOCK,HOLDLOCK) WHERE ReferenceNumber = @reference AND TransactionType = N'RevenueRecognized')";
                 await using (var financial = new SqlCommand(financialSql, connection, transaction))
                 {
@@ -588,7 +572,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                     await financial.ExecuteNonQueryAsync(cancellationToken);
                 }
 
-                await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+                var posting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
                     connection,
                     transaction,
                     revenueReference,
@@ -596,6 +580,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                     revenueAmount,
                     $"Delivery revenue for {orderNumber}",
                     cancellationToken);
+                posting.ThrowIfFailure();
 
                 const string updateSql = "UPDATE dbo.Orders SET RevenueRecognized = 1, RevenueRecognizedAt = @recognizedAt, UpdatedDate = @updatedAt WHERE OrderID = @orderId AND RevenueRecognized = 0";
                 await using (var update = new SqlCommand(updateSql, connection, transaction))
@@ -647,6 +632,9 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             var refundRequested = OrderCancellationFinancialMovementResolver.ShouldCreateRefund(snapshot.PaidAmount, !string.IsNullOrWhiteSpace(snapshot.CancellationReason) && string.Equals(snapshot.OrderStatus, "Cancelled", StringComparison.OrdinalIgnoreCase));
             var reversalRequested = OrderCancellationFinancialMovementResolver.ShouldCreateRevenueReversal(snapshot.RevenueRecognized, snapshot.RevenueReversalCreated, snapshot.OrderStatus);
             var now = DateTime.UtcNow;
+
+            if (refundRequested || reversalRequested)
+                throw new InvalidOperationException("هذه العملية غير متاحة حتى اكتمال عقد الربط المحاسبي.");
 
             if (await CanReverseTailoringFabricAsync(connection, transaction, orderId, cancellationToken))
             {
@@ -1272,7 +1260,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             await financial.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+        var posting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
             connection,
             transaction,
             reference,
@@ -1280,7 +1268,10 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             amount,
             description,
             cancellationToken);
+        posting.ThrowIfFailure();
     }
+
+    private static void ThrowIfBalanceWaiverUnavailable() => throw new InvalidOperationException("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.");
 
     private static void AddNullable(SqlCommand command, string name, object? value) => command.Parameters.AddWithValue(name, value is string text ? (string.IsNullOrWhiteSpace(text) ? DBNull.Value : text.Trim()) : value ?? DBNull.Value);
 

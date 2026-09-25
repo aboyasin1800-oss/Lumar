@@ -75,7 +75,7 @@ public class SalesCostRecognitionImplementationTests
             await InsertFinancialTransactionAsync(connection, transaction, reference, "ReadyMadeCost", 725.00m, "Ready-made sale cost recognized");
 
             var created = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, reference, "ReadyMadeCost", 725.00m, "Ready-made sale cost recognized", CancellationToken.None);
-            Assert.True(created);
+            Assert.Equal(FinancialPostingStatus.PostingCreated, created.Status);
 
             var existingEntry = await QueryJournalEntryAsync(connection, transaction, reference);
             Assert.NotNull(existingEntry);
@@ -87,7 +87,7 @@ public class SalesCostRecognitionImplementationTests
             Assert.Equal(725.00m, lines.Sum(l => l.CreditAmount));
 
             var createdAgain = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, reference, "ReadyMadeCost", 725.00m, "Ready-made sale cost recognized", CancellationToken.None);
-            Assert.False(createdAgain);
+            Assert.Equal(FinancialPostingStatus.TransitionalReferenceMatchVerified, createdAgain.Status);
         }
         finally
         {

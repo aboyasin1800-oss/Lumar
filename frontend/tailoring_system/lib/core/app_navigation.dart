@@ -35,14 +35,27 @@ class AppNavigation {
 }
 
 class AppNavigationRegion extends StatelessWidget {
-	const AppNavigationRegion({required this.child, super.key});
+	const AppNavigationRegion({
+		required this.child,
+		this.onBackMouseButton,
+		super.key,
+	});
 
 	final Widget child;
+	final VoidCallback? onBackMouseButton;
 
 	@override
 	Widget build(BuildContext context) => Listener(
 		behavior: HitTestBehavior.translucent,
-		onPointerDown: AppNavigation.handlePointerDown,
+		onPointerDown: (event) {
+			if (event.kind == PointerDeviceKind.mouse &&
+				event.buttons & kBackMouseButton != 0 &&
+				onBackMouseButton != null) {
+				onBackMouseButton!();
+				return;
+			}
+			AppNavigation.handlePointerDown(event);
+		},
 		child: child,
 	);
 }

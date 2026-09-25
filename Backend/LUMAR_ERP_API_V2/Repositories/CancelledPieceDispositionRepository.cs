@@ -406,9 +406,11 @@ public sealed class CancelledPieceDispositionRepository(OperationalSqlConnection
             financialCommand.Parameters.AddWithValue("@amount", actualCost);
             financialCommand.Parameters.AddWithValue("@description", WipToFinishedGoodsFinancialTransactionPolicy.GetDescription());
             financialCommand.Parameters.AddWithValue("@createdAt", now);
-            await financialCommand.ExecuteNonQueryAsync(ct);
+            var financialTransactionRows = await financialCommand.ExecuteNonQueryAsync(ct);
+            if (financialTransactionRows != 1)
+                throw new InvalidOperationException("توجد سجلات مالية متعارضة للعملية الحالية.");
 
-            await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+            var posting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
                 connection,
                 transaction,
                 pieceContext.TrackingCode,
@@ -416,6 +418,7 @@ public sealed class CancelledPieceDispositionRepository(OperationalSqlConnection
                 actualCost,
                 WipToFinishedGoodsFinancialTransactionPolicy.GetDescription(),
                 ct);
+            posting.ThrowIfFailure();
         }
 
         return insertedProductId;

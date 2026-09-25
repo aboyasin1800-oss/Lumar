@@ -24,6 +24,8 @@ public sealed class ReadyMadeSalesRepository(
 
         var netAmount = totalAmount - sale.DiscountAmount;
         ValidatePayment(paymentType, sale.PaidAmount, netAmount);
+        if (paymentType == "Donation")
+            throw new InvalidOperationException("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.");
 
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(cancellationToken);
@@ -103,6 +105,9 @@ public sealed class ReadyMadeSalesRepository(
                 }
             }
 
+            if (lines.Any(line => line.UnitCost > 0m))
+                throw new InvalidOperationException("هذه العملية غير متاحة حتى اكتمال عقد الربط المحاسبي.");
+
             var now = DateTime.UtcNow;
             var orderNumber = await GetNextOrderNumberAsync(connection, transaction, cancellationToken);
             var paidAmount = paymentType == "Donation" ? 0m : sale.PaidAmount;
@@ -155,29 +160,17 @@ public sealed class ReadyMadeSalesRepository(
 
             await InsertCustomerLedgerEntryAsync(connection, transaction, sale.CustomerId, $"{orderNumber}:Sale", netAmount, 0m, now, cancellationToken);
             await InsertFinancialTransactionAsync(connection, transaction, $"{orderNumber}:RevenueRecognized", "RevenueRecognized", netAmount, $"Ready-made sale revenue for {orderNumber}", now, cancellationToken);
-            await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, $"{orderNumber}:RevenueRecognized", "RevenueRecognized", netAmount, $"Ready-made sale revenue for {orderNumber}", cancellationToken);
+            var revenuePosting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, $"{orderNumber}:RevenueRecognized", "RevenueRecognized", netAmount, $"Ready-made sale revenue for {orderNumber}", cancellationToken);
+            revenuePosting.ThrowIfFailure();
 
-            var costAmount = lines.Sum(line => line.UnitCost * line.Quantity);
-            if (costAmount > 0m)
-            {
-                await InsertFinancialTransactionAsync(connection, transaction, $"{orderNumber}:ReadyMadeCost", "ReadyMadeCost", costAmount, $"Ready-made cost for {orderNumber}", now, cancellationToken);
-                await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, $"{orderNumber}:ReadyMadeCost", "ReadyMadeCost", costAmount, $"Ready-made cost for {orderNumber}", cancellationToken);
-            }
-
-            if (paymentType is "Cash" or "Credit")
+            if (paymentType is "Cash" or "Credit" && paidAmount > 0m)
             {
                 var paymentReference = $"{orderNumber}:Payment";
                 await InsertPaymentAsync(connection, transaction, orderId, paidAmount, paymentReference, now, cancellationToken);
                 await InsertCustomerLedgerEntryAsync(connection, transaction, sale.CustomerId, paymentReference, 0m, paidAmount, now, cancellationToken);
                 await InsertFinancialTransactionAsync(connection, transaction, paymentReference, "CustomerPayment", paidAmount, $"Cash payment for {orderNumber}", now, cancellationToken);
-                await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, paymentReference, "CustomerPayment", paidAmount, $"Cash payment for {orderNumber}", cancellationToken);
-            }
-            else if (paymentType == "Donation")
-            {
-                var donationReference = $"{orderNumber}:CustomerBalanceWaiver";
-                await InsertCustomerLedgerEntryAsync(connection, transaction, sale.CustomerId, donationReference, 0m, netAmount, now, cancellationToken);
-                await InsertFinancialTransactionAsync(connection, transaction, donationReference, "CustomerBalanceWaiver", netAmount, $"Customer balance donated for {orderNumber}", now, cancellationToken);
-                await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, donationReference, "CustomerBalanceWaiver", netAmount, $"Customer balance donated for {orderNumber}", cancellationToken);
+                var paymentPosting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, paymentReference, "CustomerPayment", paidAmount, $"Cash payment for {orderNumber}", cancellationToken);
+                paymentPosting.ThrowIfFailure();
             }
 
             await transaction.CommitAsync(cancellationToken);

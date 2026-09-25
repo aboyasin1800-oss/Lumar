@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_navigation.dart';
 import '../../core/finance_ui_text.dart';
+import '../../core/theme/app_breakpoints.dart';
 import '../../models/finance_models.dart';
 import '../../providers/finance_provider.dart';
 import '../../repositories/finance_repository.dart';
@@ -72,22 +73,32 @@ class _FinanceStatisticsTab extends StatelessWidget {
 			('إيراد اليوم', _money.format(dashboard.dailyRevenue), Icons.today_outlined),
 			('إيراد الشهر', _money.format(dashboard.monthlyRevenue), Icons.calendar_month_outlined),
 		];
-		return ListView(children: [
-			Text('نظرة عامة', style: Theme.of(context).textTheme.titleLarge),
-			const SizedBox(height: 6),
-			const Text('مؤشرات محسوبة من سجلات المالية والعملاء الحالية.'),
-			const SizedBox(height: 16),
-			Wrap(spacing: 12, runSpacing: 12, children: metrics.map((metric) => _FinanceMetricCard(label: metric.$1, value: metric.$2, icon: metric.$3)).toList()),
-			const SizedBox(height: 18),
-			_SectionHeading(title: 'أعلى العملاء مديونية', description: 'حسب آخر رصيد رسمي في أستاذ العميل.'),
-			...dashboard.topDebtors.map((item) => _CashListRow(title: '${item.customerCode} - ${item.customerName}', value: _money.format(item.amount))),
-			const SizedBox(height: 12),
-			_SectionHeading(title: 'أعلى العملاء تحصيلاً', description: 'حسب الدفعات المسجلة غير المستردة.'),
-			...dashboard.topCollections.map((item) => _CashListRow(title: '${item.customerCode} - ${item.customerName}', value: _money.format(item.amount))),
-			const SizedBox(height: 12),
-			_SectionHeading(title: 'آخر النشاطات المالية', description: 'أحدث الحركات المسجلة.'),
-			...dashboard.recentActivities.map((item) => _CashListRow(title: FinanceUiText.transactionType(item.transactionType), subtitle: '${item.referenceNumber} - ${_date.format(item.createdAt)}', value: _money.format(item.amount))),
-		]);
+		return LayoutBuilder(builder: (context, constraints) {
+			final width = constraints.maxWidth;
+			final columns = width >= AppBreakpoints.largeDesktop ? 4 : width >= AppBreakpoints.desktop ? 3 : width >= AppBreakpoints.tablet ? 2 : 1;
+			final sectionWidth = columns == 1 ? width : (width - 12) / 2;
+			return ListView(padding: const EdgeInsetsDirectional.fromSTEB(4, 0, 4, 20), children: [
+				Text('نظرة عامة', style: Theme.of(context).textTheme.titleLarge),
+				const SizedBox(height: 6),
+				const Text('مؤشرات محسوبة من سجلات المالية والعملاء الحالية.'),
+				const SizedBox(height: 16),
+				GridView.builder(
+					shrinkWrap: true,
+					physics: const NeverScrollableScrollPhysics(),
+					itemCount: metrics.length,
+					gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: columns, mainAxisExtent: 100, crossAxisSpacing: 12, mainAxisSpacing: 12),
+					itemBuilder: (context, index) { final metric = metrics[index]; return _FinanceMetricCard(label: metric.$1, value: metric.$2, icon: metric.$3); },
+				),
+				const SizedBox(height: 20),
+				Wrap(spacing: 12, runSpacing: 20, children: [
+					SizedBox(width: sectionWidth, child: _DashboardCustomerSection(title: 'أعلى العملاء مديونية', description: 'حسب آخر رصيد رسمي في أستاذ العميل.', items: dashboard.topDebtors)),
+					SizedBox(width: sectionWidth, child: _DashboardCustomerSection(title: 'أعلى العملاء تحصيلاً', description: 'حسب الدفعات المسجلة غير المستردة.', items: dashboard.topCollections)),
+				]),
+				const SizedBox(height: 20),
+				_SectionHeading(title: 'آخر النشاطات المالية', description: 'أحدث الحركات المسجلة.'),
+				...dashboard.recentActivities.map((item) => _CashListRow(title: FinanceUiText.transactionType(item.transactionType), subtitle: '${item.referenceNumber} - ${_date.format(item.createdAt)}', value: _money.format(item.amount))),
+			]);
+		});
 	}
 }
 
@@ -96,15 +107,23 @@ class _FinanceMetricCard extends StatelessWidget {
 	final String label;
 	final String value;
 	final IconData icon;
-	@override Widget build(BuildContext context) => SizedBox(
-		width: 210,
-		height: 92,
-		child: Card(child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
+	@override Widget build(BuildContext context) => Card(child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
 			Icon(icon, size: 30),
 			const SizedBox(width: 12),
-			Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label), Text(value, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold))])),
-		]))),
-	);
+			Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, maxLines: 1, overflow: TextOverflow.ellipsis), Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold))])),
+		])));
+}
+
+class _DashboardCustomerSection extends StatelessWidget {
+	const _DashboardCustomerSection({required this.title, required this.description, required this.items});
+	final String title;
+	final String description;
+	final List<FinanceCustomerMetric> items;
+	@override Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+		_SectionHeading(title: title, description: description),
+		if (items.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('لا توجد بيانات متاحة.')),
+		...items.map((item) => _CashListRow(title: '${item.customerCode} - ${item.customerName}', value: _money.format(item.amount))),
+	]);
 }
 
 class _FinancialReportsTab extends StatelessWidget {
@@ -675,9 +694,8 @@ class _ErrorPanel extends StatelessWidget {
 class _CashFlowStatement extends StatelessWidget {
 	const _CashFlowStatement({required this.cashFlow});
 	final FinancialCashFlow cashFlow;
-	@override Widget build(BuildContext context) => ListView(children: [
-		if (!cashFlow.isAccountingComplete) Card(color: Theme.of(context).colorScheme.errorContainer, child: const ListTile(leading: Icon(Icons.warning_amber_outlined), title: Text('التدفق النقدي غير مكتمل محاسبياً'), subtitle: Text('يوجد فرق مثبت بين الحسابات النقدية ودفتر الأستاذ العام.'))),
-		_FinancialValueList(title: 'التدفقات النقدية', values: [
+	@override Widget build(BuildContext context) {
+		final values = [
 			('تحصيلات العملاء', cashFlow.customerCollections),
 			('عربون العملاء', cashFlow.customerAdvances),
 			('المبالغ المستردة', cashFlow.refunds),
@@ -685,6 +703,12 @@ class _CashFlowStatement extends StatelessWidget {
 			('صافي مركز النقد', cashFlow.netCashPosition),
 			('رصيد النقدية في الأستاذ العام', cashFlow.generalLedgerCashBalance),
 			('فرق المطابقة النقدية', cashFlow.cashDifference),
-		]),
-	]);
+		];
+		return ListView(padding: const EdgeInsets.only(bottom: 16), children: [
+			if (!cashFlow.isAccountingComplete) Card(color: Theme.of(context).colorScheme.errorContainer, child: const ListTile(leading: Icon(Icons.warning_amber_outlined), title: Text('التدفق النقدي غير مكتمل محاسبياً'), subtitle: Text('يوجد فرق مثبت بين الحسابات النقدية ودفتر الأستاذ العام.'))),
+			Text('التدفقات النقدية', style: Theme.of(context).textTheme.titleLarge),
+			const SizedBox(height: 8),
+			...values.map((entry) => Card(child: ListTile(title: Text(entry.$1), trailing: Text(_money.format(entry.$2), style: Theme.of(context).textTheme.titleMedium)))),
+		]);
+	}
 }

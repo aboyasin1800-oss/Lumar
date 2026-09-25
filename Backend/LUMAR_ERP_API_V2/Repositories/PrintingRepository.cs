@@ -472,7 +472,9 @@ public sealed class PrintingRepository(
         {
             if (request.SaleAmount is not > 0m)
                 throw new ArgumentException("قيمة البيع يجب أن تكون أكبر من صفر.");
-            _ = MeasurementCardPrintPolicy.NormalizePaymentType(request.SalePaymentType);
+            var paymentType = MeasurementCardPrintPolicy.NormalizePaymentType(request.SalePaymentType);
+            if (paymentType == MeasurementCardPrintPolicy.Donation)
+                throw new InvalidOperationException("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.");
             if (isReadyMade && request.SaleCustomerId is not > 0)
                 throw new ArgumentException("يجب اختيار عميل بيع القطعة الجاهزة.");
         }
@@ -539,7 +541,7 @@ public sealed class PrintingRepository(
         string description,
         CancellationToken cancellationToken)
     {
-        await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+        var posting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
             connection,
             transaction,
             reference,
@@ -547,6 +549,7 @@ public sealed class PrintingRepository(
             amount,
             description,
             cancellationToken);
+        posting.ThrowIfFailure();
 
         await using var command = new SqlCommand(@"
             SELECT TOP (1) JournalEntryId

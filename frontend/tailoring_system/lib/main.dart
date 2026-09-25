@@ -9,6 +9,7 @@ import 'services/auth_state.dart';
 import 'services/theme_state.dart';
 import 'services/ui_scale_state.dart';
 import 'services/workspace_controller.dart';
+import 'services/workspace_registry.dart';
 import 'screens/module_screens.dart';
 import 'widgets/keyboard_policy.dart';
 import 'widgets/main_shell.dart';
@@ -65,7 +66,8 @@ class _LumarAppState extends State<LumarApp> {
               GlobalCupertinoLocalizations.delegate
             ],
             builder: (context, child) => AppNavigationRegion(
-                child: KeyboardPolicy(
+              onBackMouseButton: () => workspace.open(WorkspaceRouteIds.dashboard),
+              child: KeyboardPolicy(
                     uiScale: uiScale,
                     child: Directionality(
                         textDirection: TextDirection.rtl,
