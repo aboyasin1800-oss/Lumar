@@ -8,7 +8,8 @@ import 'screens/login_screen.dart';
 import 'services/auth_state.dart';
 import 'services/theme_state.dart';
 import 'services/ui_scale_state.dart';
-import 'services/sidebar_state.dart';
+import 'services/workspace_controller.dart';
+import 'screens/module_screens.dart';
 import 'widgets/keyboard_policy.dart';
 import 'widgets/main_shell.dart';
 
@@ -24,19 +25,34 @@ class _LumarAppState extends State<LumarApp> {
   final auth = AuthState();
   final themeState = ThemeState();
   final uiScale = UiScaleState();
-  final sidebarState = SidebarState();
+  late final WorkspaceController workspace;
   @override
   void initState() {
     super.initState();
+    workspace = WorkspaceController(
+      registry: workspaceRegistry,
+      auth: auth,
+      themeState: themeState,
+      uiScale: uiScale,
+    );
     auth.initialize();
     themeState.initialize();
     uiScale.initialize();
-    sidebarState.initialize();
+    workspace.initialize();
+  }
+
+  @override
+  void dispose() {
+    workspace.dispose();
+    auth.dispose();
+    themeState.dispose();
+    uiScale.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-      listenable: Listenable.merge([auth, themeState, uiScale, sidebarState]),
+      listenable: Listenable.merge([auth, themeState, uiScale, workspace]),
       builder: (context, _) => MaterialApp(
             title: 'لومار لإدارة الأعمال',
             navigatorKey: AppNavigation.navigatorKey,
@@ -63,7 +79,7 @@ class _LumarAppState extends State<LumarApp> {
             home: !auth.initialized ||
                     !themeState.initialized ||
                     !uiScale.initialized ||
-                    !sidebarState.initialized
+                    !workspace.initialized
                 ? const Scaffold(
                     body: Center(child: CircularProgressIndicator()))
                 : auth.signedIn
@@ -71,10 +87,10 @@ class _LumarAppState extends State<LumarApp> {
                         auth: auth,
                         themeState: themeState,
                         uiScale: uiScale,
-                        sidebarState: sidebarState)
+                        workspace: workspace)
                     : LoginScreen(auth: auth),
             onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(
-                settings, auth, themeState, uiScale, sidebarState),
+              settings, auth, themeState, uiScale, workspace),
           ));
 }
 

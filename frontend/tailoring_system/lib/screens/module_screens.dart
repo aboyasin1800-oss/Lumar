@@ -8,7 +8,8 @@ import '../services/auth_state.dart';
 import '../services/theme_state.dart';
 import '../services/ui_scale_state.dart';
 import '../core/app_navigation.dart';
-import '../core/app_routes.dart';
+import '../services/workspace_controller.dart';
+import '../services/workspace_registry.dart';
 import 'customers_screen.dart';
 import 'employees_screen.dart';
 import 'financial/finance_views.dart';
@@ -25,6 +26,8 @@ import 'settings_screen.dart';
 import 'settings/user_guide_screen.dart';
 import 'settings/points_settings_screen.dart';
 import 'settings/piece_point_settings_screen.dart';
+import 'settings/imported_product_loyalty_point_settings_screen.dart';
+import 'settings/ready_made_product_loyalty_point_settings_screen.dart';
 import 'loyalty/loyalty_dashboard_screen.dart';
 import 'loyalty/loyalty_redemption_screen.dart';
 import 'loyalty/loyalty_redemptions_history_screen.dart';
@@ -41,8 +44,9 @@ import 'referral/referral_tree_screen.dart';
 import 'lumar_erp_logo_showcase_screen.dart';
 
 Widget screenForIndex(
-    int index, AuthState auth, ThemeState themeState, UiScaleState uiScale) {
-  if (index == 0) return const DashboardScreen();
+    int index, AuthState auth, ThemeState themeState, UiScaleState uiScale,
+    {WorkspaceController? workspaceController}) {
+  if (index == 0) return DashboardScreen(workspace: workspaceController);
   if (index == 1) return const CustomerPage();
   if (index == 2) return const SalesScreen();
   if (index == 3) return const OrdersScreen();
@@ -71,6 +75,8 @@ Widget screenForIndex(
   if (index == 36) return const VipLevelsScreen();
   if (index == 37) return const PointsSettingsScreen();
   if (index == 38) return const PiecePointSettingsScreen();
+  if (index == 39) return const ReadyMadeProductLoyaltyPointSettingsScreen();
+  if (index == 40) return const ImportedProductLoyaltyPointSettingsScreen();
   if (index == 18) {
     return SettingsScreen(auth: auth, themeState: themeState, uiScale: uiScale);
   }
@@ -193,8 +199,83 @@ const _moduleItems = <int, List<ModuleSectionItem>>{
   ],
 };
 
+WorkspaceRouteDefinition _indexedWorkspaceDefinition({
+  required int index,
+  required String routeId,
+  required String title,
+  required IconData icon,
+  WorkspaceStatePolicy statePolicy = WorkspaceStatePolicy.keepAlive,
+  WorkspacePerformanceClass performanceClass = WorkspacePerformanceClass.light,
+}) {
+  return workspaceDefinition(
+    routeId: routeId,
+    title: title,
+    icon: icon,
+    statePolicy: statePolicy,
+    performanceClass: performanceClass,
+    factory: (context) => screenForIndex(
+      index,
+      context.auth,
+      context.themeState,
+      context.uiScale,
+      workspaceController: context.controller,
+    ),
+  );
+}
+
+final workspaceRegistry = <WorkspaceRouteDefinition>[
+  _indexedWorkspaceDefinition(
+    index: 0,
+    routeId: WorkspaceRouteIds.dashboard,
+    title: 'لوحة التحكم',
+    icon: Icons.dashboard_outlined,
+  ),
+  _indexedWorkspaceDefinition(index: 1, routeId: '/customers', title: 'العملاء', icon: Icons.people_outline),
+  _indexedWorkspaceDefinition(index: 2, routeId: '/sales', title: 'المبيعات', icon: Icons.point_of_sale_outlined),
+  _indexedWorkspaceDefinition(index: 3, routeId: '/orders', title: 'الطلبات', icon: Icons.receipt_long_outlined),
+  _indexedWorkspaceDefinition(index: 4, routeId: '/measurements', title: 'القياسات', icon: Icons.straighten_outlined),
+  _indexedWorkspaceDefinition(index: 5, routeId: '/production', title: 'الإنتاج', icon: Icons.precision_manufacturing_outlined),
+  _indexedWorkspaceDefinition(index: 6, routeId: '/printing', title: 'الطباعة', icon: Icons.print_outlined),
+  _indexedWorkspaceDefinition(index: 7, routeId: '/inventory', title: 'المخزون', icon: Icons.inventory_2_outlined),
+  _indexedWorkspaceDefinition(index: 8, routeId: '/purchasing', title: 'المشتريات', icon: Icons.shopping_cart_outlined),
+  _indexedWorkspaceDefinition(index: 9, routeId: '/employees', title: 'الموظفون', icon: Icons.badge_outlined),
+  _indexedWorkspaceDefinition(index: 10, routeId: '/payroll', title: 'الرواتب', icon: Icons.payments_outlined),
+  _indexedWorkspaceDefinition(index: 11, routeId: '/employee-draws', title: 'سلف الموظفين', icon: Icons.account_balance_wallet_outlined),
+  _indexedWorkspaceDefinition(index: 12, routeId: '/finance', title: 'المالية', icon: Icons.account_balance_outlined),
+  _indexedWorkspaceDefinition(index: 13, routeId: '/pricing', title: 'التسعير', icon: Icons.sell_outlined),
+  _indexedWorkspaceDefinition(index: 14, routeId: '/loyalty', title: 'الولاء', icon: Icons.workspace_premium_outlined),
+  _indexedWorkspaceDefinition(index: 15, routeId: '/messages', title: 'الرسائل', icon: Icons.forum_outlined),
+  _indexedWorkspaceDefinition(index: 16, routeId: '/reports', title: 'التقارير', icon: Icons.analytics_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable, performanceClass: WorkspacePerformanceClass.heavy),
+  _indexedWorkspaceDefinition(index: 17, routeId: '/administration', title: 'الإدارة', icon: Icons.admin_panel_settings_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 18, routeId: '/settings', title: 'الإعدادات', icon: Icons.settings_outlined),
+  _indexedWorkspaceDefinition(index: 19, routeId: '/ready-made-production', title: 'الإنتاج الجاهز من منتجاتنا', icon: Icons.checkroom_outlined),
+  _indexedWorkspaceDefinition(index: 20, routeId: '/factory-monitoring', title: 'مراقبة المصنع', icon: Icons.factory_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable, performanceClass: WorkspacePerformanceClass.heavy),
+  _indexedWorkspaceDefinition(index: 21, routeId: '/delivery-dashboard', title: 'شاشة التسليم', icon: Icons.local_shipping_outlined),
+  _indexedWorkspaceDefinition(index: 22, routeId: '/design-system-demo', title: 'اختبار نظام التصميم', icon: Icons.palette_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 23, routeId: '/lumar-erp', title: 'لومار ERP', icon: Icons.auto_awesome_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 24, routeId: WorkspaceRouteIds.referralDashboard, title: 'الإحالات', icon: Icons.group_add_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 25, routeId: WorkspaceRouteIds.referralTree, title: 'شجرة الإحالة', icon: Icons.account_tree_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 26, routeId: WorkspaceRouteIds.referralHistory, title: 'سجل الإحالات', icon: Icons.history_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 27, routeId: WorkspaceRouteIds.referralCodes, title: 'أكواد الإحالة', icon: Icons.qr_code_2_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 28, routeId: WorkspaceRouteIds.referralRewards, title: 'مكافآت الإحالات', icon: Icons.card_giftcard_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 29, routeId: WorkspaceRouteIds.referralAnalytics, title: 'تحليلات الإحالات', icon: Icons.analytics_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable, performanceClass: WorkspacePerformanceClass.heavy),
+  _indexedWorkspaceDefinition(index: 30, routeId: WorkspaceRouteIds.loyaltyDashboard, title: 'لوحة الولاء', icon: Icons.workspace_premium_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 31, routeId: WorkspaceRouteIds.loyaltyTransactions, title: 'حركات الولاء', icon: Icons.receipt_long_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 32, routeId: WorkspaceRouteIds.loyaltyRedemption, title: 'استبدال النقاط', icon: Icons.redeem_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 33, routeId: WorkspaceRouteIds.loyaltyRedemptionsHistory, title: 'سجل استبدالات النقاط', icon: Icons.history_edu_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 34, routeId: WorkspaceRouteIds.loyaltyRewards, title: 'مكافآت الولاء', icon: Icons.card_giftcard_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 35, routeId: WorkspaceRouteIds.loyaltyRules, title: 'قواعد الولاء', icon: Icons.rule_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 36, routeId: WorkspaceRouteIds.vipLevels, title: 'مستويات كبار العملاء', icon: Icons.stars_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 37, routeId: WorkspaceRouteIds.pointsSettings, title: 'إعدادات النقاط', icon: Icons.tune_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 38, routeId: WorkspaceRouteIds.piecePointSettings, title: 'نقاط المبيعات التفصيل', icon: Icons.checkroom_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 39, routeId: WorkspaceRouteIds.readyMadeProductPointSettings, title: 'نقاط المبيعات الجاهزة من منتجاتنا', icon: Icons.storefront_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(index: 40, routeId: WorkspaceRouteIds.importedProductPointSettings, title: 'نقاط الأصناف المستوردة', icon: Icons.inventory_2_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+];
+
 class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({this.workspace, super.key});
+
+  final WorkspaceController? workspace;
 
   static const double _dashboardIconSize = 60;
   static const Color _lightCardBackground = Color(0xFFFFFFFF);
@@ -327,7 +408,7 @@ class DashboardScreen extends StatelessWidget {
           );
         }
         final moduleIndex = _modules[index];
-        final destination = AppRoutes.destinations[moduleIndex];
+        final destination = workspaceRegistry[moduleIndex];
         final cardTitle = switch (moduleIndex) {
           24 => 'الإحالات',
           30 => 'الولاء والنقاط',
@@ -341,8 +422,13 @@ class DashboardScreen extends StatelessWidget {
                 cardColor: cardColor,
                 borderColor: cardBorder,
                 outerShadows: cardShadows,
-                onTap: () =>
-                    AppNavigation.pushNamed(context, destination.route),
+                onTap: () {
+                  if (workspace != null) {
+                    workspace!.open(destination.routeId);
+                  } else {
+                    AppNavigation.pushNamed(context, destination.routeId);
+                  }
+                },
                 child: Icon(
                   destination.icon,
                   size: _dashboardIconSize,
