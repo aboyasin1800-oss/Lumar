@@ -8,6 +8,7 @@ public static class MeasurementCardPrintPolicy
     public const string PieceSold = "PieceSold";
     public const string Cash = "Cash";
     public const string Credit = "Credit";
+    public const string Donation = "Donation";
 
     public static bool IsReprintReason(string? value) => value is DamagedCard or LostCard or DamagedPiece or PieceSold;
 
@@ -44,7 +45,8 @@ public static class MeasurementCardPrintPolicy
         {
             "cash" or "نقداً" or "نقدا" => Cash,
             "credit" or "onaccount" or "آجل" => Credit,
-            _ => throw new ArgumentException("طريقة الدفع يجب أن تكون نقداً أو آجلاً.")
+            "donation" or "تبرعاً" or "تبرعا" => Donation,
+            _ => throw new ArgumentException("طريقة الدفع يجب أن تكون نقداً أو آجلاً أو تبرعاً.")
         };
     }
 }

@@ -335,7 +335,14 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
       for (final order in widget.orders) {
         if (order.isCancelled) continue;
         final pieces = await _fetchOrderPiecesOnce(order);
-        final unprinted = pieces.where((piece) => !piece.isPrinted).length;
+        for (final piece in pieces) {
+          try {
+            await _fetchPrintHistory(piece);
+          } catch (_) {
+            // Keep the established PieceStatus fallback if history is unavailable.
+          }
+        }
+        final unprinted = pieces.where((piece) => !_isPiecePrinted(piece)).length;
         totalUnprintedCards += unprinted;
       }
 
@@ -677,6 +684,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
       _OrderPieceDetail piece) async {
     final employees = await _fetchEmployees();
     final customers = piece.isReadyMade ? await _fetchCustomers() : const <_CustomerOption>[];
+    if (!mounted) return null;
     final damageController = TextEditingController();
     final saleAmountController = TextEditingController();
     final notesController = TextEditingController();
@@ -704,7 +712,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                     const Text('اختر سبب إعادة الطباعة قبل المتابعة.'),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: reasonCode,
+                      initialValue: reasonCode,
                       decoration: const InputDecoration(
                         labelText: 'سبب إعادة الطباعة',
                         border: OutlineInputBorder(),
@@ -737,7 +745,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<int>(
-                        value: responsibleEmployeeId,
+                        initialValue: responsibleEmployeeId,
                         decoration: const InputDecoration(
                           labelText: 'الموظف المسؤول',
                           border: OutlineInputBorder(),
@@ -768,7 +776,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: paymentType,
+                        initialValue: paymentType,
                         decoration: const InputDecoration(
                           labelText: 'طريقة الدفع',
                           border: OutlineInputBorder(),
@@ -778,6 +786,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                               value: 'Cash', child: Text('نقداً')),
                           DropdownMenuItem(
                               value: 'Credit', child: Text('آجلاً')),
+                            DropdownMenuItem(
+                              value: 'Donation', child: Text('تبرعاً')),
                         ],
                         onChanged: (value) => setDialogState(() {
                           paymentType = value ?? 'Cash';
@@ -787,7 +797,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                       if (piece.isReadyMade) ...[
                         const SizedBox(height: 12),
                         DropdownButtonFormField<int>(
-                          value: saleCustomerId,
+                          initialValue: saleCustomerId,
                           decoration: const InputDecoration(
                             labelText: 'عميل البيع',
                             border: OutlineInputBorder(),
@@ -890,12 +900,14 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     _PrintHistoryRecord? prepared;
     try {
       prepared = await _preparePrint(piece, form);
+      if (!mounted) return;
+      final copyNumber = prepared.copyNumber;
       await _PrintService.execute(
         context: context,
         piece: piece,
         header: widget.header,
         target: target,
-        copyNumber: prepared.copyNumber,
+        copyNumber: copyNumber,
       );
       await _completePrint(piece, prepared.printHistoryId);
       if (mounted) {
@@ -903,8 +915,11 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
           SnackBar(
               content: Text(form == null
                   ? 'تم اعتماد الطباعة الأولى.'
-                  : 'تم اعتماد إعادة الطباعة بالنسخة ${prepared!.copyNumber}.')),
+                  : 'تم اعتماد إعادة الطباعة بالنسخة $copyNumber.')),
         );
+        if (form == null && _allUnprintedCards > 0) {
+          setState(() => _allUnprintedCards -= 1);
+        }
       }
     } catch (error) {
       if (prepared != null && prepared.printStatus == 'Reserved') {
@@ -931,6 +946,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     try {
       history = await _fetchPrintHistory(piece);
     } catch (error) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('تعذر قراءة سجل الطباعة: $error')));
       return;
@@ -942,6 +958,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
       try {
         form = await _showReprintForm(piece);
       } catch (error) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('تعذر تحميل بيانات إعادة الطباعة: $error')));
         return;
@@ -1312,6 +1329,7 @@ class _PrintService {
     }
 
     final controller = TextEditingController(text: defaultDirectory.path);
+    if (!context.mounted) return defaultDirectory.path;
     final selectedPath = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
@@ -1369,12 +1387,14 @@ class _PrintService {
     required _OrderPieceDetail piece,
     required _MeasurementHeaderSettings header,
     required _PrintTarget target,
+    int copyNumber = 1,
   }) async {
     final messenger = ScaffoldMessenger.maybeOf(context);
     switch (target) {
       case _PrintTarget.pdfPreview:
         final bytes =
-            await _MeasurementCardPdfGenerator.generate(piece, header);
+            await _MeasurementCardPdfGenerator.generate(piece, header,
+                copyNumber: copyNumber);
         await Printing.layoutPdf(onLayout: (_) => bytes);
         messenger?.showSnackBar(
           const SnackBar(content: Text('تم تجهيز معاينة PDF لبطاقة المقاسات.')),
@@ -1382,11 +1402,13 @@ class _PrintService {
         break;
       case _PrintTarget.savePdf:
         final bytes =
-            await _MeasurementCardPdfGenerator.generate(piece, header);
+            await _MeasurementCardPdfGenerator.generate(piece, header,
+                copyNumber: copyNumber);
+        if (!context.mounted) return;
         final directoryPath = await _resolveSaveDirectory(context);
         final fileName =
             'measurement_card_${DateTime.now().millisecondsSinceEpoch}.pdf';
-        final fullPath = '${directoryPath}${Platform.pathSeparator}$fileName';
+        final fullPath = '$directoryPath${Platform.pathSeparator}$fileName';
         final file = File(fullPath);
         await file.writeAsBytes(bytes);
         messenger?.showSnackBar(
@@ -1395,19 +1417,20 @@ class _PrintService {
         break;
       case _PrintTarget.officePrinter:
         final bytes =
-            await _MeasurementCardPdfGenerator.generate(piece, header);
+            await _MeasurementCardPdfGenerator.generate(piece, header,
+                copyNumber: copyNumber);
         await Printing.layoutPdf(onLayout: (_) => bytes);
         messenger?.showSnackBar(
           const SnackBar(
               content:
-                  Text('تم إرسال الملف إلى Print Dialog للطباعة الورقية.')),
+                Text('تم إرسال البطاقة إلى نافذة الطباعة المكتبية.')),
         );
         break;
       case _PrintTarget.labelPrinter:
         messenger?.showSnackBar(
           const SnackBar(
             content: Text(
-                'طباعة Label Printer مستعدة للتوسعة لاحقاً؛ لا يوجد تكامل فعلي للطابعة الحالية في هذه المرحلة.'),
+              'طباعة الملصقات قابلة للتوسعة لاحقاً؛ لا يوجد تكامل فعلي للطابعة الحالية في هذه المرحلة.'),
           ),
         );
         break;
@@ -1705,9 +1728,23 @@ class _MeasurementCardPreview extends StatelessWidget {
 }
 
 class _MeasurementCardPdfGenerator {
+  static String _copyLabel(int copyNumber) {
+    switch (copyNumber) {
+      case 2:
+        return 'النسخة الثانية';
+      case 3:
+        return 'النسخة الثالثة';
+      case 4:
+        return 'النسخة الرابعة';
+      default:
+        return copyNumber > 1 ? 'النسخة رقم $copyNumber' : '';
+    }
+  }
+
   static Future<Uint8List> generate(
     _OrderPieceDetail piece,
     _MeasurementHeaderSettings header,
+    {int copyNumber = 1}
   ) async {
     final pdf = pw.Document();
     final arabicFont = await DocumentPrintSupport.loadArabicFont();
@@ -1900,6 +1937,23 @@ class _MeasurementCardPdfGenerator {
           }
 
           rows.add(pw.Divider(thickness: 1));
+          if (copyNumber > 1) {
+            rows.add(
+              pw.Align(
+                alignment: pw.Alignment.centerRight,
+                child: pw.Text(
+                  _copyLabel(copyNumber),
+                  textDirection: pw.TextDirection.rtl,
+                  style: pw.TextStyle(
+                    font: arabicFont,
+                    fontSize: 12,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.red,
+                  ),
+                ),
+              ),
+            );
+          }
           rows.add(pw.SizedBox(height: 0));
 
           rows.add(
@@ -2539,4 +2593,108 @@ class _OrderPieceDetail {
   String get deliveryDateText => deliveryDate == null
       ? '-'
       : DateFormat('yyyy/MM/dd').format(deliveryDate!);
+}
+
+class _PrintHistoryRecord {
+  const _PrintHistoryRecord({
+    required this.printHistoryId,
+    required this.printStatus,
+    required this.copyNumber,
+    required this.trackingCode,
+    required this.createdAt,
+    this.printedAtUtc,
+    this.reprintReasonCode,
+    this.damageReason,
+    this.responsibleEmployeeId,
+    this.saleAmount,
+    this.salePaymentType,
+    this.financialTransactionReference,
+  });
+
+  factory _PrintHistoryRecord.fromJson(Map<String, dynamic> json) {
+    int? optionalInt(String key) => (json[key] as num?)?.toInt();
+    double? optionalDouble(String key) => (json[key] as num?)?.toDouble();
+    DateTime? optionalDate(String key) =>
+        DateTime.tryParse((json[key] ?? '').toString());
+
+    return _PrintHistoryRecord(
+      printHistoryId: (json['printHistoryId'] as num?)?.toInt() ?? 0,
+      printStatus: (json['printStatus'] ?? '').toString(),
+      copyNumber: (json['copyNumber'] as num?)?.toInt() ?? 0,
+      trackingCode: (json['trackingCode'] ?? '').toString(),
+      createdAt: optionalDate('createdAt') ?? DateTime.now(),
+      printedAtUtc: optionalDate('printedAtUtc'),
+      reprintReasonCode: json['reprintReasonCode']?.toString(),
+      damageReason: json['damageReason']?.toString(),
+      responsibleEmployeeId: optionalInt('responsibleEmployeeId'),
+      saleAmount: optionalDouble('saleAmount'),
+      salePaymentType: json['salePaymentType']?.toString(),
+      financialTransactionReference:
+          json['financialTransactionReference']?.toString(),
+    );
+  }
+
+  final int printHistoryId;
+  final String printStatus;
+  final int copyNumber;
+  final String trackingCode;
+  final DateTime createdAt;
+  final DateTime? printedAtUtc;
+  final String? reprintReasonCode;
+  final String? damageReason;
+  final int? responsibleEmployeeId;
+  final double? saleAmount;
+  final String? salePaymentType;
+  final String? financialTransactionReference;
+}
+
+class _EmployeeOption {
+  const _EmployeeOption({required this.id, required this.code, required this.name, required this.isActive});
+
+  factory _EmployeeOption.fromJson(Map<String, dynamic> json) {
+    final status = (json['status'] ?? '').toString().trim().toLowerCase();
+    return _EmployeeOption(
+      id: (json['employeeId'] as num?)?.toInt() ?? 0,
+      code: (json['employeeCode'] ?? '').toString(),
+      name: (json['employeeName'] ?? json['fullName'] ?? '').toString(),
+      isActive: json['isActive'] as bool? ?? status == 'active',
+    );
+  }
+
+  final int id;
+  final String code;
+  final String name;
+  final bool isActive;
+}
+
+class _CustomerOption {
+  const _CustomerOption({required this.id, required this.name});
+
+  factory _CustomerOption.fromJson(Map<String, dynamic> json) => _CustomerOption(
+        id: (json['customerId'] as num?)?.toInt() ?? 0,
+        name: (json['customerName'] ?? '').toString(),
+      );
+
+  final int id;
+  final String name;
+}
+
+class _ReprintFormData {
+  const _ReprintFormData({
+    required this.reasonCode,
+    this.damageReason,
+    this.responsibleEmployeeId,
+    this.notes,
+    this.saleAmount,
+    this.paymentType,
+    this.saleCustomerId,
+  });
+
+  final String reasonCode;
+  final String? damageReason;
+  final int? responsibleEmployeeId;
+  final String? notes;
+  final double? saleAmount;
+  final String? paymentType;
+  final int? saleCustomerId;
 }

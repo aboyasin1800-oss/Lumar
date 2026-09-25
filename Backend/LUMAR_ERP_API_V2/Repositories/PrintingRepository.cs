@@ -18,7 +18,9 @@ public sealed class PrintingRepository(
                SalePaymentType, SaleCustomerId, FinancialTransactionReference,
                FinancialTransactionId, JournalEntryId, CustomerLedgerEntryId, PaymentId,
                PaymentReferenceNumber, PaymentFinancialTransactionId, PaymentJournalEntryId,
-               PaymentCustomerLedgerEntryId, CompletedAtUtc, FailedAtUtc, FailureReason, CreatedAt
+               PaymentCustomerLedgerEntryId, WaiverReferenceNumber, WaiverFinancialTransactionId,
+               WaiverJournalEntryId, WaiverCustomerLedgerEntryId, CompletedAtUtc, FailedAtUtc,
+               FailureReason, CreatedAt
         FROM dbo.MeasurementCardPrintHistory";
 
     public async Task<IReadOnlyList<MeasurementCardPrintHistoryDto>> GetPieceHistoryAsync(
@@ -227,6 +229,10 @@ public sealed class PrintingRepository(
             var paymentFinancialTransactionId = history.PaymentFinancialTransactionId;
             var paymentJournalEntryId = history.PaymentJournalEntryId;
             var paymentCustomerLedgerEntryId = history.PaymentCustomerLedgerEntryId;
+            var waiverReference = history.WaiverReferenceNumber;
+            var waiverFinancialTransactionId = history.WaiverFinancialTransactionId;
+            var waiverJournalEntryId = history.WaiverJournalEntryId;
+            var waiverCustomerLedgerEntryId = history.WaiverCustomerLedgerEntryId;
 
             if (history.ReprintReasonCode == MeasurementCardPrintPolicy.PieceSold)
             {
@@ -305,6 +311,34 @@ public sealed class PrintingRepository(
                         description,
                         cancellationToken);
                 }
+                else if (history.SalePaymentType == MeasurementCardPrintPolicy.Donation)
+                {
+                    waiverReference = $"{revenueReference}:CustomerBalanceWaiver";
+                    waiverCustomerLedgerEntryId = await EnsureCustomerLedgerEntryAsync(
+                        connection,
+                        transaction,
+                        saleCustomerId,
+                        waiverReference,
+                        0m,
+                        history.SaleAmount.Value,
+                        cancellationToken);
+                    waiverFinancialTransactionId = await EnsureFinancialTransactionAsync(
+                        connection,
+                        transaction,
+                        waiverReference,
+                        "CustomerBalanceWaiver",
+                        history.SaleAmount.Value,
+                        description,
+                        cancellationToken);
+                    waiverJournalEntryId = await EnsureJournalEntryAsync(
+                        connection,
+                        transaction,
+                        waiverReference,
+                        "CustomerBalanceWaiver",
+                        history.SaleAmount.Value,
+                        description,
+                        cancellationToken);
+                }
             }
 
             const string updateSql = @"
@@ -320,6 +354,10 @@ public sealed class PrintingRepository(
                     PaymentFinancialTransactionId = @paymentFinancialTransactionId,
                     PaymentJournalEntryId = @paymentJournalEntryId,
                     PaymentCustomerLedgerEntryId = @paymentCustomerLedgerEntryId,
+                    WaiverReferenceNumber = @waiverReference,
+                    WaiverFinancialTransactionId = @waiverFinancialTransactionId,
+                    WaiverJournalEntryId = @waiverJournalEntryId,
+                    WaiverCustomerLedgerEntryId = @waiverCustomerLedgerEntryId,
                     FailureReason = NULL
                 WHERE PrintHistoryId = @printHistoryId AND PrintStatus = N'Reserved';";
             await using var update = new SqlCommand(updateSql, connection, transaction);
@@ -331,6 +369,10 @@ public sealed class PrintingRepository(
             AddNullable(update, "@paymentFinancialTransactionId", paymentFinancialTransactionId);
             AddNullable(update, "@paymentJournalEntryId", paymentJournalEntryId);
             AddNullable(update, "@paymentCustomerLedgerEntryId", paymentCustomerLedgerEntryId);
+            AddNullable(update, "@waiverReference", waiverReference);
+            AddNullable(update, "@waiverFinancialTransactionId", waiverFinancialTransactionId);
+            AddNullable(update, "@waiverJournalEntryId", waiverJournalEntryId);
+            AddNullable(update, "@waiverCustomerLedgerEntryId", waiverCustomerLedgerEntryId);
             update.Parameters.AddWithValue("@printHistoryId", printHistoryId);
             if (await update.ExecuteNonQueryAsync(cancellationToken) != 1)
                 throw new InvalidOperationException("تعذر اعتماد سجل الطباعة.");
@@ -449,7 +491,7 @@ public sealed class PrintingRepository(
     private static string BuildRevenueReference(int printHistoryId) => $"MC-PIECE-SALE-{printHistoryId:D8}";
 
     private static string BuildSaleDescription(string customerName, string orderNumber, string trackingCode, decimal amount, int copyNumber) =>
-        $"بيع القطعة ذات رمز التتبع {trackingCode} العائدة للطلب {orderNumber} والعميل {customerName} بقيمة {amount:0.00}، مع إصدار بطاقة بديلة بالنسخة {MeasurementCardPrintPolicy.CopyLabel(copyNumber)}.";
+        $"بيع القطعة ذات رمز التتبع {trackingCode} العائدة للطلب {orderNumber} والعميل {customerName} بقيمة {amount:0.00}، مع إصدار بطاقة بديلة: {MeasurementCardPrintPolicy.CopyLabel(copyNumber)}.";
 
     private async Task<int> EnsureFinancialTransactionAsync(
         SqlConnection connection,
@@ -812,10 +854,14 @@ public sealed class PrintingRepository(
         reader.NullableInt32("PaymentFinancialTransactionId"),
         reader.NullableInt32("PaymentJournalEntryId"),
         reader.NullableInt32("PaymentCustomerLedgerEntryId"),
+        reader.NullableString("WaiverReferenceNumber"),
+        reader.NullableInt32("WaiverFinancialTransactionId"),
+        reader.NullableInt32("WaiverJournalEntryId"),
+        reader.NullableInt32("WaiverCustomerLedgerEntryId"),
         reader.NullableDateTime("CompletedAtUtc"),
         reader.NullableDateTime("FailedAtUtc"),
         reader.NullableString("FailureReason"),
-        reader.GetDateTime(33));
+        reader.GetDateTime(37));
 
     private static string? NormalizeOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 

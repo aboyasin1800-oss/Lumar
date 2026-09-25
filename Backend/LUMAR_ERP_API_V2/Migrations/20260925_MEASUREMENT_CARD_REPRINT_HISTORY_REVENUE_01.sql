@@ -36,6 +36,10 @@ BEGIN
         PaymentFinancialTransactionId int NULL,
         PaymentJournalEntryId int NULL,
         PaymentCustomerLedgerEntryId int NULL,
+        WaiverReferenceNumber nvarchar(200) NULL,
+        WaiverFinancialTransactionId int NULL,
+        WaiverJournalEntryId int NULL,
+        WaiverCustomerLedgerEntryId int NULL,
         CompletedAtUtc datetime2 NULL,
         FailedAtUtc datetime2 NULL,
         FailureReason nvarchar(500) NULL,
@@ -56,6 +60,10 @@ BEGIN
         CONSTRAINT FK_MeasurementCardPrintHistory_PaymentFinancialTransactions FOREIGN KEY (PaymentFinancialTransactionId) REFERENCES dbo.FinancialTransactions(FinancialTransactionId),
         CONSTRAINT FK_MeasurementCardPrintHistory_PaymentJournalEntries FOREIGN KEY (PaymentJournalEntryId) REFERENCES dbo.JournalEntries(JournalEntryId),
         CONSTRAINT FK_MeasurementCardPrintHistory_PaymentCustomerLedgerEntries FOREIGN KEY (PaymentCustomerLedgerEntryId) REFERENCES dbo.CustomerLedgerEntries(CustomerLedgerEntryId),
+        CONSTRAINT FK_MeasurementCardPrintHistory_Payments FOREIGN KEY (PaymentId) REFERENCES dbo.Payments(PaymentID),
+        CONSTRAINT FK_MeasurementCardPrintHistory_WaiverFinancialTransactions FOREIGN KEY (WaiverFinancialTransactionId) REFERENCES dbo.FinancialTransactions(FinancialTransactionId),
+        CONSTRAINT FK_MeasurementCardPrintHistory_WaiverJournalEntries FOREIGN KEY (WaiverJournalEntryId) REFERENCES dbo.JournalEntries(JournalEntryId),
+        CONSTRAINT FK_MeasurementCardPrintHistory_WaiverCustomerLedgerEntries FOREIGN KEY (WaiverCustomerLedgerEntryId) REFERENCES dbo.CustomerLedgerEntries(CustomerLedgerEntryId),
         CONSTRAINT CK_MeasurementCardPrintHistory_PrintStatus CHECK (PrintStatus IN (N'Reserved', N'Completed', N'Failed')),
         CONSTRAINT CK_MeasurementCardPrintHistory_Identity CHECK
         (
@@ -78,7 +86,7 @@ BEGIN
         ),
         CONSTRAINT CK_MeasurementCardPrintHistory_SaleData CHECK
         (
-            (ReprintReasonCode = N'PieceSold' AND SaleAmount > 0 AND SalePaymentType IN (N'Cash', N'Credit') AND SaleCustomerId IS NOT NULL)
+            (ReprintReasonCode = N'PieceSold' AND SaleAmount > 0 AND SalePaymentType IN (N'Cash', N'Credit', N'Donation') AND SaleCustomerId IS NOT NULL)
             OR
             (ReprintReasonCode <> N'PieceSold' OR ReprintReasonCode IS NULL) AND SaleAmount IS NULL AND SalePaymentType IS NULL AND SaleCustomerId IS NULL
         ),
@@ -98,6 +106,15 @@ BEGIN
     EXEC(N'ALTER TABLE dbo.Payments ADD PrintHistoryId int NULL;');
 END;
 
+IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'WaiverReferenceNumber') IS NULL
+    EXEC(N'ALTER TABLE dbo.MeasurementCardPrintHistory ADD WaiverReferenceNumber nvarchar(200) NULL;');
+IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'WaiverFinancialTransactionId') IS NULL
+    EXEC(N'ALTER TABLE dbo.MeasurementCardPrintHistory ADD WaiverFinancialTransactionId int NULL;');
+IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'WaiverJournalEntryId') IS NULL
+    EXEC(N'ALTER TABLE dbo.MeasurementCardPrintHistory ADD WaiverJournalEntryId int NULL;');
+IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'WaiverCustomerLedgerEntryId') IS NULL
+    EXEC(N'ALTER TABLE dbo.MeasurementCardPrintHistory ADD WaiverCustomerLedgerEntryId int NULL;');
+
 IF EXISTS
 (
     SELECT 1
@@ -108,10 +125,26 @@ BEGIN
     EXEC(N'ALTER TABLE dbo.Payments ALTER COLUMN OrderID int NULL;');
 END;
 
+IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_MeasurementCardPrintHistory_SaleData' AND parent_object_id = OBJECT_ID(N'dbo.MeasurementCardPrintHistory'))
+    EXEC(N'ALTER TABLE dbo.MeasurementCardPrintHistory DROP CONSTRAINT CK_MeasurementCardPrintHistory_SaleData;');
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_MeasurementCardPrintHistory_SaleData' AND parent_object_id = OBJECT_ID(N'dbo.MeasurementCardPrintHistory'))
+    EXEC(N'ALTER TABLE dbo.MeasurementCardPrintHistory ADD CONSTRAINT CK_MeasurementCardPrintHistory_SaleData CHECK ((ReprintReasonCode = N''PieceSold'' AND SaleAmount > 0 AND SalePaymentType IN (N''Cash'', N''Credit'', N''Donation'') AND SaleCustomerId IS NOT NULL) OR ((ReprintReasonCode <> N''PieceSold'' OR ReprintReasonCode IS NULL) AND SaleAmount IS NULL AND SalePaymentType IS NULL AND SaleCustomerId IS NULL));');
+
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_Payments_MeasurementCardPrintHistory')
 BEGIN
     EXEC(N'ALTER TABLE dbo.Payments ADD CONSTRAINT FK_Payments_MeasurementCardPrintHistory FOREIGN KEY (PrintHistoryId) REFERENCES dbo.MeasurementCardPrintHistory(PrintHistoryId);');
 END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_MeasurementCardPrintHistory_Payments')
+BEGIN
+    EXEC(N'ALTER TABLE dbo.MeasurementCardPrintHistory ADD CONSTRAINT FK_MeasurementCardPrintHistory_Payments FOREIGN KEY (PaymentId) REFERENCES dbo.Payments(PaymentID);');
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_MeasurementCardPrintHistory_WaiverFinancialTransactions')
+    EXEC(N'ALTER TABLE dbo.MeasurementCardPrintHistory ADD CONSTRAINT FK_MeasurementCardPrintHistory_WaiverFinancialTransactions FOREIGN KEY (WaiverFinancialTransactionId) REFERENCES dbo.FinancialTransactions(FinancialTransactionId);');
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_MeasurementCardPrintHistory_WaiverJournalEntries')
+    EXEC(N'ALTER TABLE dbo.MeasurementCardPrintHistory ADD CONSTRAINT FK_MeasurementCardPrintHistory_WaiverJournalEntries FOREIGN KEY (WaiverJournalEntryId) REFERENCES dbo.JournalEntries(JournalEntryId);');
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_MeasurementCardPrintHistory_WaiverCustomerLedgerEntries')
+    EXEC(N'ALTER TABLE dbo.MeasurementCardPrintHistory ADD CONSTRAINT FK_MeasurementCardPrintHistory_WaiverCustomerLedgerEntries FOREIGN KEY (WaiverCustomerLedgerEntryId) REFERENCES dbo.CustomerLedgerEntries(CustomerLedgerEntryId);');
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_MeasurementCardPrintHistory_PrintRequestId' AND object_id = OBJECT_ID(N'dbo.MeasurementCardPrintHistory'))
     CREATE UNIQUE INDEX UX_MeasurementCardPrintHistory_PrintRequestId ON dbo.MeasurementCardPrintHistory(PrintRequestId);
@@ -130,6 +163,9 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_MeasurementCardPrintH
     CREATE UNIQUE INDEX UX_MeasurementCardPrintHistory_FinancialTransactionReference
         ON dbo.MeasurementCardPrintHistory(FinancialTransactionReference)
         WHERE FinancialTransactionReference IS NOT NULL;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_MeasurementCardPrintHistory_WaiverReferenceNumber' AND object_id = OBJECT_ID(N'dbo.MeasurementCardPrintHistory'))
+    EXEC(N'CREATE UNIQUE INDEX UX_MeasurementCardPrintHistory_WaiverReferenceNumber ON dbo.MeasurementCardPrintHistory(WaiverReferenceNumber) WHERE WaiverReferenceNumber IS NOT NULL;');
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_Payments_MeasurementCardPrintHistory' AND object_id = OBJECT_ID(N'dbo.Payments'))
     EXEC(N'CREATE UNIQUE INDEX UX_Payments_MeasurementCardPrintHistory ON dbo.Payments(PrintHistoryId) WHERE PrintHistoryId IS NOT NULL;');

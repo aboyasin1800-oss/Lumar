@@ -34,6 +34,7 @@ public sealed class MeasurementCardPrintPolicyTests
     {
         Assert.Equal(MeasurementCardPrintPolicy.Cash, MeasurementCardPrintPolicy.NormalizePaymentType("نقداً"));
         Assert.Equal(MeasurementCardPrintPolicy.Credit, MeasurementCardPrintPolicy.NormalizePaymentType("آجل"));
-        Assert.Throws<ArgumentException>(() => MeasurementCardPrintPolicy.NormalizePaymentType("Donation"));
+        Assert.Equal(MeasurementCardPrintPolicy.Donation, MeasurementCardPrintPolicy.NormalizePaymentType("تبرعاً"));
+        Assert.Throws<ArgumentException>(() => MeasurementCardPrintPolicy.NormalizePaymentType("غير معروف"));
     }
 }
