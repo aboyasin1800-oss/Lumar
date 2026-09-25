@@ -93,8 +93,10 @@ public sealed class CancelledPieceDispositionRepository(OperationalSqlConnection
                 throw new InvalidOperationException("Unable to persist the cancellation disposition decision.");
             }
 
+            var savedDecision = Map(insertReader);
+            await insertReader.CloseAsync();
             await transaction.CommitAsync(ct);
-            return Map(insertReader);
+            return savedDecision;
         }
         catch
         {
@@ -245,8 +247,8 @@ public sealed class CancelledPieceDispositionRepository(OperationalSqlConnection
         if (!await reader.ReadAsync(ct)) return null;
 
         var pieceStatus = reader.GetString(3);
-        var trackingEventCount = reader.GetInt32(15);
-        var hasAssemblyStage = reader.GetInt32(16) == 1;
+        var trackingEventCount = reader.GetInt32(14);
+        var hasAssemblyStage = reader.GetInt32(15) == 1;
         var pieceStartedProduction = !string.Equals(pieceStatus, "New", StringComparison.OrdinalIgnoreCase) || trackingEventCount > 0;
 
         return new PieceTransferContext(
