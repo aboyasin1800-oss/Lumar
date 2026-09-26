@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="59f3725f-176f-4720-8ca6-480eeac6527c" name="LENOVO@YASIN-YASIN 2026-09-26 22:37:20" runUser="YASIN-YASIN\LENOVO" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-26T22:37:21.0259968+03:00" queuing="2026-09-26T22:37:21.0259979+03:00" start="2026-09-26T22:36:51.6832125+03:00" finish="2026-09-26T22:37:22.1347900+03:00" />
+  <TestSettings name="default" id="a89a3a08-4239-43db-9bdb-1cad98f7b7ea">
+    <Deployment runDeploymentRoot="LENOVO_YASIN-YASIN_2026-09-26_22_37_20" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="83bdfb4f-7e60-46f5-9e50-e77361945060" testId="42715384-ba42-8f0f-84e5-469e3b381a22" testName="LUMAR_ERP_API_V2.Tests.CustomerAdvanceApplicationIntegrationTests.ReadyForDelivery_WithPriorRevenueFlag_RejectsWithoutFinancialWrites" computerName="YASIN-YASIN" duration="00:00:00.5087461" startTime="2026-09-26T22:37:20.9512106+03:00" endTime="2026-09-26T22:37:21.3581019+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="83bdfb4f-7e60-46f5-9e50-e77361945060" />
+    <UnitTestResult executionId="1c26cf3c-a44f-4699-88fa-1afd80a1602a" testId="24c3cc37-a4ca-5f34-6396-4012c159c11c" testName="LUMAR_ERP_API_V2.Tests.CustomerAdvanceApplicationIntegrationTests.FullDelivery_AppliesMultipleAdvancesInPaymentOrder_LeavesExcessAndIsIdempotent" computerName="YASIN-YASIN" duration="00:00:08.4266020" startTime="2026-09-26T22:37:12.3379372+03:00" endTime="2026-09-26T22:37:20.8129022+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1c26cf3c-a44f-4699-88fa-1afd80a1602a" />
+    <UnitTestResult executionId="c9874821-318f-49a2-aa98-bcef81657528" testId="1b73c15c-b0ed-c220-91ae-c8f1a4526347" testName="LUMAR_ERP_API_V2.Tests.CustomerAdvanceApplicationIntegrationTests.FullDelivery_AppliesSingleAdvance_WithoutCashMovementOrLedgerWrite" computerName="YASIN-YASIN" duration="00:00:00.3280609" startTime="2026-09-26T22:37:21.3614318+03:00" endTime="2026-09-26T22:37:21.7119999+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c9874821-318f-49a2-aa98-bcef81657528" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.CustomerAdvanceApplicationIntegrationTests.FullDelivery_AppliesMultipleAdvancesInPaymentOrder_LeavesExcessAndIsIdempotent" storage="d:\yasin\_validation_output\delivery-settlement-live-failure-focused-tests\debug\net10.0\lumar_erp_api_v2.tests.dll" id="24c3cc37-a4ca-5f34-6396-4012c159c11c">
+      <Execution id="1c26cf3c-a44f-4699-88fa-1afd80a1602a" />
+      <TestMethod codeBase="D:\YASIN\_validation_output\delivery-settlement-live-failure-focused-tests\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.CustomerAdvanceApplicationIntegrationTests" name="FullDelivery_AppliesMultipleAdvancesInPaymentOrder_LeavesExcessAndIsIdempotent" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.CustomerAdvanceApplicationIntegrationTests.FullDelivery_AppliesSingleAdvance_WithoutCashMovementOrLedgerWrite" storage="d:\yasin\_validation_output\delivery-settlement-live-failure-focused-tests\debug\net10.0\lumar_erp_api_v2.tests.dll" id="1b73c15c-b0ed-c220-91ae-c8f1a4526347">
+      <Execution id="c9874821-318f-49a2-aa98-bcef81657528" />
+      <TestMethod codeBase="D:\YASIN\_validation_output\delivery-settlement-live-failure-focused-tests\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.CustomerAdvanceApplicationIntegrationTests" name="FullDelivery_AppliesSingleAdvance_WithoutCashMovementOrLedgerWrite" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.CustomerAdvanceApplicationIntegrationTests.ReadyForDelivery_WithPriorRevenueFlag_RejectsWithoutFinancialWrites" storage="d:\yasin\_validation_output\delivery-settlement-live-failure-focused-tests\debug\net10.0\lumar_erp_api_v2.tests.dll" id="42715384-ba42-8f0f-84e5-469e3b381a22">
+      <Execution id="83bdfb4f-7e60-46f5-9e50-e77361945060" />
+      <TestMethod codeBase="D:\YASIN\_validation_output\delivery-settlement-live-failure-focused-tests\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.CustomerAdvanceApplicationIntegrationTests" name="ReadyForDelivery_WithPriorRevenueFlag_RejectsWithoutFinancialWrites" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="42715384-ba42-8f0f-84e5-469e3b381a22" executionId="83bdfb4f-7e60-46f5-9e50-e77361945060" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="24c3cc37-a4ca-5f34-6396-4012c159c11c" executionId="1c26cf3c-a44f-4699-88fa-1afd80a1602a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1b73c15c-b0ed-c220-91ae-c8f1a4526347" executionId="c9874821-318f-49a2-aa98-bcef81657528" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="3" executed="3" passed="3" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.03] xUnit.net VSTest Adapter v3.0.2+dd36e86129 (64-bit .NET 10.0.12)&#xD;
+[xUnit.net 00:00:03.15]   Discovering: LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:03.75]   Discovered:  LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:03.99]   Starting:    LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:13.71]   Finished:    LUMAR_ERP_API_V2.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

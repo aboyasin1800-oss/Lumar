@@ -46,6 +46,23 @@ public sealed class CustomerAdvanceApplicationIntegrationTests
         finally { await DeleteFixtureAsync(fixture); }
     }
 
+    [Fact]
+    public async Task ReadyForDelivery_WithPriorRevenueFlag_RejectsWithoutFinancialWrites()
+    {
+        var fixture = await CreateFixtureAsync(100m, [40m], revenueRecognized: true);
+        try
+        {
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => fixture.Repository.DeliverAsync(fixture.OrderId, CancellationToken.None));
+
+            Assert.Contains("إثبات إيراد سابقاً", exception.Message);
+            Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.AccountingEvents WHERE OrderId=@orderId", fixture.OrderId));
+            Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.CustomerAdvanceApplications WHERE OrderId=@orderId", fixture.OrderId));
+            Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions ft INNER JOIN dbo.AccountingEvents ae ON ae.AccountingEventId=ft.AccountingEventId WHERE ae.OrderId=@orderId", fixture.OrderId));
+        }
+        finally { await DeleteFixtureAsync(fixture); }
+    }
+
     private static async Task AssertAppliedPostingAsync(int orderId, decimal amount, int expectedCount)
     {
         Assert.Equal(expectedCount, await CountAsync("SELECT COUNT(*) FROM dbo.AccountingEvents ae INNER JOIN dbo.CustomerAdvanceApplications app ON app.AdvanceApplicationId=ae.CustomerAdvanceApplicationId WHERE app.OrderId=@orderId AND ae.AccountingEventType=6", orderId));
@@ -54,7 +71,7 @@ public sealed class CustomerAdvanceApplicationIntegrationTests
         Assert.Equal(amount, await ScalarDecimalAsync("SELECT SUM(jel.CreditAmount) FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId INNER JOIN dbo.AccountingEvents ae ON ae.AccountingEventId=je.AccountingEventId INNER JOIN dbo.CustomerAdvanceApplications app ON app.AdvanceApplicationId=ae.CustomerAdvanceApplicationId INNER JOIN dbo.LedgerAccounts la ON la.LedgerAccountId=jel.LedgerAccountId WHERE app.OrderId=@orderId AND la.AccountCode=N'1200'", orderId));
     }
 
-    private static async Task<Fixture> CreateFixtureAsync(decimal netAmount, IReadOnlyList<decimal> advances)
+    private static async Task<Fixture> CreateFixtureAsync(decimal netAmount, IReadOnlyList<decimal> advances, bool revenueRecognized = false)
     {
         var connectionString = GetConnectionString();
         var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
@@ -65,13 +82,15 @@ public sealed class CustomerAdvanceApplicationIntegrationTests
         var customerId = Convert.ToInt32(await new SqlCommand("SELECT TOP(1) CustomerID FROM dbo.Customers ORDER BY CustomerID", connection).ExecuteScalarAsync());
         var orderNumber = $"CAA-{Guid.NewGuid():N}";
         var paidAmount = advances.Sum();
-        await using var insertOrder = new SqlCommand("INSERT INTO dbo.Orders (OrderNumber,CustomerID,OrderDate,TotalAmount,DiscountAmount,PaidAmount,RemainingAmount,UrgencyStatus,OrderStatus,CreatedDate,SaleCategory,RevenueRecognized,RevenueReversalCreated) OUTPUT INSERTED.OrderID VALUES (@number,@customerId,@created,@total,0,@paid,@remaining,N'Normal',N'ReadyForDelivery',@created,N'TailoringOrder',0,0)", connection);
+        await using var insertOrder = new SqlCommand("INSERT INTO dbo.Orders (OrderNumber,CustomerID,OrderDate,TotalAmount,DiscountAmount,PaidAmount,RemainingAmount,UrgencyStatus,OrderStatus,CreatedDate,SaleCategory,RevenueRecognized,RevenueRecognizedAt,RevenueReversalCreated) OUTPUT INSERTED.OrderID VALUES (@number,@customerId,@created,@total,0,@paid,@remaining,N'Normal',N'ReadyForDelivery',@created,N'TailoringOrder',@revenueRecognized,@revenueRecognizedAt,0)", connection);
         insertOrder.Parameters.AddWithValue("@number", orderNumber);
         insertOrder.Parameters.AddWithValue("@customerId", customerId);
         insertOrder.Parameters.AddWithValue("@created", createdAt);
         insertOrder.Parameters.AddWithValue("@total", netAmount);
         insertOrder.Parameters.AddWithValue("@paid", paidAmount);
         insertOrder.Parameters.AddWithValue("@remaining", Math.Max(0m, netAmount - paidAmount));
+        insertOrder.Parameters.AddWithValue("@revenueRecognized", revenueRecognized);
+        insertOrder.Parameters.AddWithValue("@revenueRecognizedAt", revenueRecognized ? createdAt : (object)DBNull.Value);
         var orderId = Convert.ToInt32(await insertOrder.ExecuteScalarAsync());
         var paymentIds = new List<int>();
         foreach (var advance in advances)

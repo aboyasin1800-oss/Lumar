@@ -234,6 +234,9 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                 return null;
             }
 
+            if (revenueRecognized)
+                throw new InvalidOperationException("لا يمكن تسليم طلب جاهز يحمل إثبات إيراد سابقاً. راجع الحالة المالية الرسمية للطلب قبل إعادة المحاولة.");
+
             var now = DateTime.UtcNow;
             var cutoverUtc = await ReadAdvanceApplicationCutoverUtcAsync(connection, transaction, cancellationToken)
                 ?? throw new InvalidOperationException("نقطة قطع تطبيق عربون العميل غير مهيأة.");

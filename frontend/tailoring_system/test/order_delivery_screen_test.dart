@@ -6,9 +6,15 @@ import 'package:tailoring_system/repositories/order_repository.dart';
 import 'package:tailoring_system/screens/delivery/order_delivery_screen.dart';
 
 class _FakeOrderRepository extends OrderRepository {
-  _FakeOrderRepository(this.data);
+  _FakeOrderRepository(
+    this.data, {
+    this.deliveryError,
+    this.settlementError,
+  });
 
   final OrderDetailsData data;
+  final Object? deliveryError;
+  final Object? settlementError;
   int deliveryCalls = 0;
   int waiverCalls = 0;
   int settlementCalls = 0;
@@ -67,6 +73,7 @@ class _FakeOrderRepository extends OrderRepository {
     String? notes,
   }) async {
     settlementCalls++;
+    if (settlementError != null) throw settlementError!;
     lastSettlementAmount = amount;
     lastSettlementDiscount = discountAmount;
     lastSettlementCashAccountId = cashAccountId;
@@ -76,6 +83,7 @@ class _FakeOrderRepository extends OrderRepository {
   @override
   Future<OrderDetails> deliverOrder(int orderId) async {
     deliveryCalls++;
+    if (deliveryError != null) throw deliveryError!;
     return data.order;
   }
 
@@ -85,6 +93,73 @@ class _FakeOrderRepository extends OrderRepository {
     return data.order;
   }
 }
+
+OrderDetailsData _readyDeliveryData() {
+  final order = OrderDetails(
+    id: 77,
+    number: 'ORD-2002',
+    customerId: 12,
+    orderDate: DateTime(2026, 9, 5),
+    deliveryDate: DateTime(2026, 9, 6),
+    totalAmount: 1800,
+    discountAmount: 50,
+    paidAmount: 1100,
+    remainingAmount: 650,
+    urgencyStatus: 'Normal',
+    status: 'ReadyForDelivery',
+    notes: 'طلب جاهز للتسليم',
+    createdDate: DateTime(2026, 9, 5),
+    updatedDate: null,
+    cancellationReason: null,
+    cancelledAt: null,
+    cancelledBy: null,
+    saleCategory: 'TailoringOrder',
+    revenueRecognized: false,
+    revenueRecognizedAt: null,
+    revenueReversalCreated: false,
+    revenueReversalCreatedAt: null,
+  );
+  return OrderDetailsData(
+    order: order,
+    customer: const OrderCustomer(
+      id: 12,
+      code: 'C-12',
+      name: 'عميل جاهز',
+      phoneNumber: '0555555555',
+    ),
+    items: const [],
+    pieces: const [],
+    fabrics: const [],
+    payments: const [],
+    trackingEvents: const [],
+    financialTransactions: const [],
+    ledgerEntries: const [],
+  );
+}
+
+Future<void> _pumpReadyDeliveryScreen(
+  WidgetTester tester,
+  _FakeOrderRepository repository,
+) => tester.pumpWidget(
+      MaterialApp(
+        home: OrderDeliveryScreen(
+          orderId: 77,
+          repository: repository,
+          cashAccountsFuture: Future.value([
+            CashAccount(
+              id: 1,
+              accountName: 'الصندوق الرئيسي',
+              derivedBalance: 0,
+              historicalSnapshotBalance: 0,
+              isActive: true,
+              isReceiptEnabled: true,
+              currencyCode: 'YER',
+              createdAt: DateTime.utc(2026, 9, 26),
+            ),
+          ]),
+        ),
+      ),
+    );
 
 void main() {
   testWidgets('delivery screen renders settlement summary and validates amount',
@@ -189,49 +264,7 @@ void main() {
 
   testWidgets('ready-for-delivery screen confirms delivery',
       (WidgetTester tester) async {
-    final order = OrderDetails(
-      id: 77,
-      number: 'ORD-2002',
-      customerId: 12,
-      orderDate: DateTime(2026, 9, 5),
-      deliveryDate: DateTime(2026, 9, 6),
-      totalAmount: 1800,
-      discountAmount: 50,
-      paidAmount: 1100,
-      remainingAmount: 650,
-      urgencyStatus: 'Normal',
-      status: 'ReadyForDelivery',
-      notes: 'طلب جاهز للتسليم',
-      createdDate: DateTime(2026, 9, 5),
-      updatedDate: null,
-      cancellationReason: null,
-      cancelledAt: null,
-      cancelledBy: null,
-      saleCategory: 'TailoringOrder',
-      revenueRecognized: false,
-      revenueRecognizedAt: null,
-      revenueReversalCreated: false,
-      revenueReversalCreatedAt: null,
-    );
-
-    final repository = _FakeOrderRepository(
-      OrderDetailsData(
-        order: order,
-        customer: const OrderCustomer(
-          id: 12,
-          code: 'C-12',
-          name: 'عميل جاهز',
-          phoneNumber: '0555555555',
-        ),
-        items: const [],
-        pieces: const [],
-        fabrics: const [],
-        payments: const [],
-        trackingEvents: const [],
-        financialTransactions: const [],
-        ledgerEntries: const [],
-      ),
-    );
+    final repository = _FakeOrderRepository(_readyDeliveryData());
 
     await tester.pumpWidget(
       MaterialApp(
@@ -246,6 +279,18 @@ void main() {
                       child: OrderDeliveryScreen(
                         orderId: 77,
                         repository: repository,
+                        cashAccountsFuture: Future.value([
+                          CashAccount(
+                            id: 1,
+                            accountName: 'الصندوق الرئيسي',
+                            derivedBalance: 0,
+                            historicalSnapshotBalance: 0,
+                            isActive: true,
+                            isReceiptEnabled: true,
+                            currencyCode: 'YER',
+                            createdAt: DateTime.utc(2026, 9, 26),
+                          ),
+                        ]),
                       ),
                     ),
                   ),
@@ -263,13 +308,54 @@ void main() {
 
     expect(find.byType(Dialog), findsOneWidget);
     expect(find.byType(OrderDeliveryScreen), findsOneWidget);
-    expect(find.text('تأكيد التسليم'), findsOneWidget);
+    expect(find.text('تسليم الطلب'), findsOneWidget);
 
-    await tester.tap(find.text('تأكيد التسليم'));
+    await tester.tap(find.text('تسليم الطلب'));
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsOneWidget);
-    await tester.tap(find.text('تأكيد التسليم').last);
+    expect(find.text('تحصيل كامل المتبقي'), findsOneWidget);
+    await tester.tap(find.text('تنفيذ التسليم'));
     await tester.pumpAndSettle();
     expect(repository.deliveryCalls, 1);
+    expect(repository.settlementCalls, 1);
+    expect(repository.lastSettlementAmount, 650);
+    expect(repository.lastSettlementDiscount, 0);
+    expect(repository.lastSettlementCashAccountId, 1);
+  });
+
+  testWidgets('does not collect when delivery fails', (WidgetTester tester) async {
+    final repository = _FakeOrderRepository(
+      _readyDeliveryData(),
+      deliveryError: StateError('فشل التسليم'),
+    );
+    await _pumpReadyDeliveryScreen(tester, repository);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('تسليم الطلب'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تنفيذ التسليم'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(repository.deliveryCalls, 1);
+    expect(repository.settlementCalls, 0);
+  });
+
+  testWidgets('does not retry delivery when collection fails',
+      (WidgetTester tester) async {
+    final repository = _FakeOrderRepository(
+      _readyDeliveryData(),
+      settlementError: StateError('فشل التحصيل'),
+    );
+    await _pumpReadyDeliveryScreen(tester, repository);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('تسليم الطلب'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تنفيذ التسليم'));
+    await tester.pumpAndSettle();
+
+    expect(repository.deliveryCalls, 1);
+    expect(repository.settlementCalls, 1);
   });
 }

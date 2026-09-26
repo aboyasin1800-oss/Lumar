@@ -11,6 +11,24 @@ import '../../models/order_models.dart';
 import '../../repositories/order_repository.dart';
 import '../../widgets/cash_account_picker.dart';
 
+enum _DeliverySettlementMode { full, partial, waive, none }
+
+class _DeliverySettlementRequest {
+  const _DeliverySettlementRequest({
+    required this.mode,
+    required this.amount,
+    required this.discount,
+    required this.cashAccountId,
+    required this.referenceNumber,
+  });
+
+  final _DeliverySettlementMode mode;
+  final double amount;
+  final double discount;
+  final int? cashAccountId;
+  final String referenceNumber;
+}
+
 class OrderDeliveryScreen extends StatefulWidget {
   const OrderDeliveryScreen({
     required this.orderId,
@@ -36,8 +54,8 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
   final TextEditingController _referenceController = TextEditingController();
   bool _submitting = false;
   bool _delivering = false;
+  bool _deliveryDialogOpen = false;
   bool _waivingBalance = false;
-  bool _recognizingRevenue = false;
   bool _partialCollectionSelected = false;
   bool _initialized = false;
   int? _cashAccountId;
@@ -74,69 +92,240 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
 
   void _seedFields(OrderDetails order) {
     if (_initialized) return;
-    final suggested = order.remainingAmount;
-    _amountController.text = suggested.toStringAsFixed(2);
-    _discountController.text = '0.00';
-    _referenceController.text =
-        'RCPT-${order.number}-${DateTime.now().millisecondsSinceEpoch}';
     _initialized = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _amountController.text = order.remainingAmount.toStringAsFixed(2);
+      _discountController.text = '0.00';
+      _referenceController.text =
+          'RCPT-${order.number}-${DateTime.now().millisecondsSinceEpoch}';
+      setState(() {});
+    });
   }
 
-  Future<void> _deliverOrder(OrderDetails order) async {
-    if (_delivering || !mounted) return;
+  Future<void> _deliverOrder(OrderDetailsData data) async {
+    if (_delivering || _deliveryDialogOpen || !mounted) return;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تأكيد التسليم'),
-        content: const Text(
-          'سيتم تسجيل الطلب كتم التسليم ونقله إلى أرشيف التسليم. هل تريد المتابعة؟',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('تأكيد التسليم'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
+    setState(() => _deliveryDialogOpen = true);
+    final request = await _showDeliverySettlementDialog(data);
+    if (!mounted) return;
+    if (request == null) {
+      setState(() => _deliveryDialogOpen = false);
+      return;
+    }
 
-    setState(() => _delivering = true);
+    setState(() {
+      _deliveryDialogOpen = false;
+      _delivering = true;
+    });
     try {
-      await _repository.deliverOrder(order.id);
+      await _repository.deliverOrder(data.order.id);
+    } catch (error) {
       if (!mounted) return;
-      _showMessage('تم التسليم وإثبات الإيراد ونقل الطلب إلى الأرشيف.',
-          isSuccess: true);
+      _showMessage(
+        'تعذر تنفيذ التسليم. لم يتم إثبات الإيراد ولم يبدأ التحصيل. راجع حالة الطلب ثم أعد المحاولة. $error',
+      );
+      _reload();
+      return;
+    }
+
+    try {
+      if (request.mode == _DeliverySettlementMode.waive) {
+        await _repository.waiveRemainingBalance(data.order.id);
+      } else if (request.amount > 0 || request.discount > 0) {
+        await _repository.settleCustomerBalance(
+          data.order.id,
+          request.amount,
+          request.discount,
+          request.referenceNumber,
+          paymentMethod: 'Cash',
+          cashAccountId: request.cashAccountId,
+          notes: 'تحصيل من تنفيذ التسليم الموحد',
+        );
+      }
+      if (!mounted) return;
+      _showMessage(
+        request.amount > 0 || request.discount > 0 ||
+                request.mode == _DeliverySettlementMode.waive
+            ? 'تم تسليم الطلب وإثبات الإيراد وتطبيق العربون وتسجيل التسوية بنجاح.'
+            : 'تم تسليم الطلب وإثبات الإيراد وتطبيق العربون بنجاح.',
+        isSuccess: true,
+      );
       _reload();
     } catch (error) {
       if (!mounted) return;
-      _showMessage('تعذر تأكيد التسليم: $error');
+      _showMessage(
+        'تم التسليم وإثبات الإيراد، لكن تعذر تسجيل التحصيل. لم يُنشأ تحصيل جديد من هذه المحاولة. أعد التحصيل فقط بعد مراجعة حالة الطلب. $error',
+      );
+      _reload();
     } finally {
       if (mounted) setState(() => _delivering = false);
     }
   }
 
-  Future<void> _recognizeRevenue(OrderDetails order) async {
-    if (_recognizingRevenue || !mounted) return;
-    setState(() => _recognizingRevenue = true);
-    try {
-      await _repository.recognizeDeliveryRevenue(order.id);
-      if (!mounted) return;
-      _showMessage('تم إثبات الإيراد بنجاح.', isSuccess: true);
-      _reload();
-    } catch (error) {
-      if (!mounted) return;
-      _showMessage('تعذر إثبات الإيراد: $error');
-    } finally {
-      if (mounted) {
-        setState(() => _recognizingRevenue = false);
-      }
-    }
+  Future<_DeliverySettlementRequest?> _showDeliverySettlementDialog(
+      OrderDetailsData data) async {
+    final order = data.order;
+    _seedFields(order);
+    var mode = _DeliverySettlementMode.full;
+
+    return showDialog<_DeliverySettlementRequest>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final amount = double.tryParse(_amountController.text.trim()) ?? 0;
+          final discount =
+              double.tryParse(_discountController.text.trim()) ?? 0;
+          final canCollect = mode == _DeliverySettlementMode.full ||
+              mode == _DeliverySettlementMode.partial;
+          final remaining = math.max(0, order.remainingAmount - amount - discount);
+
+          void selectMode(_DeliverySettlementMode nextMode) {
+            mode = nextMode;
+            if (nextMode == _DeliverySettlementMode.full) {
+              _amountController.text =
+                  math.max(0, order.remainingAmount - discount).toStringAsFixed(2);
+            } else if (nextMode == _DeliverySettlementMode.partial) {
+              _amountController.clear();
+            } else {
+              _amountController.text = '0.00';
+              _discountController.text = '0.00';
+              _cashAccountId = null;
+            }
+            setDialogState(() {});
+          }
+
+          void confirm() {
+            if (canCollect &&
+                (amount < 0 ||
+                    discount < 0 ||
+                    amount + discount > order.remainingAmount ||
+                    (mode == _DeliverySettlementMode.partial && amount <= 0))) {
+              _showMessage('تحقق من مبلغ التحصيل والخصم قبل التنفيذ.');
+              return;
+            }
+            if (canCollect && amount > 0 && _cashAccountId == null) {
+              _showMessage('اختر الحساب النقدي المستلم قبل تنفيذ التسليم.');
+              return;
+            }
+            final reference = _referenceController.text.trim().isEmpty
+                ? 'RCPT-${order.number}-${DateTime.now().millisecondsSinceEpoch}'
+                : _referenceController.text.trim();
+            Navigator.of(dialogContext).pop(_DeliverySettlementRequest(
+              mode: mode,
+              amount: canCollect ? amount : 0,
+              discount: canCollect ? discount : 0,
+              cashAccountId: canCollect ? _cashAccountId : null,
+              referenceNumber: reference,
+            ));
+          }
+
+          return AlertDialog(
+            title: const Text('تسليم الطلب'),
+            content: SizedBox(
+              width: 460,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('المبلغ المتبقي: ${NumberFormat('#,##0.00').format(order.remainingAmount)}'),
+                    const SizedBox(height: 12),
+                    const Text('نوع التسوية'),
+                    RadioGroup<_DeliverySettlementMode>(
+                      groupValue: mode,
+                      onChanged: (value) {
+                        if (value != null) selectMode(value);
+                      },
+                      child: Column(
+                        children: [
+                          const RadioListTile<_DeliverySettlementMode>(
+                            value: _DeliverySettlementMode.full,
+                            title: Text('تحصيل كامل المتبقي'),
+                          ),
+                          const RadioListTile<_DeliverySettlementMode>(
+                            value: _DeliverySettlementMode.partial,
+                            title: Text('تحصيل جزئي'),
+                          ),
+                          RadioListTile<_DeliverySettlementMode>(
+                            value: _DeliverySettlementMode.waive,
+                            enabled: order.remainingAmount > 0,
+                            title: const Text('تبرع بالمتبقي'),
+                          ),
+                          const RadioListTile<_DeliverySettlementMode>(
+                            value: _DeliverySettlementMode.none,
+                            title: Text('تسليم بدون تحصيل'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextField(
+                      controller: _amountController,
+                      enabled: mode == _DeliverySettlementMode.partial,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(labelText: 'المبلغ الذي سيُحصّل'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _discountController,
+                      enabled: canCollect,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (value) {
+                        if (mode == _DeliverySettlementMode.full) {
+                          final updatedDiscount = double.tryParse(value) ?? 0;
+                          _amountController.text = math.max(
+                            0,
+                            order.remainingAmount - updatedDiscount,
+                          ).toStringAsFixed(2);
+                        }
+                        setDialogState(() {});
+                      },
+                      decoration: const InputDecoration(labelText: 'الخصم'),
+                    ),
+                    if (canCollect && amount > 0) ...[
+                      const SizedBox(height: 12),
+                      CashAccountPicker(
+                        value: _cashAccountId,
+                        enabled: true,
+                        accountsFuture: widget.cashAccountsFuture,
+                        onAvailabilityChanged: (availability) {
+                          _cashAccountAvailability = availability;
+                          setDialogState(() {});
+                        },
+                        onChanged: (value) {
+                          _cashAccountId = value;
+                          setDialogState(() {});
+                        },
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _referenceController,
+                      enabled: canCollect && amount > 0,
+                      decoration: const InputDecoration(labelText: 'مرجع التحصيل'),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('سيتم تنفيذ العمليات التالية:\n✓ تسليم الطلب\n✓ إثبات الإيراد\n✓ تطبيق العربون إن وجد${canCollect && amount > 0 ? '\n✓ تحصيل المبلغ المحدد' : ''}\n\nالمبلغ المحصل: ${NumberFormat('#,##0.00').format(canCollect ? amount : 0)}\nالمبلغ الذي سيبقى ذمة: ${NumberFormat('#,##0.00').format(remaining)}'),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('إلغاء'),
+              ),
+              FilledButton.icon(
+                onPressed: confirm,
+                icon: const Icon(Icons.local_shipping_outlined),
+                label: const Text('تنفيذ التسليم'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _submitPayment(OrderDetailsData data) async {
@@ -446,8 +635,9 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                     _Panel(
                       title: 'إجراء التسليم',
                       child: FilledButton.icon(
-                        onPressed:
-                            _delivering ? null : () => _deliverOrder(order),
+                        onPressed: _delivering
+                            ? null
+                            : () => _deliverOrder(data),
                         icon: _delivering
                             ? const SizedBox(
                                 width: 18,
@@ -458,14 +648,15 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                             : const Icon(Icons.local_shipping_outlined),
                         label: Text(
                           _delivering
-                              ? 'جاري تأكيد التسليم...'
-                              : 'تأكيد التسليم',
+                              ? 'جاري تنفيذ التسليم...'
+                              : 'تسليم الطلب',
                         ),
                       ),
                     ),
                     const SizedBox(height: 16),
                   ],
-                  _Panel(
+                  if (!isReadyForDelivery)
+                    _Panel(
                     title: 'تسوية المبلغ',
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -635,24 +826,6 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                           ],
                         ),
                         const SizedBox(height: 18),
-                        if (!order.revenueRecognized && isDelivered)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: FilledButton.icon(
-                              onPressed: _recognizingRevenue
-                                  ? null
-                                  : () => _recognizeRevenue(order),
-                              icon: _recognizingRevenue
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    )
-                                  : const Icon(Icons.fact_check_rounded),
-                              label: const Text('إثبات الإيراد'),
-                            ),
-                          ),
                         Row(
                           children: [
                             Expanded(
