@@ -51,12 +51,27 @@ class LedgerAccount {
 }
 
 class CashAccount {
-	const CashAccount({required this.id, required this.accountName, required this.currentBalance, required this.isActive, required this.createdAt});
-	factory CashAccount.fromJson(JsonMap json) => CashAccount(id: json['cashAccountId'] as int, accountName: json['accountName'] as String, currentBalance: _amount(json, 'currentBalance'), isActive: json['isActive'] as bool, createdAt: _date(json, 'createdAt'));
+	const CashAccount({required this.id, required this.accountName, required this.derivedBalance, required this.historicalSnapshotBalance, required this.isActive, required this.isReceiptEnabled, required this.currencyCode, required this.createdAt});
+	factory CashAccount.fromJson(JsonMap json) => CashAccount(id: json['cashAccountId'] as int, accountName: json['accountName'] as String, derivedBalance: _amount(json, 'derivedBalance'), historicalSnapshotBalance: _amount(json, 'historicalSnapshotBalance'), isActive: json['isActive'] as bool, isReceiptEnabled: json['isReceiptEnabled'] as bool, currencyCode: json['currencyCode'] as String?, createdAt: _date(json, 'createdAt'));
 	final int id;
 	final String accountName;
-	final double currentBalance;
+	final double derivedBalance;
+	final double historicalSnapshotBalance;
 	final bool isActive;
+	final bool isReceiptEnabled;
+	final String? currencyCode;
+	final DateTime createdAt;
+}
+
+class CashMovement {
+	const CashMovement({required this.id, required this.cashAccountId, required this.cashAccountName, required this.cashDirection, required this.amount, required this.occurredAt, required this.createdAt});
+	factory CashMovement.fromJson(JsonMap json) => CashMovement(id: json['cashMovementId'] as int, cashAccountId: json['cashAccountId'] as int, cashAccountName: json['cashAccountName'] as String, cashDirection: json['cashDirection'] as int, amount: _amount(json, 'amount'), occurredAt: _date(json, 'occurredAt'), createdAt: _date(json, 'createdAt'));
+	final int id;
+	final int cashAccountId;
+	final String cashAccountName;
+	final int cashDirection;
+	final double amount;
+	final DateTime occurredAt;
 	final DateTime createdAt;
 }
 
@@ -236,10 +251,12 @@ class FinancialDashboard {
 }
 
 class CashReconciliation {
-	const CashReconciliation({required this.cashAccountsBalance, required this.generalLedgerCashBalance, required this.difference, required this.isReconciled});
-	factory CashReconciliation.fromJson(JsonMap json) => CashReconciliation(cashAccountsBalance: _amount(json, 'cashAccountsBalance'), generalLedgerCashBalance: _amount(json, 'generalLedgerCashBalance'), difference: _amount(json, 'difference'), isReconciled: json['isReconciled'] as bool);
-	final double cashAccountsBalance;
+	const CashReconciliation({required this.cutoverUtc, required this.cashMovementsBalance, required this.generalLedgerCashBalance, required this.difference, required this.isReconciled, required this.status});
+	factory CashReconciliation.fromJson(JsonMap json) => CashReconciliation(cutoverUtc: _date(json, 'cutoverUtc'), cashMovementsBalance: _amount(json, 'cashMovementsBalance'), generalLedgerCashBalance: _amount(json, 'generalLedgerCashBalance'), difference: _amount(json, 'difference'), isReconciled: json['isReconciled'] as bool, status: json['status'] as String);
+	final DateTime cutoverUtc;
+	final double cashMovementsBalance;
 	final double generalLedgerCashBalance;
 	final double difference;
 	final bool isReconciled;
+	final String status;
 }

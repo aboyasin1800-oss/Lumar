@@ -392,35 +392,18 @@ public sealed class CancelledPieceDispositionRepository(OperationalSqlConnection
 
         if (WipToFinishedGoodsFinancialTransactionPolicy.ShouldCreateTransaction(pieceContext.TrackingCode, actualCost, false))
         {
-            const string financialSql = @"
-                INSERT INTO dbo.FinancialTransactions
-                    (ReferenceNumber, TransactionType, Amount, Description, CreatedAt)
-                SELECT @referenceNumber, @transactionType, @amount, @description, @createdAt
-                WHERE NOT EXISTS (
-                    SELECT 1
-                    FROM dbo.FinancialTransactions WITH (UPDLOCK, HOLDLOCK)
-                    WHERE ReferenceNumber = @referenceNumber
-                      AND TransactionType = N'WipToFinishedGoods');";
-
-            await using var financialCommand = new SqlCommand(financialSql, connection, transaction);
-            financialCommand.Parameters.AddWithValue("@referenceNumber", pieceContext.TrackingCode);
-            financialCommand.Parameters.AddWithValue("@transactionType", WipToFinishedGoodsFinancialTransactionPolicy.TransactionType);
-            financialCommand.Parameters.AddWithValue("@amount", actualCost);
-            financialCommand.Parameters.AddWithValue("@description", WipToFinishedGoodsFinancialTransactionPolicy.GetDescription());
-            financialCommand.Parameters.AddWithValue("@createdAt", now);
-            var financialTransactionRows = await financialCommand.ExecuteNonQueryAsync(ct);
-            if (financialTransactionRows != 1)
-                throw new InvalidOperationException("توجد سجلات مالية متعارضة للعملية الحالية.");
-
-            var posting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+            await AccountingEventPostingGateway.PostAsync(
                 connection,
                 transaction,
-                pieceContext.TrackingCode,
-                WipToFinishedGoodsFinancialTransactionPolicy.TransactionType,
+                AccountingEventType.WipToFinishedGoods,
                 actualCost,
+                null,
+                null,
+                null,
+                insertedProductId,
+                pieceContext.TrackingCode,
                 WipToFinishedGoodsFinancialTransactionPolicy.GetDescription(),
                 ct);
-            posting.ThrowIfFailure();
         }
 
         return insertedProductId;

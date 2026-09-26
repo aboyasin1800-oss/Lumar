@@ -70,6 +70,7 @@ builder.Services.AddScoped<IPieceCostManagementService, PieceCostManagementServi
 builder.Services.AddScoped<IPricingProfitSettingsService, PricingProfitSettingsService>();
 builder.Services.AddScoped<IPricingEngineService, PricingEngineService>();
 builder.Services.AddScoped<IConsumptionRulesService, ConsumptionRulesService>();
+builder.Services.AddScoped<ISalesReferenceService, SalesReferenceService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IOrderLoyaltyIntegrationService, OrderLoyaltyIntegrationService>();
 builder.Services.AddScoped<ICancelledPieceReadyInventoryTransferService, CancelledPieceReadyInventoryTransferService>();

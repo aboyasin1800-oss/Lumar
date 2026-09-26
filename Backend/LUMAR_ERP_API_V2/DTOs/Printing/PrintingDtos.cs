@@ -11,6 +11,7 @@ public sealed record PrepareMeasurementCardPrintDto(
     int? SaleCustomerId);
 
 public sealed record FailMeasurementCardPrintDto(string? FailureReason);
+public sealed record CompleteMeasurementCardPrintDto(int? CashAccountId);
 
 public sealed record MeasurementCardPrintHistoryDto(
     int PrintHistoryId,

@@ -27,6 +27,7 @@ class FinanceRepository {
 	Future<List<JournalEntryLine>> getJournalEntryLines(int id) => _list('/finance/journal-entries/$id/lines', JournalEntryLine.fromJson);
 	Future<List<LedgerAccount>> getLedgerAccounts() => _list('/finance/ledger-accounts', LedgerAccount.fromJson);
 	Future<List<CashAccount>> getCashAccounts() => _list('/finance/cash-accounts', CashAccount.fromJson);
+	Future<List<CashMovement>> getCashMovements() => _list('/finance/cash-movements', CashMovement.fromJson);
 	Future<List<CustomerLedgerEntry>> getCustomerLedger(int customerId) => _list('/finance/customers/$customerId/ledger', CustomerLedgerEntry.fromJson);
 	Future<List<SupplierLedgerEntry>> getSupplierLedger(int supplierId) => _list('/finance/suppliers/$supplierId/ledger', SupplierLedgerEntry.fromJson);
 	Future<List<SupplierPayment>> getSupplierPayments() => _list('/finance/supplier-payments', SupplierPayment.fromJson);

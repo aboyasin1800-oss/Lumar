@@ -7,6 +7,7 @@ import '../../core/app_navigation.dart';
 import '../../core/ui_palette.dart';
 import '../../models/order_models.dart';
 import '../../repositories/order_repository.dart';
+import '../../widgets/cash_account_picker.dart';
 
 class OrderDeliveryScreen extends StatefulWidget {
   const OrderDeliveryScreen({
@@ -35,6 +36,7 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
   bool _recognizingRevenue = false;
   bool _partialCollectionSelected = false;
   bool _initialized = false;
+  int? _cashAccountId;
 
   @override
   void initState() {
@@ -58,6 +60,7 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
       _discountController.clear();
       _referenceController.clear();
       _partialCollectionSelected = false;
+      _cashAccountId = null;
       _future = _repository.getDetails(widget.orderId);
     });
   }
@@ -143,6 +146,10 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
       _showMessage('يجب إدخال مبلغ تحصيل أو خصم أكبر من الصفر.');
       return;
     }
+    if (amount > 0 && _cashAccountId == null) {
+      _showMessage('اختر الحساب النقدي المستلم قبل تسجيل التحصيل.');
+      return;
+    }
 
     if (amount + discount > data.order.remainingAmount) {
       _showMessage('لا يمكن أن يتجاوز التحصيل والخصم معاً المبلغ المتبقي.');
@@ -164,6 +171,7 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
         discount,
         _referenceController.text.trim(),
         paymentMethod: 'Cash',
+        cashAccountId: _cashAccountId,
         notes: 'تسوية تحصيل وخصم من شاشة التسليم',
       );
 
@@ -509,6 +517,15 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
+                        if (enteringAmount > 0) ...[
+                          const SizedBox(height: 12),
+                          CashAccountPicker(
+                            value: _cashAccountId,
+                            enabled: isReadyForCollection,
+                            onChanged: (value) =>
+                                setState(() => _cashAccountId = value),
+                          ),
+                        ],
                         const SizedBox(height: 12),
                         TextField(
                           controller: _referenceController,

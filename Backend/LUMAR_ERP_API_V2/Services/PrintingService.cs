@@ -12,8 +12,8 @@ public sealed class PrintingService(IPrintingRepository repository) : IPrintingS
     public Task<MeasurementCardPrintHistoryDto> PrepareAsync(int pieceId, bool isReadyMade, PrepareMeasurementCardPrintDto request, CurrentUserDto user, CancellationToken cancellationToken) =>
         repository.PrepareAsync(pieceId, isReadyMade, request, user, cancellationToken);
 
-    public Task<MeasurementCardPrintHistoryDto> CompleteAsync(int printHistoryId, CurrentUserDto user, CancellationToken cancellationToken) =>
-        repository.CompleteAsync(printHistoryId, user, cancellationToken);
+    public Task<MeasurementCardPrintHistoryDto> CompleteAsync(int printHistoryId, int? cashAccountId, CurrentUserDto user, CancellationToken cancellationToken) =>
+        repository.CompleteAsync(printHistoryId, cashAccountId, user, cancellationToken);
 
     public Task<MeasurementCardPrintHistoryDto?> FailAsync(int printHistoryId, string? failureReason, CurrentUserDto user, CancellationToken cancellationToken) =>
         repository.FailAsync(printHistoryId, failureReason, user, cancellationToken);

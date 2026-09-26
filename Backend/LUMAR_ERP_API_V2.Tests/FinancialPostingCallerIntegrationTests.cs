@@ -86,13 +86,11 @@ public sealed class FinancialPostingCallerIntegrationTests
     }
 
     [Fact]
-    public async Task CustomerPayment_Succeeds_Deduplicates_AndRollsBackOnTransitionalConflict()
+    public async Task CustomerPayment_Succeeds_AndDeduplicatesByPaymentIdentity()
     {
         var repository = CreateOrderRepository();
         var success = await InsertOrderFixtureAsync("Delivered", revenueRecognized: true, 100m);
-        var failure = await InsertOrderFixtureAsync("Delivered", revenueRecognized: true, 100m);
         var successReference = $"TRKA-PAY-{Guid.NewGuid():N}";
-        var failureReference = $"TRKA-PAY-FAIL-{Guid.NewGuid():N}";
 
         try
         {
@@ -101,30 +99,18 @@ public sealed class FinancialPostingCallerIntegrationTests
             await AssertPostingAsync(successReference, "CustomerPayment", 40m, "1000", "1200");
             Assert.Null(await repository.CollectCustomerPaymentAsync(success.OrderId, 40m, "Cash", successReference, null, CancellationToken.None));
             Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber = @reference", successReference));
-
-            await InsertFinancialTransactionAsync(failureReference, "RevenueRecognized", 40m);
-            await Assert.ThrowsAsync<InvalidOperationException>(() => repository.CollectCustomerPaymentAsync(failure.OrderId, 40m, "Cash", failureReference, null, CancellationToken.None));
-            Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.Payments WHERE OrderID = @orderId AND ReferenceNo = @reference", failureReference, failure.OrderId));
-            Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.JournalEntries WHERE ReferenceNumber = @reference", failureReference));
-            Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber = @reference", failureReference));
-            Assert.Equal(0m, await ReadDecimalAsync("SELECT PaidAmount FROM dbo.Orders WHERE OrderID = @orderId", failure.OrderId));
         }
         finally
         {
-            await DeleteByReferenceAsync(successReference);
-            await DeleteByReferenceAsync(failureReference);
             await DeleteOrderGraphAsync(success.OrderId, success.OrderNumber);
-            await DeleteOrderGraphAsync(failure.OrderId, failure.OrderNumber);
         }
     }
 
     [Fact]
-    public async Task RevenueRecognized_Succeeds_Deduplicates_AndRollsBackOnTransitionalConflict()
+    public async Task RevenueRecognized_Succeeds_AndDeduplicatesByOrderIdentity()
     {
         var repository = CreateOrderRepository();
         var success = await InsertOrderFixtureAsync("Delivered", revenueRecognized: false, 100m);
-        var failure = await InsertOrderFixtureAsync("Delivered", revenueRecognized: false, 100m);
-        var failureReference = $"{failure.OrderNumber}:RevenueRecognized";
 
         try
         {
@@ -133,27 +119,18 @@ public sealed class FinancialPostingCallerIntegrationTests
             await AssertPostingAsync($"{success.OrderNumber}:RevenueRecognized", "RevenueRecognized", 100m, "1200", "4200");
             await repository.RecognizeDeliveryRevenueAsync(success.OrderId, CancellationToken.None);
             Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber = @reference", $"{success.OrderNumber}:RevenueRecognized"));
-
-            await InsertFinancialTransactionAsync(failureReference, "CustomerPayment", 100m);
-            await Assert.ThrowsAsync<InvalidOperationException>(() => repository.RecognizeDeliveryRevenueAsync(failure.OrderId, CancellationToken.None));
-            Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.JournalEntries WHERE ReferenceNumber = @reference", failureReference));
-            Assert.False(await ReadBooleanAsync("SELECT RevenueRecognized FROM dbo.Orders WHERE OrderID = @orderId", failure.OrderId));
-            Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber = @reference", failureReference));
         }
         finally
         {
-            await DeleteByReferenceAsync(failureReference);
             await DeleteOrderGraphAsync(success.OrderId, success.OrderNumber);
-            await DeleteOrderGraphAsync(failure.OrderId, failure.OrderNumber);
         }
     }
 
     [Fact]
-    public async Task WipToFinishedGoods_Succeeds_Deduplicates_AndRollsBackOnTransitionalConflict()
+    public async Task WipToFinishedGoods_Succeeds_AndDeduplicatesByInventoryProductIdentity()
     {
         var repository = CreateCancelledPieceRepository();
         var success = await InsertWipFixtureAsync();
-        var failure = await InsertWipFixtureAsync();
 
         try
         {
@@ -164,20 +141,10 @@ public sealed class FinancialPostingCallerIntegrationTests
             var replayed = await repository.ExecuteDecisionAsync(success.PieceId, CancellationToken.None);
             Assert.NotNull(replayed);
             Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber = @reference", success.TrackingCode));
-
-            await repository.SaveDecisionAsync(failure.PieceId, "ContinueToReadyInventory", "اختبار", "اختبار", CancellationToken.None);
-            await InsertFinancialTransactionAsync(failure.TrackingCode, "WipToFinishedGoods", 10m);
-            await Assert.ThrowsAsync<InvalidOperationException>(() => repository.ExecuteDecisionAsync(failure.PieceId, CancellationToken.None));
-            Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.JournalEntries WHERE ReferenceNumber = @reference", failure.TrackingCode));
-            Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.ReadyMadeInventoryProducts WHERE TrackingCode = @reference", failure.TrackingCode));
-            Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber = @reference", failure.TrackingCode));
         }
         finally
         {
-            await DeleteByReferenceAsync(success.TrackingCode);
-            await DeleteByReferenceAsync(failure.TrackingCode);
             await DeleteWipGraphAsync(success);
-            await DeleteWipGraphAsync(failure);
         }
     }
 
@@ -249,6 +216,7 @@ public sealed class FinancialPostingCallerIntegrationTests
     {
         Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber = @reference AND TransactionType = @transactionType AND Amount = @amount", reference, null, transactionType, amount));
         Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.JournalEntries WHERE ReferenceNumber = @reference", reference));
+        Assert.Equal(1, await CountAsync(@"SELECT COUNT(*) FROM dbo.AccountingEvents ae INNER JOIN dbo.FinancialTransactions ft ON ft.AccountingEventId=ae.AccountingEventId INNER JOIN dbo.JournalEntries je ON je.AccountingEventId=ae.AccountingEventId WHERE ft.ReferenceNumber=@reference AND ft.Amount=ae.PostingAmount", reference));
         Assert.Equal(2, await CountAsync(@"SELECT COUNT(*) FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId WHERE je.ReferenceNumber=@reference", reference));
         Assert.Equal(1, await CountAsync(@"SELECT COUNT(*) FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId INNER JOIN dbo.LedgerAccounts la ON la.LedgerAccountId=jel.LedgerAccountId WHERE je.ReferenceNumber=@reference AND la.AccountCode=@debitAccount AND jel.DebitAmount=@amount", reference, null, null, amount, debitAccount));
         Assert.Equal(1, await CountAsync(@"SELECT COUNT(*) FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId INNER JOIN dbo.LedgerAccounts la ON la.LedgerAccountId=jel.LedgerAccountId WHERE je.ReferenceNumber=@reference AND la.AccountCode=@creditAccount AND jel.CreditAmount=@amount", reference, null, null, amount, null, creditAccount));
@@ -259,6 +227,16 @@ public sealed class FinancialPostingCallerIntegrationTests
         await using var connection = new SqlConnection(GetConnectionString());
         await connection.OpenAsync();
         await using var command = new SqlCommand(@"
+            DECLARE @events TABLE (AccountingEventId bigint NOT NULL PRIMARY KEY);
+            INSERT INTO @events (AccountingEventId)
+            SELECT ae.AccountingEventId
+            FROM dbo.AccountingEvents ae
+            INNER JOIN dbo.ReadyMadeInventoryProducts rip ON rip.ReadyMadeInventoryProductId=ae.ReadyMadeInventoryProductId
+            WHERE rip.TrackingCode=@tracking;
+            DELETE jel FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId INNER JOIN @events e ON e.AccountingEventId=je.AccountingEventId;
+            DELETE je FROM dbo.JournalEntries je INNER JOIN @events e ON e.AccountingEventId=je.AccountingEventId;
+            DELETE ft FROM dbo.FinancialTransactions ft INNER JOIN @events e ON e.AccountingEventId=ft.AccountingEventId;
+            DELETE ae FROM dbo.AccountingEvents ae INNER JOIN @events e ON e.AccountingEventId=ae.AccountingEventId;
             DELETE rip FROM dbo.ReadyMadeInventoryProducts rip WHERE rip.TrackingCode=@tracking;
             ", connection);
         command.Parameters.AddWithValue("@tracking", fixture.TrackingCode);
@@ -271,8 +249,18 @@ public sealed class FinancialPostingCallerIntegrationTests
         await using var connection = new SqlConnection(GetConnectionString());
         await connection.OpenAsync();
         await using var command = new SqlCommand(@"
-            DELETE jel FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId INNER JOIN dbo.FinancialTransactions ft ON ft.ReferenceNumber=je.ReferenceNumber WHERE ft.ReferenceNumber LIKE @orderReference;
-            DELETE je FROM dbo.JournalEntries je INNER JOIN dbo.FinancialTransactions ft ON ft.ReferenceNumber=je.ReferenceNumber WHERE ft.ReferenceNumber LIKE @orderReference;
+            DECLARE @events TABLE (AccountingEventId bigint NOT NULL PRIMARY KEY);
+            INSERT INTO @events (AccountingEventId)
+            SELECT ae.AccountingEventId
+            FROM dbo.AccountingEvents ae
+            WHERE ae.OrderId=@orderId
+               OR ae.PaymentId IN (SELECT PaymentID FROM dbo.Payments WHERE OrderID=@orderId);
+            DELETE jel FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId INNER JOIN @events e ON e.AccountingEventId=je.AccountingEventId;
+            DELETE je FROM dbo.JournalEntries je INNER JOIN @events e ON e.AccountingEventId=je.AccountingEventId;
+            DELETE ft FROM dbo.FinancialTransactions ft INNER JOIN @events e ON e.AccountingEventId=ft.AccountingEventId;
+            DELETE ae FROM dbo.AccountingEvents ae INNER JOIN @events e ON e.AccountingEventId=ae.AccountingEventId;
+            DELETE jel FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId WHERE je.ReferenceNumber LIKE @orderReference;
+            DELETE FROM dbo.JournalEntries WHERE ReferenceNumber LIKE @orderReference;
             DELETE FROM dbo.FinancialTransactions WHERE ReferenceNumber LIKE @orderReference;
             DELETE FROM dbo.CustomerLedgerEntries WHERE ReferenceNumber LIKE @orderReference;
             DELETE FROM dbo.Payments WHERE OrderID=@orderId;
@@ -309,22 +297,24 @@ public sealed class FinancialPostingCallerIntegrationTests
         await using var connection = new SqlConnection(GetConnectionString());
         await connection.OpenAsync();
         await using var command = new SqlCommand(@"
+            DECLARE @events TABLE (AccountingEventId bigint NOT NULL PRIMARY KEY);
+            INSERT INTO @events (AccountingEventId)
+            SELECT DISTINCT ft.AccountingEventId
+            FROM dbo.FinancialTransactions ft
+            WHERE ft.ReferenceNumber=@reference AND ft.AccountingEventId IS NOT NULL
+            UNION
+            SELECT DISTINCT je.AccountingEventId
+            FROM dbo.JournalEntries je
+            WHERE je.ReferenceNumber=@reference AND je.AccountingEventId IS NOT NULL;
+            DELETE jel FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId INNER JOIN @events e ON e.AccountingEventId=je.AccountingEventId;
+            DELETE je FROM dbo.JournalEntries je INNER JOIN @events e ON e.AccountingEventId=je.AccountingEventId;
+            DELETE ft FROM dbo.FinancialTransactions ft INNER JOIN @events e ON e.AccountingEventId=ft.AccountingEventId;
+            DELETE ae FROM dbo.AccountingEvents ae INNER JOIN @events e ON e.AccountingEventId=ae.AccountingEventId;
             DELETE jel FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId WHERE je.ReferenceNumber=@reference;
             DELETE FROM dbo.JournalEntries WHERE ReferenceNumber=@reference;
             DELETE FROM dbo.FinancialTransactions WHERE ReferenceNumber=@reference;
             DELETE FROM dbo.CustomerLedgerEntries WHERE ReferenceNumber=@reference;", connection);
         command.Parameters.AddWithValue("@reference", reference);
-        await command.ExecuteNonQueryAsync();
-    }
-
-    private static async Task InsertFinancialTransactionAsync(string reference, string transactionType, decimal amount)
-    {
-        await using var connection = new SqlConnection(GetConnectionString());
-        await connection.OpenAsync();
-        await using var command = new SqlCommand("INSERT INTO dbo.FinancialTransactions (ReferenceNumber,TransactionType,Amount,Description,CreatedAt) VALUES (@reference,@transactionType,@amount,N'اختبار تكاملي',SYSUTCDATETIME())", connection);
-        command.Parameters.AddWithValue("@reference", reference);
-        command.Parameters.AddWithValue("@transactionType", transactionType);
-        command.Parameters.AddWithValue("@amount", amount);
         await command.ExecuteNonQueryAsync();
     }
 

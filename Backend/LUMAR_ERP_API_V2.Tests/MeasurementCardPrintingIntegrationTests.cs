@@ -132,7 +132,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
     }
 
     [Fact]
-    public async Task PieceSold_Donation_UsesOfficialWaiverFlowWithoutPayment()
+    public async Task PieceSold_Donation_IsBlockedWithoutCreatingFinancialRecords()
     {
         var connectionString = GetConnectionString();
         var seed = await SeedTailoringPieceAsync(connectionString);
@@ -140,22 +140,17 @@ public sealed class MeasurementCardPrintingIntegrationTests
 
         var first = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null), seed.User, CancellationToken.None);
         await repository.CompleteAsync(first.PrintHistoryId, seed.User, CancellationToken.None);
-        var sold = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "PieceSold", null, null, null, 5000m, "Donation", null), seed.User, CancellationToken.None);
-        var completed = await repository.CompleteAsync(sold.PrintHistoryId, seed.User, CancellationToken.None);
-
-        Assert.NotNull(completed.WaiverReferenceNumber);
-        Assert.NotNull(completed.WaiverFinancialTransactionId);
-        Assert.NotNull(completed.WaiverJournalEntryId);
-        Assert.NotNull(completed.WaiverCustomerLedgerEntryId);
-        Assert.Null(completed.PaymentId);
-        Assert.Null(completed.PaymentFinancialTransactionId);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => repository.PrepareAsync(
+            seed.PieceId,
+            false,
+            new PrepareMeasurementCardPrintDto(null, "PieceSold", null, null, null, 5000m, "Donation", null),
+            seed.User,
+            CancellationToken.None));
 
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
-        Assert.Equal(1, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber = @reference AND TransactionType = N'CustomerBalanceWaiver'", completed.WaiverReferenceNumber!));
-        var (debit, credit) = await ReadJournalTotalsAsync(connection, completed.WaiverJournalEntryId!.Value);
-        Assert.Equal(debit, credit);
-        Assert.Equal(5000m, debit);
+        Assert.Equal(0, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.MeasurementCardPrintHistory WHERE PieceId = @pieceId AND ReprintReasonCode = N'PieceSold'", seed.PieceId));
+        Assert.Equal(0, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE Description LIKE N'%CustomerBalanceWaiver%'", DBNull.Value));
     }
 
     private static IPrintingRepository CreateRepository(string connectionString)

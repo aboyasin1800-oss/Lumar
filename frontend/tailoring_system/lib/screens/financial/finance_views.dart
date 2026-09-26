@@ -337,25 +337,25 @@ class CashAccountsScreen extends StatefulWidget {
 }
 
 class _CashAccountsScreenState extends State<CashAccountsScreen> {
-	late Future<(List<CashAccount>, List<FinancialTransaction>, CashReconciliation)> future;
+	late Future<(List<CashAccount>, List<CashMovement>, CashReconciliation)> future;
 	final repository = FinanceRepository();
 	@override void initState() { super.initState(); future = load(); }
-	Future<(List<CashAccount>, List<FinancialTransaction>, CashReconciliation)> load() async {
-		final result = await Future.wait([repository.getCashAccounts(), repository.getTransactions(), repository.getCashReconciliation()]);
-		return (result[0] as List<CashAccount>, result[1] as List<FinancialTransaction>, result[2] as CashReconciliation);
+	Future<(List<CashAccount>, List<CashMovement>, CashReconciliation)> load() async {
+		final result = await Future.wait([repository.getCashAccounts(), repository.getCashMovements(), repository.getCashReconciliation()]);
+		return (result[0] as List<CashAccount>, result[1] as List<CashMovement>, result[2] as CashReconciliation);
 	}
 	void reload() => setState(() => future = load());
-	@override Widget build(BuildContext context) => _Page(title: 'النقدية', onRefresh: reload, embedded: widget.embedded, child: FutureBuilder<(List<CashAccount>, List<FinancialTransaction>, CashReconciliation)>(future: future, builder: (context, snapshot) {
+	@override Widget build(BuildContext context) => _Page(title: 'النقدية', onRefresh: reload, embedded: widget.embedded, child: FutureBuilder<(List<CashAccount>, List<CashMovement>, CashReconciliation)>(future: future, builder: (context, snapshot) {
 		if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
 		if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
-		final (accounts, transactions, reconciliation) = snapshot.data!;
+		final (accounts, movements, reconciliation) = snapshot.data!;
 		return DefaultTabController(length: 3, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
 			const TabBar(tabs: [Tab(text: 'الصندوق'), Tab(text: 'الحسابات النقدية'), Tab(text: 'الحركات والتسويات')]),
 			const SizedBox(height: 8),
 			Expanded(child: TabBarView(children: [
 				_CashSummary(accounts: accounts, reconciliation: reconciliation),
 				_CashAccountsList(accounts: accounts),
-				_TransactionList(items: transactions, empty: 'لا توجد حركات نقدية متاحة.'),
+				_CashMovementsList(items: movements),
 			])),
 		]));
 	}));
@@ -366,15 +366,18 @@ class _CashSummary extends StatelessWidget {
 	final List<CashAccount> accounts;
 	final CashReconciliation reconciliation;
 	@override Widget build(BuildContext context) {
-		final total = accounts.fold<double>(0, (sum, account) => sum + account.currentBalance);
+		final historicalSnapshot = accounts.fold<double>(0, (sum, account) => sum + account.historicalSnapshotBalance);
 		return ListView(padding: const EdgeInsets.only(bottom: 12), children: [
-			_SectionHeading(title: 'الصندوق', description: 'ملخص الأرصدة الحالية كما يوردها النظام.'),
-			_CashValueRow(label: 'إجمالي الأرصدة النقدية', value: _money.format(total)),
-			_CashValueRow(label: 'الحسابات النشطة', value: '${accounts.where((account) => account.isActive).length}'),
+			_SectionHeading(title: 'الصندوق', description: 'رصيد مشتق من حركات النقد الرسمية منذ بداية التشغيل.'),
+			_CashValueRow(label: 'إجمالي الرصيد المشتق', value: _money.format(reconciliation.cashMovementsBalance)),
+			_CashValueRow(label: 'بداية التشغيل', value: _date.format(reconciliation.cutoverUtc.toLocal())),
+			_CashValueRow(label: 'نطاق المطابقة', value: reconciliation.status),
+			_CashValueRow(label: 'الحسابات المهيأة للاستلام', value: '${accounts.where((account) => account.isReceiptEnabled).length}'),
 			_CashValueRow(label: 'إجمالي الحسابات', value: '${accounts.length}'),
 			_CashValueRow(label: 'رصيد دفتر الأستاذ العام', value: _money.format(reconciliation.generalLedgerCashBalance)),
 			_CashValueRow(label: 'فرق المطابقة النقدية', value: _money.format(reconciliation.difference)),
-			if (!reconciliation.isReconciled) Card(color: Theme.of(context).colorScheme.errorContainer, child: const ListTile(leading: Icon(Icons.warning_amber_outlined), title: Text('يوجد فرق بين الحسابات النقدية ودفتر الأستاذ العام'), subtitle: Text('البيانات النقدية تحتاج إلى مراجعة قبل اعتمادها.'))),
+			_CashValueRow(label: 'Snapshot تاريخي غير تشغيلي', value: _money.format(historicalSnapshot)),
+			if (!reconciliation.isReconciled) Card(color: Theme.of(context).colorScheme.errorContainer, child: const ListTile(leading: Icon(Icons.warning_amber_outlined), title: Text('يوجد فرق ضمن نطاق Go-Live'), subtitle: Text('تُراجع الحركات الرسمية وقيود أحداثها فقط؛ لا يدخل Snapshot التاريخي في المطابقة.'))),
 		]);
 	}
 }
@@ -383,9 +386,22 @@ class _CashAccountsList extends StatelessWidget {
 	const _CashAccountsList({required this.accounts});
 	final List<CashAccount> accounts;
 	@override Widget build(BuildContext context) => ListView(padding: const EdgeInsets.only(bottom: 12), children: [
-		_SectionHeading(title: 'الحسابات النقدية', description: 'الأرصدة الحالية والحالة التشغيلية للحسابات المسجلة.'),
-		...accounts.map((account) => _CashListRow(title: FinanceUiText.label(account.accountName, 'حساب نقدي'), subtitle: account.isActive ? 'نشط' : 'غير نشط', value: _money.format(account.currentBalance))),
+		_SectionHeading(title: 'الحسابات النقدية', description: 'الرصيد المعروض مشتق من الحركات الرسمية فقط.'),
+		...accounts.map((account) => _CashListRow(title: FinanceUiText.label(account.accountName, 'حساب نقدي'), subtitle: account.isReceiptEnabled ? 'مهيأ لاستلام ${account.currencyCode ?? ''}' : 'غير مهيأ للاستلام', value: _money.format(account.derivedBalance))),
 	]);
+}
+
+class _CashMovementsList extends StatelessWidget {
+	const _CashMovementsList({required this.items});
+	final List<CashMovement> items;
+	@override Widget build(BuildContext context) => ListView(
+		padding: const EdgeInsets.only(bottom: 12),
+		children: [
+			const _SectionHeading(title: 'الحركات الرسمية', description: 'حركات CashMovements المرتبطة بالأحداث المحاسبية.'),
+			if (items.isEmpty) const ListTile(title: Text('لا توجد حركات نقدية رسمية ضمن نطاق Go-Live.')),
+			...items.map((item) => _CashListRow(title: item.cashAccountName, subtitle: '${item.cashDirection == 1 ? 'إيداع نقدي' : 'صرف نقدي'} - ${_date.format(item.occurredAt.toLocal())}', value: _money.format(item.cashDirection == 1 ? item.amount : -item.amount))),
+		],
+	);
 }
 
 class _SectionHeading extends StatelessWidget {

@@ -27,8 +27,8 @@ public sealed class PrintingController(IPrintingService printing, IAuthService a
         PrepareCore(pieceId, true, request, cancellationToken);
 
     [HttpPost("history/{printHistoryId:int}/complete")]
-    public Task<ActionResult<MeasurementCardPrintHistoryDto>> Complete(int printHistoryId, CancellationToken cancellationToken) =>
-        CompleteCore(printHistoryId, cancellationToken);
+    public Task<ActionResult<MeasurementCardPrintHistoryDto>> Complete(int printHistoryId, CompleteMeasurementCardPrintDto request, CancellationToken cancellationToken) =>
+        CompleteCore(printHistoryId, request, cancellationToken);
 
     [HttpPost("history/{printHistoryId:int}/fail")]
     public Task<ActionResult<MeasurementCardPrintHistoryDto>> Fail(int printHistoryId, FailMeasurementCardPrintDto request, CancellationToken cancellationToken) =>
@@ -67,14 +67,14 @@ public sealed class PrintingController(IPrintingService printing, IAuthService a
         }
     }
 
-    private async Task<ActionResult<MeasurementCardPrintHistoryDto>> CompleteCore(int printHistoryId, CancellationToken cancellationToken)
+    private async Task<ActionResult<MeasurementCardPrintHistoryDto>> CompleteCore(int printHistoryId, CompleteMeasurementCardPrintDto request, CancellationToken cancellationToken)
     {
         if (printHistoryId <= 0) return BadRequest("معرف سجل الطباعة غير صالح.");
         var user = await GetCurrentUserAsync(cancellationToken);
         if (user is null) return Unauthorized();
         try
         {
-            return Ok(await printing.CompleteAsync(printHistoryId, user, cancellationToken));
+            return Ok(await printing.CompleteAsync(printHistoryId, request?.CashAccountId, user, cancellationToken));
         }
         catch (ArgumentException exception)
         {

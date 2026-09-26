@@ -10,8 +10,11 @@ import 'package:intl/intl.dart' as intl;
 import '../core/app_navigation.dart';
 import '../core/ui_palette.dart';
 import '../models/customer_creation_models.dart';
+import '../models/sales_reference_models.dart';
 import '../repositories/loyalty_repository.dart';
 import '../services/screen_chrome_state.dart';
+import '../services/sales_reference_cache.dart';
+import '../widgets/cash_account_picker.dart';
 import 'customers/customer_create_screen.dart';
 import 'measurements_screen.dart';
 import 'ready_made_production_screen.dart';
@@ -74,7 +77,6 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   static const _buttonFontSize = 16.0;
 
   static const Color _surfaceCard = Color.fromARGB(255, 18, 28, 40);
-  static const Color _softBlue = Color.fromARGB(255, 32, 32, 32);
   static const Color _primaryBlue = Color.fromARGB(255, 2, 225, 180);
   static const Color _textMain = Color(0xFFEAF2FF);
   static const Color _textSoft = Color(0xFFB7C7DA);
@@ -101,6 +103,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   String todayOrdersCount = '24';
   bool _savingOrder = false;
   String? _orderRequestReference;
+  int? _cashAccountId;
   bool _isInitialLoading = true;
   bool _isRefreshingOfficialCatalog = false;
   int _selectedTab = 0;
@@ -141,8 +144,17 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   final List<double?> _expectedLoyaltyPoints = [0];
   final List<int> _expectedLoyaltyPointVersions = [0];
   final Map<String, _FabricStockSnapshot> _fabricStockByCode = {};
-  final Map<String, bool> _focusedEditableFieldStates = {};
+  final List<ValueNotifier<int>> _pieceRevisions = [ValueNotifier<int>(0)];
   final LoyaltyRepository _loyaltyRepository = LoyaltyRepository();
+  final SalesReferenceCache _referenceCache = SalesReferenceCache();
+  Future<void>? _initializationCoordinatorFuture;
+  Future<void>? _persistedSessionRestoreFuture;
+  Future<void>? _initialSessionRefreshFuture;
+  final Map<int, Future<void>> _customerSummaryLoads = {};
+  final Map<int, Future<void>> _initialPieceEvaluations = {};
+  final Map<int, Timer> _quantityDebounceTimers = {};
+  final Map<int, String> _successfulConsumptionInputs = {};
+  final Map<int, Future<double>> _loyaltyPointRequests = {};
   final List<TextEditingController> quantityControllers = [
     TextEditingController(text: '1')
   ];
@@ -180,17 +192,20 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     profitPercentageController.text = profitPercentage;
     profitAmountController.text = profitAmount;
     _fillCustomerControllers();
-    unawaited(_restorePersistedSession());
-    _initializeScreenData();
+    unawaited(_initializeScreenData());
   }
 
-  Future<void> _initializeScreenData() async {
-    await Future.wait([
-      _loadOfficialMeasurementFields(),
-      loadMeasurementPreview(),
-    ]);
+  Future<void> _initializeScreenData() =>
+      _initializationCoordinatorFuture ??= _runInitializationCoordinator();
+
+  Future<void> _runInitializationCoordinator() async {
+    final snapshot = await _referenceCache.load();
+    _applyReferenceSnapshot(snapshot);
     if (!mounted) return;
     setState(() => _isInitialLoading = false);
+    await _restorePersistedSession();
+    if (!mounted) return;
+    unawaited(_refreshReferenceInBackground());
   }
 
   Future<void> searchCustomerByPhone() =>
@@ -294,7 +309,21 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     _updateCurrentOrderPoints();
   }
 
-  Future<void> _loadCustomerSummary(int customerId) async {
+  Future<void> _loadCustomerSummary(int customerId) {
+    if (customerId <= 0) return Future.value();
+    return _customerSummaryLoads.putIfAbsent(
+      customerId,
+      () async {
+        try {
+          await _loadCustomerSummaryOnce(customerId);
+        } finally {
+          _customerSummaryLoads.remove(customerId);
+        }
+      },
+    );
+  }
+
+  Future<void> _loadCustomerSummaryOnce(int customerId) async {
     if (customerId <= 0) return;
     try {
       final responses = await Future.wait([
@@ -414,6 +443,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       _showMessage('تحقق من الإجمالي والخصم والدفعة المقدمة.');
       return;
     }
+    if (advance > 0 && _cashAccountId == null) {
+      _showMessage('اختر الحساب النقدي المستلم للدفعة المقدمة.');
+      return;
+    }
     final items = <Map<String, dynamic>>[];
     for (var index = 0; index < pieceTypes.length; index++) {
       final productTypeId =
@@ -466,13 +499,24 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       if (_consumptionUnits[index].isNotEmpty) {
         measurementMap['_consumptionUnit'] = _consumptionUnits[index];
       }
-      if (fabricCode.isNotEmpty) measurementMap['fabricCode'] = fabricCode;
-      if (fabricType.isNotEmpty) measurementMap['fabricType'] = fabricType;
-      if (fabricColor.isNotEmpty) measurementMap['fabricColor'] = fabricColor;
-      if (request1 != null) measurementMap['request1'] = request1;
-      if (request2 != null) measurementMap['request2'] = request2;
-      if (specialRequest != null)
+      if (fabricCode.isNotEmpty) {
+        measurementMap['fabricCode'] = fabricCode;
+      }
+      if (fabricType.isNotEmpty) {
+        measurementMap['fabricType'] = fabricType;
+      }
+      if (fabricColor.isNotEmpty) {
+        measurementMap['fabricColor'] = fabricColor;
+      }
+      if (request1 != null) {
+        measurementMap['request1'] = request1;
+      }
+      if (request2 != null) {
+        measurementMap['request2'] = request2;
+      }
+      if (specialRequest != null) {
         measurementMap['specialRequest'] = specialRequest;
+      }
       items.add({
         'pieceType': pieceTypes[index],
         'productTypeId': productTypeId,
@@ -481,8 +525,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         'fabricType': fabricType.isEmpty ? null : fabricType,
         'fabricColor': fabricColor.isEmpty ? null : fabricColor,
         'catalogNumber': catalogNumber.isEmpty ? null : catalogNumber,
-        'consumption':
-            calculatedConsumption == null ? null : calculatedConsumption,
+        'consumption': calculatedConsumption,
         'consumptionUnit':
             _consumptionUnits[index].isEmpty ? null : _consumptionUnits[index],
         'request1': request1,
@@ -525,6 +568,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           'urgencyStatus': 'Normal',
           'saleCategory': 'TailoringOrder',
           'paymentMethod': advance > 0 ? 'Cash' : null,
+          if (advance > 0) 'cashAccountId': _cashAccountId,
           'requestReference': _orderRequestReference,
           'items': items,
         }),
@@ -627,7 +671,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     _pricingVersions[pieceIndex]++;
     _pricingQuotes[pieceIndex] = null;
     _recalculateOrderTotal();
-    if (mounted) setState(() {});
+    _notifyPieceChanged(pieceIndex);
   }
 
   Future<void> _schedulePricing(int pieceIndex) async {
@@ -635,7 +679,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     final version = ++_pricingVersions[pieceIndex];
     _pricingQuotes[pieceIndex] = null;
     _recalculateOrderTotal();
-    if (mounted) setState(() {});
+    _notifyPieceChanged(pieceIndex);
     await Future<void>.delayed(const Duration(milliseconds: 300));
     if (!mounted || version != _pricingVersions[pieceIndex]) return;
     await _requestPricing(pieceIndex, version);
@@ -652,7 +696,9 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     if (productTypeId == null ||
         fabricCode.isEmpty ||
         quantity <= 0 ||
-        totalConsumption == null) return;
+        totalConsumption == null) {
+      return;
+    }
     final response = await http.post(
       Uri.parse('$_baseUrl/pricing-engine/calculate'),
       headers: {'Content-Type': 'application/json'},
@@ -668,7 +714,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     );
     if (!mounted || version != _pricingVersions[pieceIndex]) return;
     final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
-    setState(() {
+    _updatePieceViewState(pieceIndex, () {
       _pricingQuotes[pieceIndex] = response.statusCode >= 200 &&
               response.statusCode < 300 &&
               decoded is Map<String, dynamic>
@@ -740,7 +786,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     await loadMeasurementPreview();
   }
 
-  Future<void> _restorePersistedSession() async {
+  Future<void> _restorePersistedSession() =>
+      _persistedSessionRestoreFuture ??= _restorePersistedSessionOnce();
+
+  Future<void> _restorePersistedSessionOnce() async {
     final raw = await _sessionStorage.read(key: _activeSessionStorageKey);
     if (raw == null || raw.trim().isEmpty) return;
 
@@ -752,7 +801,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       setState(() {
         _applyDraftToCurrentState(draft);
       });
-      await _refreshRestoredSessionData();
+      await _runInitialSessionRefresh();
     } catch (_) {
       await _sessionStorage.delete(key: _activeSessionStorageKey);
     }
@@ -826,11 +875,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     profitAmountController.text = profitAmount;
   }
 
-  List<String> _uniquePieceTypes() => pieceTypes.toSet().toList();
-
   void _syncPieceTypesWithCount() {
     while (pieceTypes.length < piecesCount) {
       pieceTypes.add(_defaultPieceType);
+      _pieceRevisions.add(ValueNotifier<int>(0));
       quantityControllers.add(TextEditingController(text: '1'));
       fabricCodeControllers.add(TextEditingController());
       fabricTypeControllers.add(TextEditingController());
@@ -877,18 +925,46 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           piecesCount, _expectedLoyaltyPoints.length);
       _expectedLoyaltyPointVersions.removeRange(
           piecesCount, _expectedLoyaltyPointVersions.length);
+      for (final revision in _pieceRevisions.sublist(piecesCount)) {
+        revision.dispose();
+      }
+      _pieceRevisions.removeRange(piecesCount, _pieceRevisions.length);
     }
+  }
+
+  void _notifyPieceChanged(int pieceIndex) {
+    if (!mounted || pieceIndex < 0 || pieceIndex >= _pieceRevisions.length) {
+      return;
+    }
+    _pieceRevisions[pieceIndex].value++;
+  }
+
+  void _updatePieceViewState(int pieceIndex, VoidCallback update) {
+    update();
+    _notifyPieceChanged(pieceIndex);
+  }
+
+  void _selectPiece(int pieceIndex) {
+    if (_selectedPieceIndex == pieceIndex) return;
+    final previousPieceIndex = _selectedPieceIndex;
+    _selectedPieceIndex = pieceIndex;
+    if (previousPieceIndex != null) {
+      _notifyPieceChanged(previousPieceIndex);
+    }
+    _notifyPieceChanged(pieceIndex);
   }
 
   Future<void> _loadExpectedLoyaltyPoints(int pieceIndex) async {
     if (pieceIndex >= pieceTypes.length ||
-        pieceIndex >= _expectedLoyaltyPoints.length) return;
+        pieceIndex >= _expectedLoyaltyPoints.length) {
+      return;
+    }
     final version = ++_expectedLoyaltyPointVersions[pieceIndex];
     final productTypeId =
         _productTypeIdsByType[_normalizePieceTypeKey(pieceTypes[pieceIndex])];
     if (productTypeId == null) {
       if (mounted) {
-        setState(() {
+        _updatePieceViewState(pieceIndex, () {
           _expectedLoyaltyPoints[pieceIndex] = 0;
           _updateCurrentOrderPoints();
         });
@@ -896,31 +972,37 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       return;
     }
     if (mounted) {
-      setState(() {
+      _updatePieceViewState(pieceIndex, () {
         _expectedLoyaltyPoints[pieceIndex] = null;
         _updateCurrentOrderPoints();
       });
     }
     try {
-      final points = await _loyaltyRepository.evaluateOfficialProductPoints(
-        productTypeId: productTypeId,
+      final points = await _loyaltyPointRequests.putIfAbsent(
+        productTypeId,
+        () => _loyaltyRepository.evaluateOfficialProductPoints(
+          productTypeId: productTypeId,
+        ),
       );
       if (!mounted ||
           pieceIndex >= pieceTypes.length ||
           version != _expectedLoyaltyPointVersions[pieceIndex] ||
           _productTypeIdsByType[
                   _normalizePieceTypeKey(pieceTypes[pieceIndex])] !=
-              productTypeId) return;
-      setState(() {
+              productTypeId) {
+        return;
+      }
+      _updatePieceViewState(pieceIndex, () {
         _expectedLoyaltyPoints[pieceIndex] = points;
         _updateCurrentOrderPoints();
       });
     } catch (error) {
+      _loyaltyPointRequests.remove(productTypeId);
       debugPrint('Failed to load expected loyalty points: $error');
       if (mounted &&
           pieceIndex < _expectedLoyaltyPoints.length &&
           version == _expectedLoyaltyPointVersions[pieceIndex]) {
-        setState(() {
+        _updatePieceViewState(pieceIndex, () {
           _expectedLoyaltyPoints[pieceIndex] = 0;
           _updateCurrentOrderPoints();
         });
@@ -988,9 +1070,12 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         );
       }
       if (!mounted) return;
-      setState(() => _fabricStockByCode
+      _fabricStockByCode
         ..clear()
-        ..addAll(nextStock));
+        ..addAll(nextStock);
+      for (var index = 0; index < piecesCount; index++) {
+        _notifyPieceChanged(index);
+      }
     } catch (error) {
       debugPrint('Failed to load fabric stock: $error');
     }
@@ -1041,16 +1126,32 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
 
   String _pieceMeasurementKey(int pieceIndex) => 'piece_$pieceIndex';
 
+  void _scheduleQuantityConsumption(int pieceIndex) {
+    _quantityDebounceTimers.remove(pieceIndex)?.cancel();
+    _quantityDebounceTimers[pieceIndex] = Timer(
+      const Duration(milliseconds: 250),
+      () => _calculateConsumption(pieceIndex),
+    );
+  }
+
+  void _cancelQuantityDebounces() {
+    for (final timer in _quantityDebounceTimers.values) {
+      timer.cancel();
+    }
+    _quantityDebounceTimers.clear();
+  }
+
   Future<void> _calculateConsumption(int pieceIndex) async {
     final pieceType = pieceTypes[pieceIndex];
     final productTypeId =
         _productTypeIdsByType[_normalizePieceTypeKey(pieceType)];
     if (pieceType.isEmpty || productTypeId == null) {
-      if (mounted)
-        setState(() {
+      if (mounted) {
+        _updatePieceViewState(pieceIndex, () {
           _calculatedConsumptions[pieceIndex] = null;
           _consumptionMessages[pieceIndex] = 'نوع القطعة غير مرتبط بمصدر رسمي.';
         });
+      }
       return;
     }
     final values = <String, double>{};
@@ -1063,6 +1164,13 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       final code = codes[entry.key] ?? entry.key;
       if (value != null && value >= 0) values[code] = value;
     }
+    final sortedValues = values.entries.toList()
+      ..sort((left, right) => left.key.compareTo(right.key));
+    final requestKey = [
+      '$productTypeId',
+      ...sortedValues.map((entry) => '${entry.key}:${entry.value}'),
+    ].join('|');
+    if (_successfulConsumptionInputs[pieceIndex] == requestKey) return;
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/consumption-rules/evaluate'),
@@ -1077,29 +1185,31 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           decoded is Map<String, dynamic>) {
         final unit = decoded['unit']?.toString() ?? '';
         final result = double.tryParse(decoded['value']?.toString() ?? '');
-        setState(() {
+        _updatePieceViewState(pieceIndex, () {
           _calculatedConsumptions[pieceIndex] = result;
           _consumptionUnits[pieceIndex] = unit;
           _consumptionMessages[pieceIndex] = '';
         });
+        _successfulConsumptionInputs[pieceIndex] = requestKey;
         await _schedulePricing(pieceIndex);
       } else {
         final message = decoded is Map<String, dynamic>
             ? decoded['message']?.toString()
             : null;
-        setState(() {
+        _updatePieceViewState(pieceIndex, () {
           _calculatedConsumptions[pieceIndex] = null;
           _consumptionMessages[pieceIndex] = message ?? 'تعذر حساب الاستهلاك.';
         });
         _invalidatePricing(pieceIndex);
       }
     } catch (_) {
-      if (mounted)
-        setState(() {
+      if (mounted) {
+        _updatePieceViewState(pieceIndex, () {
           _calculatedConsumptions[pieceIndex] = null;
           _consumptionMessages[pieceIndex] =
               'تعذر الاتصال بخدمة قواعد الاستهلاك.';
         });
+      }
       _invalidatePricing(pieceIndex);
     }
   }
@@ -1111,113 +1221,64 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       ? _officialPieceTypeOptions
       : _fallbackPieceTypeOptions;
 
-  Future<void> _loadOfficialMeasurementFields() async {
-    final nextFields = <String, List<String>>{};
-    final nextCodes = <String, Map<String, String>>{};
-    final nextOptions = <String>[];
-    final nextProductTypeIds = <String, int>{};
-
-    try {
-      final response = await http.get(Uri.parse('$_baseUrl/consumption-rules'));
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('HTTP ${response.statusCode}');
-      }
-
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception('Invalid consumption-rules payload');
-      }
-
-      final productTypes = (decoded['productTypes'] as List? ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .toList();
-      final productTypeNames = <int, String>{
-        for (final item in productTypes)
-          (int.tryParse(item['productTypeId']?.toString() ?? '') ?? 0):
-              (item['nameAr']?.toString() ?? '').trim(),
-      };
-
-      final seenOptionKeys = <String>{};
-      for (final item in productTypes) {
-        final name = (item['nameAr']?.toString() ?? '').trim();
-        final productTypeId =
-            int.tryParse(item['productTypeId']?.toString() ?? '') ?? 0;
-        if (name.isEmpty || productTypeId <= 0) continue;
-
-        final key = _normalizePieceTypeKey(name);
-        if (key.isEmpty || seenOptionKeys.contains(key)) continue;
-        seenOptionKeys.add(key);
-        nextOptions.add(name);
-        nextProductTypeIds[key] = productTypeId;
-      }
-
-      final groupedFields = <int, List<String>>{};
-      for (final item in ((decoded['measurementFields'] as List?) ?? const [])
-          .whereType<Map<String, dynamic>>()) {
-        final productTypeId =
-            int.tryParse(item['productTypeId']?.toString() ?? '') ?? 0;
-        final name = (item['nameAr']?.toString() ?? '').trim();
-        if (productTypeId <= 0 || name.isEmpty) continue;
-
-        groupedFields.putIfAbsent(productTypeId, () => <String>[]).add(name);
-
-        final productTypeName = productTypeNames[productTypeId] ?? '';
-        final normalizedKey = _normalizePieceTypeKey(productTypeName);
-        if (normalizedKey.isEmpty) continue;
-        final codes =
-            nextCodes.putIfAbsent(normalizedKey, () => <String, String>{});
-        codes[name] = item['code']?.toString() ?? name;
-      }
-
-      for (final entry in groupedFields.entries) {
-        final productTypeName = productTypeNames[entry.key] ?? '';
-        final pieceType = _normalizePieceTypeKey(productTypeName);
-        if (pieceType.isEmpty) continue;
-        nextFields[pieceType] = <String>[...entry.value.toSet().toList()];
-        if (!nextProductTypeIds.containsKey(pieceType)) {
-          nextProductTypeIds[pieceType] = entry.key;
-        }
-      }
-    } catch (error) {
-      debugPrint('Failed to load official measurement fields: $error');
-      if (mounted && _officialPieceTypeOptions.isEmpty) {
-        setState(() {
-          _officialPieceTypeOptions
-            ..clear()
-            ..addAll(_fallbackPieceTypeOptions);
-        });
-      }
-      return;
-    }
-
-    if (!mounted) return;
-    setState(() {
-      _officialMeasurementFieldsByType
-        ..clear()
-        ..addAll(nextFields);
-      _measurementCodesByType
-        ..clear()
-        ..addAll(nextCodes);
-      _officialPieceTypeOptions
-        ..clear()
-        ..addAll(
-            nextOptions.isNotEmpty ? nextOptions : _fallbackPieceTypeOptions);
-      _productTypeIdsByType
-        ..clear()
-        ..addAll(nextProductTypeIds);
-    });
-
+  Future<void> _loadOfficialMeasurementFields({bool forceRefresh = false}) async {
+    final snapshot = forceRefresh
+        ? await _referenceCache.forceRefresh()
+        : await _referenceCache.load();
+    _applyReferenceSnapshot(snapshot);
     for (var index = 0; index < pieceTypes.length; index++) {
       await _loadExpectedLoyaltyPoints(index);
       await _calculateConsumption(index);
     }
   }
 
+  void _applyReferenceSnapshot(SalesReferenceSnapshot snapshot) {
+    _loyaltyPointRequests.clear();
+    for (var index = 0; index < _expectedLoyaltyPointVersions.length; index++) {
+      _expectedLoyaltyPointVersions[index]++;
+    }
+    final nextFields = <String, List<String>>{};
+    final nextCodes = <String, Map<String, String>>{};
+    final nextOptions = <String>[];
+    final nextProductTypeIds = <String, int>{};
+    final productTypes = snapshot.productTypes.where((item) => item.isActive);
+    final namesById = <int, String>{
+      for (final item in productTypes) item.productTypeId: item.nameAr.trim(),
+    };
+    for (final item in snapshot.productTypes.where((item) => item.isActive)) {
+      final name = item.nameAr.trim();
+      if (name.isEmpty || item.productTypeId <= 0) continue;
+      final key = _normalizePieceTypeKey(name);
+      if (key.isEmpty || nextProductTypeIds.containsKey(key)) continue;
+      nextOptions.add(name);
+      nextProductTypeIds[key] = item.productTypeId;
+    }
+    for (final field in snapshot.measurementFields) {
+      final productTypeName = namesById[field.productTypeId] ?? '';
+      final pieceType = _normalizePieceTypeKey(productTypeName);
+      if (pieceType.isEmpty || field.nameAr.trim().isEmpty) continue;
+      nextFields.putIfAbsent(pieceType, () => <String>[]).add(field.nameAr);
+      nextCodes.putIfAbsent(pieceType, () => <String, String>{})[field.nameAr] = field.code;
+    }
+    _officialMeasurementFieldsByType
+      ..clear()
+      ..addAll(nextFields.map((key, value) => MapEntry(key, value.toSet().toList())));
+    _measurementCodesByType
+      ..clear()
+      ..addAll(nextCodes);
+    _officialPieceTypeOptions
+      ..clear()
+      ..addAll(nextOptions.isNotEmpty ? nextOptions : _fallbackPieceTypeOptions);
+    _productTypeIdsByType
+      ..clear()
+      ..addAll(nextProductTypeIds);
+  }
+
   Future<void> _refreshOfficialCatalog() async {
     if (_isRefreshingOfficialCatalog) return;
     setState(() => _isRefreshingOfficialCatalog = true);
     try {
-      await _loadOfficialMeasurementFields();
+      await _loadOfficialMeasurementFields(forceRefresh: true);
       if (mounted) {
         _showMessage(
             'تم تحديث أنواع القطع والقياسات والقواعد من المصدر الرسمي.');
@@ -1231,6 +1292,20 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       if (mounted) {
         setState(() => _isRefreshingOfficialCatalog = false);
       }
+    }
+  }
+
+  Future<void> _refreshReferenceInBackground() async {
+    try {
+      final snapshot = await _referenceCache.refreshIfChanged();
+      if (snapshot == null || !mounted) return;
+      setState(() => _applyReferenceSnapshot(snapshot));
+      for (var index = 0; index < pieceTypes.length; index++) {
+        await _loadExpectedLoyaltyPoints(index);
+        await _calculateConsumption(index);
+      }
+    } catch (error) {
+      debugPrint('Failed to check sales reference version: $error');
     }
   }
 
@@ -1264,17 +1339,26 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     return normalized;
   }
 
-  Future<void> loadMeasurementPreview() async {
-    measurementValuesByType.clear();
-    for (final type in _uniquePieceTypes()) {
+  Future<void> loadMeasurementPreview({
+    int? pieceIndex,
+    bool recalculatePieces = true,
+    bool preserveExisting = true,
+  }) async {
+    final indexes = pieceIndex == null
+        ? List<int>.generate(pieceTypes.length, (index) => index)
+        : <int>[pieceIndex];
+    for (final index in indexes) {
+      if (index < 0 || index >= pieceTypes.length) continue;
       final fields = {
-        for (final field in _measurementFieldsForPiece(type)) field: '---',
+        for (final field in _measurementFieldsForPiece(pieceTypes[index])) field: '---',
       };
-      for (var index = 0; index < pieceTypes.length; index++) {
-        if (pieceTypes[index] == type)
-          measurementValuesByType[_pieceMeasurementKey(index)] =
-              Map<String, String>.from(fields);
+      final existing = measurementValuesByType[_pieceMeasurementKey(index)];
+      if (preserveExisting && existing != null) {
+        for (final entry in existing.entries) {
+          if (fields.containsKey(entry.key)) fields[entry.key] = entry.value;
+        }
       }
+      measurementValuesByType[_pieceMeasurementKey(index)] = fields;
     }
     if (currentCustomerId > 0) {
       try {
@@ -1289,7 +1373,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
               final name = item['measurementName']?.toString();
               final value = item['measurementValue']?.toString() ?? '';
               if (type != null && name != null) {
-                for (var index = 0; index < pieceTypes.length; index++) {
+                for (final index in indexes) {
                   if (pieceTypes[index] == type &&
                       measurementValuesByType[_pieceMeasurementKey(index)]
                               ?[name] ==
@@ -1306,9 +1390,13 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         debugPrint('Failed to load measurements: $error');
       }
     }
-    if (mounted) setState(() {});
-    for (var index = 0; index < pieceTypes.length; index++) {
-      await _calculateConsumption(index);
+    for (final index in indexes) {
+      _notifyPieceChanged(index);
+    }
+    if (recalculatePieces) {
+      for (final index in indexes) {
+        await _calculateConsumption(index);
+      }
     }
   }
 
@@ -1380,6 +1468,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_saveCurrentSessionToStorage());
     ScreenChromeState.instance.setHideTopChrome(false);
+    _cancelQuantityDebounces();
+    for (final revision in _pieceRevisions) {
+      revision.dispose();
+    }
     for (final controller in [
       customerNameController,
       customerCodeController,
@@ -1437,11 +1529,6 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       ScreenChromeState.instance
           .setHideTopChrome(nextMode == SalesViewMode.fullscreen);
     });
-  }
-
-  void _applySalesViewMode(SalesViewMode mode) {
-    if (salesViewModeNotifier.value == mode && _salesViewMode == mode) return;
-    salesViewModeNotifier.value = mode;
   }
 
   @override
@@ -1510,56 +1597,6 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
               ),
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildDisplayModeSelector(BuildContext context) {
-    final modeButtons = <SalesViewMode, String>{
-      SalesViewMode.tabs: 'التبويبات',
-      SalesViewMode.sessions: 'الشريط',
-      SalesViewMode.all: 'الكل',
-      SalesViewMode.fullscreen: 'ملء الشاشة',
-    };
-    final isLightTheme = Theme.of(context).brightness == Brightness.light;
-    final chipBackground =
-        isLightTheme ? const Color(0xFFEAF1F7) : const Color(0xFF1A2633);
-    final chipBorder =
-        isLightTheme ? const Color(0xFFD8E1F0) : const Color(0xFF32475E);
-    final textColor =
-        isLightTheme ? const Color(0xFF0F172A) : const Color(0xFFEAF2FF);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        alignment: WrapAlignment.start,
-        children: modeButtons.entries.map((entry) {
-          final selected = _salesViewMode == entry.key;
-          return ChoiceChip(
-            label: Text(entry.value),
-            selected: selected,
-            showCheckmark: false,
-            onSelected: (_) => _applySalesViewMode(entry.key),
-            selectedColor: const Color.fromARGB(255, 2, 225, 180),
-            backgroundColor: chipBackground,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            labelStyle: TextStyle(
-              color: selected ? const Color.fromARGB(255, 0, 0, 0) : textColor,
-              fontWeight: FontWeight.w700,
-              fontSize: _supportingFontSize,
-            ),
-            side: BorderSide(
-              color: selected
-                  ? const Color.fromARGB(255, 2, 225, 180)
-                  : chipBorder,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(5),
-            ),
-          );
-        }).toList(),
       ),
     );
   }
@@ -1918,16 +1955,38 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     await _refreshRestoredSessionData();
   }
 
-  Future<void> _refreshRestoredSessionData() async {
-    for (var pieceIndex = 0; pieceIndex < piecesCount; pieceIndex++) {
-      await _loadExpectedLoyaltyPoints(pieceIndex);
-      await _calculateConsumption(pieceIndex);
-    }
+  Future<void> _runInitialSessionRefresh() =>
+      _initialSessionRefreshFuture ??= _refreshRestoredSessionData(
+        loadMeasurements: true,
+        useInitialPieceEvaluationGuard: true,
+      );
+
+  Future<void> _refreshRestoredSessionData({
+    bool loadMeasurements = false,
+    bool useInitialPieceEvaluationGuard = false,
+  }) async {
     if (currentCustomerId > 0) {
       await _loadCustomerSummary(currentCustomerId);
     } else {
       _updateCurrentOrderPoints();
       _fillCustomerControllers();
+    }
+    if (loadMeasurements) {
+      await loadMeasurementPreview(recalculatePieces: false);
+    }
+    for (var pieceIndex = 0; pieceIndex < piecesCount; pieceIndex++) {
+      if (useInitialPieceEvaluationGuard) {
+        await _initialPieceEvaluations.putIfAbsent(
+          pieceIndex,
+          () async {
+            await _loadExpectedLoyaltyPoints(pieceIndex);
+            await _calculateConsumption(pieceIndex);
+          },
+        );
+      } else {
+        await _loadExpectedLoyaltyPoints(pieceIndex);
+        await _calculateConsumption(pieceIndex);
+      }
     }
   }
 
@@ -2202,6 +2261,22 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                 readOnly: true),
             _customerField(context, 'المدفوع مقدماً', paidAmountController,
                 onChanged: _updateRemainingAmount),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: paidAmountController,
+              builder: (context, value, _) {
+                final advance =
+                    double.tryParse(value.text.replaceAll(',', '.')) ?? 0;
+                if (advance <= 0) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: CashAccountPicker(
+                    value: _cashAccountId,
+                    onChanged: (value) =>
+                        setState(() => _cashAccountId = value),
+                  ),
+                );
+              },
+            ),
             _customerField(context, 'الخصم', discountAmountController,
                 onChanged: _updateRemainingAmount),
             _customerField(
@@ -2286,14 +2361,13 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   Widget _buildPiecesSection(BuildContext context) {
     return _darkCard(
       context,
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (int index = 1; index <= piecesCount; index++) ...[
-            _pieceCard(context, index),
-            if (index != piecesCount) const SizedBox(height: 10),
-          ],
-        ],
+      ListView.separated(
+        shrinkWrap: true,
+        primary: false,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: piecesCount,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (context, index) => _pieceCard(context, index + 1),
       ),
     );
   }
@@ -2304,7 +2378,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       _syncPieceTypesWithCount();
     });
     _updateCurrentOrderPoints();
-    await loadMeasurementPreview();
+    await loadMeasurementPreview(pieceIndex: piecesCount - 1);
   }
 
   Future<void> _removePiece(int pieceIndex) async {
@@ -2325,6 +2399,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       ),
     );
     if (confirmed != true || !mounted) return;
+    _cancelQuantityDebounces();
+    _successfulConsumptionInputs.clear();
     setState(() {
       pieceTypes.removeAt(pieceIndex);
       for (final controllers in [
@@ -2345,11 +2421,11 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       _pricingVersions.removeAt(pieceIndex);
       _expectedLoyaltyPoints.removeAt(pieceIndex);
       _expectedLoyaltyPointVersions.removeAt(pieceIndex);
+      _pieceRevisions.removeAt(pieceIndex).dispose();
       piecesCount--;
       _selectedPieceIndex = null;
     });
     _updateCurrentOrderPoints();
-    await loadMeasurementPreview();
   }
 
   Future<void> _openMeasurements(int pieceIndex) async {
@@ -2371,13 +2447,24 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       ),
     );
     if (values != null && mounted) {
-      setState(() =>
-          measurementValuesByType[_pieceMeasurementKey(pieceIndex)] = values);
+      _updatePieceViewState(
+        pieceIndex,
+        () => measurementValuesByType[_pieceMeasurementKey(pieceIndex)] =
+            values,
+      );
       await _calculateConsumption(pieceIndex);
     }
   }
 
   Widget _pieceCard(BuildContext context, int index) {
+    final pieceIndex = index - 1;
+    return ValueListenableBuilder<int>(
+      valueListenable: _pieceRevisions[pieceIndex],
+      builder: (context, _, __) => _buildPieceCard(context, index),
+    );
+  }
+
+  Widget _buildPieceCard(BuildContext context, int index) {
     final pieceIndex = index - 1;
     final pieceType = pieceTypes[pieceIndex];
     final selected = _selectedPieceIndex == pieceIndex;
@@ -2414,7 +2501,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         onTap: pieceType.isEmpty
             ? null
-            : () => setState(() => _selectedPieceIndex = pieceIndex),
+          : () => _selectPiece(pieceIndex),
         child: Padding(
           padding: const EdgeInsets.all(8),
           child: Column(
@@ -2486,7 +2573,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                         color: isMeasurementsHidden
                             ? theme.colorScheme.primary
                             : theme.colorScheme.onSurface,
-                        onPressed: () => setState(() {
+                        onPressed: () => _updatePieceViewState(pieceIndex, () {
                           _hiddenMeasurementRows[pieceIndex] =
                               !isMeasurementsHidden;
                         }),
@@ -2567,9 +2654,6 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                         child: Focus(
                           onKeyEvent: (_, event) =>
                               _moveToNextFieldOnEnter(context, event),
-                          onFocusChange: (hasFocus) =>
-                              _setEditableFieldFocusState(
-                                  pieceIndex, 'type', hasFocus),
                           child: DropdownButtonFormField<String>(
                             initialValue: pieceType.isEmpty ||
                                     !_pieceTypeOptions.contains(pieceType)
@@ -2583,8 +2667,6 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                             style: theme.textTheme.bodySmall?.copyWith(
                                 fontSize: _fieldFontSize, color: _textMain),
                             decoration: _pieceDecoration(context, 'نوع القطعة',
-                              selected: _isEditableFieldFocused(
-                                pieceIndex, 'type'),
                               contentPadding: row1ContentPadding),
                             items: _pieceTypeOptions
                                 .map((type) => DropdownMenuItem(
@@ -2596,13 +2678,15 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                             onChanged: (value) async {
                               if (value == null) return;
                               _invalidatePricing(pieceIndex);
-                              setState(() {
+                              _updatePieceViewState(pieceIndex, () {
                                 pieceTypes[pieceIndex] = value;
-                                _selectedPieceIndex = pieceIndex;
                               });
+                              _selectPiece(pieceIndex);
                               await _loadExpectedLoyaltyPoints(pieceIndex);
-                              await loadMeasurementPreview();
-                              await _calculateConsumption(pieceIndex);
+                              await loadMeasurementPreview(
+                                pieceIndex: pieceIndex,
+                                preserveExisting: false,
+                              );
                             },
                           ),
                         ),
@@ -2625,11 +2709,11 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                           pieceIndex: pieceIndex,
                           fieldKey: 'quantity',
                           contentPadding: row1ContentPadding,
-                          onChanged: (_) async {
+                          onChanged: (_) {
                             _invalidatePricing(pieceIndex);
                             _updateCurrentOrderPoints();
-                            await _calculateConsumption(pieceIndex);
-                            if (mounted) setState(() {});
+                            _scheduleQuantityConsumption(pieceIndex);
+                            _notifyPieceChanged(pieceIndex);
                           },
                         ),
                       ),
@@ -2644,8 +2728,9 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                           contentPadding: row1ContentPadding,
                           onChanged: (_) async {
                             _invalidatePricing(pieceIndex);
-                            setState(() {});
+                            _notifyPieceChanged(pieceIndex);
                             await _syncFabricDataForPiece(pieceIndex);
+                            _notifyPieceChanged(pieceIndex);
                             await _schedulePricing(pieceIndex);
                           },
                         ),
@@ -2714,8 +2799,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                             onPressed: pieceType.isEmpty
                                 ? null
                                 : () {
-                                    setState(
-                                        () => _selectedPieceIndex = pieceIndex);
+                                    _selectPiece(pieceIndex);
                                     _openMeasurements(pieceIndex);
                                   },
                             icon: const Icon(Icons.straighten, size: 24),
@@ -2883,18 +2967,12 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     EdgeInsets? contentPadding,
     ValueChanged<String>? onChanged,
   }) {
-    final key = pieceIndex == null || fieldKey == null
-        ? label
-        : 'piece_${pieceIndex}_$fieldKey';
-    final isFocused = _focusedEditableFieldStates[key] ?? false;
     return Focus(
-      onFocusChange: (hasFocus) =>
-          _setEditableFieldFocusState(pieceIndex, fieldKey, hasFocus),
       child: TextField(
         controller: controller,
         onChanged: onChanged,
-        decoration: _pieceDecoration(context, label,
-            selected: isFocused, contentPadding: contentPadding),
+      decoration: _pieceDecoration(context, label,
+        contentPadding: contentPadding),
         keyboardType: number ? TextInputType.number : null,
         textInputAction: TextInputAction.next,
         onSubmitted: (_) => FocusScope.of(context).nextFocus(),
@@ -3027,25 +3105,6 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         contentPadding: contentPadding ??
           const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
     );
-  }
-
-  void _setEditableFieldFocusState(
-      int? pieceIndex, String? fieldKey, bool hasFocus) {
-    if (pieceIndex == null || fieldKey == null) return;
-    final key = 'piece_${pieceIndex}_$fieldKey';
-    if (!mounted) return;
-    setState(() {
-      if (hasFocus) {
-        _focusedEditableFieldStates[key] = true;
-      } else {
-        _focusedEditableFieldStates.remove(key);
-      }
-    });
-  }
-
-  bool _isEditableFieldFocused(int pieceIndex, String fieldKey) {
-    return _focusedEditableFieldStates['piece_${pieceIndex}_$fieldKey'] ??
-        false;
   }
 
   Widget _darkCard(BuildContext context, Widget child) {

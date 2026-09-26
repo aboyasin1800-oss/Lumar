@@ -28,9 +28,9 @@ public sealed class OrderService(
     public Task<IReadOnlyList<OrderPieceDto>> GetPiecesAsync(int orderId, CancellationToken cancellationToken) => repository.GetPiecesAsync(orderId, cancellationToken);
     public Task<IReadOnlyList<OrderFabricDto>> GetFabricsAsync(int orderId, CancellationToken cancellationToken) => repository.GetFabricsAsync(orderId, cancellationToken);
     public Task<IReadOnlyList<OrderPaymentDto>> GetPaymentsAsync(int orderId, CancellationToken cancellationToken) => repository.GetPaymentsAsync(orderId, cancellationToken);
-    public async Task<OrderDetailsDto?> CollectCustomerPaymentAsync(int orderId, decimal amount, string? paymentMethod, string? referenceNumber, string? notes, CancellationToken cancellationToken)
+    public async Task<OrderDetailsDto?> CollectCustomerPaymentAsync(int orderId, decimal amount, string? paymentMethod, int? cashAccountId, string? referenceNumber, string? notes, CancellationToken cancellationToken)
     {
-        var collected = await repository.CollectCustomerPaymentAsync(orderId, amount, paymentMethod, referenceNumber, notes, cancellationToken);
+        var collected = await repository.CollectCustomerPaymentAsync(orderId, amount, paymentMethod, cashAccountId, referenceNumber, notes, cancellationToken);
         if (collected is not null)
         {
             await orderLoyaltyIntegrationService.ProcessIfEligibleAsync(orderId, cancellationToken);
@@ -39,9 +39,9 @@ public sealed class OrderService(
         return collected;
     }
 
-    public async Task<OrderDetailsDto?> SettleCustomerBalanceAsync(int orderId, decimal amount, decimal discountAmount, string? paymentMethod, string? referenceNumber, string? notes, CancellationToken cancellationToken)
+    public async Task<OrderDetailsDto?> SettleCustomerBalanceAsync(int orderId, decimal amount, decimal discountAmount, string? paymentMethod, int? cashAccountId, string? referenceNumber, string? notes, CancellationToken cancellationToken)
     {
-        var settled = await repository.SettleCustomerBalanceAsync(orderId, amount, discountAmount, paymentMethod, referenceNumber, notes, cancellationToken);
+        var settled = await repository.SettleCustomerBalanceAsync(orderId, amount, discountAmount, paymentMethod, cashAccountId, referenceNumber, notes, cancellationToken);
         if (settled is not null)
         {
             await orderLoyaltyIntegrationService.ProcessIfEligibleAsync(orderId, cancellationToken);

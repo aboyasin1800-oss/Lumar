@@ -7,26 +7,45 @@ public sealed class FinanceRepository(ReadOnlySqlConnectionFactory connections) 
     public async Task<JournalEntryDto?> GetJournalEntryAsync(int id, CancellationToken ct) => (await QueryAsync(JournalSummarySql + " HAVING je.JournalEntryId = @id", id, MapJournal, ct)).FirstOrDefault();
     public Task<IReadOnlyList<JournalEntryLineDto>> GetJournalLinesAsync(int id, CancellationToken ct) => QueryAsync("SELECT JournalEntryLineId, JournalEntryId, LedgerAccountId, DebitAmount, CreditAmount, Description FROM dbo.JournalEntryLines WHERE JournalEntryId = @id ORDER BY JournalEntryLineId", id, r => new JournalEntryLineDto(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), r.GetDecimal(3), r.GetDecimal(4), r.NullableString("Description")), ct);
     public Task<IReadOnlyList<LedgerAccountDto>> GetLedgerAccountsAsync(CancellationToken ct) => QueryAsync("SELECT LedgerAccountId, AccountCode, AccountName, AccountType, IsActive, CreatedAt, UpdatedAt FROM dbo.LedgerAccounts ORDER BY AccountCode, LedgerAccountId", null, r => new LedgerAccountDto(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetBoolean(4), r.GetDateTime(5), r.NullableDateTime("UpdatedAt")), ct);
-    public Task<IReadOnlyList<CashAccountDto>> GetCashAccountsAsync(CancellationToken ct) => QueryAsync("SELECT CashAccountId, AccountName, CurrentBalance, IsActive, CreatedAt FROM dbo.CashAccounts ORDER BY AccountName, CashAccountId", null, r => new CashAccountDto(r.GetInt32(0), r.GetString(1), r.GetDecimal(2), r.GetBoolean(3), r.GetDateTime(4)), ct);
+    public Task<IReadOnlyList<CashAccountDto>> GetCashAccountsAsync(CancellationToken ct) => QueryAsync("""
+        SELECT ca.CashAccountId, ca.AccountName,
+               COALESCE(SUM(CASE cm.CashDirection WHEN 1 THEN cm.Amount WHEN 2 THEN -cm.Amount ELSE 0 END), 0),
+               ca.CurrentBalance, ca.IsActive,
+               CASE WHEN ca.IsActive = 1 AND ca.CashAccountType = 1 AND ca.AllowsReceipts = 1 AND ca.CurrencyCode IS NOT NULL AND ca.LedgerControlAccountId IS NOT NULL THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END,
+               ca.CurrencyCode, ca.CreatedAt
+        FROM dbo.CashAccounts ca
+        LEFT JOIN dbo.CashMovements cm ON cm.CashAccountId = ca.CashAccountId
+        GROUP BY ca.CashAccountId, ca.AccountName, ca.CurrentBalance, ca.IsActive, ca.CashAccountType, ca.AllowsReceipts, ca.CurrencyCode, ca.LedgerControlAccountId, ca.CreatedAt
+        ORDER BY ca.AccountName, ca.CashAccountId
+        """, null, r => new CashAccountDto(r.GetInt32(0), r.GetString(1), r.GetDecimal(2), r.GetDecimal(3), r.GetBoolean(4), r.GetBoolean(5), r.NullableString("CurrencyCode"), r.GetDateTime(7)), ct);
+    public Task<IReadOnlyList<CashMovementDto>> GetCashMovementsAsync(CancellationToken ct) => QueryAsync("SELECT cm.CashMovementId, cm.CashAccountId, ca.AccountName, cm.CashDirection, cm.Amount, cm.OccurredAt, cm.CreatedAt FROM dbo.CashMovements cm INNER JOIN dbo.CashAccounts ca ON ca.CashAccountId = cm.CashAccountId ORDER BY cm.OccurredAt DESC, cm.CashMovementId DESC", null, r => new CashMovementDto(r.GetInt64(0), r.GetInt32(1), r.GetString(2), r.GetByte(3), r.GetDecimal(4), r.GetDateTime(5), r.GetDateTime(6)), ct);
     public async Task<CashReconciliationDto> GetCashReconciliationAsync(CancellationToken ct)
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(ct);
         const string sql = """
-            SELECT
-                (SELECT COALESCE(SUM(CurrentBalance), 0) FROM dbo.CashAccounts WHERE IsActive = 1),
+            DECLARE @cutoverUtc datetime2(7) = TRY_CONVERT(datetime2(7),
+                (SELECT CAST(value AS nvarchar(128))
+                 FROM fn_listextendedproperty(N'CashMovementFoundationCutoverUtc', N'SCHEMA', N'dbo', N'TABLE', N'CashMovements', NULL, NULL)));
+            SELECT @cutoverUtc,
+                (SELECT COALESCE(SUM(CASE cm.CashDirection WHEN 1 THEN cm.Amount WHEN 2 THEN -cm.Amount ELSE 0 END), 0)
+                 FROM dbo.CashMovements cm WHERE cm.CreatedAt >= @cutoverUtc),
                 (SELECT COALESCE(SUM(jel.DebitAmount - jel.CreditAmount), 0)
                  FROM dbo.JournalEntryLines jel
+                 INNER JOIN dbo.JournalEntries je ON je.JournalEntryId = jel.JournalEntryId
+                 INNER JOIN dbo.AccountingEvents ae ON ae.AccountingEventId = je.AccountingEventId
+                 INNER JOIN dbo.CashMovements cm ON cm.AccountingEventId = ae.AccountingEventId
                  INNER JOIN dbo.LedgerAccounts la ON la.LedgerAccountId = jel.LedgerAccountId
-                 WHERE la.AccountCode = N'1000');
+                 WHERE la.AccountCode = N'1000' AND cm.CreatedAt >= @cutoverUtc);
             """;
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(ct);
         await reader.ReadAsync(ct);
-        var cashAccounts = reader.GetDecimal(0);
-        var generalLedger = reader.GetDecimal(1);
-        var difference = cashAccounts - generalLedger;
-        return new CashReconciliationDto(cashAccounts, generalLedger, difference, Math.Abs(difference) < 0.005m);
+        var cutoverUtc = reader.GetDateTime(0);
+        var cashMovements = reader.GetDecimal(1);
+        var generalLedger = reader.GetDecimal(2);
+        var difference = cashMovements - generalLedger;
+        return new CashReconciliationDto(cutoverUtc, cashMovements, generalLedger, difference, Math.Abs(difference) < 0.005m, "GoLiveCashMovementsOnly");
     }
 
     public async Task<FinancialDashboardDto> GetDashboardAsync(CancellationToken ct)
@@ -157,7 +176,7 @@ public sealed class FinanceRepository(ReadOnlySqlConnectionFactory connections) 
         var customerCollections = Financial("CustomerPayment");
         var customerAdvances = Financial("CustomerAdvance");
         var refunds = Financial("OrderCancellationRefund");
-        var cashAccountsBalance = await ReadDecimalAsync(connection, "SELECT COALESCE(SUM(CurrentBalance), 0) FROM dbo.CashAccounts WHERE IsActive = 1", ct);
+        var cashAccountsBalance = await ReadDecimalAsync(connection, "SELECT COALESCE(SUM(CASE CashDirection WHEN 1 THEN Amount WHEN 2 THEN -Amount ELSE 0 END), 0) FROM dbo.CashMovements", ct);
         var generalLedgerCashBalance = Account("1000");
         var cashDifference = cashAccountsBalance - generalLedgerCashBalance;
 

@@ -24,6 +24,8 @@ public sealed class ReadyMadeSalesRepository(
 
         var netAmount = totalAmount - sale.DiscountAmount;
         ValidatePayment(paymentType, sale.PaidAmount, netAmount);
+        if (paymentType == "Cash" && sale.CashAccountId is not > 0)
+            throw new ArgumentException("الحساب النقدي مطلوب للبيع النقدي.");
         if (paymentType == "Donation")
             throw new InvalidOperationException("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.");
 
@@ -159,18 +161,38 @@ public sealed class ReadyMadeSalesRepository(
             }
 
             await InsertCustomerLedgerEntryAsync(connection, transaction, sale.CustomerId, $"{orderNumber}:Sale", netAmount, 0m, now, cancellationToken);
-            await InsertFinancialTransactionAsync(connection, transaction, $"{orderNumber}:RevenueRecognized", "RevenueRecognized", netAmount, $"Ready-made sale revenue for {orderNumber}", now, cancellationToken);
-            var revenuePosting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, $"{orderNumber}:RevenueRecognized", "RevenueRecognized", netAmount, $"Ready-made sale revenue for {orderNumber}", cancellationToken);
-            revenuePosting.ThrowIfFailure();
+            await AccountingEventPostingGateway.PostAsync(
+                connection,
+                transaction,
+                AccountingEventType.RevenueRecognizedOrder,
+                netAmount,
+                null,
+                orderId,
+                null,
+                null,
+                $"{orderNumber}:RevenueRecognized",
+                $"Ready-made sale revenue for {orderNumber}",
+                cancellationToken);
 
             if (paymentType is "Cash" or "Credit" && paidAmount > 0m)
             {
                 var paymentReference = $"{orderNumber}:Payment";
-                await InsertPaymentAsync(connection, transaction, orderId, paidAmount, paymentReference, now, cancellationToken);
+                var paymentId = await InsertPaymentAsync(connection, transaction, orderId, paidAmount, paymentReference, now, cancellationToken);
                 await InsertCustomerLedgerEntryAsync(connection, transaction, sale.CustomerId, paymentReference, 0m, paidAmount, now, cancellationToken);
-                await InsertFinancialTransactionAsync(connection, transaction, paymentReference, "CustomerPayment", paidAmount, $"Cash payment for {orderNumber}", now, cancellationToken);
-                var paymentPosting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, paymentReference, "CustomerPayment", paidAmount, $"Cash payment for {orderNumber}", cancellationToken);
-                paymentPosting.ThrowIfFailure();
+                var paymentPosting = await AccountingEventPostingGateway.PostAsync(
+                    connection,
+                    transaction,
+                    AccountingEventType.CustomerPayment,
+                    paidAmount,
+                    paymentId,
+                    null,
+                    null,
+                    null,
+                    paymentReference,
+                    $"Customer payment for {orderNumber}",
+                    cancellationToken);
+                if (paymentType == "Cash")
+                    await CashMovementPostingGateway.PostCashInAsync(connection, transaction, paymentPosting.AccountingEventId, sale.CashAccountId!.Value, paidAmount, cancellationToken);
             }
 
             await transaction.CommitAsync(cancellationToken);
@@ -505,16 +527,16 @@ public sealed class ReadyMadeSalesRepository(
         await insert.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task InsertPaymentAsync(SqlConnection connection, SqlTransaction transaction, int orderId, decimal amount, string reference, DateTime now, CancellationToken cancellationToken)
+    private static async Task<int> InsertPaymentAsync(SqlConnection connection, SqlTransaction transaction, int orderId, decimal amount, string reference, DateTime now, CancellationToken cancellationToken)
     {
-        const string sql = "INSERT INTO dbo.Payments (OrderID, PaymentDate, Amount, PaymentMethod, ReferenceNo, CreatedDate, PaymentKind) VALUES (@orderId, @paymentDate, @amount, N'Cash', @reference, @createdDate, N'SaleCash')";
+        const string sql = "INSERT INTO dbo.Payments (OrderID, PaymentDate, Amount, PaymentMethod, ReferenceNo, CreatedDate, PaymentKind) OUTPUT INSERTED.PaymentID VALUES (@orderId, @paymentDate, @amount, N'Cash', @reference, @createdDate, N'SaleCash')";
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@orderId", orderId);
         command.Parameters.AddWithValue("@paymentDate", now);
         command.Parameters.AddWithValue("@amount", amount);
         command.Parameters.AddWithValue("@reference", reference);
         command.Parameters.AddWithValue("@createdDate", now);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
     }
 
     private static async Task InsertCustomerLedgerEntryAsync(SqlConnection connection, SqlTransaction transaction, int customerId, string reference, decimal debitAmount, decimal creditAmount, DateTime now, CancellationToken cancellationToken)
@@ -534,21 +556,6 @@ public sealed class ReadyMadeSalesRepository(
         command.Parameters.AddWithValue("@reference", reference);
         command.Parameters.AddWithValue("@debitAmount", debitAmount);
         command.Parameters.AddWithValue("@creditAmount", creditAmount);
-        command.Parameters.AddWithValue("@createdAt", now);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    private static async Task InsertFinancialTransactionAsync(SqlConnection connection, SqlTransaction transaction, string reference, string transactionType, decimal amount, string description, DateTime now, CancellationToken cancellationToken)
-    {
-        const string sql = @"
-            INSERT INTO dbo.FinancialTransactions (ReferenceNumber, TransactionType, Amount, Description, CreatedAt)
-            SELECT @reference, @transactionType, @amount, @description, @createdAt
-            WHERE NOT EXISTS (SELECT 1 FROM dbo.FinancialTransactions WITH (UPDLOCK, HOLDLOCK) WHERE ReferenceNumber = @reference AND TransactionType = @transactionType);";
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("@reference", reference);
-        command.Parameters.AddWithValue("@transactionType", transactionType);
-        command.Parameters.AddWithValue("@amount", amount);
-        command.Parameters.AddWithValue("@description", description);
         command.Parameters.AddWithValue("@createdAt", now);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

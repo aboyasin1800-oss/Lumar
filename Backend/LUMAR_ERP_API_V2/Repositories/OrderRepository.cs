@@ -117,7 +117,11 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             }
 
             if (order.AdvancePayment > 0)
-                await InsertAdvanceAsync(orderId, orderNumber, order.CustomerId, order.AdvancePayment, order.PaymentMethod, now, connection, transaction, cancellationToken);
+            {
+                if (order.CashAccountId is not > 0)
+                    throw new ArgumentException("الحساب النقدي مطلوب لتسجيل الدفعة المقدمة.");
+                await InsertAdvanceAsync(orderId, orderNumber, order.CustomerId, order.AdvancePayment, order.PaymentMethod, order.CashAccountId.Value, now, connection, transaction, cancellationToken);
+            }
 
             await transaction.CommitAsync(cancellationToken);
             committed = true;
@@ -342,13 +346,13 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
         }
     }
 
-    public Task<OrderDetailsDto?> CollectCustomerPaymentAsync(int orderId, decimal amount, string? paymentMethod, string? referenceNumber, string? notes, CancellationToken cancellationToken) =>
-        SettleCustomerBalanceCoreAsync(orderId, amount, 0m, paymentMethod, referenceNumber, notes, requireDelivered: false, cancellationToken);
+    public Task<OrderDetailsDto?> CollectCustomerPaymentAsync(int orderId, decimal amount, string? paymentMethod, int? cashAccountId, string? referenceNumber, string? notes, CancellationToken cancellationToken) =>
+        SettleCustomerBalanceCoreAsync(orderId, amount, 0m, paymentMethod, cashAccountId, referenceNumber, notes, requireDelivered: false, cancellationToken);
 
-    public Task<OrderDetailsDto?> SettleCustomerBalanceAsync(int orderId, decimal amount, decimal discountAmount, string? paymentMethod, string? referenceNumber, string? notes, CancellationToken cancellationToken) =>
-        SettleCustomerBalanceCoreAsync(orderId, amount, discountAmount, paymentMethod, referenceNumber, notes, requireDelivered: true, cancellationToken);
+    public Task<OrderDetailsDto?> SettleCustomerBalanceAsync(int orderId, decimal amount, decimal discountAmount, string? paymentMethod, int? cashAccountId, string? referenceNumber, string? notes, CancellationToken cancellationToken) =>
+        SettleCustomerBalanceCoreAsync(orderId, amount, discountAmount, paymentMethod, cashAccountId, referenceNumber, notes, requireDelivered: true, cancellationToken);
 
-    private async Task<OrderDetailsDto?> SettleCustomerBalanceCoreAsync(int orderId, decimal amount, decimal settlementDiscount, string? paymentMethod, string? referenceNumber, string? notes, bool requireDelivered, CancellationToken cancellationToken)
+    private async Task<OrderDetailsDto?> SettleCustomerBalanceCoreAsync(int orderId, decimal amount, decimal settlementDiscount, string? paymentMethod, int? cashAccountId, string? referenceNumber, string? notes, bool requireDelivered, CancellationToken cancellationToken)
     {
         if (settlementDiscount > 0m)
             throw new InvalidOperationException("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.");
@@ -357,6 +361,8 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
         {
             return null;
         }
+        if (amount > 0m && cashAccountId is not > 0)
+            throw new ArgumentException("الحساب النقدي مطلوب لتسجيل التحصيل.");
 
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(cancellationToken);
@@ -408,7 +414,9 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
 
             var isReceivableCollection = isDelivered && revenueRecognized;
             var paymentKind = isReceivableCollection ? "DebtCollection" : "Advance";
-            var transactionType = OrderPaymentFinancialMovementResolver.Resolve(paymentKind).TransactionType;
+            var accountingEventType = isReceivableCollection
+                ? AccountingEventType.CustomerPayment
+                : AccountingEventType.CustomerAdvance;
             var normalizedReference = string.IsNullOrWhiteSpace(referenceNumber) ? $"{orderNumber}:{(requireDelivered ? "Settlement" : paymentKind)}:{DateTime.UtcNow:yyyyMMddHHmmssfff}" : referenceNumber.Trim();
             var normalizedMethod = string.IsNullOrWhiteSpace(paymentMethod) ? "Cash" : paymentMethod.Trim();
             var discountReference = $"{normalizedReference}:Discount";
@@ -421,9 +429,10 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             }
 
             var paymentDate = DateTime.UtcNow;
+            int? paymentId = null;
             if (amount > 0m)
             {
-                const string paymentInsertSql = "INSERT INTO dbo.Payments (OrderID, PaymentDate, Amount, PaymentMethod, ReferenceNo, Notes, CreatedDate, PaymentKind) VALUES (@orderId, @date, @amount, @method, @reference, @notes, @date, @paymentKind)";
+                const string paymentInsertSql = "INSERT INTO dbo.Payments (OrderID, PaymentDate, Amount, PaymentMethod, ReferenceNo, Notes, CreatedDate, PaymentKind) OUTPUT INSERTED.PaymentID VALUES (@orderId, @date, @amount, @method, @reference, @notes, @date, @paymentKind)";
                 await using (var paymentInsert = new SqlCommand(paymentInsertSql, connection, transaction))
                 {
                     paymentInsert.Parameters.AddWithValue("@orderId", orderId);
@@ -433,7 +442,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                     paymentInsert.Parameters.AddWithValue("@reference", normalizedReference);
                     paymentInsert.Parameters.AddWithValue("@notes", string.IsNullOrWhiteSpace(notes) ? (object)DBNull.Value : notes.Trim());
                     paymentInsert.Parameters.AddWithValue("@paymentKind", paymentKind);
-                    await paymentInsert.ExecuteNonQueryAsync(cancellationToken);
+                    paymentId = Convert.ToInt32(await paymentInsert.ExecuteScalarAsync(cancellationToken));
                 }
 
                 await InsertCustomerLedgerCreditAsync(connection, transaction, customerId, normalizedReference, amount, paymentDate, cancellationToken);
@@ -443,26 +452,19 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             {
                 var financialReference = normalizedReference;
                 var description = isReceivableCollection ? $"Customer payment collected for {orderNumber}" : $"Customer advance collected for {orderNumber}";
-                const string financialInsertSql = "INSERT INTO dbo.FinancialTransactions (ReferenceNumber,TransactionType,Amount,Description,CreatedAt) SELECT @reference,@transactionType,@amount,@description,@createdAt WHERE NOT EXISTS (SELECT 1 FROM dbo.FinancialTransactions WITH (UPDLOCK,HOLDLOCK) WHERE ReferenceNumber = @reference AND TransactionType = @transactionType)";
-                await using (var financial = new SqlCommand(financialInsertSql, connection, transaction))
-                {
-                    financial.Parameters.AddWithValue("@reference", financialReference);
-                    financial.Parameters.AddWithValue("@transactionType", transactionType);
-                    financial.Parameters.AddWithValue("@amount", amount);
-                    financial.Parameters.AddWithValue("@description", description);
-                    financial.Parameters.AddWithValue("@createdAt", paymentDate);
-                    await financial.ExecuteNonQueryAsync(cancellationToken);
-                }
-
-                var posting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+                var paymentPosting = await AccountingEventPostingGateway.PostAsync(
                     connection,
                     transaction,
-                    financialReference,
-                    transactionType,
+                    accountingEventType,
                     amount,
+                    paymentId,
+                    null,
+                    null,
+                    null,
+                    financialReference,
                     description,
                     cancellationToken);
-                posting.ThrowIfFailure();
+                await CashMovementPostingGateway.PostCashInAsync(connection, transaction, paymentPosting.AccountingEventId, cashAccountId!.Value, amount, cancellationToken);
             }
 
             if (settlementDiscount > 0m)
@@ -559,28 +561,18 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             {
                 var revenueReference = $"{orderNumber}:RevenueRecognized";
                 var revenueAmount = DeliveryRevenueRecognitionResolver.ResolveRevenueAmount(totalAmount, discountAmount);
-                if (await FinancialTransactionExistsAsync(connection, transaction, revenueReference, "RevenueRecognized", cancellationToken))
-                    throw new InvalidOperationException("توجد سجلات مالية متعارضة للعملية الحالية.");
-                const string financialSql = "INSERT INTO dbo.FinancialTransactions (ReferenceNumber,TransactionType,Amount,Description,CreatedAt) SELECT @reference,@transactionType,@amount,@description,@createdAt WHERE NOT EXISTS (SELECT 1 FROM dbo.FinancialTransactions WITH (UPDLOCK,HOLDLOCK) WHERE ReferenceNumber = @reference AND TransactionType = N'RevenueRecognized')";
-                await using (var financial = new SqlCommand(financialSql, connection, transaction))
-                {
-                    financial.Parameters.AddWithValue("@reference", revenueReference);
-                    financial.Parameters.AddWithValue("@transactionType", "RevenueRecognized");
-                    financial.Parameters.AddWithValue("@amount", revenueAmount);
-                    financial.Parameters.AddWithValue("@description", $"Delivery revenue for {orderNumber}");
-                    financial.Parameters.AddWithValue("@createdAt", now);
-                    await financial.ExecuteNonQueryAsync(cancellationToken);
-                }
-
-                var posting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+                await AccountingEventPostingGateway.PostAsync(
                     connection,
                     transaction,
-                    revenueReference,
-                    "RevenueRecognized",
+                    AccountingEventType.RevenueRecognizedOrder,
                     revenueAmount,
+                    null,
+                    orderId,
+                    null,
+                    null,
+                    revenueReference,
                     $"Delivery revenue for {orderNumber}",
                     cancellationToken);
-                posting.ThrowIfFailure();
 
                 const string updateSql = "UPDATE dbo.Orders SET RevenueRecognized = 1, RevenueRecognizedAt = @recognizedAt, UpdatedDate = @updatedAt WHERE OrderID = @orderId AND RevenueRecognized = 0";
                 await using (var update = new SqlCommand(updateSql, connection, transaction))
@@ -1223,12 +1215,13 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task InsertAdvanceAsync(int orderId, string orderNumber, int customerId, decimal amount, string? paymentMethod, DateTime now, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
+    private static async Task InsertAdvanceAsync(int orderId, string orderNumber, int customerId, decimal amount, string? paymentMethod, int cashAccountId, DateTime now, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
     {
         var reference = $"{orderNumber}:Advance";
-        var (transactionType, description) = OrderPaymentFinancialMovementResolver.Resolve("Advance");
+        var description = "Customer advance received";
 
-        const string paymentSql = "INSERT INTO dbo.Payments (OrderID,PaymentDate,Amount,PaymentMethod,ReferenceNo,CreatedDate,PaymentKind) VALUES (@orderId,@date,@amount,@method,@reference,@date,N'Advance')";
+        const string paymentSql = "INSERT INTO dbo.Payments (OrderID,PaymentDate,Amount,PaymentMethod,ReferenceNo,CreatedDate,PaymentKind) OUTPUT INSERTED.PaymentID VALUES (@orderId,@date,@amount,@method,@reference,@date,N'Advance')";
+        int paymentId;
         await using (var payment = new SqlCommand(paymentSql, connection, transaction))
         {
             payment.Parameters.AddWithValue("@orderId", orderId);
@@ -1236,7 +1229,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             payment.Parameters.AddWithValue("@amount", amount);
             AddNullable(payment, "@method", paymentMethod);
             payment.Parameters.AddWithValue("@reference", reference);
-            await payment.ExecuteNonQueryAsync(cancellationToken);
+            paymentId = Convert.ToInt32(await payment.ExecuteScalarAsync(cancellationToken));
         }
 
         const string ledgerSql = "DECLARE @balance decimal(18,2)=ISNULL((SELECT TOP(1) BalanceAfterTransaction FROM dbo.CustomerLedgerEntries WITH (UPDLOCK,HOLDLOCK) WHERE CustomerID=@customerId ORDER BY CreatedAt DESC,CustomerLedgerEntryId DESC),0); INSERT INTO dbo.CustomerLedgerEntries (CustomerID,ReferenceNumber,DebitAmount,CreditAmount,BalanceAfterTransaction,CreatedAt) VALUES (@customerId,@reference,0,@amount,@balance-@amount,@date)";
@@ -1249,26 +1242,19 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             await ledger.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        const string financialSql = "INSERT INTO dbo.FinancialTransactions (ReferenceNumber,TransactionType,Amount,Description,CreatedAt) VALUES (@reference,@transactionType,@amount,@description,@createdAt)";
-        await using (var financial = new SqlCommand(financialSql, connection, transaction))
-        {
-            financial.Parameters.AddWithValue("@reference", reference);
-            financial.Parameters.AddWithValue("@transactionType", transactionType);
-            financial.Parameters.AddWithValue("@amount", amount);
-            financial.Parameters.AddWithValue("@description", description);
-            financial.Parameters.AddWithValue("@createdAt", now);
-            await financial.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        var posting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+        var posting = await AccountingEventPostingGateway.PostAsync(
             connection,
             transaction,
-            reference,
-            transactionType,
+            AccountingEventType.CustomerAdvance,
             amount,
+            paymentId,
+            null,
+            null,
+            null,
+            reference,
             description,
             cancellationToken);
-        posting.ThrowIfFailure();
+        await CashMovementPostingGateway.PostCashInAsync(connection, transaction, posting.AccountingEventId, cashAccountId, amount, cancellationToken);
     }
 
     private static void ThrowIfBalanceWaiverUnavailable() => throw new InvalidOperationException("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.");

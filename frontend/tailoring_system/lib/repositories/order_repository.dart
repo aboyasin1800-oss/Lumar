@@ -73,6 +73,7 @@ class OrderRepository {
     double amount,
     String referenceNumber, {
     String? paymentMethod,
+    int? cashAccountId,
     String? notes,
   }) async {
     final response = await _client.post(
@@ -81,6 +82,7 @@ class OrderRepository {
       body: jsonEncode({
         'amount': amount,
         'paymentMethod': paymentMethod ?? 'Cash',
+        'cashAccountId': cashAccountId,
         'referenceNumber': referenceNumber,
         'notes': notes ?? 'تحصيل من شاشة التسوية',
       }),
@@ -97,6 +99,7 @@ class OrderRepository {
     double discountAmount,
     String referenceNumber, {
     String? paymentMethod,
+    int? cashAccountId,
     String? notes,
   }) async {
     final response = await _client.post(
@@ -106,6 +109,7 @@ class OrderRepository {
         'amount': amount,
         'discountAmount': discountAmount,
         'paymentMethod': paymentMethod ?? 'Cash',
+        'cashAccountId': cashAccountId,
         'referenceNumber': referenceNumber,
         'notes': notes ?? 'تسوية من شاشة التسليم',
       }),

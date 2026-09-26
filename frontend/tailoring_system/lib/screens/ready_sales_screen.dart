@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../core/document_printing.dart';
+import '../widgets/cash_account_picker.dart';
 
 class ReadySalesScreen extends StatefulWidget {
 	const ReadySalesScreen({super.key});
@@ -44,6 +45,7 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 	bool _selling = false;
 	String? _saleReference;
 	String paymentMethod = 'نقداً';
+	int? selectedCashAccountId;
 
 	@override
 	void initState() {
@@ -191,6 +193,10 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 			ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يجب سداد صافي الفاتورة كاملاً في البيع النقدي.')));
 			return;
 		}
+		if (paymentType == 'Cash' && selectedCashAccountId == null) {
+			ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اختر الحساب النقدي المستلم.')));
+			return;
+		}
 		if (paymentType == 'Donation' && paid.abs() > 0.009) {
 			ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا يقبل التبرع دفعة نقدية.')));
 			return;
@@ -217,6 +223,7 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 				if (selectedEmployeeCode != null) 'employeeCode': selectedEmployeeCode,
 				'discountAmount': discount,
 				'paymentType': paymentType,
+				if (paymentType == 'Cash') 'cashAccountId': selectedCashAccountId,
 				'paidAmount': paid,
 				'saleReference': _saleReference ??= 'RMS-${DateTime.now().microsecondsSinceEpoch}',
 				'items': cart.map((line) => <String, dynamic>{
@@ -243,6 +250,7 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 				selectedProduct = null;
 				selectedCustomer = null;
 				selectedEmployeeCode = null;
+				selectedCashAccountId = null;
 				customerSearch.clear();
 				discountController.text = '0';
 				paidController.text = '0';
@@ -514,6 +522,10 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 							}),
 						)).toList(),
 					),
+					if (paymentMethod == 'نقداً') ...[
+						const SizedBox(height: 6),
+						CashAccountPicker(value: selectedCashAccountId, onChanged: (value) => setState(() => selectedCashAccountId = value)),
+					],
 					const Spacer(),
 					SizedBox(width: double.infinity, height: 36, child: FilledButton.icon(onPressed: _selling ? null : _sell, icon: _selling ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.check, size: 17), label: Text(_selling ? 'جارٍ الحفظ' : 'بيع'))),
 				]),

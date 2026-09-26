@@ -16,6 +16,9 @@ public sealed class CreateReadyMadeSaleDto
     [Required, StringLength(30)]
     public string PaymentType { get; init; } = "Cash";
 
+    [Range(1, int.MaxValue)]
+    public int? CashAccountId { get; init; }
+
     [Range(typeof(decimal), "0", "79228162514264337593543950335")]
     public decimal PaidAmount { get; init; }
 

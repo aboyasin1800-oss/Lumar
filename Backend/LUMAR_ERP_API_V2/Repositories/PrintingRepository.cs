@@ -196,6 +196,7 @@ public sealed class PrintingRepository(
 
     public async Task<MeasurementCardPrintHistoryDto> CompleteAsync(
         int printHistoryId,
+        int? cashAccountId,
         CurrentUserDto user,
         CancellationToken cancellationToken)
     {
@@ -220,6 +221,10 @@ public sealed class PrintingRepository(
                 throw new InvalidOperationException("لا يمكن اعتماد سجل طباعة غير محجوز.");
             if (history.PrintedByUserId != user.UserId)
                 throw new InvalidOperationException("لا يمكن لمستخدم آخر اعتماد عملية الطباعة.");
+            if (history.ReprintReasonCode == MeasurementCardPrintPolicy.PieceSold &&
+                history.SalePaymentType == MeasurementCardPrintPolicy.Cash &&
+                cashAccountId is not > 0)
+                throw new ArgumentException("الحساب النقدي مطلوب لاعتماد بيع القطعة.");
 
             var revenueFinancialTransactionId = history.FinancialTransactionId;
             var revenueJournalEntryId = history.JournalEntryId;
@@ -259,22 +264,20 @@ public sealed class PrintingRepository(
                     history.SaleAmount.Value,
                     0m,
                     cancellationToken);
-                revenueFinancialTransactionId = await EnsureFinancialTransactionAsync(
+                var revenuePosting = await AccountingEventPostingGateway.PostAsync(
                     connection,
                     transaction,
-                    revenueReference,
-                    "RevenueRecognized",
+                    AccountingEventType.RevenueRecognizedPrintSale,
                     history.SaleAmount.Value,
+                    null,
+                    null,
+                    history.PrintHistoryId,
+                    null,
+                    revenueReference,
                     description,
                     cancellationToken);
-                revenueJournalEntryId = await EnsureJournalEntryAsync(
-                    connection,
-                    transaction,
-                    revenueReference,
-                    "RevenueRecognized",
-                    history.SaleAmount.Value,
-                    description,
-                    cancellationToken);
+                revenueFinancialTransactionId = revenuePosting.FinancialTransactionId;
+                revenueJournalEntryId = revenuePosting.JournalEntryId;
 
                 if (history.SalePaymentType == MeasurementCardPrintPolicy.Cash)
                 {
@@ -294,50 +297,25 @@ public sealed class PrintingRepository(
                         paymentReference,
                         description,
                         cancellationToken);
-                    paymentFinancialTransactionId = await EnsureFinancialTransactionAsync(
+                    var paymentPosting = await AccountingEventPostingGateway.PostAsync(
                         connection,
                         transaction,
-                        paymentReference,
-                        "CustomerPayment",
+                        AccountingEventType.CustomerPayment,
                         history.SaleAmount.Value,
+                        paymentId,
+                        null,
+                        null,
+                        null,
+                        paymentReference,
                         description,
                         cancellationToken);
-                    paymentJournalEntryId = await EnsureJournalEntryAsync(
-                        connection,
-                        transaction,
-                        paymentReference,
-                        "CustomerPayment",
-                        history.SaleAmount.Value,
-                        description,
-                        cancellationToken);
+                    paymentFinancialTransactionId = paymentPosting.FinancialTransactionId;
+                    paymentJournalEntryId = paymentPosting.JournalEntryId;
+                    await CashMovementPostingGateway.PostCashInAsync(connection, transaction, paymentPosting.AccountingEventId, cashAccountId!.Value, history.SaleAmount.Value, cancellationToken);
                 }
                 else if (history.SalePaymentType == MeasurementCardPrintPolicy.Donation)
                 {
-                    waiverReference = $"{revenueReference}:CustomerBalanceWaiver";
-                    waiverCustomerLedgerEntryId = await EnsureCustomerLedgerEntryAsync(
-                        connection,
-                        transaction,
-                        saleCustomerId,
-                        waiverReference,
-                        0m,
-                        history.SaleAmount.Value,
-                        cancellationToken);
-                    waiverFinancialTransactionId = await EnsureFinancialTransactionAsync(
-                        connection,
-                        transaction,
-                        waiverReference,
-                        "CustomerBalanceWaiver",
-                        history.SaleAmount.Value,
-                        description,
-                        cancellationToken);
-                    waiverJournalEntryId = await EnsureJournalEntryAsync(
-                        connection,
-                        transaction,
-                        waiverReference,
-                        "CustomerBalanceWaiver",
-                        history.SaleAmount.Value,
-                        description,
-                        cancellationToken);
+                    throw new InvalidOperationException("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.");
                 }
             }
 
@@ -494,83 +472,6 @@ public sealed class PrintingRepository(
 
     private static string BuildSaleDescription(string customerName, string orderNumber, string trackingCode, decimal amount, int copyNumber) =>
         $"بيع القطعة ذات رمز التتبع {trackingCode} العائدة للطلب {orderNumber} والعميل {customerName} بقيمة {amount:0.00}، مع إصدار بطاقة بديلة: {MeasurementCardPrintPolicy.CopyLabel(copyNumber)}.";
-
-    private async Task<int> EnsureFinancialTransactionAsync(
-        SqlConnection connection,
-        SqlTransaction transaction,
-        string reference,
-        string transactionType,
-        decimal amount,
-        string description,
-        CancellationToken cancellationToken)
-    {
-        await using (var existing = new SqlCommand(@"
-            SELECT TOP (1) FinancialTransactionId, Amount
-            FROM dbo.FinancialTransactions WITH (UPDLOCK, HOLDLOCK)
-            WHERE ReferenceNumber = @reference AND TransactionType = @transactionType;", connection, transaction))
-        {
-            existing.Parameters.AddWithValue("@reference", reference);
-            existing.Parameters.AddWithValue("@transactionType", transactionType);
-            await using var reader = await existing.ExecuteReaderAsync(cancellationToken);
-            if (await reader.ReadAsync(cancellationToken))
-            {
-                var existingAmount = reader.GetDecimal(1);
-                if (existingAmount != amount) throw new InvalidOperationException("مرجع الحركة المالية مستخدم بقيمة مختلفة.");
-                return reader.GetInt32(0);
-            }
-        }
-
-        await using var insert = new SqlCommand(@"
-            INSERT INTO dbo.FinancialTransactions (ReferenceNumber, TransactionType, Amount, Description, CreatedAt)
-            OUTPUT INSERTED.FinancialTransactionId
-            VALUES (@reference, @transactionType, @amount, @description, SYSUTCDATETIME());", connection, transaction);
-        insert.Parameters.AddWithValue("@reference", reference);
-        insert.Parameters.AddWithValue("@transactionType", transactionType);
-        insert.Parameters.AddWithValue("@amount", amount);
-        insert.Parameters.AddWithValue("@description", description);
-        var id = Convert.ToInt32(await insert.ExecuteScalarAsync(cancellationToken));
-        return id;
-    }
-
-    private async Task<int> EnsureJournalEntryAsync(
-        SqlConnection connection,
-        SqlTransaction transaction,
-        string reference,
-        string transactionType,
-        decimal amount,
-        string description,
-        CancellationToken cancellationToken)
-    {
-        var posting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
-            connection,
-            transaction,
-            reference,
-            transactionType,
-            amount,
-            description,
-            cancellationToken);
-        posting.ThrowIfFailure();
-
-        await using var command = new SqlCommand(@"
-            SELECT TOP (1) JournalEntryId
-            FROM dbo.JournalEntries WITH (UPDLOCK, HOLDLOCK)
-            WHERE ReferenceNumber = @reference;", connection, transaction);
-        command.Parameters.AddWithValue("@reference", reference);
-        var journalId = await command.ExecuteScalarAsync(cancellationToken);
-        if (journalId is null)
-            throw new InvalidOperationException("تعذر إنشاء القيد المالي الرسمي.");
-
-        await using var balance = new SqlCommand(@"
-            SELECT COALESCE(SUM(DebitAmount), 0), COALESCE(SUM(CreditAmount), 0)
-            FROM dbo.JournalEntryLines
-            WHERE JournalEntryId = @journalEntryId;", connection, transaction);
-        balance.Parameters.AddWithValue("@journalEntryId", Convert.ToInt32(journalId));
-        await using var reader = await balance.ExecuteReaderAsync(cancellationToken);
-        await reader.ReadAsync(cancellationToken);
-        if (reader.GetDecimal(0) != reader.GetDecimal(1))
-            throw new InvalidOperationException("القيد المالي غير متوازن.");
-        return Convert.ToInt32(journalId);
-    }
 
     private static async Task<int> EnsureCustomerLedgerEntryAsync(
         SqlConnection connection,

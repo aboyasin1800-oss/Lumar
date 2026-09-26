@@ -13,6 +13,7 @@ import '../core/measurement_snapshot.dart';
 import '../core/document_printing.dart';
 import '../core/ui_palette.dart';
 import '../services/auth_state.dart';
+import '../widgets/cash_account_picker.dart';
 
 class PrintingScreen extends StatelessWidget {
   const PrintingScreen({required this.auth, super.key});
@@ -601,10 +602,11 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   }
 
   Future<_PrintHistoryRecord> _completePrint(
-      _OrderPieceDetail piece, int printHistoryId) async {
+      _OrderPieceDetail piece, int printHistoryId, int? cashAccountId) async {
     final response = await http.post(
       Uri.parse('${widget.baseUrl}/printing/history/$printHistoryId/complete'),
       headers: _authHeaders,
+      body: jsonEncode({'cashAccountId': cashAccountId}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(_readApiError(response));
@@ -691,6 +693,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     String? reasonCode;
     int? responsibleEmployeeId;
     int? saleCustomerId;
+    int? cashAccountId;
     var paymentType = 'Cash';
     String? errorText;
 
@@ -794,6 +797,16 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                           errorText = null;
                         }),
                       ),
+                      if (paymentType == 'Cash') ...[
+                        const SizedBox(height: 12),
+                        CashAccountPicker(
+                          value: cashAccountId,
+                          onChanged: (value) => setDialogState(() {
+                            cashAccountId = value;
+                            errorText = null;
+                          }),
+                        ),
+                      ],
                       if (piece.isReadyMade) ...[
                         const SizedBox(height: 12),
                         DropdownButtonFormField<int>(
@@ -856,7 +869,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                   }
                   if (isPieceSold &&
                       (saleAmount == null || saleAmount <= 0 ||
-                          (piece.isReadyMade && saleCustomerId == null))) {
+                        (piece.isReadyMade && saleCustomerId == null) ||
+                        (paymentType == 'Cash' && cashAccountId == null))) {
                     setDialogState(() => errorText =
                         'قيمة البيع وعميل البيع المطلوبان قبل المتابعة.');
                     return;
@@ -873,6 +887,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                         : notesController.text.trim(),
                     saleAmount: isPieceSold ? saleAmount : null,
                     paymentType: isPieceSold ? paymentType : null,
+                    cashAccountId: isPieceSold ? cashAccountId : null,
                     saleCustomerId: isPieceSold ? saleCustomerId : null,
                   ));
                 },
@@ -909,7 +924,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         target: target,
         copyNumber: copyNumber,
       );
-      await _completePrint(piece, prepared.printHistoryId);
+      await _completePrint(piece, prepared.printHistoryId, form?.cashAccountId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2687,6 +2702,7 @@ class _ReprintFormData {
     this.notes,
     this.saleAmount,
     this.paymentType,
+    this.cashAccountId,
     this.saleCustomerId,
   });
 
@@ -2696,5 +2712,6 @@ class _ReprintFormData {
   final String? notes;
   final double? saleAmount;
   final String? paymentType;
+  final int? cashAccountId;
   final int? saleCustomerId;
 }

@@ -3,7 +3,8 @@ public sealed record FinancialTransactionDto(int FinancialTransactionId, string 
 public sealed record JournalEntryDto(int JournalEntryId, string ReferenceNumber, string? Description, DateTime EntryDate, DateTime CreatedAt, decimal TotalDebit, decimal TotalCredit, int LineCount);
 public sealed record JournalEntryLineDto(int JournalEntryLineId, int JournalEntryId, int LedgerAccountId, decimal DebitAmount, decimal CreditAmount, string? Description);
 public sealed record LedgerAccountDto(int LedgerAccountId, string AccountCode, string AccountName, string AccountType, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
-public sealed record CashAccountDto(int CashAccountId, string AccountName, decimal CurrentBalance, bool IsActive, DateTime CreatedAt);
+public sealed record CashAccountDto(int CashAccountId, string AccountName, decimal DerivedBalance, decimal HistoricalSnapshotBalance, bool IsActive, bool IsReceiptEnabled, string? CurrencyCode, DateTime CreatedAt);
+public sealed record CashMovementDto(long CashMovementId, int CashAccountId, string CashAccountName, byte CashDirection, decimal Amount, DateTime OccurredAt, DateTime CreatedAt);
 public sealed record CustomerLedgerEntryDto(int CustomerLedgerEntryId, int CustomerId, string ReferenceNumber, decimal DebitAmount, decimal CreditAmount, decimal BalanceAfterTransaction, DateTime CreatedAt);
 public sealed record SupplierLedgerEntryDto(int SupplierLedgerEntryId, int SupplierId, string ReferenceNumber, decimal DebitAmount, decimal CreditAmount, decimal BalanceAfterTransaction, DateTime CreatedAt);
 public sealed record SupplierPaymentDto(int SupplierPaymentId, int SupplierId, string PaymentNumber, DateTime PaymentDate, decimal Amount, string? PaymentMethod, string? ReferenceNumber, string? Notes, DateTime CreatedAt, int? JournalEntryId);
@@ -16,4 +17,4 @@ public sealed record FinancialProfitLossDto(decimal Revenue, decimal Expenses, d
 public sealed record FinanceCustomerMetricDto(int CustomerId, string CustomerCode, string CustomerName, decimal Amount);
 public sealed record FinancialActivityDto(int FinancialTransactionId, string ReferenceNumber, string TransactionType, decimal Amount, string? Description, DateTime CreatedAt);
 public sealed record FinancialDashboardDto(decimal Revenue, decimal Collections, decimal Receivables, decimal CashBalance, int JournalEntries, int FinancialTransactions, int FinancialCustomers, decimal DailyRevenue, decimal MonthlyRevenue, IReadOnlyList<FinanceCustomerMetricDto> TopDebtors, IReadOnlyList<FinanceCustomerMetricDto> TopCollections, IReadOnlyList<FinancialActivityDto> RecentActivities);
-public sealed record CashReconciliationDto(decimal CashAccountsBalance, decimal GeneralLedgerCashBalance, decimal Difference, bool IsReconciled);
+public sealed record CashReconciliationDto(DateTime CutoverUtc, decimal CashMovementsBalance, decimal GeneralLedgerCashBalance, decimal Difference, bool IsReconciled, string Status);

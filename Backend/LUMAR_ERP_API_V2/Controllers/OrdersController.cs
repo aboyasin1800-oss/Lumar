@@ -70,7 +70,7 @@ public sealed class OrdersController(IOrderService service) : ControllerBase
         if (request is null) return BadRequest("Collection request is required.");
         if (request.Amount <= 0m) return BadRequest("Collection amount must be greater than zero.");
 
-        var order = await service.CollectCustomerPaymentAsync(id, request.Amount, request.PaymentMethod, request.ReferenceNumber, request.Notes, cancellationToken);
+        var order = await service.CollectCustomerPaymentAsync(id, request.Amount, request.PaymentMethod, request.CashAccountId, request.ReferenceNumber, request.Notes, cancellationToken);
         return order is null ? NotFound() : Ok(order);
     }
 
@@ -84,7 +84,7 @@ public sealed class OrdersController(IOrderService service) : ControllerBase
         if (request is null) return BadRequest("Settlement request is required.");
         if (request.Amount <= 0m && request.DiscountAmount <= 0m) return BadRequest("Collection or discount amount must be greater than zero.");
 
-        var order = await service.SettleCustomerBalanceAsync(id, request.Amount, request.DiscountAmount, request.PaymentMethod, request.ReferenceNumber, request.Notes, cancellationToken);
+        var order = await service.SettleCustomerBalanceAsync(id, request.Amount, request.DiscountAmount, request.PaymentMethod, request.CashAccountId, request.ReferenceNumber, request.Notes, cancellationToken);
         return order is null ? NotFound("الطلب غير جاهز للتسوية أو تجاوز المبلغ المتبقي.") : Ok(order);
     }
 
