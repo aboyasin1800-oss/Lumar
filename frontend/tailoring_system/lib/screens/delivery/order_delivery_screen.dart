@@ -122,9 +122,7 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
       await _repository.deliverOrder(data.order.id);
     } catch (error) {
       if (!mounted) return;
-      _showMessage(
-        'تعذر تنفيذ التسليم. لم يتم إثبات الإيراد ولم يبدأ التحصيل. راجع حالة الطلب ثم أعد المحاولة. $error',
-      );
+      await _showError(error);
       _reload();
       return;
     }
@@ -154,9 +152,7 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
       _reload();
     } catch (error) {
       if (!mounted) return;
-      _showMessage(
-        'تم التسليم وإثبات الإيراد، لكن تعذر تسجيل التحصيل. لم يُنشأ تحصيل جديد من هذه المحاولة. أعد التحصيل فقط بعد مراجعة حالة الطلب. $error',
-      );
+      await _showError(error);
       _reload();
     } finally {
       if (mounted) setState(() => _delivering = false);
@@ -385,7 +381,7 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
       _reload();
     } catch (error) {
       if (!mounted) return;
-      _showMessage('تعذر تسجيل التحصيل: $error');
+      await _showError(error);
     } finally {
       if (mounted) {
         setState(() => _submitting = false);
@@ -450,7 +446,7 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
       _reload();
     } catch (error) {
       if (!mounted) return;
-      _showMessage('تعذر تسجيل التبرع بالرصيد: $error');
+      await _showError(error);
     } finally {
       if (mounted) setState(() => _waivingBalance = false);
     }
@@ -463,6 +459,11 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
       message,
       type: isSuccess ? AppMessageType.success : AppMessageType.error,
     );
+  }
+
+  Future<void> _showError(Object error) {
+    if (!mounted) return Future.value();
+    return AppMessage.showErrorDialog(context, error);
   }
 
   @override

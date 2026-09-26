@@ -1,12 +1,13 @@
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Data;
+using LUMAR_ERP_API_V2.ErrorHandling;
 using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
 using LUMAR_ERP_API_V2.Utilities;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options => options.Filters.Add<GlobalApiErrorResultFilter>());
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options => options.CustomSchemaIds(type => type.FullName!));
 builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection(DatabaseOptions.SectionName));
@@ -79,6 +80,8 @@ builder.Services.AddScoped<ICancelledPieceDispositionService, CancelledPieceDisp
 
 var app = builder.Build();
 
+app.UseRouting();
+app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 app.UseSwagger();
 app.UseSwaggerUI();
 app.MapControllers();

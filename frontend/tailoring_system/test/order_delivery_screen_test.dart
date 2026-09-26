@@ -339,6 +339,12 @@ void main() {
 
     expect(repository.deliveryCalls, 1);
     expect(repository.settlementCalls, 0);
+    expect(find.text('تعذر إتمام العملية'), findsOneWidget);
+    expect(find.text('رمز المتابعة: GEN-001'), findsOneWidget);
+    expect(find.text('StateError'), findsNothing);
+    await tester.tap(find.text('حسنًا'));
+    await tester.pump();
+    await tester.pump();
   });
 
   testWidgets('does not retry delivery when collection fails',
@@ -353,7 +359,14 @@ void main() {
     await tester.tap(find.text('تسليم الطلب'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('تنفيذ التسليم'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+
+    expect(find.text('تعذر إتمام العملية'), findsOneWidget);
+    expect(find.text('رمز المتابعة: GEN-001'), findsOneWidget);
+    expect(find.text('StateError'), findsNothing);
+    await tester.tap(find.text('حسنًا'));
+    await tester.pump();
+    await tester.pump();
 
     expect(repository.deliveryCalls, 1);
     expect(repository.settlementCalls, 1);

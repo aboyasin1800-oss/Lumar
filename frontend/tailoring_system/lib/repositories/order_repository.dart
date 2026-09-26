@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../core/app_error.dart';
 import '../models/order_models.dart';
 
 class OrderRepository {
@@ -16,7 +17,7 @@ class OrderRepository {
   Future<List<T>> _list<T>(String path, T Function(OrderJson) fromJson) async {
     final response = await _client.get(Uri.parse('$_baseUrl$path'));
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OrderApiException(path, response.statusCode);
+      throw OrderApiException.fromResponse(response);
     }
     return (jsonDecode(response.body) as List)
         .cast<OrderJson>()
@@ -27,7 +28,7 @@ class OrderRepository {
   Future<OrderJson> _object(String path) async {
     final response = await _client.get(Uri.parse('$_baseUrl$path'));
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OrderApiException(path, response.statusCode);
+      throw OrderApiException.fromResponse(response);
     }
     return jsonDecode(response.body) as OrderJson;
   }
@@ -88,7 +89,7 @@ class OrderRepository {
       }),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OrderApiException('/orders/$orderId/collect', response.statusCode);
+      throw OrderApiException.fromResponse(response);
     }
     return OrderDetails.fromJson(jsonDecode(response.body) as OrderJson);
   }
@@ -115,7 +116,7 @@ class OrderRepository {
       }),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OrderApiException('/orders/$orderId/settle', response.statusCode);
+      throw OrderApiException.fromResponse(response);
     }
     return OrderDetails.fromJson(jsonDecode(response.body) as OrderJson);
   }
@@ -126,8 +127,7 @@ class OrderRepository {
       headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OrderApiException(
-          '/orders/$orderId/delivery/revenue-recognize', response.statusCode);
+        throw OrderApiException.fromResponse(response);
     }
     return OrderDetails.fromJson(jsonDecode(response.body) as OrderJson);
   }
@@ -138,8 +138,7 @@ class OrderRepository {
       headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OrderApiException(
-          '/orders/$orderId/delivery/confirm', response.statusCode);
+        throw OrderApiException.fromResponse(response);
     }
     return OrderDetails.fromJson(jsonDecode(response.body) as OrderJson);
   }
@@ -150,8 +149,7 @@ class OrderRepository {
       headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OrderApiException(
-          '/orders/$orderId/delivery/balance-waiver', response.statusCode);
+        throw OrderApiException.fromResponse(response);
     }
     return OrderDetails.fromJson(jsonDecode(response.body) as OrderJson);
   }
@@ -170,7 +168,7 @@ class OrderRepository {
       }),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OrderApiException('/orders/$orderId/cancel', response.statusCode);
+      throw OrderApiException.fromResponse(response);
     }
     return OrderDetails.fromJson(jsonDecode(response.body) as OrderJson);
   }
@@ -180,8 +178,7 @@ class OrderRepository {
       Uri.parse('$_baseUrl/production/pieces/route?pieceId=$pieceId'),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OrderApiException(
-          '/production/pieces/route?pieceId=$pieceId', response.statusCode);
+        throw OrderApiException.fromResponse(response);
     }
     return ProductionStageRoute.fromJson(
       jsonDecode(response.body) as OrderJson,
@@ -212,8 +209,7 @@ class OrderRepository {
       }),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OrderApiException(
-          '/production/pieces/advance', response.statusCode);
+        throw OrderApiException.fromResponse(response);
     }
     return ProductionStageAdvanceResult.fromJson(
       jsonDecode(response.body) as OrderJson,
@@ -237,8 +233,7 @@ class OrderRepository {
       }),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OrderApiException(
-          '/cancelled-piece-dispositions', response.statusCode);
+        throw OrderApiException.fromResponse(response);
     }
     return CancelledPieceDisposition.fromJson(
         jsonDecode(response.body) as OrderJson);
@@ -250,16 +245,24 @@ class OrderRepository {
       headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw OrderApiException('/cancelled-piece-dispositions/$pieceId/execute',
-          response.statusCode);
+        throw OrderApiException.fromResponse(response);
     }
     return CancelledPieceDisposition.fromJson(
         jsonDecode(response.body) as OrderJson);
   }
 }
 
-class OrderApiException implements Exception {
-  const OrderApiException(this.path, this.statusCode);
-  final String path;
-  final int statusCode;
+class OrderApiException extends AppError {
+  const OrderApiException({
+    required super.errorCode,
+    required super.userFriendlyMessage,
+  });
+
+  factory OrderApiException.fromResponse(http.Response response) {
+    final error = AppError.fromResponse(response);
+    return OrderApiException(
+      errorCode: error.errorCode,
+      userFriendlyMessage: error.userFriendlyMessage,
+    );
+  }
 }
