@@ -52,10 +52,9 @@ public sealed class CustomerAdvanceApplicationIntegrationTests
         var fixture = await CreateFixtureAsync(100m, [40m], revenueRecognized: true);
         try
         {
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => fixture.Repository.DeliverAsync(fixture.OrderId, CancellationToken.None));
+            var delivered = await fixture.Repository.DeliverAsync(fixture.OrderId, CancellationToken.None);
 
-            Assert.Contains("إثبات إيراد سابقاً", exception.Message);
+            Assert.Null(delivered);
             Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.AccountingEvents WHERE OrderId=@orderId", fixture.OrderId));
             Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.CustomerAdvanceApplications WHERE OrderId=@orderId", fixture.OrderId));
             Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions ft INNER JOIN dbo.AccountingEvents ae ON ae.AccountingEventId=ft.AccountingEventId WHERE ae.OrderId=@orderId", fixture.OrderId));

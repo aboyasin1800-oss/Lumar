@@ -235,7 +235,10 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             }
 
             if (revenueRecognized)
-                throw new InvalidOperationException("لا يمكن تسليم طلب جاهز يحمل إثبات إيراد سابقاً. راجع الحالة المالية الرسمية للطلب قبل إعادة المحاولة.");
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                return null;
+            }
 
             var now = DateTime.UtcNow;
             var cutoverUtc = await ReadAdvanceApplicationCutoverUtcAsync(connection, transaction, cancellationToken)
