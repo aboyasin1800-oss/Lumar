@@ -11,7 +11,7 @@ namespace LUMAR_ERP_API_V2.Tests;
 public class SalesCostRecognitionImplementationTests
 {
     [Fact]
-    public async Task RecognizeDeliveryRevenueAsync_ShouldBlockUnapprovedDeliveryCost()
+    public async Task RecognizeDeliveryRevenueAsync_ShouldRecognizeCenterPickupRevenueWithoutChangingFabricCost()
     {
         var connectionString = GetConnectionString();
         var repository = CreateOrderRepository(connectionString);
@@ -20,9 +20,23 @@ public class SalesCostRecognitionImplementationTests
         var orderId = await InsertDeliveredTestOrderAsync(connectionString, testOrderNumber, 1425.50m, 125.00m, 100.00m);
         var orderItemId = await InsertOrderItemAsync(connectionString, orderId, $"TEST-{DateTime.UtcNow:HHmmssfff}", "قميص", 1, "FAB-DELIVERY", "قماش", "أبيض");
         await InsertOrderFabricAsync(connectionString, orderItemId, "FAB-DELIVERY", "قماش", "أبيض", 350.00m);
+        var fabricBefore = await ReadFabricSnapshotAsync(connectionString, orderItemId);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.RecognizeDeliveryRevenueAsync(orderId, CancellationToken.None));
-        Assert.Equal("هذه العملية غير متاحة حتى اعتماد عقد تكلفة التوصيل المحاسبي.", exception.Message);
+        var recognized = await repository.RecognizeDeliveryRevenueAsync(orderId, CancellationToken.None);
+        var replayed = await repository.RecognizeDeliveryRevenueAsync(orderId, CancellationToken.None);
+        var fabricAfter = await ReadFabricSnapshotAsync(connectionString, orderItemId);
+
+        Assert.NotNull(recognized);
+        Assert.NotNull(replayed);
+        Assert.Equal(1200.50m, recognized!.RemainingAmount);
+        Assert.Equal(fabricBefore, fabricAfter);
+        Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.AccountingEvents WHERE OrderId=@orderId AND AccountingEventType=3", orderId));
+        Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber=@reference AND TransactionType=N'RevenueRecognized'", null, $"{testOrderNumber}:RevenueRecognized"));
+        Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber LIKE @reference AND TransactionType=N'DeliveryCost'", null, $"{testOrderNumber}%"));
+        Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.JournalEntries WHERE ReferenceNumber=@reference", null, $"{testOrderNumber}:RevenueRecognized"));
+        Assert.Equal(2, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId WHERE je.ReferenceNumber=@reference", null, $"{testOrderNumber}:RevenueRecognized"));
+        Assert.Equal(1300.50m, await ReadJournalBalanceAsync(connectionString, testOrderNumber, debit: true));
+        Assert.Equal(1300.50m, await ReadJournalBalanceAsync(connectionString, testOrderNumber, debit: false));
     }
 
     [Fact]
@@ -280,6 +294,36 @@ public class SalesCostRecognitionImplementationTests
         return value is int customerId ? customerId : throw new InvalidOperationException("No customer exists for integration test.");
     }
 
+    private static async Task<FabricSnapshot> ReadFabricSnapshotAsync(string connectionString, int orderItemId)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("SELECT Quantity, UnitCost, TotalCost, ConsumedQuantity FROM dbo.OrderItemFabrics WHERE OrderItemID=@orderItemId", connection);
+        command.Parameters.AddWithValue("@orderItemId", orderItemId);
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        return new FabricSnapshot(reader.GetDecimal(0), reader.GetDecimal(1), reader.GetDecimal(2), reader.GetDecimal(3));
+    }
+
+    private static async Task<int> CountAsync(string connectionString, string sql, int? orderId = null, string? reference = null)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@orderId", orderId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@reference", reference ?? (object)DBNull.Value);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<decimal> ReadJournalBalanceAsync(string connectionString, string orderNumber, bool debit)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand($"SELECT COALESCE(SUM({(debit ? "jel.DebitAmount" : "jel.CreditAmount")}),0) FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId WHERE je.ReferenceNumber=@reference", connection);
+        command.Parameters.AddWithValue("@reference", $"{orderNumber}:RevenueRecognized");
+        return Convert.ToDecimal(await command.ExecuteScalarAsync());
+    }
+
     private static async Task<FinancialTransactionRow?> QuerySingleTransactionAsync(string connectionString, string referenceNumber, string transactionType)
     {
         await using var connection = new SqlConnection(connectionString);
@@ -394,4 +438,5 @@ public class SalesCostRecognitionImplementationTests
     private sealed record FinancialTransactionRow(int FinancialTransactionId, string ReferenceNumber, string TransactionType, decimal Amount, string Description, DateTime CreatedAt);
     private sealed record JournalEntryRow(int JournalEntryId, string ReferenceNumber, string Description, DateTime EntryDate, DateTime CreatedAt);
     private sealed record JournalLineRow(int JournalEntryLineId, int JournalEntryId, int LedgerAccountId, decimal DebitAmount, decimal CreditAmount, string Description);
+    private sealed record FabricSnapshot(decimal Quantity, decimal UnitCost, decimal TotalCost, decimal ConsumedQuantity);
 }

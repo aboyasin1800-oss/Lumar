@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tailoring_system/models/finance_models.dart';
 import 'package:tailoring_system/models/order_models.dart';
 import 'package:tailoring_system/repositories/order_repository.dart';
 import 'package:tailoring_system/screens/delivery/order_delivery_screen.dart';
@@ -13,6 +14,7 @@ class _FakeOrderRepository extends OrderRepository {
   int settlementCalls = 0;
   double? lastSettlementAmount;
   double? lastSettlementDiscount;
+  int? lastSettlementCashAccountId;
 
   @override
   Future<OrderDetailsData> getDetails(int orderId) async => data;
@@ -23,6 +25,7 @@ class _FakeOrderRepository extends OrderRepository {
     double amount,
     String referenceNumber, {
     String? paymentMethod,
+    int? cashAccountId,
     String? notes,
   }) async {
     final updatedOrder = OrderDetails(
@@ -60,11 +63,13 @@ class _FakeOrderRepository extends OrderRepository {
     double discountAmount,
     String referenceNumber, {
     String? paymentMethod,
+    int? cashAccountId,
     String? notes,
   }) async {
     settlementCalls++;
     lastSettlementAmount = amount;
     lastSettlementDiscount = discountAmount;
+    lastSettlementCashAccountId = cashAccountId;
     return data.order;
   }
 
@@ -130,7 +135,22 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: OrderDeliveryScreen(orderId: 42, repository: repository),
+        home: OrderDeliveryScreen(
+          orderId: 42,
+          repository: repository,
+          cashAccountsFuture: Future.value([
+            CashAccount(
+              id: 1,
+              accountName: 'Petty Cash 0719001842',
+              derivedBalance: 0,
+              historicalSnapshotBalance: 0,
+              isActive: true,
+              isReceiptEnabled: true,
+              currencyCode: 'YER',
+              createdAt: DateTime.utc(2026, 9, 26),
+            ),
+          ]),
+        ),
       ),
     );
 
@@ -156,6 +176,7 @@ void main() {
     expect(repository.settlementCalls, 1);
     expect(repository.lastSettlementAmount, 800);
     expect(repository.lastSettlementDiscount, 100);
+    expect(repository.lastSettlementCashAccountId, 1);
 
     await tester.ensureVisible(find.text('تبرع بالرصيد'));
     await tester.tap(find.text('تبرع بالرصيد'));

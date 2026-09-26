@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_navigation.dart';
+import '../../core/app_message.dart';
 import '../../core/ui_palette.dart';
+import '../../models/finance_models.dart';
 import '../../models/order_models.dart';
 import '../../repositories/order_repository.dart';
 import '../../widgets/cash_account_picker.dart';
@@ -13,11 +15,13 @@ class OrderDeliveryScreen extends StatefulWidget {
   const OrderDeliveryScreen({
     required this.orderId,
     this.repository,
+    this.cashAccountsFuture,
     super.key,
   });
 
   final int orderId;
   final OrderRepository? repository;
+  final Future<List<CashAccount>>? cashAccountsFuture;
 
   @override
   State<OrderDeliveryScreen> createState() => _OrderDeliveryScreenState();
@@ -37,6 +41,8 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
   bool _partialCollectionSelected = false;
   bool _initialized = false;
   int? _cashAccountId;
+  CashAccountAvailability _cashAccountAvailability =
+      CashAccountAvailability.loading;
 
   @override
   void initState() {
@@ -61,6 +67,7 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
       _referenceController.clear();
       _partialCollectionSelected = false;
       _cashAccountId = null;
+      _cashAccountAvailability = CashAccountAvailability.loading;
       _future = _repository.getDetails(widget.orderId);
     });
   }
@@ -147,7 +154,13 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
       return;
     }
     if (amount > 0 && _cashAccountId == null) {
-      _showMessage('اختر الحساب النقدي المستلم قبل تسجيل التحصيل.');
+      _showMessage(switch (_cashAccountAvailability) {
+        CashAccountAvailability.failed =>
+          'تعذر تحميل الحسابات النقدية، ولا يمكن تسجيل التحصيل الآن.',
+        CashAccountAvailability.unavailable =>
+          'لا يوجد حساب نقدي نشط ومؤهل لاستلام النقدية.',
+        _ => 'اختر الحساب النقدي المستلم قبل تسجيل التحصيل.',
+      });
       return;
     }
 
@@ -256,12 +269,10 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
 
   void _showMessage(String message, {bool isSuccess = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor:
-            isSuccess ? UiPalette.primaryDark : UiPalette.surfaceCard,
-      ),
+    AppMessage.show(
+      context,
+      message,
+      type: isSuccess ? AppMessageType.success : AppMessageType.error,
     );
   }
 
@@ -522,6 +533,10 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                           CashAccountPicker(
                             value: _cashAccountId,
                             enabled: isReadyForCollection,
+                            accountsFuture: widget.cashAccountsFuture,
+                            onAvailabilityChanged: (availability) =>
+                              setState(() => _cashAccountAvailability =
+                                availability),
                             onChanged: (value) =>
                                 setState(() => _cashAccountId = value),
                           ),

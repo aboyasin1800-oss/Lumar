@@ -22,12 +22,19 @@ class AppNavigation {
 		if (navigator != null && navigator.canPop()) await navigator.maybePop();
 	}
 
+	static bool popIfPossible() {
+		final navigator = navigatorKey.currentState;
+		if (navigator == null || !navigator.canPop()) return false;
+		back();
+		return true;
+	}
+
 	static void forward() => observer.forward(navigatorKey.currentState);
 
 	static void handlePointerDown(PointerDownEvent event) {
 		if (event.kind != PointerDeviceKind.mouse) return;
 		if (event.buttons & kBackMouseButton != 0) {
-			back();
+			popIfPossible();
 		} else if (event.buttons & kForwardMouseButton != 0) {
 			forward();
 		}
@@ -49,9 +56,10 @@ class AppNavigationRegion extends StatelessWidget {
 		behavior: HitTestBehavior.translucent,
 		onPointerDown: (event) {
 			if (event.kind == PointerDeviceKind.mouse &&
-				event.buttons & kBackMouseButton != 0 &&
-				onBackMouseButton != null) {
-				onBackMouseButton!();
+				event.buttons & kBackMouseButton != 0) {
+				if (!AppNavigation.popIfPossible()) {
+					onBackMouseButton?.call();
+				}
 				return;
 			}
 			AppNavigation.handlePointerDown(event);

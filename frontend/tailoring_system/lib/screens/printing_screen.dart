@@ -694,6 +694,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     int? responsibleEmployeeId;
     int? saleCustomerId;
     int? cashAccountId;
+    var cashAccountAvailability = CashAccountAvailability.loading;
     var paymentType = 'Cash';
     String? errorText;
 
@@ -801,6 +802,9 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                         const SizedBox(height: 12),
                         CashAccountPicker(
                           value: cashAccountId,
+                          onAvailabilityChanged: (availability) =>
+                              setDialogState(() =>
+                                  cashAccountAvailability = availability),
                           onChanged: (value) => setDialogState(() {
                             cashAccountId = value;
                             errorText = null;
@@ -871,8 +875,16 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                       (saleAmount == null || saleAmount <= 0 ||
                         (piece.isReadyMade && saleCustomerId == null) ||
                         (paymentType == 'Cash' && cashAccountId == null))) {
-                    setDialogState(() => errorText =
-                        'قيمة البيع وعميل البيع المطلوبان قبل المتابعة.');
+                    setDialogState(() => errorText = paymentType == 'Cash' &&
+                            cashAccountId == null
+                        ? switch (cashAccountAvailability) {
+                            CashAccountAvailability.failed =>
+                              'تعذر تحميل الحسابات النقدية، ولا يمكن تسجيل البيع النقدي الآن.',
+                            CashAccountAvailability.unavailable =>
+                              'لا يوجد حساب نقدي نشط ومؤهل لاستلام النقدية.',
+                            _ => 'اختر الحساب النقدي المستلم قبل المتابعة.',
+                          }
+                        : 'قيمة البيع وعميل البيع المطلوبان قبل المتابعة.');
                     return;
                   }
                   Navigator.of(dialogContext).pop(_ReprintFormData(

@@ -104,6 +104,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   bool _savingOrder = false;
   String? _orderRequestReference;
   int? _cashAccountId;
+  CashAccountAvailability _cashAccountAvailability =
+      CashAccountAvailability.loading;
   bool _isInitialLoading = true;
   bool _isRefreshingOfficialCatalog = false;
   int _selectedTab = 0;
@@ -444,7 +446,13 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       return;
     }
     if (advance > 0 && _cashAccountId == null) {
-      _showMessage('اختر الحساب النقدي المستلم للدفعة المقدمة.');
+      _showMessage(switch (_cashAccountAvailability) {
+        CashAccountAvailability.failed =>
+          'تعذر تحميل الحسابات النقدية، ولا يمكن تسجيل الدفعة المقدمة الآن.',
+        CashAccountAvailability.unavailable =>
+          'لا يوجد حساب نقدي نشط ومؤهل لاستلام النقدية.',
+        _ => 'اختر الحساب النقدي المستلم للدفعة المقدمة.',
+      });
       return;
     }
     final items = <Map<String, dynamic>>[];
@@ -2271,6 +2279,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                   padding: const EdgeInsets.only(top: 8),
                   child: CashAccountPicker(
                     value: _cashAccountId,
+                    onAvailabilityChanged: (availability) => setState(
+                        () => _cashAccountAvailability = availability),
                     onChanged: (value) =>
                         setState(() => _cashAccountId = value),
                   ),

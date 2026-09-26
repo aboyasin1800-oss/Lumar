@@ -125,6 +125,11 @@ class AppTheme {
         ),
         textStyle: AppTypography.caption.copyWith(color: UiPalette.lightText),
       ),
+      snackBarTheme: const SnackBarThemeData(
+        backgroundColor: Color(0xFF1565C0),
+        contentTextStyle: TextStyle(color: Colors.white),
+        behavior: SnackBarBehavior.floating,
+      ),
       dividerTheme: const DividerThemeData(
         color: UiPalette.primaryBorder,
         thickness: 1,
@@ -264,6 +269,11 @@ class AppTheme {
           border: Border.all(color: UiPalette.primaryBorder),
         ),
         textStyle: AppTypography.caption.copyWith(color: UiPalette.darkText),
+      ),
+      snackBarTheme: const SnackBarThemeData(
+        backgroundColor: Color(0xFF1565C0),
+        contentTextStyle: TextStyle(color: Colors.white),
+        behavior: SnackBarBehavior.floating,
       ),
       dividerTheme: const DividerThemeData(
         color: UiPalette.primaryBorder,

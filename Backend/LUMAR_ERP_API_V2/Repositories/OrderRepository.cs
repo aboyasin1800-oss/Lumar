@@ -553,10 +553,6 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             }
 
             var now = DateTime.UtcNow;
-            var deliveryCostAmount = await ResolveOrderDeliveryCostAsync(connection, transaction, orderId, cancellationToken);
-            if (deliveryCostAmount > 0m)
-                throw new InvalidOperationException("هذه العملية غير متاحة حتى اعتماد عقد تكلفة التوصيل المحاسبي.");
-
             if (!revenueRecognized)
             {
                 var revenueReference = $"{orderNumber}:RevenueRecognized";
@@ -907,15 +903,6 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
         }
 
         return null;
-    }
-
-    private static async Task<decimal> ResolveOrderDeliveryCostAsync(SqlConnection connection, SqlTransaction transaction, int orderId, CancellationToken cancellationToken)
-    {
-        const string sql = "SELECT ISNULL(SUM(CAST(oiFabric.TotalCost AS decimal(18,2))), 0) FROM dbo.OrderItemFabrics oiFabric WITH (NOLOCK) INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = oiFabric.OrderItemID WHERE oi.OrderID = @orderId";
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("@orderId", orderId);
-        var result = await command.ExecuteScalarAsync(cancellationToken);
-        return result is decimal totalCost ? totalCost : result is double doubleValue ? (decimal)doubleValue : 0m;
     }
 
     private static async Task<bool> FinancialTransactionExistsAsync(SqlConnection connection, SqlTransaction transaction, string referenceNumber, string transactionType, CancellationToken cancellationToken)

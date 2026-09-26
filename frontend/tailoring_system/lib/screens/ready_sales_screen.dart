@@ -46,6 +46,7 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 	String? _saleReference;
 	String paymentMethod = 'نقداً';
 	int? selectedCashAccountId;
+	CashAccountAvailability cashAccountAvailability = CashAccountAvailability.loading;
 
 	@override
 	void initState() {
@@ -194,7 +195,12 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 			return;
 		}
 		if (paymentType == 'Cash' && selectedCashAccountId == null) {
-			ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اختر الحساب النقدي المستلم.')));
+			final message = switch (cashAccountAvailability) {
+				CashAccountAvailability.failed => 'تعذر تحميل الحسابات النقدية، ولا يمكن تسجيل البيع النقدي الآن.',
+				CashAccountAvailability.unavailable => 'لا يوجد حساب نقدي نشط ومؤهل لاستلام النقدية.',
+				_ => 'اختر الحساب النقدي المستلم.',
+			};
+			ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 			return;
 		}
 		if (paymentType == 'Donation' && paid.abs() > 0.009) {
@@ -524,7 +530,11 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 					),
 					if (paymentMethod == 'نقداً') ...[
 						const SizedBox(height: 6),
-						CashAccountPicker(value: selectedCashAccountId, onChanged: (value) => setState(() => selectedCashAccountId = value)),
+						CashAccountPicker(
+							value: selectedCashAccountId,
+							onAvailabilityChanged: (availability) => setState(() => cashAccountAvailability = availability),
+							onChanged: (value) => setState(() => selectedCashAccountId = value),
+						),
 					],
 					const Spacer(),
 					SizedBox(width: double.infinity, height: 36, child: FilledButton.icon(onPressed: _selling ? null : _sell, icon: _selling ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.check, size: 17), label: Text(_selling ? 'جارٍ الحفظ' : 'بيع'))),
