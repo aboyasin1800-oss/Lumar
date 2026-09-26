@@ -53,11 +53,15 @@ public sealed class FinanceRepository(ReadOnlySqlConnectionFactory connections) 
         await using var connection = connections.Create();
         await connection.OpenAsync(ct);
         const string sql = """
+            DECLARE @cashMovementCutoverUtc datetime2(7) = TRY_CONVERT(datetime2(7),
+                (SELECT CAST(value AS nvarchar(128))
+                 FROM fn_listextendedproperty(N'CashMovementFoundationCutoverUtc', N'SCHEMA', N'dbo', N'TABLE', N'CashMovements', NULL, NULL)));
+
             SELECT
                 COALESCE((SELECT SUM(CASE WHEN ft.TransactionType = N'RevenueRecognized' THEN ft.Amount WHEN ft.TransactionType = N'RevenueReversal' THEN -ft.Amount ELSE 0 END) FROM dbo.FinancialTransactions ft), 0),
                 COALESCE((SELECT SUM(p.Amount) FROM dbo.Payments p WHERE p.PaymentKind NOT IN (N'Refund')), 0),
                 COALESCE((SELECT SUM(x.BalanceAfterTransaction) FROM (SELECT cle.BalanceAfterTransaction, ROW_NUMBER() OVER (PARTITION BY cle.CustomerID ORDER BY cle.CreatedAt DESC, cle.CustomerLedgerEntryId DESC) AS RowNumber FROM dbo.CustomerLedgerEntries cle) x WHERE x.RowNumber = 1 AND x.BalanceAfterTransaction > 0), 0),
-                COALESCE((SELECT SUM(jel.DebitAmount - jel.CreditAmount) FROM dbo.JournalEntryLines jel INNER JOIN dbo.LedgerAccounts la ON la.LedgerAccountId = jel.LedgerAccountId WHERE la.AccountCode = N'1000'), 0),
+                COALESCE((SELECT SUM(CASE cm.CashDirection WHEN 1 THEN cm.Amount WHEN 2 THEN -cm.Amount ELSE 0 END) FROM dbo.CashMovements cm WHERE cm.CreatedAt >= @cashMovementCutoverUtc), 0),
                 (SELECT COUNT(*) FROM dbo.JournalEntries),
                 (SELECT COUNT(*) FROM dbo.FinancialTransactions),
                 (SELECT COUNT(DISTINCT CustomerID) FROM dbo.CustomerLedgerEntries),
