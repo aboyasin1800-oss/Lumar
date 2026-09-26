@@ -32,7 +32,7 @@ public sealed class FinancialPostingRuntimeReliabilityTests
     }
 
     [Fact]
-    public async Task Poster_RejectsAmbiguousTransitionalReference_WithoutCreatingJournalEntry()
+    public async Task AccountingEventFoundation_RejectsDirectCustomerPaymentWrites()
     {
         var reference = $"POSTING-CONFLICT-{Guid.NewGuid():N}";
         await using var connection = new SqlConnection(GetConnectionString());
@@ -41,13 +41,7 @@ public sealed class FinancialPostingRuntimeReliabilityTests
 
         try
         {
-            await InsertFinancialTransactionAsync(connection, transaction, reference, "CustomerPayment", 100m);
-            await InsertFinancialTransactionAsync(connection, transaction, reference, "CustomerPayment", 100m);
-
-            var result = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
-                connection, transaction, reference, "CustomerPayment", 100m, null, CancellationToken.None);
-
-            Assert.Equal(FinancialPostingStatus.TransitionalReferenceConflict, result.Status);
+            await Assert.ThrowsAsync<SqlException>(() => InsertFinancialTransactionAsync(connection, transaction, reference, "CustomerPayment", 100m));
             Assert.Equal(0, await CountJournalEntriesAsync(connection, transaction, reference));
         }
         finally

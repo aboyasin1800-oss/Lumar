@@ -6,8 +6,12 @@ using Xunit;
 
 namespace LUMAR_ERP_API_V2.Tests;
 
-public class ProductionTrackingEngineTests
+public class ProductionTrackingEngineTests : IDisposable
 {
+    private readonly string? originalConnectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString");
+
+    public void Dispose() => Environment.SetEnvironmentVariable("Lumar__ConnectionString", originalConnectionString);
+
     [Fact]
     public void ShouldNotUseDefaultRoutesWhenDatabaseConfigurationIsUnavailable()
     {

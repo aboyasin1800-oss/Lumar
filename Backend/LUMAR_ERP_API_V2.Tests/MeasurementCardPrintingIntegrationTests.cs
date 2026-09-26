@@ -23,26 +23,26 @@ public sealed class MeasurementCardPrintingIntegrationTests
         Assert.Equal(1, first.CopyNumber);
         Assert.Equal("Reserved", first.PrintStatus);
         Assert.Null(first.FinancialTransactionId);
-        var firstCompleted = await repository.CompleteAsync(first.PrintHistoryId, seed.User, CancellationToken.None);
+        var firstCompleted = await repository.CompleteAsync(first.PrintHistoryId, null, seed.User, CancellationToken.None);
         Assert.Equal("Completed", firstCompleted.PrintStatus);
 
         var damagedCard = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedCard", null, null, "اختبار بطاقة تالفة", null, null, null), seed.User, CancellationToken.None);
         Assert.Equal(2, damagedCard.CopyNumber);
-        await repository.CompleteAsync(damagedCard.PrintHistoryId, seed.User, CancellationToken.None);
+        await repository.CompleteAsync(damagedCard.PrintHistoryId, null, seed.User, CancellationToken.None);
 
         var lostCard = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "LostCard", null, null, null, null, null, null), seed.User, CancellationToken.None);
         Assert.Equal(3, lostCard.CopyNumber);
-        await repository.CompleteAsync(lostCard.PrintHistoryId, seed.User, CancellationToken.None);
+        await repository.CompleteAsync(lostCard.PrintHistoryId, null, seed.User, CancellationToken.None);
 
         var damagedPiece = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedPiece", "تمزق أثناء التجهيز", employeeId, null, null, null, null), seed.User, CancellationToken.None);
         Assert.Equal(4, damagedPiece.CopyNumber);
-        await repository.CompleteAsync(damagedPiece.PrintHistoryId, seed.User, CancellationToken.None);
+        await repository.CompleteAsync(damagedPiece.PrintHistoryId, null, seed.User, CancellationToken.None);
 
         var soldPiece = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "PieceSold", null, null, "بيع مع بطاقة بديلة", 15000m, "Cash", null), seed.User, CancellationToken.None);
         Assert.Equal(5, soldPiece.CopyNumber);
         Assert.StartsWith("MC-PIECE-SALE-", soldPiece.FinancialTransactionReference);
-        var soldCompleted = await repository.CompleteAsync(soldPiece.PrintHistoryId, seed.User, CancellationToken.None);
-        var idempotentCompleted = await repository.CompleteAsync(soldPiece.PrintHistoryId, seed.User, CancellationToken.None);
+        var soldCompleted = await repository.CompleteAsync(soldPiece.PrintHistoryId, 1, seed.User, CancellationToken.None);
+        var idempotentCompleted = await repository.CompleteAsync(soldPiece.PrintHistoryId, 1, seed.User, CancellationToken.None);
 
         Assert.Equal(soldCompleted.PrintHistoryId, idempotentCompleted.PrintHistoryId);
         Assert.Equal("Completed", idempotentCompleted.PrintStatus);
@@ -123,7 +123,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
 
         var retry = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null), seed.User, CancellationToken.None);
         Assert.Equal(1, retry.CopyNumber);
-        await repository.CompleteAsync(retry.PrintHistoryId, seed.User, CancellationToken.None);
+        await repository.CompleteAsync(retry.PrintHistoryId, null, seed.User, CancellationToken.None);
 
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
@@ -139,7 +139,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
         var repository = CreateRepository(connectionString);
 
         var first = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null), seed.User, CancellationToken.None);
-        await repository.CompleteAsync(first.PrintHistoryId, seed.User, CancellationToken.None);
+        await repository.CompleteAsync(first.PrintHistoryId, null, seed.User, CancellationToken.None);
         await Assert.ThrowsAsync<InvalidOperationException>(() => repository.PrepareAsync(
             seed.PieceId,
             false,

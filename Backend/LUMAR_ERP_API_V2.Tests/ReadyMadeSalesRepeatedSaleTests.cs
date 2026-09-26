@@ -11,7 +11,7 @@ namespace LUMAR_ERP_API_V2.Tests;
 public sealed class ReadyMadeSalesRepeatedSaleTests
 {
     [Fact]
-    public async Task CreateAsync_CompletesTwoSequentialSalesWithRealTrackingReferences()
+    public async Task CreateAsync_RejectsSalesThatRequireTheUnapprovedCostContract()
     {
         var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
             ?? "Data Source=YASIN-YASIN\\SQLEXPRESS;Initial Catalog=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True;";
@@ -20,36 +20,17 @@ public sealed class ReadyMadeSalesRepeatedSaleTests
             new ReadOnlySqlConnectionFactory(options),
             new OperationalSqlConnectionFactory(options));
         var seed = await ReadSeedAsync(connectionString);
-        var firstReference = $"RMS-REPEAT-{Guid.NewGuid():N}-1";
-        var secondReference = $"RMS-REPEAT-{Guid.NewGuid():N}-2";
+        var reference = $"RMS-REPEAT-{Guid.NewGuid():N}";
 
-        var first = await repository.CreateAsync(BuildSale(seed, firstReference), CancellationToken.None);
-        var second = await repository.CreateAsync(BuildSale(seed, secondReference), CancellationToken.None);
-
-        Assert.NotEqual(first.InvoiceId, second.InvoiceId);
-        Assert.Single(first.Items);
-        Assert.Single(second.Items);
-
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync();
-        await using var command = new SqlCommand(@"
-            SELECT COUNT(*), COUNT(DISTINCT d.TrackingCode), COUNT(pt.TrackingCode)
-            FROM dbo.Invoice_Details d
-            INNER JOIN dbo.Production_Tracking pt ON pt.TrackingCode = d.TrackingCode
-            WHERE d.InvoiceID IN (@firstInvoiceId, @secondInvoiceId);", connection);
-        command.Parameters.AddWithValue("@firstInvoiceId", first.InvoiceId);
-        command.Parameters.AddWithValue("@secondInvoiceId", second.InvoiceId);
-        await using var reader = await command.ExecuteReaderAsync();
-        Assert.True(await reader.ReadAsync());
-        Assert.Equal(2, reader.GetInt32(0));
-        Assert.Equal(2, reader.GetInt32(1));
-        Assert.Equal(2, reader.GetInt32(2));
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.CreateAsync(BuildSale(seed, reference), CancellationToken.None));
+        Assert.Equal("هذه العملية غير متاحة حتى اكتمال عقد الربط المحاسبي.", exception.Message);
     }
 
     private static CreateReadyMadeSaleDto BuildSale((int CustomerId, int ProductId) seed, string reference) => new()
     {
         CustomerId = seed.CustomerId,
         PaymentType = "Cash",
+        CashAccountId = 1,
         PaidAmount = 1m,
         SaleReference = reference,
         Items = [new CreateReadyMadeSaleItemDto

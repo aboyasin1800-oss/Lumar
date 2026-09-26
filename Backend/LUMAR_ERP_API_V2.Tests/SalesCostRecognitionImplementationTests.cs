@@ -11,7 +11,7 @@ namespace LUMAR_ERP_API_V2.Tests;
 public class SalesCostRecognitionImplementationTests
 {
     [Fact]
-    public async Task RecognizeDeliveryRevenueAsync_Should_Create_DeliveryCost_For_Delivered_Order()
+    public async Task RecognizeDeliveryRevenueAsync_ShouldBlockUnapprovedDeliveryCost()
     {
         var connectionString = GetConnectionString();
         var repository = CreateOrderRepository(connectionString);
@@ -21,20 +21,12 @@ public class SalesCostRecognitionImplementationTests
         var orderItemId = await InsertOrderItemAsync(connectionString, orderId, $"TEST-{DateTime.UtcNow:HHmmssfff}", "قميص", 1, "FAB-DELIVERY", "قماش", "أبيض");
         await InsertOrderFabricAsync(connectionString, orderItemId, "FAB-DELIVERY", "قماش", "أبيض", 350.00m);
 
-        var result = await repository.RecognizeDeliveryRevenueAsync(orderId, CancellationToken.None);
-        var transaction = await QuerySingleTransactionAsync(connectionString, $"{testOrderNumber}:DeliveryCost", "DeliveryCost");
-
-        Assert.NotNull(result);
-        Assert.NotNull(transaction);
-        Assert.Equal($"{testOrderNumber}:DeliveryCost", transaction!.ReferenceNumber);
-        Assert.Equal("DeliveryCost", transaction.TransactionType);
-        Assert.Equal(350.00m, transaction.Amount);
-
-        Console.WriteLine($"DeliveryCost created: Id={transaction.FinancialTransactionId}, ReferenceNumber={transaction.ReferenceNumber}, Amount={transaction.Amount}, TransactionType={transaction.TransactionType}");
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.RecognizeDeliveryRevenueAsync(orderId, CancellationToken.None));
+        Assert.Equal("هذه العملية غير متاحة حتى اعتماد عقد تكلفة التوصيل المحاسبي.", exception.Message);
     }
 
     [Fact]
-    public async Task RecordReadyMadeSaleCostAsync_Should_Create_ReadyMadeCost_For_Sold_Product_Only_Once()
+    public async Task RecordReadyMadeSaleCostAsync_ShouldBlockUnapprovedAccountingContract()
     {
         var connectionString = GetConnectionString();
         var repository = CreateInventoryRepository(connectionString);
@@ -42,26 +34,12 @@ public class SalesCostRecognitionImplementationTests
         var productionNumber = $"RMP-TEST-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         var productId = await InsertSoldReadyMadeProductAsync(connectionString, productionNumber, 680.00m);
 
-        var first = await repository.RecordReadyMadeSaleCostAsync(productId, CancellationToken.None);
-        var second = await repository.RecordReadyMadeSaleCostAsync(productId, CancellationToken.None);
-
-        var reference = await QueryReadyMadeCostReferenceAsync(connectionString, productId);
-        var count = await CountReadyMadeCostRowsAsync(connectionString, reference);
-
-        Assert.NotNull(first);
-        Assert.NotNull(second);
-        Assert.NotNull(reference);
-        Assert.Equal(1, count);
-
-        var transaction = await QuerySingleTransactionAsync(connectionString, reference!, "ReadyMadeCost");
-        Assert.NotNull(transaction);
-        Assert.Equal(680.00m, transaction!.Amount);
-
-        Console.WriteLine($"ReadyMadeCost created: Id={transaction.FinancialTransactionId}, ReferenceNumber={transaction.ReferenceNumber}, Amount={transaction.Amount}, TransactionType={transaction.TransactionType}");
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.RecordReadyMadeSaleCostAsync(productId, CancellationToken.None));
+        Assert.Equal("هذه العملية غير متاحة حتى اكتمال عقد الربط المحاسبي.", exception.Message);
     }
 
     [Fact]
-    public async Task FinancialTransactionJournalPoster_Should_Create_Balanced_Journal_For_ReadyMadeCost()
+    public async Task AccountingEventFoundation_ShouldRejectDirectJournalWrites()
     {
         var connectionString = GetConnectionString();
         var reference = $"JOURNAL-TEST-{DateTime.UtcNow:yyyyMMddHHmmssfff}:ReadyMadeCost";
@@ -73,21 +51,8 @@ public class SalesCostRecognitionImplementationTests
         try
         {
             await InsertFinancialTransactionAsync(connection, transaction, reference, "ReadyMadeCost", 725.00m, "Ready-made sale cost recognized");
-
-            var created = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, reference, "ReadyMadeCost", 725.00m, "Ready-made sale cost recognized", CancellationToken.None);
-            Assert.Equal(FinancialPostingStatus.PostingCreated, created.Status);
-
-            var existingEntry = await QueryJournalEntryAsync(connection, transaction, reference);
-            Assert.NotNull(existingEntry);
-            Assert.Equal(reference, existingEntry!.ReferenceNumber);
-
-            var lines = await QueryJournalLinesAsync(connection, transaction, existingEntry.JournalEntryId);
-            Assert.Equal(2, lines.Count);
-            Assert.Equal(725.00m, lines.Sum(l => l.DebitAmount));
-            Assert.Equal(725.00m, lines.Sum(l => l.CreditAmount));
-
-            var createdAgain = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, reference, "ReadyMadeCost", 725.00m, "Ready-made sale cost recognized", CancellationToken.None);
-            Assert.Equal(FinancialPostingStatus.TransitionalReferenceMatchVerified, createdAgain.Status);
+            await Assert.ThrowsAsync<SqlException>(() => FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(connection, transaction, reference, "ReadyMadeCost", 725.00m, "Ready-made sale cost recognized", CancellationToken.None));
+            Assert.Null(await QueryJournalEntryAsync(connection, transaction, reference));
         }
         finally
         {

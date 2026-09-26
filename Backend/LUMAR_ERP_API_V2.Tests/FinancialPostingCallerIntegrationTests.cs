@@ -31,6 +31,7 @@ public sealed class FinancialPostingCallerIntegrationTests
                 UrgencyStatus = "Normal",
                 SaleCategory = "TailoringOrder",
                 PaymentMethod = "Cash",
+                CashAccountId = 1,
                 RequestReference = requestReference,
                 Items = [new CreateOrderItemDto { PieceType = "قطعة اختبار", Quantity = 1, ProductTypeId = productTypeId }]
             };
@@ -71,6 +72,7 @@ public sealed class FinancialPostingCallerIntegrationTests
                 UrgencyStatus = "Normal",
                 SaleCategory = "TailoringOrder",
                 PaymentMethod = oversizedPaymentMethod,
+                CashAccountId = 1,
                 RequestReference = requestReference,
                 Items = [new CreateOrderItemDto { PieceType = "قطعة اختبار", Quantity = 1, ProductTypeId = productTypeId }]
             };
@@ -94,10 +96,10 @@ public sealed class FinancialPostingCallerIntegrationTests
 
         try
         {
-            var collected = await repository.CollectCustomerPaymentAsync(success.OrderId, 40m, "Cash", successReference, null, CancellationToken.None);
+            var collected = await repository.CollectCustomerPaymentAsync(success.OrderId, 40m, "Cash", 1, successReference, null, CancellationToken.None);
             Assert.NotNull(collected);
             await AssertPostingAsync(successReference, "CustomerPayment", 40m, "1000", "1200");
-            Assert.Null(await repository.CollectCustomerPaymentAsync(success.OrderId, 40m, "Cash", successReference, null, CancellationToken.None));
+            Assert.Null(await repository.CollectCustomerPaymentAsync(success.OrderId, 40m, "Cash", 1, successReference, null, CancellationToken.None));
             Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber = @reference", successReference));
         }
         finally
@@ -255,6 +257,7 @@ public sealed class FinancialPostingCallerIntegrationTests
             FROM dbo.AccountingEvents ae
             WHERE ae.OrderId=@orderId
                OR ae.PaymentId IN (SELECT PaymentID FROM dbo.Payments WHERE OrderID=@orderId);
+                DELETE cm FROM dbo.CashMovements cm INNER JOIN @events e ON e.AccountingEventId=cm.AccountingEventId;
             DELETE jel FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=jel.JournalEntryId INNER JOIN @events e ON e.AccountingEventId=je.AccountingEventId;
             DELETE je FROM dbo.JournalEntries je INNER JOIN @events e ON e.AccountingEventId=je.AccountingEventId;
             DELETE ft FROM dbo.FinancialTransactions ft INNER JOIN @events e ON e.AccountingEventId=ft.AccountingEventId;
