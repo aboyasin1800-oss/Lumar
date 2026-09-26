@@ -157,7 +157,24 @@ public sealed class ConsumptionRulesRepository(ReadOnlySqlConnectionFactory conn
             .ToList();
         if (rules.Count == 0) return null;
 
-        var values = new Dictionary<string, decimal>(request.Measurements ?? new Dictionary<string, decimal>(), StringComparer.OrdinalIgnoreCase);
+        var values = new Dictionary<string, decimal>(
+            request.Measurements ?? new Dictionary<string, decimal>(),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var field in dashboard.MeasurementFields.Where(
+                     field => field.ProductTypeId == request.ProductTypeId))
+        {
+            var code = field.Code.Trim();
+            var arabicName = field.NameAr.Trim();
+            if (code.Length == 0 || arabicName.Length == 0 || values.ContainsKey(code))
+            {
+                continue;
+            }
+
+            if (values.TryGetValue(arabicName, out var value))
+            {
+                values[code] = value;
+            }
+        }
         var rangedMatches = rules
             .Where(rule => !string.IsNullOrWhiteSpace(rule.MeasurementCode))
             .Where(rule => values.TryGetValue(rule.MeasurementCode!, out var value)

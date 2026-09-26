@@ -9,6 +9,11 @@ public sealed class PieceCostManagementRepository(
     ReadOnlySqlConnectionFactory readOnlyConnections,
     OperationalSqlConnectionFactory operationalConnections) : IPieceCostManagementRepository
 {
+    private const string SewingCode = "OP_SEWING";
+    private const string ConsumablesCode = "OP_CONSUMABLES";
+    private const string IroningCode = "OP_IRON_PACK";
+    private const string FixedCode = "OP_FIXED";
+
     private static readonly string[] MonthlyKeys =
     [
         "MonthlyFixedCostRent",
@@ -109,12 +114,86 @@ public sealed class PieceCostManagementRepository(
             return null;
         }
 
+        const string ensureItemsSql = """
+            IF NOT EXISTS (SELECT 1 FROM dbo.PricingCostItems WITH (UPDLOCK,HOLDLOCK) WHERE Code=@sewingCode)
+                INSERT INTO dbo.PricingCostItems (Code,NameAr,Category,CalculationMethod,Unit,IsActive,CreatedAt) VALUES (@sewingCode,N'تكلفة الخياطة',N'Operating',N'Fixed',N'Piece',1,SYSDATETIME());
+            IF NOT EXISTS (SELECT 1 FROM dbo.PricingCostItems WITH (UPDLOCK,HOLDLOCK) WHERE Code=@consumablesCode)
+                INSERT INTO dbo.PricingCostItems (Code,NameAr,Category,CalculationMethod,Unit,IsActive,CreatedAt) VALUES (@consumablesCode,N'تكلفة الأدوات والمستهلكات',N'Operating',N'Fixed',N'Piece',1,SYSDATETIME());
+            IF NOT EXISTS (SELECT 1 FROM dbo.PricingCostItems WITH (UPDLOCK,HOLDLOCK) WHERE Code=@ironingCode)
+                INSERT INTO dbo.PricingCostItems (Code,NameAr,Category,CalculationMethod,Unit,IsActive,CreatedAt) VALUES (@ironingCode,N'تكلفة الكي والتغليف',N'Operating',N'Fixed',N'Piece',1,SYSDATETIME());
+            IF NOT EXISTS (SELECT 1 FROM dbo.PricingCostItems WITH (UPDLOCK,HOLDLOCK) WHERE Code=@fixedCode)
+                INSERT INTO dbo.PricingCostItems (Code,NameAr,Category,CalculationMethod,Unit,IsActive,CreatedAt) VALUES (@fixedCode,N'تكلفة التشغيل الثابتة',N'Operating',N'Fixed',N'Piece',1,SYSDATETIME());
+            """;
+        await using (var ensureCommand = new SqlCommand(ensureItemsSql, connection, transaction))
+        {
+            AddCostCodes(ensureCommand);
+            await ensureCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        int? matrixId;
+        const string findMatrixSql = """
+            SELECT TOP (1) CostMatrixId
+            FROM dbo.PricingCostMatrices WITH (UPDLOCK,HOLDLOCK)
+            WHERE ProductTypeId=@productTypeId AND Channel=N'Tailoring'
+              AND Status=N'Active' AND IsActive=1
+            ORDER BY Version DESC, CostMatrixId DESC;
+            """;
+        await using (var findCommand = new SqlCommand(findMatrixSql, connection, transaction))
+        {
+            findCommand.Parameters.AddWithValue("@productTypeId", productTypeId);
+            matrixId = await findCommand.ExecuteScalarAsync(cancellationToken) as int?;
+        }
+
+        if (matrixId is null)
+        {
+            const string insertMatrixSql = """
+                DECLARE @version int=ISNULL((SELECT MAX(Version) FROM dbo.PricingCostMatrices WITH (UPDLOCK,HOLDLOCK) WHERE ProductTypeId=@productTypeId AND Channel=N'Tailoring'),0)+1;
+                INSERT INTO dbo.PricingCostMatrices (ProductTypeId,Name,Channel,Version,Status,EffectiveFrom,EffectiveTo,IsActive,ChangeReason,CreatedBy,CreatedAt,UpdatedAt)
+                OUTPUT INSERTED.CostMatrixId
+                VALUES (@productTypeId,N'إعداد تكاليف '+@pieceName,N'Tailoring',@version,N'Active',SYSDATETIME(),NULL,1,N'تحديث من إدارة تكاليف القطع',N'LUMAR ERP',SYSDATETIME(),NULL);
+                """;
+            await using var insertCommand = new SqlCommand(insertMatrixSql, connection, transaction);
+            insertCommand.Parameters.AddWithValue("@productTypeId", productTypeId);
+            insertCommand.Parameters.AddWithValue("@pieceName", pieceName);
+            matrixId = (int)(await insertCommand.ExecuteScalarAsync(cancellationToken))!;
+        }
+        else
+        {
+            await using var updateCommand = new SqlCommand(
+                "UPDATE dbo.PricingCostMatrices SET UpdatedAt=SYSDATETIME() WHERE CostMatrixId=@matrixId",
+                connection,
+                transaction);
+            updateCommand.Parameters.AddWithValue("@matrixId", matrixId.Value);
+            await updateCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        const string replaceItemsSql = """
+            DELETE mi
+            FROM dbo.PricingCostMatrixItems mi
+            INNER JOIN dbo.PricingCostItems ci ON ci.CostItemId=mi.CostItemId
+            WHERE mi.CostMatrixId=@matrixId
+              AND ci.Code IN (@sewingCode,@consumablesCode,@ironingCode,@fixedCode);
+            INSERT INTO dbo.PricingCostMatrixItems (CostMatrixId,CostItemId,Quantity,UnitCost,AllocationPercentage,Sequence)
+            SELECT @matrixId,CostItemId,CAST(1 AS decimal(18,4)),
+                   CASE Code WHEN @sewingCode THEN @sewingCost WHEN @consumablesCode THEN @consumablesCost WHEN @ironingCode THEN @ironingCost ELSE @fixedCost END,
+                   CAST(0 AS decimal(18,4)),
+                   CASE Code WHEN @sewingCode THEN 1 WHEN @consumablesCode THEN 2 WHEN @ironingCode THEN 3 ELSE 4 END
+            FROM dbo.PricingCostItems
+            WHERE Code IN (@sewingCode,@consumablesCode,@ironingCode,@fixedCode);
+            """;
+        await using (var replaceCommand = new SqlCommand(replaceItemsSql, connection, transaction))
+        {
+            replaceCommand.Parameters.AddWithValue("@matrixId", matrixId.Value);
+            replaceCommand.Parameters.AddWithValue("@sewingCost", request.SewingCost);
+            replaceCommand.Parameters.AddWithValue("@consumablesCost", request.ConsumablesCost);
+            replaceCommand.Parameters.AddWithValue("@ironingCost", request.IroningAndPackagingCost);
+            replaceCommand.Parameters.AddWithValue("@fixedCost", request.FixedOperatingCost);
+            AddCostCodes(replaceCommand);
+            await replaceCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         var values = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            [$"PieceTypeCost.{Uri.EscapeDataString(pieceName)}.Sewing"] = request.SewingCost.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            [$"PieceTypeCost.{Uri.EscapeDataString(pieceName)}.ToolsConsumables"] = request.ConsumablesCost.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            [$"PieceTypeCost.{Uri.EscapeDataString(pieceName)}.IroningPackaging"] = request.IroningAndPackagingCost.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            [$"PieceTypeCost.{Uri.EscapeDataString(pieceName)}.FixedOperating"] = request.FixedOperatingCost.ToString(System.Globalization.CultureInfo.InvariantCulture),
             [MonthlyKeys[0]] = request.MonthlyRent.ToString(System.Globalization.CultureInfo.InvariantCulture),
             [MonthlyKeys[1]] = request.MonthlySalaries.ToString(System.Globalization.CultureInfo.InvariantCulture),
             [MonthlyKeys[2]] = request.MonthlyElectricity.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -193,4 +272,12 @@ public sealed class PieceCostManagementRepository(
         decimal.TryParse(settings.GetValueOrDefault(key), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var value)
             ? value
             : 0m;
+
+    private static void AddCostCodes(SqlCommand command)
+    {
+        command.Parameters.AddWithValue("@sewingCode", SewingCode);
+        command.Parameters.AddWithValue("@consumablesCode", ConsumablesCode);
+        command.Parameters.AddWithValue("@ironingCode", IroningCode);
+        command.Parameters.AddWithValue("@fixedCode", FixedCode);
+    }
 }
