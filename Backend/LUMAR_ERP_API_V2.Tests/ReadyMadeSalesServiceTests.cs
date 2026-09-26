@@ -73,9 +73,10 @@ public sealed class ReadyMadeSalesServiceTests
     [Fact]
     public void InvoiceDetailInsert_SuppliesManualDetailIdAndLeavesComputedTotalPrice()
     {
-        var source = File.ReadAllText(Path.Combine(
-            AppContext.BaseDirectory,
-            "..", "..", "..", "..", "LUMAR_ERP_API_V2", "Repositories", "ReadyMadeSalesRepository.cs"));
+        var sourcePath = Path.Combine(AppContext.BaseDirectory, "ReadyMadeSalesRepository.cs");
+        Assert.True(File.Exists(sourcePath),
+            "ReadyMadeSalesRepository.cs was not copied to the test output. Verify the test project content item.");
+        var source = File.ReadAllText(sourcePath);
         var start = source.LastIndexOf("INSERT INTO dbo.Invoice_Details", StringComparison.Ordinal);
         Assert.True(start >= 0);
         var end = source.IndexOf("WHERE NOT EXISTS", start, StringComparison.Ordinal);

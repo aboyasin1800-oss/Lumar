@@ -51,15 +51,7 @@ public sealed class OrderService(
     }
     public Task<OrderDeliveryDto?> GetDeliveryAsync(int orderId, CancellationToken cancellationToken) => repository.GetDeliveryAsync(orderId, cancellationToken);
     public async Task<OrderDetailsDto?> DeliverAsync(int orderId, CancellationToken cancellationToken)
-    {
-        var delivered = await repository.DeliverAsync(orderId, cancellationToken);
-        if (delivered is null)
-        {
-            return null;
-        }
-
-        return await repository.RecognizeDeliveryRevenueAsync(orderId, cancellationToken) ?? delivered;
-    }
+        => await repository.DeliverAsync(orderId, cancellationToken);
     public Task<OrderDetailsDto?> WaiveRemainingBalanceAsync(int orderId, CancellationToken cancellationToken) => repository.WaiveRemainingBalanceAsync(orderId, cancellationToken);
     public Task<OrderDetailsDto?> RecognizeDeliveryRevenueAsync(int orderId, CancellationToken cancellationToken) => repository.RecognizeDeliveryRevenueAsync(orderId, cancellationToken);
     public async Task<OrderDetailsDto?> CancelOrderAsync(int orderId, string? reason, string? cancelledBy, CancellationToken cancellationToken)

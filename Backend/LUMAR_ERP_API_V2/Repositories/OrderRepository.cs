@@ -195,7 +195,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
 
         try
         {
-            const string selectSql = "SELECT OrderStatus FROM dbo.Orders WITH (UPDLOCK,HOLDLOCK) WHERE OrderID = @orderId";
+            const string selectSql = "SELECT OrderNumber, TotalAmount, DiscountAmount, OrderStatus, RevenueRecognized FROM dbo.Orders WITH (UPDLOCK,HOLDLOCK) WHERE OrderID = @orderId";
             await using var selectCommand = new SqlCommand(selectSql, connection, transaction);
             selectCommand.Parameters.AddWithValue("@orderId", orderId);
             await using var reader = await selectCommand.ExecuteReaderAsync(cancellationToken);
@@ -205,7 +205,11 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                 return null;
             }
 
-            var orderStatus = reader.GetString(0);
+            var orderNumber = reader.GetString(0);
+            var totalAmount = reader.GetDecimal(1);
+            var discountAmount = reader.GetDecimal(2);
+            var orderStatus = reader.GetString(3);
+            var revenueRecognized = reader.GetBoolean(4);
             await reader.DisposeAsync();
 
             if (string.Equals(orderStatus, "Cancelled", StringComparison.OrdinalIgnoreCase))
@@ -214,22 +218,69 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                 return null;
             }
 
-            if (!string.Equals(orderStatus, "Delivered", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(orderStatus, "ReadyForDelivery", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(orderStatus, "Delivered", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!revenueRecognized)
+                    throw new InvalidOperationException("لا يمكن إكمال تسليم تاريخي بلا إيراد عبر عقد تطبيق العربون الجديد.");
+
+                await transaction.CommitAsync(cancellationToken);
+                committed = true;
+                return await GetByIdAsync(orderId, cancellationToken);
+            }
+
+            if (!string.Equals(orderStatus, "ReadyForDelivery", StringComparison.OrdinalIgnoreCase))
             {
                 await transaction.RollbackAsync(CancellationToken.None);
                 return null;
             }
 
             var now = DateTime.UtcNow;
-            if (!string.Equals(orderStatus, "Delivered", StringComparison.OrdinalIgnoreCase))
+            var cutoverUtc = await ReadAdvanceApplicationCutoverUtcAsync(connection, transaction, cancellationToken)
+                ?? throw new InvalidOperationException("نقطة قطع تطبيق عربون العميل غير مهيأة.");
+            if (now < cutoverUtc)
+                throw new InvalidOperationException("عقد تطبيق عربون العميل لم يدخل حيز التنفيذ بعد.");
+
+            const string updateSql = "UPDATE dbo.Orders SET OrderStatus = N'Delivered', DeliveryDate = @deliveryDate, UpdatedDate = @updatedDate WHERE OrderID = @orderId AND OrderStatus = N'ReadyForDelivery'";
+            await using (var updateCommand = new SqlCommand(updateSql, connection, transaction))
             {
-                const string updateSql = "UPDATE dbo.Orders SET OrderStatus = N'Delivered', DeliveryDate = @deliveryDate, UpdatedDate = @updatedDate WHERE OrderID = @orderId AND OrderStatus = N'ReadyForDelivery'";
-                await using var updateCommand = new SqlCommand(updateSql, connection, transaction);
                 updateCommand.Parameters.AddWithValue("@deliveryDate", now);
                 updateCommand.Parameters.AddWithValue("@updatedDate", now);
                 updateCommand.Parameters.AddWithValue("@orderId", orderId);
-                await updateCommand.ExecuteNonQueryAsync(cancellationToken);
+                if (await updateCommand.ExecuteNonQueryAsync(cancellationToken) != 1)
+                    throw new InvalidOperationException("تعذر تثبيت التسليم الكامل للطلب.");
+            }
+
+            var revenueAmount = DeliveryRevenueRecognitionResolver.ResolveRevenueAmount(totalAmount, discountAmount);
+            var revenuePosting = await AccountingEventPostingGateway.PostAsync(
+                connection,
+                transaction,
+                AccountingEventType.RevenueRecognizedOrder,
+                revenueAmount,
+                null,
+                orderId,
+                null,
+                null,
+                $"{orderNumber}:RevenueRecognized",
+                $"Delivery revenue for {orderNumber}",
+                cancellationToken);
+
+            await ApplyCustomerAdvancesAsync(
+                connection,
+                transaction,
+                orderId,
+                orderNumber,
+                revenuePosting.AccountingEventId,
+                revenueAmount,
+                cancellationToken);
+
+            const string recognizedSql = "UPDATE dbo.Orders SET RevenueRecognized = 1, RevenueRecognizedAt = @recognizedAt, UpdatedDate = @updatedAt WHERE OrderID = @orderId AND RevenueRecognized = 0";
+            await using (var recognizedCommand = new SqlCommand(recognizedSql, connection, transaction))
+            {
+                recognizedCommand.Parameters.AddWithValue("@recognizedAt", now);
+                recognizedCommand.Parameters.AddWithValue("@updatedAt", now);
+                recognizedCommand.Parameters.AddWithValue("@orderId", orderId);
+                if (await recognizedCommand.ExecuteNonQueryAsync(cancellationToken) != 1)
+                    throw new InvalidOperationException("تعذر تثبيت إثبات إيراد التسليم.");
             }
 
             await transaction.CommitAsync(cancellationToken);
@@ -1242,6 +1293,103 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             description,
             cancellationToken);
         await CashMovementPostingGateway.PostCashInAsync(connection, transaction, posting.AccountingEventId, cashAccountId, amount, cancellationToken);
+    }
+
+    private static async Task<DateTime?> ReadAdvanceApplicationCutoverUtcAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT TRY_CONVERT(datetime2(7), REPLACE(CAST(value AS nvarchar(128)), N'Z', N'')) FROM fn_listextendedproperty(N'CustomerAdvanceApplicationCutoverUtc', N'SCHEMA', N'dbo', N'TABLE', N'CustomerAdvanceApplications', NULL, NULL)";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is DateTime cutoverUtc ? cutoverUtc : null;
+    }
+
+    private static async Task ApplyCustomerAdvancesAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int orderId,
+        string orderNumber,
+        long revenueAccountingEventId,
+        decimal revenueAmount,
+        CancellationToken cancellationToken)
+    {
+        const string totalsSql = "SELECT COALESCE(SUM(AppliedAmount), 0) FROM dbo.CustomerAdvanceApplications WITH (UPDLOCK,HOLDLOCK) WHERE RevenueAccountingEventId = @revenueEventId";
+        await using var totalsCommand = new SqlCommand(totalsSql, connection, transaction);
+        totalsCommand.Parameters.AddWithValue("@revenueEventId", revenueAccountingEventId);
+        var alreadyAppliedToRevenue = Convert.ToDecimal(await totalsCommand.ExecuteScalarAsync(cancellationToken));
+        var remainingReceivable = revenueAmount - alreadyAppliedToRevenue;
+        if (remainingReceivable <= 0m) return;
+
+        const string advancesSql = "SELECT p.PaymentID, p.Amount, COALESCE(SUM(app.AppliedAmount), 0) FROM dbo.Payments p WITH (UPDLOCK,HOLDLOCK) LEFT JOIN dbo.CustomerAdvanceApplications app WITH (UPDLOCK,HOLDLOCK) ON app.AdvancePaymentId = p.PaymentID WHERE p.OrderID = @orderId AND p.PaymentKind = N'Advance' GROUP BY p.PaymentID, p.Amount ORDER BY p.PaymentID";
+        var advances = new List<(int PaymentId, decimal Amount, decimal AppliedAmount)>();
+        await using (var advancesCommand = new SqlCommand(advancesSql, connection, transaction))
+        {
+            advancesCommand.Parameters.AddWithValue("@orderId", orderId);
+            await using var reader = await advancesCommand.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                advances.Add((reader.GetInt32(0), reader.GetDecimal(1), reader.GetDecimal(2)));
+        }
+
+        foreach (var advance in advances)
+        {
+            var unappliedAdvance = advance.Amount - advance.AppliedAmount;
+            var applicableAmount = Math.Min(unappliedAdvance, remainingReceivable);
+            if (applicableAmount <= 0m) continue;
+
+            var applicationId = await InsertCustomerAdvanceApplicationAsync(
+                connection,
+                transaction,
+                advance.PaymentId,
+                orderId,
+                revenueAccountingEventId,
+                applicableAmount,
+                cancellationToken);
+
+            await AccountingEventPostingGateway.PostCustomerAdvanceApplicationAsync(
+                connection,
+                transaction,
+                applicationId,
+                applicableAmount,
+                $"AE-AdvanceApplication-{applicationId}",
+                $"Customer advance applied to {orderNumber}",
+                cancellationToken);
+
+            remainingReceivable -= applicableAmount;
+            if (remainingReceivable <= 0m) return;
+        }
+    }
+
+    private static async Task<long> InsertCustomerAdvanceApplicationAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int advancePaymentId,
+        int orderId,
+        long revenueAccountingEventId,
+        decimal appliedAmount,
+        CancellationToken cancellationToken)
+    {
+        const string sql = "DECLARE @output TABLE (AdvanceApplicationId bigint NOT NULL); INSERT INTO dbo.CustomerAdvanceApplications (AdvancePaymentId, OrderId, RevenueAccountingEventId, AppliedAmount) OUTPUT INSERTED.AdvanceApplicationId INTO @output VALUES (@advancePaymentId, @orderId, @revenueAccountingEventId, @appliedAmount); SELECT AdvanceApplicationId FROM @output;";
+        await SetCustomerAdvanceApplicationWriterContextAsync(connection, transaction, true, cancellationToken);
+        try
+        {
+            await using var command = new SqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("@advancePaymentId", advancePaymentId);
+            command.Parameters.AddWithValue("@orderId", orderId);
+            command.Parameters.AddWithValue("@revenueAccountingEventId", revenueAccountingEventId);
+            command.Parameters.AddWithValue("@appliedAmount", appliedAmount);
+            var result = await command.ExecuteScalarAsync(cancellationToken);
+            return Convert.ToInt64(result);
+        }
+        finally
+        {
+            await SetCustomerAdvanceApplicationWriterContextAsync(connection, transaction, false, CancellationToken.None);
+        }
+    }
+
+    private static async Task SetCustomerAdvanceApplicationWriterContextAsync(SqlConnection connection, SqlTransaction transaction, bool enabled, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand("EXEC sys.sp_set_session_context @key=N'CustomerAdvanceApplicationWriter', @value=@value", connection, transaction);
+        command.Parameters.AddWithValue("@value", enabled ? 1 : DBNull.Value);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static void ThrowIfBalanceWaiverUnavailable() => throw new InvalidOperationException("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.");

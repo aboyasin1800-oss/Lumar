@@ -18,4 +18,10 @@
   <ItemGroup>
     <ProjectReference Include="..\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\LUMAR_ERP_API_V2\Repositories\ReadyMadeSalesRepository.cs"
+          Link="ReadyMadeSalesRepository.cs"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
