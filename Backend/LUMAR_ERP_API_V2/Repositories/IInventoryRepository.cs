@@ -7,6 +7,7 @@ public interface IInventoryRepository
     Task<IReadOnlyList<InventoryItemDto>> GetItemsAsync(CancellationToken cancellationToken);
     Task<InventoryItemDto?> GetItemByIdAsync(int itemId, CancellationToken cancellationToken);
     Task<IReadOnlyList<InventoryTransactionDto>> GetTransactionsAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<InventoryWarehouseSummaryDto>> GetWarehouseSummariesAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<FabricDto>> GetFabricsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken cancellationToken);
     Task<ReadyMadeProductDto?> GetReadyMadeByIdAsync(int readyMadeInventoryProductId, CancellationToken cancellationToken);

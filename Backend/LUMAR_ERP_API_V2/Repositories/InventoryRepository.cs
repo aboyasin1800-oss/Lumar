@@ -10,6 +10,197 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
     public Task<IReadOnlyList<InventoryItemDto>> GetItemsAsync(CancellationToken ct) => QueryAsync("SELECT InventoryItemID, ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice FROM dbo.InventoryItems ORDER BY ItemName, InventoryItemID", MapItem, null, ct);
     public async Task<InventoryItemDto?> GetItemByIdAsync(int id, CancellationToken ct) => (await QueryAsync("SELECT InventoryItemID, ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice FROM dbo.InventoryItems WHERE InventoryItemID = @id", MapItem, id, ct)).SingleOrDefault();
     public Task<IReadOnlyList<InventoryTransactionDto>> GetTransactionsAsync(CancellationToken ct) => QueryAsync("SELECT TransactionID, InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt, TotalCostImpact, UnitCost FROM dbo.InventoryTransactions ORDER BY CreatedAt DESC, TransactionID DESC", reader => new InventoryTransactionDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetDecimal(3), reader.NullableString("ReferenceNumber"), reader.NullableString("Notes"), reader.GetDateTime(6), reader.NullableDecimal("TotalCostImpact"), reader.NullableDecimal("UnitCost")), null, ct);
+    public Task<IReadOnlyList<InventoryWarehouseSummaryDto>> GetWarehouseSummariesAsync(CancellationToken ct) => QueryAsync(@"
+        WITH FoundationValues AS
+        (
+            SELECT InventoryClassId, SUM(OperationalValue) AS CurrentValue
+            FROM dbo.InventoryItemFoundation
+            GROUP BY InventoryClassId
+        ),
+        OfficialReceiptValues AS
+        (
+            SELECT rp.InventoryClassId, SUM(rl.OperationalAmount) AS InputValue
+            FROM dbo.InventoryReceiptPostings rp
+            INNER JOIN dbo.InventoryReceiptLines rl ON rl.InventoryReceiptPostingId = rp.InventoryReceiptPostingId
+            GROUP BY rp.InventoryClassId
+        ),
+        LegacyInventoryItems AS
+        (
+            SELECT i.InventoryItemID,
+                   i.IsActive,
+                   i.CurrentQuantity,
+                   i.Category,
+                   i.ItemName,
+                   i.FabricCategory,
+                   i.Unit,
+                   i.InchPrice,
+                   i.YardPrice
+            FROM dbo.InventoryItems i
+            WHERE NOT EXISTS
+            (
+                SELECT 1
+                FROM dbo.InventoryItemFoundation f
+                WHERE f.InventoryItemId = i.InventoryItemID
+            )
+        ),
+        LegacyFabricItems AS
+        (
+            SELECT InventoryItemID,
+                   IsActive,
+                   CurrentQuantity,
+                   CASE
+                       WHEN Unit LIKE N'%Inch%' OR Unit LIKE N'%بوص%' THEN COALESCE(InchPrice, YardPrice / 36.0)
+                       WHEN Unit LIKE N'%Yard%' OR Unit LIKE N'%يارد%' THEN COALESCE(YardPrice, InchPrice * 36.0)
+                       ELSE COALESCE(YardPrice, InchPrice)
+                   END AS UnitCost
+            FROM LegacyInventoryItems
+            WHERE Category = N'Fabric'
+               OR ItemName LIKE N'%fabric%'
+               OR ItemName LIKE N'%cloth%'
+               OR ItemName LIKE N'%textile%'
+               OR ItemName LIKE N'%قماش%'
+               OR ItemName LIKE N'%نسيج%'
+               OR ItemName LIKE N'%بوليستر%'
+               OR ItemName LIKE N'%هندي%'
+               OR ItemName LIKE N'%انجليزي%'
+               OR ItemName LIKE N'%قطن%'
+               OR FabricCategory LIKE N'%fabric%'
+               OR FabricCategory LIKE N'%cloth%'
+               OR FabricCategory LIKE N'%textile%'
+               OR FabricCategory LIKE N'%قماش%'
+               OR FabricCategory LIKE N'%نسيج%'
+               OR FabricCategory LIKE N'%بوليستر%'
+               OR FabricCategory LIKE N'%هندي%'
+               OR FabricCategory LIKE N'%انجليزي%'
+               OR FabricCategory LIKE N'%قطن%'
+               OR Category LIKE N'%fabric%'
+               OR Category LIKE N'%cloth%'
+               OR Category LIKE N'%textile%'
+               OR Category LIKE N'%قماش%'
+               OR Category LIKE N'%نسيج%'
+               OR Category LIKE N'%بوليستر%'
+               OR Category LIKE N'%هندي%'
+               OR Category LIKE N'%انجليزي%'
+               OR Category LIKE N'%قطن%'
+        ),
+        LegacyToolItems AS
+        (
+            SELECT InventoryItemID,
+                   IsActive,
+                   CurrentQuantity,
+                   COALESCE(YardPrice, InchPrice) AS UnitCost
+            FROM LegacyInventoryItems
+            WHERE Category LIKE N'%Tool%'
+               OR Category LIKE N'%Accessory%'
+               OR Category LIKE N'%Thread%'
+               OR Category LIKE N'%Button%'
+               OR Category LIKE N'%Packing%'
+               OR Category LIKE N'%Glue%'
+               OR Category LIKE N'%Sewing%'
+               OR Category LIKE N'%Needle%'
+               OR Category LIKE N'%Machine%'
+               OR Category LIKE N'%Equipment%'
+               OR ItemName LIKE N'%خيط%'
+               OR ItemName LIKE N'%زر%'
+               OR ItemName LIKE N'%سحاب%'
+               OR ItemName LIKE N'%لاصق%'
+               OR ItemName LIKE N'%تغليف%'
+               OR ItemName LIKE N'%أداة%'
+               OR ItemName LIKE N'%اداة%'
+               OR ItemName LIKE N'%مستلزم%'
+               OR Category LIKE N'%أداة%'
+               OR Category LIKE N'%اداة%'
+               OR Category LIKE N'%مستلزم%'
+        ),
+        LegacyFabricInputs AS
+        (
+            SELECT COALESCE(SUM(COALESCE(NULLIF(t.OperationalCostImpact, 0), NULLIF(t.TotalCostImpact, 0), t.Quantity * t.UnitCost)), 0) AS InputValue
+            FROM dbo.InventoryTransactions t
+            INNER JOIN LegacyFabricItems i ON i.InventoryItemID = t.InventoryItemID
+            WHERE t.TransactionType IN (N'InitialBalance', N'Receive')
+              AND t.Quantity > 0
+              AND t.ReadyMadeInventoryProductId IS NULL
+              AND t.ImportedReadyMadeInventoryReceiptId IS NULL
+              AND t.ImportedReadyMadeSaleCostPostingId IS NULL
+        ),
+        LegacyFabricCurrent AS
+        (
+            SELECT COALESCE(SUM(CASE WHEN IsActive = 1 THEN CurrentQuantity * COALESCE(UnitCost, 0) ELSE 0 END), 0) AS CurrentValue
+            FROM LegacyFabricItems
+        ),
+        LegacyToolInputs AS
+        (
+            SELECT COALESCE(SUM(COALESCE(NULLIF(t.OperationalCostImpact, 0), NULLIF(t.TotalCostImpact, 0), t.Quantity * t.UnitCost)), 0) AS InputValue
+            FROM dbo.InventoryTransactions t
+            INNER JOIN LegacyToolItems i ON i.InventoryItemID = t.InventoryItemID
+            WHERE t.TransactionType IN (N'InitialBalance', N'Receive', N'Renewal')
+              AND t.Quantity > 0
+              AND t.ReadyMadeInventoryProductId IS NULL
+              AND t.ImportedReadyMadeInventoryReceiptId IS NULL
+              AND t.ImportedReadyMadeSaleCostPostingId IS NULL
+        ),
+        LegacyToolCurrent AS
+        (
+            SELECT COALESCE(SUM(CASE WHEN IsActive = 1 THEN CurrentQuantity * COALESCE(UnitCost, 0) ELSE 0 END), 0) AS CurrentValue
+            FROM LegacyToolItems
+        ),
+        ReadyProductCosts AS
+        (
+            SELECT p.IsActive,
+                   p.Status,
+                   COALESCE(p.ActualCost, receiptCost.Cost, 0) AS Cost
+            FROM dbo.ReadyMadeInventoryProducts p
+            OUTER APPLY
+            (
+                SELECT TOP (1)
+                       COALESCE(NULLIF(t.OperationalCostImpact, 0), NULLIF(t.TotalCostImpact, 0), t.Quantity * t.UnitCost) AS Cost
+                FROM dbo.InventoryTransactions t
+                WHERE t.ReadyMadeInventoryProductId = p.ReadyMadeInventoryProductId
+                  AND t.TransactionType = N'Receive'
+                ORDER BY t.TransactionID
+            ) receiptCost
+        ),
+        ImportedReceiptValues AS
+        (
+            SELECT ImportedReadyMadeProductId, SUM(OperationalAmount) AS InputValue
+            FROM dbo.ImportedReadyMadeInventoryReceipts
+            GROUP BY ImportedReadyMadeProductId
+        ),
+        ImportedSaleValues AS
+        (
+            SELECT ImportedReadyMadeProductId, SUM(OperationalAmount) AS SaleCostValue
+            FROM dbo.ImportedReadyMadeSaleCostPostings
+            GROUP BY ImportedReadyMadeProductId
+        ),
+        ImportedProductCosts AS
+        (
+            SELECT p.IsActive,
+                   CASE WHEN r.ImportedReadyMadeProductId IS NULL THEN p.Quantity * p.PurchasePrice ELSE r.InputValue END AS InputValue,
+                   CASE
+                       WHEN r.ImportedReadyMadeProductId IS NULL THEN
+                           CASE WHEN p.IsActive = 1 AND p.Quantity > 0 THEN p.Quantity * p.PurchasePrice ELSE 0 END
+                       ELSE
+                           CASE WHEN r.InputValue - COALESCE(s.SaleCostValue, 0) > 0 THEN r.InputValue - COALESCE(s.SaleCostValue, 0) ELSE 0 END
+                   END AS CurrentValue
+            FROM dbo.ImportedReadyMadeProducts p
+            LEFT JOIN ImportedReceiptValues r ON r.ImportedReadyMadeProductId = p.ImportedReadyMadeProductId
+            LEFT JOIN ImportedSaleValues s ON s.ImportedReadyMadeProductId = p.ImportedReadyMadeProductId
+        )
+        SELECT N'fabric' AS WarehouseKey,
+               COALESCE((SELECT InputValue FROM OfficialReceiptValues WHERE InventoryClassId = 1), 0) + (SELECT InputValue FROM LegacyFabricInputs) AS TotalInputValue,
+               COALESCE((SELECT CurrentValue FROM FoundationValues WHERE InventoryClassId = 1), 0) + (SELECT CurrentValue FROM LegacyFabricCurrent) AS CurrentInventoryValue
+        UNION ALL
+        SELECT N'readyMade',
+               COALESCE((SELECT SUM(Cost) FROM ReadyProductCosts), 0),
+               COALESCE((SELECT SUM(CASE WHEN IsActive = 1 AND Status <> N'Sold' THEN Cost ELSE 0 END) FROM ReadyProductCosts), 0)
+        UNION ALL
+        SELECT N'imported',
+               COALESCE((SELECT SUM(InputValue) FROM ImportedProductCosts), 0),
+               COALESCE((SELECT SUM(CurrentValue) FROM ImportedProductCosts), 0)
+        UNION ALL
+        SELECT N'tools',
+               COALESCE((SELECT InputValue FROM OfficialReceiptValues WHERE InventoryClassId = 2), 0) + (SELECT InputValue FROM LegacyToolInputs),
+               COALESCE((SELECT CurrentValue FROM FoundationValues WHERE InventoryClassId = 2), 0) + (SELECT CurrentValue FROM LegacyToolCurrent);", reader => new InventoryWarehouseSummaryDto(reader.GetString(0), reader.GetDecimal(1), reader.GetDecimal(2)), null, ct);
     public async Task<IReadOnlyList<FabricDto>> GetFabricsAsync(CancellationToken ct)
     {
         const string sql = @"

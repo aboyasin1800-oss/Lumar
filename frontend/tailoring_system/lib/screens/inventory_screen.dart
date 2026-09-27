@@ -55,6 +55,7 @@ class _InventoryScreenState extends State<InventoryScreen>
         http.get(Uri.parse('$_baseUrl/inventory/imported')),
         http.get(Uri.parse('$_baseUrl/suppliers')),
         http.get(Uri.parse('$_baseUrl/inventory/transactions')),
+        http.get(Uri.parse('$_baseUrl/inventory/summary')),
       ]);
 
       if (responses.any((response) => response.statusCode < 200 || response.statusCode >= 300)) {
@@ -105,6 +106,13 @@ class _InventoryScreenState extends State<InventoryScreen>
         }
       }
 
+      final summaries = <String, InventoryWarehouseSummary>{};
+      final summaryRows = (jsonDecode(responses[6].body) as List?) ?? const [];
+      for (final row in summaryRows.cast<Map<String, dynamic>>()) {
+        final summary = InventoryWarehouseSummary.fromJson(row);
+        summaries[summary.warehouseKey] = summary;
+      }
+
       final fabricsFromApi = fabricRows
           .map((row) => _fabricItemFromApi(row, supplierMap, supplierByInventoryItemId))
           .whereType<FabricItem>()
@@ -123,6 +131,7 @@ class _InventoryScreenState extends State<InventoryScreen>
           readyMade: readyMade,
           imported: imported,
           tools: tools,
+          summaries: summaries,
         );
         _loading = false;
       });
@@ -260,6 +269,7 @@ class _InventoryScreenState extends State<InventoryScreen>
       readyMade: [...current.readyMade],
       imported: [...current.imported],
       tools: [...current.tools],
+      summaries: current.summaries,
     );
   }
 
@@ -272,6 +282,7 @@ class _InventoryScreenState extends State<InventoryScreen>
       readyMade: updated,
       imported: [...current.imported],
       tools: [...current.tools],
+      summaries: current.summaries,
     );
   }
 
@@ -284,6 +295,7 @@ class _InventoryScreenState extends State<InventoryScreen>
       readyMade: [...current.readyMade],
       imported: updated,
       tools: [...current.tools],
+      summaries: current.summaries,
     );
   }
 
@@ -296,6 +308,7 @@ class _InventoryScreenState extends State<InventoryScreen>
       readyMade: [...current.readyMade],
       imported: [...current.imported],
       tools: updated,
+      summaries: current.summaries,
     );
   }
 
@@ -490,6 +503,10 @@ class _InventoryScreenState extends State<InventoryScreen>
     final visibleFabrics = data.fabrics
         .where((item) => _matchesFabricSearch(item, fabricSearchQuery))
         .toList();
+    final fabricSummary = data.summaryFor('fabric');
+    final readyMadeSummary = data.summaryFor('readyMade');
+    final importedSummary = data.summaryFor('imported');
+    final toolsSummary = data.summaryFor('tools');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -656,6 +673,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                       _StatMetric(icon: Icons.layers_outlined, label: 'إجمالي الأصناف', value: '${visibleFabrics.length}'),
                       _StatMetric(icon: Icons.inventory_2_outlined, label: 'الرصيد الحالي', value: quantity(visibleFabrics.fold(0.0, (sum, item) => sum + item.current))),
                       _StatMetric(icon: Icons.check_circle_outline, label: 'المتاح', value: quantity(visibleFabrics.fold(0.0, (sum, item) => sum + item.available))),
+                      _StatMetric(icon: Icons.input_outlined, label: 'إجمالي قيمة المدخلات', value: money(fabricSummary.totalInputValue)),
+                      _StatMetric(icon: Icons.account_balance_wallet_outlined, label: 'القيمة الحالية للمخزون', value: money(fabricSummary.currentInventoryValue)),
                     ].map(
                       (metric) => SizedBox(
                         width: 380,
@@ -788,6 +807,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                   _StatMetric(icon: Icons.checkroom_outlined, label: 'إجمالي المنتجات', value: '${data.readyMade.length}'),
                   _StatMetric(icon: Icons.attach_money_outlined, label: 'متاح للبيع', value: '${data.readyMade.where((item) => item.status == 'AvailableForSale').length}'),
                   _StatMetric(icon: Icons.sell_outlined, label: 'متوسط السعر', value: money(_readyMadeAveragePrice)),
+                  _StatMetric(icon: Icons.input_outlined, label: 'إجمالي قيمة المدخلات', value: money(readyMadeSummary.totalInputValue)),
+                  _StatMetric(icon: Icons.account_balance_wallet_outlined, label: 'القيمة الحالية للمخزون', value: money(readyMadeSummary.currentInventoryValue)),
                 ],
                 items: data.readyMade
                     .map(
@@ -814,7 +835,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                 stats: [
                   _StatMetric(icon: Icons.shopping_bag_outlined, label: 'إجمالي المنتجات', value: '${data.imported.length}'),
                   _StatMetric(icon: Icons.numbers_outlined, label: 'إجمالي الكمية', value: quantity(data.importedQuantity)),
-                  _StatMetric(icon: Icons.paid_outlined, label: 'إجمالي المشتريات', value: money(data.imported.fold<double>(0.0, (sum, item) => sum + item.purchasePrice))),
+                  _StatMetric(icon: Icons.input_outlined, label: 'إجمالي قيمة المدخلات', value: money(importedSummary.totalInputValue)),
+                  _StatMetric(icon: Icons.account_balance_wallet_outlined, label: 'القيمة الحالية للمخزون', value: money(importedSummary.currentInventoryValue)),
                 ],
                 items: data.imported
                     .map(
@@ -840,6 +862,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                   _StatMetric(icon: Icons.build_circle_outlined, label: 'إجمالي الأدوات', value: '${data.tools.length}'),
                   _StatMetric(icon: Icons.inventory_2_outlined, label: 'الرصيد الكلي', value: quantity(data.tools.fold<double>(0.0, (sum, item) => sum + item.quantity))),
                   _StatMetric(icon: Icons.fact_check_outlined, label: 'النوع', value: data.tools.isEmpty ? '—' : data.tools.first.category),
+                  _StatMetric(icon: Icons.input_outlined, label: 'إجمالي قيمة المدخلات', value: money(toolsSummary.totalInputValue)),
+                  _StatMetric(icon: Icons.account_balance_wallet_outlined, label: 'القيمة الحالية للمخزون', value: money(toolsSummary.currentInventoryValue)),
                 ],
                 items: data.tools
                     .map(
@@ -1102,15 +1126,43 @@ class InventoryData {
     required this.readyMade,
     required this.imported,
     required this.tools,
+    required this.summaries,
   });
 
   final List<FabricItem> fabrics;
   final List<ReadyMadeItem> readyMade;
   final List<ImportedItem> imported;
   final List<ToolItem> tools;
+  final Map<String, InventoryWarehouseSummary> summaries;
 
   double get fabricBalance => fabrics.fold(0.0, (sum, item) => sum + item.current);
   double get importedQuantity => imported.fold(0.0, (sum, item) => sum + item.quantity);
+
+  InventoryWarehouseSummary summaryFor(String warehouseKey) =>
+      summaries[warehouseKey] ?? const InventoryWarehouseSummary.empty();
+}
+
+class InventoryWarehouseSummary {
+  const InventoryWarehouseSummary({
+    required this.warehouseKey,
+    required this.totalInputValue,
+    required this.currentInventoryValue,
+  });
+
+  const InventoryWarehouseSummary.empty()
+      : warehouseKey = '',
+        totalInputValue = 0,
+        currentInventoryValue = 0;
+
+  factory InventoryWarehouseSummary.fromJson(Map<String, dynamic> json) => InventoryWarehouseSummary(
+        warehouseKey: json['warehouseKey']?.toString() ?? '',
+        totalInputValue: (json['totalInputValue'] as num?)?.toDouble() ?? 0,
+        currentInventoryValue: (json['currentInventoryValue'] as num?)?.toDouble() ?? 0,
+      );
+
+  final String warehouseKey;
+  final double totalInputValue;
+  final double currentInventoryValue;
 }
 
 class InventoryItemRecord {

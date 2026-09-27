@@ -22,6 +22,9 @@ public sealed class InventoryController(IInventoryService service) : ControllerB
     [HttpGet("transactions")]
     public Task<IReadOnlyList<InventoryTransactionDto>> GetTransactions(CancellationToken ct) => service.GetTransactionsAsync(ct);
 
+    [HttpGet("summary")]
+    public Task<IReadOnlyList<InventoryWarehouseSummaryDto>> GetWarehouseSummaries(CancellationToken ct) => service.GetWarehouseSummariesAsync(ct);
+
     [HttpGet("fabrics")]
     public Task<IReadOnlyList<FabricDto>> GetFabrics(CancellationToken ct) => service.GetFabricsAsync(ct);
 
