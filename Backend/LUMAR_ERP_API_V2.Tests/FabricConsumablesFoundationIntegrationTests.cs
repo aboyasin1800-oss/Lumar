@@ -218,8 +218,9 @@ public sealed class FabricConsumablesFoundationIntegrationTests
         var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
             ?? "Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True";
         var builder = new SqlConnectionStringBuilder(connectionString);
-        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Fabric foundation tests are restricted to LUMAR_ERP_TEST.");
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_FOUNDATION_GAP_TEST", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Fabric foundation tests are restricted to the approved test databases.");
         return builder.ConnectionString;
     }
 
