@@ -33,24 +33,26 @@ class _FabricBatchUtils {
 
   static String nextCatalogNumber(
     List<String> existingCatalogs, {
-    String prefix = 'CAT',
     int width = 4,
+    String fallbackPrefix = 'CAT',
   }) {
-    final cleaned = existingCatalogs
-        .map((value) => value.trim())
-        .where((element) => element.isNotEmpty && element.toUpperCase().startsWith(prefix))
-        .toList();
-
+    final pattern = RegExp(r'^([A-Za-z]+)(\d+)$');
     int maxNumber = 0;
-    for (final catalog in cleaned) {
-      final numeric = catalog.substring(prefix.length);
-      final parsed = int.tryParse(numeric);
+    var numericWidth = width;
+    var prefix = fallbackPrefix;
+    for (final catalog in existingCatalogs.map((value) => value.trim())) {
+      final match = pattern.firstMatch(catalog);
+      if (match == null) continue;
+
+      final parsed = int.tryParse(match.group(2)!);
       if (parsed != null && parsed > maxNumber) {
         maxNumber = parsed;
+        prefix = match.group(1)!.toUpperCase();
+        numericWidth = match.group(2)!.length > width ? match.group(2)!.length : width;
       }
     }
 
-    return '$prefix${(maxNumber + 1).toString().padLeft(width, '0')}';
+    return '$prefix${(maxNumber + 1).toString().padLeft(numericWidth, '0')}';
   }
 
   static double inchPriceFromYardPrice(double yardPrice) => yardPrice > 0 ? yardPrice / 36.0 : 0.0;
@@ -145,9 +147,9 @@ class _RollEntryItem {
   _RollEntryItem({
     String fabricCode = '',
     String catalogNumber = '',
-    String fabricType = 'قماش تفصيل',
+    String fabricType = '',
     String fabricColor = '',
-    String fabricWidth = '58',
+    String fabricWidth = '',
     String quantityYards = '',
     String yardPrice = '',
   })  : fabricCodeController = TextEditingController(text: fabricCode),
@@ -210,12 +212,12 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
   final _invoiceNumberController = TextEditingController();
   final _purchaseDateController = TextEditingController(text: DateFormat('yyyy/MM/dd').format(DateTime.now()));
   final _notesController = TextEditingController();
-  final _fabricTypeController = TextEditingController(text: 'قماش تفصيل');
+  final _fabricTypeController = TextEditingController();
   final _catalogNumberController = TextEditingController();
-  final _fabricWidthController = TextEditingController(text: '58');
+  final _fabricWidthController = TextEditingController();
   final _yardPriceController = TextEditingController();
   final _inchPriceController = TextEditingController();
-  final _rollCountController = TextEditingController(text: '1');
+  final _rollCountController = TextEditingController();
 
   DateTime _selectedDate = DateTime.now();
   int? _selectedSupplierId;
@@ -332,7 +334,7 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
         final currentQuantity = (item['currentQuantity'] as num?)?.toDouble() ?? 0;
         final availableQuantity = (item['availableQuantity'] as num?)?.toDouble() ?? 0;
         final consumedQuantity = (item['reservedQuantity'] as num?)?.toDouble() ?? 0;
-        final catalog = (item['barcode'] ?? item['itemCode'] ?? '').toString();
+        final catalog = (item['barcode'] ?? '').toString();
 
         return _InventoryFabricItem(
           id: item['inventoryItemId'] as int? ?? 0,
@@ -353,9 +355,17 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
           _availableInventory = inventory;
           if (_availableInventory.isNotEmpty && _selectedExistingFabric == null) {
             _selectedExistingFabric = _availableInventory.first;
-            _applySelectedFabric();
+            if (_mode == _FabricEntryMode.renewExisting) {
+              _applySelectedFabric();
+            }
+          }
+          if (_mode == _FabricEntryMode.newFabric) {
+            _catalogNumberController.text = _nextCatalogNumber();
           }
         });
+        if (_mode == _FabricEntryMode.newFabric) {
+          _updateRollsFromCount();
+        }
       }
     } catch (_) {
       // Ignore inventory loading issues; user can still add new fabric.
@@ -396,10 +406,7 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
     setState(() {
       final oldLength = _rolls.length;
       final batchCatalog = _catalogNumberController.text.trim();
-      final activeCatalog = batchCatalog.isNotEmpty ? batchCatalog : _FabricBatchUtils.nextCatalogNumber(
-        _availableInventory.map((item) => item.catalogNumber).toList(),
-        prefix: 'CAT',
-      );
+      final activeCatalog = batchCatalog.isNotEmpty ? batchCatalog : _nextCatalogNumber();
       if (oldLength < safeCount) {
         final existingCodes = <String>{..._allKnownFabricCodes, ..._availableInventory.map((item) => item.code)};
         final generatedCodes = <String>[];
@@ -415,11 +422,11 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
           final newRoll = _RollEntryItem(
             fabricCode: generatedCodes[i],
             catalogNumber: activeCatalog,
-            fabricType: _fabricTypeController.text.trim().isNotEmpty ? _fabricTypeController.text.trim() : 'قماش تفصيل',
+            fabricType: _fabricTypeController.text.trim(),
             fabricColor: '',
-            fabricWidth: _fabricWidthController.text.trim().isNotEmpty ? _fabricWidthController.text.trim() : '58',
+            fabricWidth: _fabricWidthController.text.trim(),
             quantityYards: '',
-            yardPrice: _yardPriceController.text.trim().isNotEmpty ? _yardPriceController.text.trim() : '',
+            yardPrice: _yardPriceController.text.trim(),
           );
           newRoll.updateCalculations();
           _rolls.add(newRoll);
@@ -452,14 +459,18 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
             prefix: 'FA',
           );
           roll.catalogNumberController.text = _catalogNumberController.text.trim();
-          roll.fabricTypeController.text = _fabricTypeController.text.trim().isEmpty ? 'قماش تفصيل' : _fabricTypeController.text.trim();
-          roll.fabricWidthController.text = _fabricWidthController.text.trim().isEmpty ? '58' : _fabricWidthController.text.trim();
+          roll.fabricTypeController.text = _fabricTypeController.text.trim();
+          roll.fabricWidthController.text = _fabricWidthController.text.trim();
           roll.yardPriceController.text = _yardPriceController.text.trim();
         }
         roll.updateCalculations();
       }
     });
   }
+
+  String _nextCatalogNumber() => _FabricBatchUtils.nextCatalogNumber(
+        _availableInventory.map((item) => item.catalogNumber).toList(),
+      );
 
   void _addRoll() {
     final nextCount = (_rolls.length + 1);
@@ -739,15 +750,12 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
           if (_mode == _FabricEntryMode.renewExisting && _selectedExistingFabric != null) {
             _applySelectedFabric();
           } else {
-            _catalogNumberController.text = _FabricBatchUtils.nextCatalogNumber(
-              _availableInventory.map((item) => item.catalogNumber).toList(),
-              prefix: 'CAT',
-            );
-            _fabricTypeController.text = 'قماش تفصيل';
-            _fabricWidthController.text = '58';
-            _yardPriceController.text = '';
-            _inchPriceController.text = '0.000';
-            _rollCountController.text = '1';
+            _catalogNumberController.text = _nextCatalogNumber();
+            _fabricTypeController.clear();
+            _fabricWidthController.clear();
+            _yardPriceController.clear();
+            _inchPriceController.clear();
+            _rollCountController.clear();
             _updateRollsFromCount();
           }
         });

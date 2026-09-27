@@ -90,7 +90,11 @@ public sealed class InventoryController(IInventoryService service) : ControllerB
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<FabricBatchResultDto>> ReceiveFabricBatch(CreateFabricBatchDto batch, CancellationToken ct)
     {
-        return StatusCode(StatusCodes.Status405MethodNotAllowed, "Legacy fabric batch input is disabled. Use the official goods-receipt foundation endpoint.");
+        if (batch.SupplierId <= 0 || string.IsNullOrWhiteSpace(batch.InvoiceNumber) || batch.Rolls.Count == 0)
+            return BadRequest("Supplier, invoice number, and at least one fabric roll are required.");
+
+        var result = await service.ReceiveFabricBatchAsync(batch, ct);
+        return result is null ? NotFound() : StatusCode(StatusCodes.Status201Created, result);
     }
 
     [HttpPost("foundation/fabric-receipts")]

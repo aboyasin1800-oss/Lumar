@@ -2,12 +2,14 @@ using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Orders;
 using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
 
 namespace LUMAR_ERP_API_V2.Repositories;
 
 public sealed class ReadyMadeSalesRepository(
     ReadOnlySqlConnectionFactory readOnlyConnections,
-    OperationalSqlConnectionFactory operationalConnections) : IReadyMadeSalesRepository
+    OperationalSqlConnectionFactory operationalConnections,
+    ILogger<ReadyMadeSalesRepository>? logger = null) : IReadyMadeSalesRepository
 {
     public async Task<ReadyMadeSaleResultDto> CreateAsync(CreateReadyMadeSaleDto sale, CancellationToken cancellationToken)
     {
@@ -33,9 +35,13 @@ public sealed class ReadyMadeSalesRepository(
         await connection.OpenAsync(cancellationToken);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
         var committed = false;
+        var step = "BeginTransaction";
+        int? diagnosticOrderId = null;
+        int? diagnosticOrderItemId = null;
 
         try
         {
+            step = "FindExistingOrder";
             var existingOrderId = await FindOrderIdBySaleReferenceAsync(connection, transaction, saleReference, cancellationToken);
             if (existingOrderId is not null)
             {
@@ -45,16 +51,19 @@ public sealed class ReadyMadeSalesRepository(
                     ?? throw new InvalidOperationException("تعذر قراءة عملية البيع الموجودة.");
             }
 
+            step = "ValidateCustomer";
             if (!await CustomerExistsAsync(connection, transaction, sale.CustomerId, cancellationToken))
                 throw new ArgumentException("العميل المحدد غير موجود.");
 
             var employeeCode = string.IsNullOrWhiteSpace(sale.EmployeeCode) ? null : sale.EmployeeCode.Trim();
+            step = "ValidateEmployee";
             if (employeeCode is not null && !await ActiveEmployeeExistsAsync(connection, transaction, employeeCode, cancellationToken))
                 throw new ArgumentException("الموظف المحدد غير موجود أو غير فعال.");
 
             var lines = new List<SaleLineDraft>(sale.Items.Count);
             foreach (var item in sale.Items)
             {
+                step = "ValidateSaleLine";
                 if ((item.ReadyMadeInventoryProductId is null) == (item.ImportedReadyMadeProductId is null))
                     throw new ArgumentException("يجب تحديد مصدر واحد فقط لكل منتج: منتج مصنع أو منتج مستورد.");
                 if (item.Quantity <= 0) throw new ArgumentException("كمية المنتج يجب أن تكون أكبر من صفر.");
@@ -66,12 +75,14 @@ public sealed class ReadyMadeSalesRepository(
                     if (item.ProductTypeId is not int productTypeId || productTypeId <= 0)
                         throw new ArgumentException("ProductTypeId الرسمي مطلوب لمنتج المصنع الجاهز.");
 
+                    step = "ReadLocalProductForUpdate";
                     var local = await GetLocalProductForUpdateAsync(connection, transaction, readyMadeId, cancellationToken)
                         ?? throw new InvalidOperationException("منتج المصنع الجاهز غير موجود.");
                     if (!local.IsActive || !string.Equals(local.Status, "AvailableForSale", StringComparison.OrdinalIgnoreCase))
                         throw new InvalidOperationException("منتج المصنع الجاهز غير متاح للبيع أو سبق بيعه.");
                     if (local.ProductTypeId is null || local.ProductTypeId.Value != productTypeId)
                         throw new InvalidOperationException("ProductTypeId لا يطابق الربط الرسمي المحفوظ للمنتج.");
+                    step = "ValidateProductType";
                     if (!await ProductTypeExistsAsync(productTypeId, connection, transaction, cancellationToken))
                         throw new InvalidOperationException("ProductTypeId غير موجود أو غير فعال.");
                     if (local.ActualCost is not > 0m)
@@ -92,6 +103,7 @@ public sealed class ReadyMadeSalesRepository(
                     if (item.ProductTypeId is > 0)
                         throw new ArgumentException("لا يستخدم المنتج المستورد ProductTypeId لتحديد النقاط.");
 
+                    step = "ReadImportedProductForUpdate";
                     var imported = await GetImportedProductForUpdateAsync(connection, transaction, item.ImportedReadyMadeProductId!.Value, cancellationToken)
                         ?? throw new InvalidOperationException("المنتج المستورد غير موجود.");
                     if (!imported.IsActive || imported.Quantity < item.Quantity)
@@ -112,9 +124,11 @@ public sealed class ReadyMadeSalesRepository(
             }
 
             var now = DateTime.UtcNow;
+            step = "GenerateOrderNumber";
             var orderNumber = await GetNextOrderNumberAsync(connection, transaction, cancellationToken);
             var paidAmount = paymentType == "Donation" ? 0m : sale.PaidAmount;
             var remainingAmount = paymentType == "Credit" ? netAmount - paidAmount : 0m;
+            step = "InsertOrder";
             var orderId = await InsertOrderAsync(
                 connection,
                 transaction,
@@ -128,7 +142,10 @@ public sealed class ReadyMadeSalesRepository(
                 sale.Notes,
                 now,
                 cancellationToken);
+            diagnosticOrderId = orderId;
+            logger?.LogInformation("Ready-made sale step succeeded. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}", step, saleReference, orderId);
 
+            step = "InsertInvoiceHeader";
             var invoiceId = await InsertInvoiceHeaderAsync(
                 connection,
                 transaction,
@@ -143,26 +160,43 @@ public sealed class ReadyMadeSalesRepository(
                 paymentType,
                 now,
                 cancellationToken);
+            logger?.LogInformation("Ready-made sale step succeeded. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}; InvoiceId={InvoiceId}", step, saleReference, orderId, invoiceId);
 
             foreach (var line in lines)
             {
+                step = "InsertOrderItem";
                 var orderItemId = await InsertOrderItemAsync(connection, transaction, orderId, line, now, cancellationToken);
+                diagnosticOrderItemId = orderItemId;
+                logger?.LogInformation("Ready-made sale step succeeded. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}; OrderItemId={OrderItemId}; ReadyMadeInventoryProductId={ReadyMadeInventoryProductId}", step, saleReference, orderId, orderItemId, line.ReadyMadeInventoryProductId);
+                step = "InsertProductionTracking";
                 var trackingCode = await InsertProductionTrackingAsync(connection, transaction, invoiceId, sale.CustomerId, line.ItemName, now, cancellationToken);
+                logger?.LogInformation("Ready-made sale step succeeded. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}; OrderItemId={OrderItemId}; TrackingCode={TrackingCode}", step, saleReference, orderId, orderItemId, trackingCode);
+                step = "InsertInvoiceDetail";
                 await InsertInvoiceDetailAsync(connection, transaction, invoiceId, sale.CustomerId, orderItemId, trackingCode, line, cancellationToken);
+                logger?.LogInformation("Ready-made sale step succeeded. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}; OrderItemId={OrderItemId}", step, saleReference, orderId, orderItemId);
 
                 if (line.ReadyMadeInventoryProductId is int readyMadeId)
                 {
+                    step = "MarkLocalProductSold";
                     await MarkLocalProductSoldAsync(connection, transaction, readyMadeId, line.ProductTypeId!.Value, cancellationToken);
+                    logger?.LogInformation("Ready-made sale step succeeded. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}; OrderItemId={OrderItemId}; ReadyMadeInventoryProductId={ReadyMadeInventoryProductId}", step, saleReference, orderId, orderItemId, readyMadeId);
+                    step = "PostReadyMadeSaleCost";
                     await PostReadyMadeSaleCostAsync(connection, transaction, orderId, orderItemId, orderNumber, line, cancellationToken);
                 }
                 else
                 {
+                    step = "DecrementImportedProduct";
                     await DecrementImportedProductAsync(connection, transaction, line.ImportedReadyMadeProductId!.Value, line.Quantity, now, cancellationToken);
+                    logger?.LogInformation("Ready-made sale step succeeded. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}; OrderItemId={OrderItemId}; ImportedReadyMadeProductId={ImportedReadyMadeProductId}", step, saleReference, orderId, orderItemId, line.ImportedReadyMadeProductId);
+                    step = "PostImportedReadyMadeSaleCost";
                     await PostImportedReadyMadeSaleCostAsync(connection, transaction, orderId, orderItemId, orderNumber, line, now, cancellationToken);
                 }
             }
 
+            step = "InsertCustomerLedgerSale";
             await InsertCustomerLedgerEntryAsync(connection, transaction, sale.CustomerId, $"{orderNumber}:Sale", netAmount, 0m, now, cancellationToken);
+            logger?.LogInformation("Ready-made sale step succeeded. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}", step, saleReference, orderId);
+            step = "PostRevenueEvent";
             await AccountingEventPostingGateway.PostAsync(
                 connection,
                 transaction,
@@ -175,12 +209,17 @@ public sealed class ReadyMadeSalesRepository(
                 $"{orderNumber}:RevenueRecognized",
                 $"Ready-made sale revenue for {orderNumber}",
                 cancellationToken);
+            logger?.LogInformation("Ready-made sale step succeeded. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}", step, saleReference, orderId);
 
             if (paymentType is "Cash" or "Credit" && paidAmount > 0m)
             {
                 var paymentReference = $"{orderNumber}:Payment";
+                step = "InsertPayment";
                 var paymentId = await InsertPaymentAsync(connection, transaction, orderId, paidAmount, paymentReference, now, cancellationToken);
+                logger?.LogInformation("Ready-made sale step succeeded. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}; PaymentId={PaymentId}", step, saleReference, orderId, paymentId);
+                step = "InsertCustomerLedgerPayment";
                 await InsertCustomerLedgerEntryAsync(connection, transaction, sale.CustomerId, paymentReference, 0m, paidAmount, now, cancellationToken);
+                step = "PostPaymentEvent";
                 var paymentPosting = await AccountingEventPostingGateway.PostAsync(
                     connection,
                     transaction,
@@ -193,17 +232,33 @@ public sealed class ReadyMadeSalesRepository(
                     paymentReference,
                     $"Customer payment for {orderNumber}",
                     cancellationToken);
+                logger?.LogInformation("Ready-made sale step succeeded. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}; PaymentId={PaymentId}; AccountingEventId={AccountingEventId}", step, saleReference, orderId, paymentId, paymentPosting.AccountingEventId);
                 if (paymentType == "Cash")
+                {
+                    step = "PostCashMovement";
                     await CashMovementPostingGateway.PostCashInAsync(connection, transaction, paymentPosting.AccountingEventId, sale.CashAccountId!.Value, paidAmount, cancellationToken);
+                    logger?.LogInformation("Ready-made sale step succeeded. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}; PaymentId={PaymentId}", step, saleReference, orderId, paymentId);
+                }
             }
 
+            step = "CommitTransaction";
             await transaction.CommitAsync(cancellationToken);
             committed = true;
+            logger?.LogInformation("Ready-made sale transaction committed. SaleReference={SaleReference}; OrderId={OrderId}", saleReference, orderId);
             return await GetResultAsync(orderId, cancellationToken)
                 ?? throw new InvalidOperationException("تعذر قراءة نتيجة البيع بعد الحفظ.");
         }
-        catch
+        catch (Exception exception)
         {
+            logger?.LogError(
+                exception,
+                "Ready-made sale transaction failed. Step={Step}; SaleReference={SaleReference}; OrderId={OrderId}; OrderItemId={OrderItemId}; SqlErrorNumber={SqlErrorNumber}; InnerException={InnerException}",
+                step,
+                saleReference,
+                diagnosticOrderId,
+                diagnosticOrderItemId,
+                exception is SqlException sqlException ? sqlException.Number : null,
+                exception.InnerException?.ToString() ?? "<none>");
             if (!committed)
             {
                 try { await transaction.RollbackAsync(CancellationToken.None); } catch { }
@@ -506,13 +561,18 @@ public sealed class ReadyMadeSalesRepository(
             throw new InvalidOperationException("الكمية المستوردة غير كافية أو تم بيعها في عملية متزامنة.");
     }
 
-    private static async Task PostReadyMadeSaleCostAsync(SqlConnection connection, SqlTransaction transaction, int orderId, int orderItemId, string orderNumber, SaleLineDraft line, CancellationToken cancellationToken)
+    private async Task PostReadyMadeSaleCostAsync(SqlConnection connection, SqlTransaction transaction, int orderId, int orderItemId, string orderNumber, SaleLineDraft line, CancellationToken cancellationToken)
     {
         var productId = line.ReadyMadeInventoryProductId
             ?? throw new InvalidOperationException("هوية المنتج المحلي مطلوبة لتكلفة البيع.");
         var operationalAmount = line.Quantity * line.UnitCost;
         var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
         var sourceOperationId = Guid.NewGuid();
+        var step = "InsertReadyMadeSaleCostPosting";
+        long? diagnosticSourceId = null;
+
+        try
+        {
         const string sourceSql = @"
             INSERT INTO dbo.ReadyMadeSaleCostPostings
                 (OrderId, OrderItemId, ReadyMadeInventoryProductId, Quantity, OfficialUnitCost,
@@ -532,7 +592,10 @@ public sealed class ReadyMadeSalesRepository(
         sourceCommand.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
         var sourceValue = await sourceCommand.ExecuteScalarAsync(cancellationToken);
         var sourceId = sourceValue is null ? throw new InvalidOperationException("تعذر إنشاء مصدر تكلفة المنتج المحلي.") : Convert.ToInt64(sourceValue);
+        diagnosticSourceId = sourceId;
+        logger?.LogInformation("Ready-made sale cost step succeeded. Step={Step}; OrderId={OrderId}; OrderItemId={OrderItemId}; ReadyMadeInventoryProductId={ReadyMadeInventoryProductId}; SourceId={SourceId}; PostingAmount={PostingAmount}", step, orderId, orderItemId, productId, sourceId, postingAmount);
 
+        step = "PostReadyMadeSaleCostEvent11";
         var accountingPosting = await AccountingEventPostingGateway.PostReadyMadeSaleCostAsync(
             connection,
             transaction,
@@ -541,7 +604,9 @@ public sealed class ReadyMadeSalesRepository(
             $"{orderNumber}:ReadyMadeCost:{productId}",
             $"Ready-made sale cost for product {productId}",
             cancellationToken);
+        logger?.LogInformation("Ready-made sale cost step succeeded. Step={Step}; OrderId={OrderId}; OrderItemId={OrderItemId}; ReadyMadeInventoryProductId={ReadyMadeInventoryProductId}; SourceId={SourceId}; AccountingEventId={AccountingEventId}", step, orderId, orderItemId, productId, sourceId, accountingPosting.AccountingEventId);
 
+        step = "FindReceiveInventoryItem";
         const string findSql = @"
             SELECT TOP (1) InventoryItemID
             FROM dbo.InventoryTransactions WITH (UPDLOCK, HOLDLOCK)
@@ -552,7 +617,9 @@ public sealed class ReadyMadeSalesRepository(
         var value = await find.ExecuteScalarAsync(cancellationToken);
         if (value is not int inventoryItemId)
             throw new InvalidOperationException("لا توجد حركة استلام محاسبية للمنتج المحلي؛ لن يتم ربط سجل تاريخي تلقائياً.");
+        logger?.LogInformation("Ready-made sale cost step succeeded. Step={Step}; OrderId={OrderId}; OrderItemId={OrderItemId}; ReadyMadeInventoryProductId={ReadyMadeInventoryProductId}; SourceId={SourceId}; InventoryItemId={InventoryItemId}", step, orderId, orderItemId, productId, sourceId, inventoryItemId);
 
+        step = "DecrementOfficialInventoryItem";
         const string updateInventorySql = @"
             UPDATE dbo.InventoryItems
             SET CurrentQuantity = CurrentQuantity - 1,
@@ -567,7 +634,9 @@ public sealed class ReadyMadeSalesRepository(
         updateInventory.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
         if (await updateInventory.ExecuteNonQueryAsync(cancellationToken) != 1)
             throw new InvalidOperationException("رصيد المنتج المحلي غير كافٍ في المخزون الرسمي.");
+        logger?.LogInformation("Ready-made sale cost step succeeded. Step={Step}; OrderId={OrderId}; OrderItemId={OrderItemId}; ReadyMadeInventoryProductId={ReadyMadeInventoryProductId}; SourceId={SourceId}; InventoryItemId={InventoryItemId}", step, orderId, orderItemId, productId, sourceId, inventoryItemId);
 
+        step = "InsertSaleInventoryTransaction";
         const string insertSql = @"
             INSERT INTO dbo.InventoryTransactions
                 (InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt, TotalCostImpact, UnitCost,
@@ -588,8 +657,26 @@ public sealed class ReadyMadeSalesRepository(
         insert.Parameters.AddWithValue("@operationalCostImpact", operationalAmount);
         var transactionValue = await insert.ExecuteScalarAsync(cancellationToken);
         var inventoryTransactionId = transactionValue is null ? throw new InvalidOperationException("تعذر إنشاء حركة تكلفة المنتج المحلي.") : Convert.ToInt32(transactionValue);
+        logger?.LogInformation("Ready-made sale cost step succeeded. Step={Step}; OrderId={OrderId}; OrderItemId={OrderItemId}; ReadyMadeInventoryProductId={ReadyMadeInventoryProductId}; SourceId={SourceId}; InventoryTransactionId={InventoryTransactionId}", step, orderId, orderItemId, productId, sourceId, inventoryTransactionId);
 
+        step = "LinkReadyMadeSaleCostTransaction";
         await LinkReadyMadeSaleCostTransactionAsync(connection, transaction, sourceId, inventoryTransactionId, cancellationToken);
+        logger?.LogInformation("Ready-made sale cost step succeeded. Step={Step}; OrderId={OrderId}; OrderItemId={OrderItemId}; ReadyMadeInventoryProductId={ReadyMadeInventoryProductId}; SourceId={SourceId}; InventoryTransactionId={InventoryTransactionId}", step, orderId, orderItemId, productId, sourceId, inventoryTransactionId);
+        }
+        catch (Exception exception)
+        {
+            logger?.LogError(
+                exception,
+                "Ready-made sale cost step failed. Step={Step}; OrderId={OrderId}; OrderItemId={OrderItemId}; ReadyMadeInventoryProductId={ReadyMadeInventoryProductId}; SourceId={SourceId}; SqlErrorNumber={SqlErrorNumber}; InnerException={InnerException}",
+                step,
+                orderId,
+                orderItemId,
+                productId,
+                diagnosticSourceId,
+                exception is SqlException sqlException ? sqlException.Number : null,
+                exception.InnerException?.ToString() ?? "<none>");
+            throw;
+        }
     }
 
     private static async Task PostImportedReadyMadeSaleCostAsync(SqlConnection connection, SqlTransaction transaction, int orderId, int orderItemId, string orderNumber, SaleLineDraft line, DateTime now, CancellationToken cancellationToken)

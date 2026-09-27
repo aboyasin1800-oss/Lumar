@@ -2,10 +2,11 @@ using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Inventory;
 using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
 
 namespace LUMAR_ERP_API_V2.Repositories;
 
-public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections) : IInventoryRepository
+public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections, ILogger<InventoryRepository>? logger = null) : IInventoryRepository
 {
     public Task<IReadOnlyList<InventoryItemDto>> GetItemsAsync(CancellationToken ct) => QueryAsync("SELECT InventoryItemID, ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice FROM dbo.InventoryItems ORDER BY ItemName, InventoryItemID", MapItem, null, ct);
     public async Task<InventoryItemDto?> GetItemByIdAsync(int id, CancellationToken ct) => (await QueryAsync("SELECT InventoryItemID, ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice FROM dbo.InventoryItems WHERE InventoryItemID = @id", MapItem, id, ct)).SingleOrDefault();
@@ -1659,237 +1660,239 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(ct);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        var step = "ValidateFabricBatch";
+        var invoiceNumber = batch.InvoiceNumber?.Trim() ?? string.Empty;
+        string? fabricCode = null;
+
         try
         {
-            string? supplierName = null;
-            using (var supCmd = new SqlCommand("SELECT SupplierName FROM dbo.Suppliers WITH (UPDLOCK, HOLDLOCK) WHERE SupplierId = @supId", connection, transaction))
+            step = "ValidateFabricBatch";
+            ValidateFabricBatch(batch);
+            invoiceNumber = batch.InvoiceNumber?.Trim() ?? string.Empty;
+            fabricCode = batch.Rolls[0].FabricCode?.Trim() ?? string.Empty;
+            step = "ReadExistingOfficialBatch";
+            var existing = await TryReadOfficialFabricBatchAsync(connection, transaction, batch.SupplierId, invoiceNumber, ct);
+            if (existing is not null)
             {
-                supCmd.Parameters.AddWithValue("@supId", batch.SupplierId);
-                supplierName = (await supCmd.ExecuteScalarAsync(ct)) as string;
-                if (supplierName is null) return null;
+                await transaction.CommitAsync(ct);
+                logger?.LogInformation("Official fabric batch already exists. SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}", batch.SupplierId, invoiceNumber, fabricCode);
+                return existing;
             }
+
+            step = "ValidateSupplier";
+            if (!await SupplierExistsAsync(connection, transaction, batch.SupplierId, ct)) return null;
 
             var now = DateTime.UtcNow;
-            var reference = $"FBATCH-{batch.InvoiceNumber.Trim()}";
-            decimal totalYards = 0;
-            decimal totalCost = 0;
+            var totalCost = decimal.Round(batch.Rolls.Sum(roll => roll.QuantityYards * roll.YardPrice), 2, MidpointRounding.AwayFromZero);
+            step = "InsertPurchaseOrder";
+            var purchaseOrderId = await InsertFabricPurchaseOrderAsync(connection, transaction, batch.SupplierId, invoiceNumber, totalCost, now, ct);
+            logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; PurchaseOrderId={PurchaseOrderId}", step, batch.SupplierId, invoiceNumber, purchaseOrderId);
+            step = "InsertGoodsReceipt";
+            var goodsReceiptId = await InsertFabricGoodsReceiptAsync(connection, transaction, batch.SupplierId, purchaseOrderId, invoiceNumber, batch.Notes, now, ct);
+            logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; GoodsReceiptId={GoodsReceiptId}", step, batch.SupplierId, invoiceNumber, goodsReceiptId);
+            decimal totalYards = 0m;
 
-            var reservedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var allCodes = new List<string>();
-            var fabricPrefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "FabricCodePrefix", "FA", ct);
-
-            using (var codeCmd = new SqlCommand(@"
-                SELECT ItemCode
-                FROM dbo.InventoryItems WITH (NOLOCK)
-                WHERE ItemCode LIKE @fabricPrefix
-
-                UNION ALL
-
-                SELECT CAST(FabricCode AS nvarchar(50))
-                FROM dbo.Fabrics_Inventory WITH (NOLOCK)
-                WHERE FabricCode IS NOT NULL
-
-                UNION ALL
-
-                SELECT FabricCode
-                FROM dbo.Fabrics WITH (NOLOCK)
-                WHERE FabricCode IS NOT NULL
-
-                UNION ALL
-
-                SELECT FabricCode
-                FROM dbo.OrderItemFabrics WITH (NOLOCK)
-                WHERE FabricCode IS NOT NULL
-
-                UNION ALL
-
-                SELECT FabricCode
-                FROM dbo.ReadyMadeInventoryProducts WITH (NOLOCK)
-                WHERE FabricCode IS NOT NULL
-
-                UNION ALL
-
-                SELECT ProductCode
-                FROM dbo.ImportedReadyMadeProducts WITH (NOLOCK)
-                WHERE ProductCode LIKE @fabricPrefix", connection, transaction))
+            foreach (var roll in batch.Rolls)
             {
-                codeCmd.Parameters.AddWithValue("@fabricPrefix", $"{fabricPrefix}%");
-                using var reader = await codeCmd.ExecuteReaderAsync(ct);
-                while (await reader.ReadAsync(ct))
-                {
-                    var codeValue = reader.GetString(0);
-                    if (!string.IsNullOrWhiteSpace(codeValue))
-                    {
-                        allCodes.Add(codeValue.Trim());
-                    }
-                }
-            }
-
-            for (int i = 0; i < batch.Rolls.Count; i++)
-            {
-                var roll = batch.Rolls[i];
                 var code = roll.FabricCode.Trim();
-                var name = roll.FabricType.Trim();
-                if (reservedCodes.Contains(code))
-                {
-                    throw new InvalidOperationException($"كود القماش '{code}' مكرر داخل نفس الدفعة.");
-                }
-
-                if (allCodes.Contains(code, StringComparer.OrdinalIgnoreCase))
-                {
-                    throw new InvalidOperationException($"كود القماش '{code}' موجود بالفعل في قاعدة البيانات ولا يمكن إعادة استخدامه.");
-                }
-
-                reservedCodes.Add(code);
-                allCodes.Add(code);
-                var catalog = string.IsNullOrWhiteSpace(roll.CatalogNumber) ? null : roll.CatalogNumber.Trim();
-                var color = string.IsNullOrWhiteSpace(roll.FabricColor) ? null : roll.FabricColor.Trim();
-                var width = roll.FabricWidth;
-                var yards = roll.QuantityYards;
-                var yardPrice = roll.YardPrice;
-                var inchPrice = Math.Round(yardPrice / 36m, 4);
-                var rollCost = Math.Round(yards * yardPrice, 2);
-
-                totalYards += yards;
-                totalCost += rollCost;
-
-                int itemId;
-                using (var checkCmd = new SqlCommand(@"
-                    SELECT InventoryItemID, Category
-                    FROM dbo.InventoryItems WITH (UPDLOCK, HOLDLOCK)
-                    WHERE ItemCode = @code", connection, transaction))
-                {
-                    checkCmd.Parameters.AddWithValue("@code", code);
-                    using var reader = await checkCmd.ExecuteReaderAsync(ct);
-                    if (await reader.ReadAsync(ct))
-                    {
-                        itemId = reader.GetInt32(0);
-                        var category = reader.GetString(1);
-                        if (!string.Equals(category, "Fabric", StringComparison.OrdinalIgnoreCase))
-                        {
-                            throw new InvalidOperationException($"كود القماش '{code}' موجود بالفعل في فئة أخرى: {category}");
-                        }
-
-                        await reader.DisposeAsync();
-                        using var updateCmd = new SqlCommand(@"
-                            UPDATE dbo.InventoryItems
-                            SET ItemName = @name,
-                                CurrentQuantity = CurrentQuantity + @qty,
-                                AvailableQuantity = AvailableQuantity + @qty,
-                                UpdatedAt = @now,
-                                Barcode = ISNULL(@barcode, Barcode),
-                                FabricCategory = @name,
-                                FabricColor = ISNULL(@color, FabricColor),
-                                FabricWidth = @width,
-                                FabricWidthUnit = N'Inch',
-                                InchPrice = @inchPrice,
-                                YardPrice = @yardPrice
-                            WHERE InventoryItemID = @id", connection, transaction);
-                        updateCmd.Parameters.AddWithValue("@id", itemId);
-                        updateCmd.Parameters.AddWithValue("@name", name);
-                        updateCmd.Parameters.AddWithValue("@qty", yards);
-                        updateCmd.Parameters.AddWithValue("@now", now);
-                        AddNullable(updateCmd, "@barcode", catalog);
-                        AddNullable(updateCmd, "@color", color);
-                        updateCmd.Parameters.AddWithValue("@width", width);
-                        updateCmd.Parameters.AddWithValue("@inchPrice", inchPrice);
-                        updateCmd.Parameters.AddWithValue("@yardPrice", yardPrice);
-                        await updateCmd.ExecuteNonQueryAsync(ct);
-                    }
-                    else
-                    {
-                        await reader.DisposeAsync();
-                        using var insertCmd = new SqlCommand(@"
-                            INSERT INTO dbo.InventoryItems
-                                (ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice)
-                            OUTPUT INSERTED.InventoryItemID
-                            VALUES
-                                (@code, @name, N'Fabric', N'Yard', @qty, @qty, 0, 1, @now, @barcode, @name, @color, @width, N'Inch', @inchPrice, @yardPrice)", connection, transaction);
-                        insertCmd.Parameters.AddWithValue("@code", code);
-                        insertCmd.Parameters.AddWithValue("@name", name);
-                        insertCmd.Parameters.AddWithValue("@qty", yards);
-                        insertCmd.Parameters.AddWithValue("@now", now);
-                        AddNullable(insertCmd, "@barcode", catalog);
-                        AddNullable(insertCmd, "@color", color);
-                        insertCmd.Parameters.AddWithValue("@width", width);
-                        insertCmd.Parameters.AddWithValue("@inchPrice", inchPrice);
-                        insertCmd.Parameters.AddWithValue("@yardPrice", yardPrice);
-                        itemId = (int)(await insertCmd.ExecuteScalarAsync(ct))!;
-                    }
-                }
-
-                var rollNotes = $"مورد: {supplierName} | فاتورة: {batch.InvoiceNumber.Trim()} | رول {i + 1} ({name} - {color ?? "-"}){(string.IsNullOrWhiteSpace(batch.Notes) ? "" : " | " + batch.Notes.Trim())}";
-                using (var txCmd = new SqlCommand(@"
-                    INSERT INTO dbo.InventoryTransactions
-                        (InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt, TotalCostImpact, UnitCost)
-                    VALUES
-                        (@itemId, N'Receive', @qty, @ref, @notes, @now, @cost, @unitCost)", connection, transaction))
-                {
-                    txCmd.Parameters.AddWithValue("@itemId", itemId);
-                    txCmd.Parameters.AddWithValue("@qty", yards);
-                    txCmd.Parameters.AddWithValue("@ref", reference);
-                    txCmd.Parameters.AddWithValue("@notes", rollNotes);
-                    txCmd.Parameters.AddWithValue("@now", now);
-                    txCmd.Parameters.AddWithValue("@cost", rollCost);
-                    txCmd.Parameters.AddWithValue("@unitCost", yardPrice);
-                    await txCmd.ExecuteNonQueryAsync(ct);
-                }
-
-                try
-                {
-                    using var fiCmd = new SqlCommand(@"
-                        IF OBJECT_ID('dbo.Fabrics_Inventory', 'U') IS NOT NULL
-                        BEGIN
-                            IF EXISTS (SELECT 1 FROM dbo.Fabrics_Inventory WITH (UPDLOCK, HOLDLOCK) WHERE FabricName = @name OR FabricCode = TRY_CAST(@code AS int))
-                            BEGIN
-                                UPDATE dbo.Fabrics_Inventory
-                                SET QuantityYard = ISNULL(QuantityYard, 0) + @qty,
-                                    QuantityInch = ISNULL(QuantityInch, 0) + (@qty * 36),
-                                    TotalRollCost = ISNULL(TotalRollCost, 0) + @cost,
-                                    PricePerYard = @yardPrice,
-                                    PricePerInch = @inchPrice,
-                                    AvailableQuantity = ISNULL(AvailableQuantity, 0) + @qty,
-                                    Color = ISNULL(@color, Color)
-                                WHERE FabricName = @name OR FabricCode = TRY_CAST(@code AS int)
-                            END
-                            ELSE
-                            BEGIN
-                                INSERT INTO dbo.Fabrics_Inventory
-                                    (FabricName, Unit, Color, QuantityYard, QuantityInch, TotalRollCost, PricePerYard, PricePerInch, UsedQuantity, AvailableQuantity)
-                                VALUES
-                                    (@name, N'ياردة', @color, @qty, @qty * 36, @cost, @yardPrice, @inchPrice, 0, @qty)
-                            END
-                        END", connection, transaction);
-                    fiCmd.Parameters.AddWithValue("@name", name);
-                    fiCmd.Parameters.AddWithValue("@code", code);
-                    fiCmd.Parameters.AddWithValue("@qty", yards);
-                    fiCmd.Parameters.AddWithValue("@cost", rollCost);
-                    fiCmd.Parameters.AddWithValue("@yardPrice", yardPrice);
-                    fiCmd.Parameters.AddWithValue("@inchPrice", inchPrice);
-                    AddNullable(fiCmd, "@color", color);
-                    await fiCmd.ExecuteNonQueryAsync(ct);
-                }
-                catch
-                {
-                    // Non-fatal if legacy table structure differs
-                }
+                fabricCode = code;
+                var fabricType = roll.FabricType.Trim();
+                var lineTotal = decimal.Round(roll.QuantityYards * roll.YardPrice, 6, MidpointRounding.AwayFromZero);
+                step = "InsertPurchaseOrderItem";
+                await InsertFabricPurchaseOrderItemAsync(connection, transaction, purchaseOrderId, fabricType, roll.QuantityYards, roll.YardPrice, lineTotal, ct);
+                step = "InsertGoodsReceiptItem";
+                var goodsReceiptItemId = await InsertFabricGoodsReceiptItemAsync(connection, transaction, goodsReceiptId, fabricType, roll.QuantityYards, roll.YardPrice, lineTotal, ct);
+                logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}; GoodsReceiptItemId={GoodsReceiptItemId}", step, batch.SupplierId, invoiceNumber, code, goodsReceiptItemId);
+                step = "PostOfficialFabricReceipt";
+                await PostOfficialFabricBatchRollAsync(
+                    connection,
+                    transaction,
+                    goodsReceiptItemId,
+                    code,
+                    fabricType,
+                    string.IsNullOrWhiteSpace(roll.CatalogNumber) ? null : roll.CatalogNumber.Trim(),
+                    string.IsNullOrWhiteSpace(roll.FabricColor) ? null : roll.FabricColor.Trim(),
+                    roll.FabricWidth,
+                    now,
+                    ct);
+                logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}", step, batch.SupplierId, invoiceNumber, code);
+                totalYards += roll.QuantityYards;
             }
 
+            step = "CommitTransaction";
             await transaction.CommitAsync(ct);
-
-            return new FabricBatchResultDto(
-                batch.Rolls.Count,
-                totalYards,
-                totalCost,
-                reference,
-                now
-            );
+            logger?.LogInformation("Official fabric batch transaction committed. SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}", batch.SupplierId, invoiceNumber, fabricCode);
+            return new FabricBatchResultDto(batch.Rolls.Count, totalYards, totalCost, $"FAB-{invoiceNumber}", now);
         }
-        catch
+        catch (Exception exception)
         {
+            logger?.LogError(
+                exception,
+                "Official fabric batch transaction failed. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}; SqlErrorNumber={SqlErrorNumber}; InnerException={InnerException}",
+                step,
+                batch.SupplierId,
+                invoiceNumber,
+                fabricCode,
+                exception is SqlException sqlException ? sqlException.Number : null,
+                exception.InnerException?.ToString() ?? "<none>");
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    private static void ValidateFabricBatch(CreateFabricBatchDto batch)
+    {
+        if (batch.SupplierId <= 0 || string.IsNullOrWhiteSpace(batch.InvoiceNumber) || batch.Rolls.Count == 0)
+            throw new ArgumentException("Supplier, invoice number, and at least one fabric roll are required.");
+
+        var codes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var roll in batch.Rolls)
+        {
+            if (string.IsNullOrWhiteSpace(roll.FabricCode) || string.IsNullOrWhiteSpace(roll.FabricType))
+                throw new ArgumentException("Fabric code and type are required for every roll.");
+            if (roll.QuantityYards <= 0m || roll.YardPrice <= 0m || roll.FabricWidth <= 0m)
+                throw new ArgumentException("Fabric quantity, price, and width must be positive.");
+            if (!codes.Add(roll.FabricCode.Trim()))
+                throw new ArgumentException($"Fabric code '{roll.FabricCode.Trim()}' is duplicated within the batch.");
+        }
+    }
+
+    private static async Task<FabricBatchResultDto?> TryReadOfficialFabricBatchAsync(SqlConnection connection, SqlTransaction transaction, int supplierId, string invoiceNumber, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT TOP (1) gr.GoodsReceiptId, gr.CreatedAt
+            FROM dbo.GoodsReceipts gr WITH (UPDLOCK, HOLDLOCK)
+            WHERE gr.SupplierId=@supplierId AND gr.ReceiptNumber=@receiptNumber
+            ORDER BY gr.GoodsReceiptId DESC;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@supplierId", supplierId);
+        command.Parameters.AddWithValue("@receiptNumber", $"FAB-{invoiceNumber}");
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        var receiptId = reader.GetInt32(0);
+        var createdAt = reader.GetDateTime(1);
+        await reader.CloseAsync();
+
+        const string totalsSql = @"
+            SELECT COUNT(*), COALESCE(SUM(ReceivedQuantity),0), COALESCE(SUM(LineTotal),0)
+            FROM dbo.GoodsReceiptItems
+            WHERE GoodsReceiptId=@receiptId;";
+        await using var totalsCommand = new SqlCommand(totalsSql, connection, transaction);
+        totalsCommand.Parameters.AddWithValue("@receiptId", receiptId);
+        await using var totals = await totalsCommand.ExecuteReaderAsync(ct);
+        if (!await totals.ReadAsync(ct)) return null;
+        return new FabricBatchResultDto(totals.GetInt32(0), totals.GetDecimal(1), totals.GetDecimal(2), $"FAB-{invoiceNumber}", createdAt);
+    }
+
+    private static async Task<bool> SupplierExistsAsync(SqlConnection connection, SqlTransaction transaction, int supplierId, CancellationToken ct)
+    {
+        await using var command = new SqlCommand("SELECT TOP (1) 1 FROM dbo.Suppliers WITH (UPDLOCK, HOLDLOCK) WHERE SupplierId=@supplierId", connection, transaction);
+        command.Parameters.AddWithValue("@supplierId", supplierId);
+        return await command.ExecuteScalarAsync(ct) is not null;
+    }
+
+    private static async Task<int> InsertFabricPurchaseOrderAsync(SqlConnection connection, SqlTransaction transaction, int supplierId, string invoiceNumber, decimal totalCost, DateTime now, CancellationToken ct)
+    {
+        const string sql = @"
+            INSERT INTO dbo.PurchaseOrders (PurchaseOrderNumber,SupplierId,OrderDate,ExpectedDeliveryDate,Status,TotalAmount,CreatedAt)
+            OUTPUT INSERTED.PurchaseOrderId
+            VALUES (@number,@supplierId,@now,@now,N'Open',@totalCost,@now);";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@number", $"FAB-PO-{invoiceNumber}");
+        command.Parameters.AddWithValue("@supplierId", supplierId);
+        AddDecimal(command, "@totalCost", totalCost, 2);
+        command.Parameters.AddWithValue("@now", now);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task<int> InsertFabricGoodsReceiptAsync(SqlConnection connection, SqlTransaction transaction, int supplierId, int purchaseOrderId, string invoiceNumber, string? notes, DateTime now, CancellationToken ct)
+    {
+        const string sql = @"
+            INSERT INTO dbo.GoodsReceipts (SupplierId,PurchaseOrderId,ReceiptNumber,ReceiptDate,Notes,CreatedAt)
+            OUTPUT INSERTED.GoodsReceiptId
+            VALUES (@supplierId,@purchaseOrderId,@receiptNumber,@now,@notes,@now);";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@supplierId", supplierId);
+        command.Parameters.AddWithValue("@purchaseOrderId", purchaseOrderId);
+        command.Parameters.AddWithValue("@receiptNumber", $"FAB-{invoiceNumber}");
+        AddNullable(command, "@notes", notes);
+        command.Parameters.AddWithValue("@now", now);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task InsertFabricPurchaseOrderItemAsync(SqlConnection connection, SqlTransaction transaction, int purchaseOrderId, string fabricType, decimal quantity, decimal unitCost, decimal lineTotal, CancellationToken ct)
+    {
+        const string sql = "INSERT INTO dbo.PurchaseOrderItems (PurchaseOrderId,ItemName,Quantity,UnitCost,LineTotal) VALUES (@orderId,@name,@quantity,@unitCost,@lineTotal);";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@orderId", purchaseOrderId);
+        command.Parameters.AddWithValue("@name", fabricType);
+        AddDecimal(command, "@quantity", quantity, 2);
+        AddDecimal(command, "@unitCost", unitCost, 2);
+        AddDecimal(command, "@lineTotal", lineTotal, 2);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<int> InsertFabricGoodsReceiptItemAsync(SqlConnection connection, SqlTransaction transaction, int goodsReceiptId, string fabricType, decimal quantity, decimal unitCost, decimal lineTotal, CancellationToken ct)
+    {
+        const string sql = @"
+            INSERT INTO dbo.GoodsReceiptItems (GoodsReceiptId,ItemName,ReceivedQuantity,UnitCost,LineTotal)
+            OUTPUT INSERTED.GoodsReceiptItemId
+            VALUES (@receiptId,@name,@quantity,@unitCost,@lineTotal);";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@receiptId", goodsReceiptId);
+        command.Parameters.AddWithValue("@name", fabricType);
+        AddDecimal(command, "@quantity", quantity);
+        AddDecimal(command, "@unitCost", unitCost);
+        AddDecimal(command, "@lineTotal", lineTotal);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task PostOfficialFabricBatchRollAsync(SqlConnection connection, SqlTransaction transaction, int goodsReceiptItemId, string itemCode, string fabricType, string? catalogNumber, string? colorValue, decimal fabricWidth, DateTime now, CancellationToken ct)
+    {
+        var receipt = await ReadGoodsReceiptSourceAsync(connection, transaction, goodsReceiptItemId, ct)
+            ?? throw new InvalidOperationException("Goods receipt item was not found.");
+        var operationalAmount = decimal.Round(receipt.Quantity * receipt.UnitCost, 6, MidpointRounding.AwayFromZero);
+        var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+        var existingItem = await ReadFoundationItemAsync(connection, transaction, itemCode, ct);
+        if (existingItem is not null && !existingItem.HasFoundation)
+            throw new InvalidOperationException("Legacy inventory items cannot be used by the foundation posting path.");
+        if (existingItem is not null && (existingItem.InventoryClassId != 1 || existingItem.UnitId != 1))
+            throw new InvalidOperationException("The inventory item class or unit does not match the fabric receipt.");
+
+        var itemId = existingItem?.InventoryItemId ?? await InsertFoundationInventoryItemAsync(connection, transaction, itemCode, receipt.ItemName, 1, "Yard", 1, receipt.Quantity, operationalAmount, fabricType, colorValue, now, ct);
+        if (existingItem is not null)
+            await UpdateFoundationInventoryItemAsync(connection, transaction, itemId, receipt.Quantity, operationalAmount, now, ct);
+
+        await ApplyFabricPresentationAsync(connection, transaction, itemId, fabricType, catalogNumber, colorValue, fabricWidth, ct);
+        var sourceOperationId = Guid.NewGuid();
+        var opposingLedgerAccountId = await ReadOpposingLedgerAccountIdAsync(connection, transaction, "2100", ct);
+        var postingId = await InsertInventoryReceiptPostingAsync(connection, transaction, goodsReceiptItemId, 1, opposingLedgerAccountId, sourceOperationId, operationalAmount, postingAmount, ct);
+        var lineId = await InsertInventoryReceiptLineAsync(connection, transaction, postingId, itemId, receipt.Quantity, receipt.UnitCost, 1, ct);
+        var rollId = await InsertFabricRollAsync(connection, transaction, itemId, itemCode, fabricType, colorValue, receipt.Quantity, receipt.UnitCost, 1, lineId, now, ct);
+        await SetReceiptLineRollAsync(connection, transaction, lineId, rollId, ct);
+        var reference = $"GoodsReceipt:{receipt.ReceiptNumber}:Item:{goodsReceiptItemId}";
+        var transactionId = await InsertFoundationInventoryTransactionAsync(connection, transaction, itemId, "FabricInventoryReceived", receipt.Quantity, reference, operationalAmount, receipt.UnitCost, sourceOperationId, now, ct);
+        var accountingEvent = await AccountingEventPostingGateway.PostInventoryReceiptAsync(connection, transaction, AccountingEventType.FabricInventoryReceived, postingId, postingAmount, reference, $"Inventory receipt {receipt.ReceiptNumber} item {goodsReceiptItemId}", ct);
+        await LinkInventoryReceiptArtifactsAsync(connection, transaction, lineId, transactionId, accountingEvent.AccountingEventId, ct);
+    }
+
+    private static async Task ApplyFabricPresentationAsync(SqlConnection connection, SqlTransaction transaction, int itemId, string fabricType, string? catalogNumber, string? colorValue, decimal fabricWidth, CancellationToken ct)
+    {
+        const string sql = @"
+            UPDATE dbo.InventoryItems
+            SET FabricCategory=@fabricType,
+                Barcode=COALESCE(@catalogNumber,Barcode),
+                FabricColor=COALESCE(@colorValue,FabricColor),
+                FabricWidth=@fabricWidth,
+                FabricWidthUnit=N'Inch'
+            WHERE InventoryItemID=@itemId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@fabricType", fabricType);
+        AddNullable(command, "@catalogNumber", catalogNumber);
+        AddNullable(command, "@colorValue", colorValue);
+        AddDecimal(command, "@fabricWidth", fabricWidth, 4);
+        command.Parameters.AddWithValue("@itemId", itemId);
+        await command.ExecuteNonQueryAsync(ct);
     }
 
     private static void AddNullable(SqlCommand command, string name, object? value) => command.Parameters.AddWithValue(name, value is string text ? (string.IsNullOrWhiteSpace(text) ? DBNull.Value : text.Trim()) : value ?? DBNull.Value);

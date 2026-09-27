@@ -24,21 +24,35 @@ public sealed class ReadyMadeSalesController(IReadyMadeSalesService service, ILo
         }
         catch (ArgumentException exception)
         {
+            LogFailure(exception, StatusCodes.Status400BadRequest);
             return BadRequest(exception.Message);
         }
         catch (InvalidOperationException exception)
         {
+            LogFailure(exception, StatusCodes.Status409Conflict);
             return Conflict(exception.Message);
         }
         catch (SqlException exception)
         {
-            logger.LogError(exception, "Ready-made sale failed because of a database error.");
+            LogFailure(exception, StatusCodes.Status500InternalServerError);
             return StatusCode(StatusCodes.Status500InternalServerError, "تعذر إنشاء الفاتورة.");
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "Ready-made sale failed unexpectedly.");
+            LogFailure(exception, StatusCodes.Status500InternalServerError);
             return StatusCode(StatusCodes.Status500InternalServerError, "تعذر حفظ عملية البيع.");
         }
+    }
+
+    private void LogFailure(Exception exception, int statusCode)
+    {
+        int? sqlErrorNumber = exception is SqlException sqlException ? sqlException.Number : null;
+        logger.LogError(
+            exception,
+            "Ready-made sale HTTP failure. HttpStatus={HttpStatus}; CorrelationId={CorrelationId}; SqlErrorNumber={SqlErrorNumber}; InnerException={InnerException}",
+            statusCode,
+            HttpContext.TraceIdentifier,
+            sqlErrorNumber,
+            exception.InnerException?.ToString() ?? "<none>");
     }
 }
