@@ -74,6 +74,8 @@ public sealed class ReadyMadeSalesRepository(
                         throw new InvalidOperationException("ProductTypeId لا يطابق الربط الرسمي المحفوظ للمنتج.");
                     if (!await ProductTypeExistsAsync(productTypeId, connection, transaction, cancellationToken))
                         throw new InvalidOperationException("ProductTypeId غير موجود أو غير فعال.");
+                    if (local.ActualCost is not > 0m)
+                        throw new InvalidOperationException("تكلفة منتج المصنع الجاهز يجب أن تكون أكبر من صفر.");
 
                     lines.Add(new SaleLineDraft(
                         readyMadeId,
@@ -94,6 +96,8 @@ public sealed class ReadyMadeSalesRepository(
                         ?? throw new InvalidOperationException("المنتج المستورد غير موجود.");
                     if (!imported.IsActive || imported.Quantity < item.Quantity)
                         throw new InvalidOperationException("الكمية المستوردة غير كافية أو المنتج غير فعال.");
+                    if (imported.PurchasePrice <= 0m)
+                        throw new InvalidOperationException("تكلفة المنتج المستورد يجب أن تكون أكبر من صفر.");
 
                     lines.Add(new SaleLineDraft(
                         null,
@@ -106,9 +110,6 @@ public sealed class ReadyMadeSalesRepository(
                         imported.ProductCode));
                 }
             }
-
-            if (lines.Any(line => line.UnitCost > 0m))
-                throw new InvalidOperationException("هذه العملية غير متاحة حتى اكتمال عقد الربط المحاسبي.");
 
             var now = DateTime.UtcNow;
             var orderNumber = await GetNextOrderNumberAsync(connection, transaction, cancellationToken);
@@ -152,11 +153,12 @@ public sealed class ReadyMadeSalesRepository(
                 if (line.ReadyMadeInventoryProductId is int readyMadeId)
                 {
                     await MarkLocalProductSoldAsync(connection, transaction, readyMadeId, line.ProductTypeId!.Value, cancellationToken);
+                    await PostReadyMadeSaleCostAsync(connection, transaction, orderId, orderItemId, orderNumber, line, cancellationToken);
                 }
                 else
                 {
                     await DecrementImportedProductAsync(connection, transaction, line.ImportedReadyMadeProductId!.Value, line.Quantity, now, cancellationToken);
-                    await InsertImportedSaleMovementAsync(connection, transaction, line, orderNumber, now, cancellationToken);
+                    await PostImportedReadyMadeSaleCostAsync(connection, transaction, orderId, orderItemId, orderNumber, line, now, cancellationToken);
                 }
             }
 
@@ -504,27 +506,193 @@ public sealed class ReadyMadeSalesRepository(
             throw new InvalidOperationException("الكمية المستوردة غير كافية أو تم بيعها في عملية متزامنة.");
     }
 
-    private static async Task InsertImportedSaleMovementAsync(SqlConnection connection, SqlTransaction transaction, SaleLineDraft line, string orderNumber, DateTime now, CancellationToken cancellationToken)
+    private static async Task PostReadyMadeSaleCostAsync(SqlConnection connection, SqlTransaction transaction, int orderId, int orderItemId, string orderNumber, SaleLineDraft line, CancellationToken cancellationToken)
     {
-        const string findSql = "SELECT TOP (1) InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = @itemCode";
+        var productId = line.ReadyMadeInventoryProductId
+            ?? throw new InvalidOperationException("هوية المنتج المحلي مطلوبة لتكلفة البيع.");
+        var operationalAmount = line.Quantity * line.UnitCost;
+        var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+        var sourceOperationId = Guid.NewGuid();
+        const string sourceSql = @"
+            INSERT INTO dbo.ReadyMadeSaleCostPostings
+                (OrderId, OrderItemId, ReadyMadeInventoryProductId, Quantity, OfficialUnitCost,
+                 OperationalAmount, PostingAmount, SourceOperationId)
+            OUTPUT INSERTED.ReadyMadeSaleCostPostingId
+            VALUES
+                (@orderId, @orderItemId, @productId, @quantity, @unitCost,
+                 @operationalAmount, @postingAmount, @sourceOperationId);";
+        await using var sourceCommand = new SqlCommand(sourceSql, connection, transaction);
+        sourceCommand.Parameters.AddWithValue("@orderId", orderId);
+        sourceCommand.Parameters.AddWithValue("@orderItemId", orderItemId);
+        sourceCommand.Parameters.AddWithValue("@productId", productId);
+        sourceCommand.Parameters.AddWithValue("@quantity", line.Quantity);
+        sourceCommand.Parameters.AddWithValue("@unitCost", line.UnitCost);
+        sourceCommand.Parameters.AddWithValue("@operationalAmount", operationalAmount);
+        sourceCommand.Parameters.AddWithValue("@postingAmount", postingAmount);
+        sourceCommand.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        var sourceValue = await sourceCommand.ExecuteScalarAsync(cancellationToken);
+        var sourceId = sourceValue is null ? throw new InvalidOperationException("تعذر إنشاء مصدر تكلفة المنتج المحلي.") : Convert.ToInt64(sourceValue);
+
+        var accountingPosting = await AccountingEventPostingGateway.PostReadyMadeSaleCostAsync(
+            connection,
+            transaction,
+            sourceId,
+            postingAmount,
+            $"{orderNumber}:ReadyMadeCost:{productId}",
+            $"Ready-made sale cost for product {productId}",
+            cancellationToken);
+
+        const string findSql = @"
+            SELECT TOP (1) InventoryItemID
+            FROM dbo.InventoryTransactions WITH (UPDLOCK, HOLDLOCK)
+            WHERE ReadyMadeInventoryProductId = @productId
+              AND TransactionType = N'Receive';";
         await using var find = new SqlCommand(findSql, connection, transaction);
-        find.Parameters.AddWithValue("@itemCode", line.TrackingCode);
+        find.Parameters.AddWithValue("@productId", productId);
         var value = await find.ExecuteScalarAsync(cancellationToken);
-        if (value is not int inventoryItemId) return;
+        if (value is not int inventoryItemId)
+            throw new InvalidOperationException("لا توجد حركة استلام محاسبية للمنتج المحلي؛ لن يتم ربط سجل تاريخي تلقائياً.");
+
+        const string updateInventorySql = @"
+            UPDATE dbo.InventoryItems
+            SET CurrentQuantity = CurrentQuantity - 1,
+                AvailableQuantity = AvailableQuantity - 1,
+                IsActive = CASE WHEN CurrentQuantity - 1 <= 0 THEN 0 ELSE IsActive END,
+                UpdatedAt = @now
+            WHERE InventoryItemID = @inventoryItemId
+              AND CurrentQuantity >= 1
+              AND AvailableQuantity >= 1;";
+        await using var updateInventory = new SqlCommand(updateInventorySql, connection, transaction);
+        updateInventory.Parameters.AddWithValue("@now", DateTime.UtcNow);
+        updateInventory.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
+        if (await updateInventory.ExecuteNonQueryAsync(cancellationToken) != 1)
+            throw new InvalidOperationException("رصيد المنتج المحلي غير كافٍ في المخزون الرسمي.");
 
         const string insertSql = @"
             INSERT INTO dbo.InventoryTransactions
-                (InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt, TotalCostImpact, UnitCost)
-            VALUES (@inventoryItemId, N'Sale', @quantity, @reference, @notes, @createdAt, @cost, @unitCost);";
+                (InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt, TotalCostImpact, UnitCost,
+                 AccountingEventId, SourceOperationId, OperationalCostImpact)
+            OUTPUT INSERTED.TransactionID
+                VALUES (@inventoryItemId, N'Sale', @quantity, @reference, @notes, @createdAt, @cost, @unitCost,
+                    @accountingEventId, @sourceOperationId, @operationalCostImpact);";
         await using var insert = new SqlCommand(insertSql, connection, transaction);
         insert.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
         insert.Parameters.AddWithValue("@quantity", line.Quantity);
-        insert.Parameters.AddWithValue("@reference", $"{orderNumber}:Imported:{line.ImportedReadyMadeProductId}");
-        insert.Parameters.AddWithValue("@notes", "Ready-made imported product sale");
-        insert.Parameters.AddWithValue("@createdAt", now);
-        insert.Parameters.AddWithValue("@cost", line.UnitCost * line.Quantity);
+        insert.Parameters.AddWithValue("@reference", $"{orderNumber}:ReadyMadeCost:{productId}");
+        insert.Parameters.AddWithValue("@notes", "Ready-made local product sale cost");
+        insert.Parameters.AddWithValue("@createdAt", DateTime.UtcNow);
+        insert.Parameters.AddWithValue("@cost", operationalAmount);
         insert.Parameters.AddWithValue("@unitCost", line.UnitCost);
-        await insert.ExecuteNonQueryAsync(cancellationToken);
+        insert.Parameters.AddWithValue("@accountingEventId", accountingPosting.AccountingEventId);
+        insert.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        insert.Parameters.AddWithValue("@operationalCostImpact", operationalAmount);
+        var transactionValue = await insert.ExecuteScalarAsync(cancellationToken);
+        var inventoryTransactionId = transactionValue is null ? throw new InvalidOperationException("تعذر إنشاء حركة تكلفة المنتج المحلي.") : Convert.ToInt32(transactionValue);
+
+        await LinkReadyMadeSaleCostTransactionAsync(connection, transaction, sourceId, inventoryTransactionId, cancellationToken);
+    }
+
+    private static async Task PostImportedReadyMadeSaleCostAsync(SqlConnection connection, SqlTransaction transaction, int orderId, int orderItemId, string orderNumber, SaleLineDraft line, DateTime now, CancellationToken cancellationToken)
+    {
+        var productId = line.ImportedReadyMadeProductId
+            ?? throw new InvalidOperationException("هوية المنتج المستورد مطلوبة لتكلفة البيع.");
+        var operationalAmount = line.Quantity * line.UnitCost;
+        var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+        var sourceOperationId = Guid.NewGuid();
+        const string sourceSql = @"
+            INSERT INTO dbo.ImportedReadyMadeSaleCostPostings
+                (OrderId, OrderItemId, ImportedReadyMadeProductId, QuantitySold, OfficialUnitCost,
+                 OperationalAmount, PostingAmount, SourceOperationId)
+            OUTPUT INSERTED.ImportedReadyMadeSaleCostPostingId
+            VALUES
+                (@orderId, @orderItemId, @productId, @quantity, @unitCost,
+                 @operationalAmount, @postingAmount, @sourceOperationId);";
+        await using var sourceCommand = new SqlCommand(sourceSql, connection, transaction);
+        sourceCommand.Parameters.AddWithValue("@orderId", orderId);
+        sourceCommand.Parameters.AddWithValue("@orderItemId", orderItemId);
+        sourceCommand.Parameters.AddWithValue("@productId", productId);
+        sourceCommand.Parameters.AddWithValue("@quantity", line.Quantity);
+        sourceCommand.Parameters.AddWithValue("@unitCost", line.UnitCost);
+        sourceCommand.Parameters.AddWithValue("@operationalAmount", operationalAmount);
+        sourceCommand.Parameters.AddWithValue("@postingAmount", postingAmount);
+        sourceCommand.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        var sourceValue = await sourceCommand.ExecuteScalarAsync(cancellationToken);
+        var sourceId = sourceValue is null ? throw new InvalidOperationException("تعذر إنشاء مصدر تكلفة المنتج المستورد.") : Convert.ToInt64(sourceValue);
+
+        var accountingPosting = await AccountingEventPostingGateway.PostImportedSaleCostAsync(
+            connection,
+            transaction,
+            sourceId,
+            postingAmount,
+            $"{orderNumber}:ImportedReadyMadeCost:{productId}",
+            $"Imported ready-made sale cost for product {productId}",
+            cancellationToken);
+
+        const string findSql = "SELECT TOP (1) InventoryItemID FROM dbo.InventoryItems WITH (UPDLOCK, HOLDLOCK) WHERE ItemCode = @itemCode";
+        await using var find = new SqlCommand(findSql, connection, transaction);
+        find.Parameters.AddWithValue("@itemCode", line.TrackingCode);
+        var value = await find.ExecuteScalarAsync(cancellationToken);
+        if (value is not int inventoryItemId)
+            throw new InvalidOperationException("لا يوجد رصيد مخزون رسمي للمنتج المستورد؛ لن يتم ربط سجل تاريخي تلقائياً.");
+
+        const string updateInventorySql = @"
+            UPDATE dbo.InventoryItems
+            SET CurrentQuantity = CurrentQuantity - @quantity,
+                AvailableQuantity = AvailableQuantity - @quantity,
+                IsActive = CASE WHEN CurrentQuantity - @quantity <= 0 THEN 0 ELSE IsActive END,
+                UpdatedAt = @now
+            WHERE InventoryItemID = @inventoryItemId
+              AND CurrentQuantity >= @quantity
+              AND AvailableQuantity >= @quantity;";
+        await using var updateInventory = new SqlCommand(updateInventorySql, connection, transaction);
+        updateInventory.Parameters.AddWithValue("@quantity", line.Quantity);
+        updateInventory.Parameters.AddWithValue("@now", now);
+        updateInventory.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
+        if (await updateInventory.ExecuteNonQueryAsync(cancellationToken) != 1)
+            throw new InvalidOperationException("رصيد المنتج المستورد غير كافٍ في المخزون الرسمي.");
+
+        const string insertSql = @"
+            INSERT INTO dbo.InventoryTransactions
+                (InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt, TotalCostImpact, UnitCost,
+                 AccountingEventId, SourceOperationId, OperationalCostImpact, ImportedReadyMadeSaleCostPostingId)
+            OUTPUT INSERTED.TransactionID
+            VALUES (@inventoryItemId, N'Sale', @quantity, @reference, @notes, @createdAt, @cost, @unitCost,
+                    @accountingEventId, @sourceOperationId, @cost, @sourceId);";
+        await using var insert = new SqlCommand(insertSql, connection, transaction);
+        insert.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
+        insert.Parameters.AddWithValue("@quantity", line.Quantity);
+        insert.Parameters.AddWithValue("@reference", $"{orderNumber}:ImportedReadyMadeCost:{productId}");
+        insert.Parameters.AddWithValue("@notes", "Ready-made imported product sale cost");
+        insert.Parameters.AddWithValue("@createdAt", now);
+        insert.Parameters.AddWithValue("@cost", operationalAmount);
+        insert.Parameters.AddWithValue("@unitCost", line.UnitCost);
+        insert.Parameters.AddWithValue("@accountingEventId", accountingPosting.AccountingEventId);
+        insert.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        insert.Parameters.AddWithValue("@sourceId", sourceId);
+        var transactionValue = await insert.ExecuteScalarAsync(cancellationToken);
+        var inventoryTransactionId = transactionValue is null ? throw new InvalidOperationException("تعذر إنشاء حركة تكلفة المنتج المستورد.") : Convert.ToInt32(transactionValue);
+
+        await LinkImportedSaleCostTransactionAsync(connection, transaction, sourceId, inventoryTransactionId, cancellationToken);
+    }
+
+    private static async Task LinkReadyMadeSaleCostTransactionAsync(SqlConnection connection, SqlTransaction transaction, long sourceId, int inventoryTransactionId, CancellationToken cancellationToken)
+    {
+        const string sql = "UPDATE dbo.ReadyMadeSaleCostPostings SET InventoryTransactionId = @transactionId WHERE ReadyMadeSaleCostPostingId = @sourceId";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@transactionId", inventoryTransactionId);
+        command.Parameters.AddWithValue("@sourceId", sourceId);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            throw new InvalidOperationException("تعذر ربط حركة تكلفة المنتج المحلي بالمصدر الرسمي.");
+    }
+
+    private static async Task LinkImportedSaleCostTransactionAsync(SqlConnection connection, SqlTransaction transaction, long sourceId, int inventoryTransactionId, CancellationToken cancellationToken)
+    {
+        const string sql = "UPDATE dbo.ImportedReadyMadeSaleCostPostings SET InventoryTransactionId = @transactionId WHERE ImportedReadyMadeSaleCostPostingId = @sourceId";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@transactionId", inventoryTransactionId);
+        command.Parameters.AddWithValue("@sourceId", sourceId);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            throw new InvalidOperationException("تعذر ربط حركة تكلفة المنتج المستورد بالمصدر الرسمي.");
     }
 
     private static async Task<int> InsertPaymentAsync(SqlConnection connection, SqlTransaction transaction, int orderId, decimal amount, string reference, DateTime now, CancellationToken cancellationToken)

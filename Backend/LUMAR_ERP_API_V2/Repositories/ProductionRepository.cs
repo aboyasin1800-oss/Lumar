@@ -729,9 +729,99 @@ public sealed class ProductionRepository(
         AddNullable(insertCommand, "@measurementSnapshot", measurementSnapshot);
         insertCommand.Parameters.AddWithValue("@now", DateTime.UtcNow);
         var productId = await insertCommand.ExecuteScalarAsync(ct);
-        return productId is null
-            ? ReadyMadeInventoryTransferOutcome.Failed
-            : new ReadyMadeInventoryTransferOutcome(Convert.ToInt32(productId), true, true);
+        if (productId is null)
+        {
+            return ReadyMadeInventoryTransferOutcome.Failed;
+        }
+
+        var readyMadeInventoryProductId = Convert.ToInt32(productId);
+        var postingAmount = decimal.Round(actualCost, 2, MidpointRounding.AwayFromZero);
+        var accountingPosting = await AccountingEventPostingGateway.PostAsync(
+            connection,
+            transaction,
+            AccountingEventType.WipToFinishedGoods,
+            postingAmount,
+            null,
+            null,
+            null,
+            readyMadeInventoryProductId,
+            $"{trackingCode}:WipToFinishedGoods",
+            $"Ready-made WIP transfer for {trackingCode}",
+            ct);
+        var inventoryItemId = await InsertReadyMadeInventoryItemAsync(
+            connection,
+            transaction,
+            readyMadeInventoryProductId,
+            productionName,
+            trackingCode,
+            DateTime.UtcNow,
+            ct);
+        await InsertReadyMadeInventoryReceiptTransactionAsync(
+            connection,
+            transaction,
+            inventoryItemId,
+            readyMadeInventoryProductId,
+            actualCost,
+            accountingPosting.AccountingEventId,
+            trackingCode,
+            DateTime.UtcNow,
+            ct);
+
+        return new ReadyMadeInventoryTransferOutcome(readyMadeInventoryProductId, true, true);
+    }
+
+    private static async Task<int> InsertReadyMadeInventoryItemAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int readyMadeInventoryProductId,
+        string productionName,
+        string trackingCode,
+        DateTime now,
+        CancellationToken ct)
+    {
+        const string sql = @"
+            INSERT INTO dbo.InventoryItems
+                (ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity,
+                 IsActive, CreatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice)
+            OUTPUT INSERTED.InventoryItemID
+            VALUES
+                (@itemCode, @itemName, N'ReadyMadeProduct', N'Piece', 1, 1, 0,
+                 1, @createdAt, @barcode, N'ReadyMadeProduct', N'غير محدد', 0, N'Piece', 0, 0);";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@itemCode", $"RMP-{readyMadeInventoryProductId}");
+        command.Parameters.AddWithValue("@itemName", productionName);
+        command.Parameters.AddWithValue("@createdAt", now);
+        command.Parameters.AddWithValue("@barcode", trackingCode);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task InsertReadyMadeInventoryReceiptTransactionAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int inventoryItemId,
+        int readyMadeInventoryProductId,
+        decimal actualCost,
+        long accountingEventId,
+        string trackingCode,
+        DateTime now,
+        CancellationToken ct)
+    {
+        const string sql = @"
+            INSERT INTO dbo.InventoryTransactions
+                (InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt,
+                 TotalCostImpact, UnitCost, AccountingEventId, ReadyMadeInventoryProductId, OperationalCostImpact)
+            VALUES
+                (@inventoryItemId, N'Receive', 1, @referenceNumber, N'Ready-made product WIP transfer', @createdAt,
+                 @operationalAmount, @unitCost, @accountingEventId, @readyMadeInventoryProductId, @operationalAmount);";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
+        command.Parameters.AddWithValue("@referenceNumber", $"{trackingCode}:WipToFinishedGoods");
+        command.Parameters.AddWithValue("@createdAt", now);
+        command.Parameters.AddWithValue("@operationalAmount", actualCost);
+        command.Parameters.AddWithValue("@unitCost", actualCost);
+        command.Parameters.AddWithValue("@accountingEventId", accountingEventId);
+        command.Parameters.AddWithValue("@readyMadeInventoryProductId", readyMadeInventoryProductId);
+        await command.ExecuteNonQueryAsync(ct);
     }
 
     private static async Task SynchronizeReadyMadeProductionStatusesAsync(

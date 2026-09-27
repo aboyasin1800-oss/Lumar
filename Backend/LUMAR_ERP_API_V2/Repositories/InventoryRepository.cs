@@ -380,7 +380,19 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                 updateCmd.Parameters.AddWithValue("@now", now);
                 await updateCmd.ExecuteNonQueryAsync(ct);
 
-                await InsertInventoryTransactionAsync(connection, transaction, existing.ProductCode, updatedQuantity, product.PurchasePrice, product.SellingPrice, product.SupplierId, notes, now, ct);
+                await InsertImportedInventoryReceiptAsync(
+                    connection,
+                    transaction,
+                    existing.ImportedReadyMadeProductId,
+                    existing.ProductCode,
+                    productName,
+                    unit,
+                    product.Quantity,
+                    updatedPurchasePrice,
+                    product.SupplierId,
+                    notes,
+                    now,
+                    ct);
 
                 await transaction.CommitAsync(ct);
                 return new ImportedReadyMadeProductDto(existing.ImportedReadyMadeProductId, productName, productType, existing.ProductCode, unit, updatedQuantity, updatedPurchasePrice, updatedSellingPrice, true, existing.AlertThreshold, notes, category, existing.CreatedAt, now);
@@ -391,7 +403,20 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                 throw new InvalidOperationException($"المنتج '{productCode}' موجود بالفعل في المخزون المستورد.");
             }
 
-            var result = await InsertImportedProductAsync(connection, transaction, productName, productType, productCode, unit, product.Quantity, product.PurchasePrice, product.SellingPrice, notes, category, product.SupplierId, now, ct);
+            var result = await InsertImportedProductAsync(connection, transaction, productName, productType, productCode, unit, product.Quantity, product.PurchasePrice, product.SellingPrice, notes, category, now, ct);
+            await InsertImportedInventoryReceiptAsync(
+                connection,
+                transaction,
+                result.ImportedReadyMadeProductId,
+                result.ProductCode,
+                result.ProductName,
+                result.Unit,
+                product.Quantity,
+                product.PurchasePrice,
+                product.SupplierId,
+                notes,
+                now,
+                ct);
             await transaction.CommitAsync(ct);
             return result;
         }
@@ -430,7 +455,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         );
     }
 
-    private static async Task<ImportedReadyMadeProductDto> InsertImportedProductAsync(SqlConnection connection, SqlTransaction transaction, string productName, string productType, string productCode, string unit, decimal quantity, decimal purchasePrice, decimal sellingPrice, string? notes, string category, int? supplierId, DateTime now, CancellationToken ct)
+    private static async Task<ImportedReadyMadeProductDto> InsertImportedProductAsync(SqlConnection connection, SqlTransaction transaction, string productName, string productType, string productCode, string unit, decimal quantity, decimal purchasePrice, decimal sellingPrice, string? notes, string category, DateTime now, CancellationToken ct)
     {
         using var cmd = new SqlCommand(@"
             INSERT INTO dbo.ImportedReadyMadeProducts
@@ -456,7 +481,6 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         }
 
         var productId = reader.GetInt32(0);
-        await InsertInventoryTransactionAsync(connection, transaction, productCode, quantity, purchasePrice, sellingPrice, supplierId, notes, now, ct);
 
         return new ImportedReadyMadeProductDto(
             productId,
@@ -476,27 +500,107 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         );
     }
 
-    private static async Task InsertInventoryTransactionAsync(SqlConnection connection, SqlTransaction transaction, string productCode, decimal quantity, decimal purchasePrice, decimal sellingPrice, int? supplierId, string? notes, DateTime now, CancellationToken ct)
+    private static async Task InsertImportedInventoryReceiptAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int importedReadyMadeProductId,
+        string productCode,
+        string productName,
+        string unit,
+        decimal quantity,
+        decimal purchasePrice,
+        int? supplierId,
+        string? notes,
+        DateTime now,
+        CancellationToken ct)
     {
-        var reference = $"IMPORTED-{productCode}-{now:yyyyMMddHHmmss}";
-        var itemId = await GetOrCreateImportedInventoryItemIdAsync(connection, transaction, productCode, now, ct);
+        if (quantity <= 0m || purchasePrice <= 0m)
+            throw new InvalidOperationException("كمية أو تكلفة الاستلام المستورد غير صالحة.");
+
+        const string accountSql = "SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE AccountCode = N'2100' AND IsActive = 1 ORDER BY LedgerAccountId";
+        await using var accountCommand = new SqlCommand(accountSql, connection, transaction);
+        var accountValue = await accountCommand.ExecuteScalarAsync(ct);
+        if (accountValue is not int opposingLedgerAccountId)
+            throw new InvalidOperationException("حساب الموردين الرسمي غير موجود أو غير فعال.");
+
+        var operationalAmount = quantity * purchasePrice;
+        var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+        var sourceOperationId = Guid.NewGuid();
+        const string sourceSql = @"
+            INSERT INTO dbo.ImportedReadyMadeInventoryReceipts
+                (ImportedReadyMadeProductId, QuantityReceived, OfficialUnitCost, OperationalAmount, PostingAmount,
+                 OpposingLedgerAccountId, SourceOperationId)
+            OUTPUT INSERTED.ImportedReadyMadeInventoryReceiptId
+            VALUES
+                (@productId, @quantity, @unitCost, @operationalAmount, @postingAmount,
+                 @opposingLedgerAccountId, @sourceOperationId);";
+        await using var sourceCommand = new SqlCommand(sourceSql, connection, transaction);
+        sourceCommand.Parameters.AddWithValue("@productId", importedReadyMadeProductId);
+        sourceCommand.Parameters.AddWithValue("@quantity", quantity);
+        sourceCommand.Parameters.AddWithValue("@unitCost", purchasePrice);
+        sourceCommand.Parameters.AddWithValue("@operationalAmount", operationalAmount);
+        sourceCommand.Parameters.AddWithValue("@postingAmount", postingAmount);
+        sourceCommand.Parameters.AddWithValue("@opposingLedgerAccountId", opposingLedgerAccountId);
+        sourceCommand.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        var sourceValue = await sourceCommand.ExecuteScalarAsync(ct);
+        var receiptId = sourceValue is null ? throw new InvalidOperationException("تعذر إنشاء مصدر استلام المنتج المستورد.") : Convert.ToInt64(sourceValue);
+
+        var accountingPosting = await AccountingEventPostingGateway.PostImportedInventoryReceiptAsync(
+            connection,
+            transaction,
+            receiptId,
+            postingAmount,
+            $"IMPORTED-{importedReadyMadeProductId}:Receipt:{sourceOperationId:N}",
+            $"Imported ready-made inventory receipt for {productName}",
+            ct);
+
+        var itemId = await GetOrCreateImportedInventoryItemIdAsync(connection, transaction, productCode, productName, unit, now, ct);
+        const string updateItemSql = @"
+            UPDATE dbo.InventoryItems
+            SET CurrentQuantity = CurrentQuantity + @quantity,
+                AvailableQuantity = AvailableQuantity + @quantity,
+                IsActive = 1,
+                UpdatedAt = @now
+            WHERE InventoryItemID = @itemId;";
+        await using var updateItemCommand = new SqlCommand(updateItemSql, connection, transaction);
+        updateItemCommand.Parameters.AddWithValue("@quantity", quantity);
+        updateItemCommand.Parameters.AddWithValue("@now", now);
+        updateItemCommand.Parameters.AddWithValue("@itemId", itemId);
+        if (await updateItemCommand.ExecuteNonQueryAsync(ct) != 1)
+            throw new InvalidOperationException("تعذر تحديث كمية المنتج المستورد في المخزون.");
 
         using var cmd = new SqlCommand(@"
             INSERT INTO dbo.InventoryTransactions
-                (InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt, TotalCostImpact, UnitCost)
+                (InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt, TotalCostImpact, UnitCost,
+                 AccountingEventId, ImportedReadyMadeInventoryReceiptId, OperationalCostImpact)
+            OUTPUT INSERTED.TransactionID
             VALUES
-                (@itemId, N'Receive', @qty, @reference, @notes, @now, @cost, @unitCost)", connection, transaction);
+                (@itemId, N'Receive', @qty, @reference, @notes, @now, @cost, @unitCost,
+                 @accountingEventId, @receiptId, @cost)", connection, transaction);
         cmd.Parameters.AddWithValue("@itemId", itemId);
         cmd.Parameters.AddWithValue("@qty", quantity);
-        cmd.Parameters.AddWithValue("@reference", reference);
+        cmd.Parameters.AddWithValue("@reference", $"IMPORTED-{importedReadyMadeProductId}:Receipt:{sourceOperationId:N}");
         AddNullable(cmd, "@notes", $"{(supplierId is > 0 ? $"SupplierId:{supplierId}" : "Supplier:NotSet")} | {notes ?? "Imported product receipt"}");
         cmd.Parameters.AddWithValue("@now", now);
-        cmd.Parameters.AddWithValue("@cost", quantity * purchasePrice);
+        cmd.Parameters.AddWithValue("@cost", operationalAmount);
         cmd.Parameters.AddWithValue("@unitCost", purchasePrice);
-        await cmd.ExecuteNonQueryAsync(ct);
+        cmd.Parameters.AddWithValue("@accountingEventId", accountingPosting.AccountingEventId);
+        cmd.Parameters.AddWithValue("@receiptId", receiptId);
+        var transactionValue = await cmd.ExecuteScalarAsync(ct);
+        var inventoryTransactionId = transactionValue is null
+            ? throw new InvalidOperationException("تعذر إنشاء حركة استلام المنتج المستورد.")
+            : Convert.ToInt32(transactionValue);
+
+        using var linkCommand = new SqlCommand(@"
+            UPDATE dbo.ImportedReadyMadeInventoryReceipts
+            SET InventoryTransactionId = @transactionId
+            WHERE ImportedReadyMadeInventoryReceiptId = @receiptId;", connection, transaction);
+        linkCommand.Parameters.AddWithValue("@receiptId", receiptId);
+        linkCommand.Parameters.AddWithValue("@transactionId", inventoryTransactionId);
+        await linkCommand.ExecuteNonQueryAsync(ct);
     }
 
-    private static async Task<int> GetOrCreateImportedInventoryItemIdAsync(SqlConnection connection, SqlTransaction transaction, string productCode, DateTime now, CancellationToken ct)
+    private static async Task<int> GetOrCreateImportedInventoryItemIdAsync(SqlConnection connection, SqlTransaction transaction, string productCode, string productName, string unit, DateTime now, CancellationToken ct)
     {
         using var getCmd = new SqlCommand("SELECT InventoryItemID FROM dbo.InventoryItems WITH (UPDLOCK, HOLDLOCK) WHERE ItemCode = @code", connection, transaction);
         getCmd.Parameters.AddWithValue("@code", productCode);
@@ -510,12 +614,854 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             VALUES
                 (@code, @name, N'ImportedProduct', @unit, 0, 0, 0, 1, @now, @code, N'ImportedProduct', N'غير محدد', 0, N'Piece', 0, 0)", connection, transaction);
         insertCmd.Parameters.AddWithValue("@code", productCode);
-        insertCmd.Parameters.AddWithValue("@name", productCode);
-        insertCmd.Parameters.AddWithValue("@unit", "حبة");
+        insertCmd.Parameters.AddWithValue("@name", productName);
+        insertCmd.Parameters.AddWithValue("@unit", unit);
         insertCmd.Parameters.AddWithValue("@now", now);
         var insertedValue = await insertCmd.ExecuteScalarAsync(ct);
         return insertedValue is int insertedId ? insertedId : throw new InvalidOperationException("تعذر إنشاء سجل مخزون للمنتج المستورد.");
     }
+
+
+    public Task<InventoryFoundationPostingResultDto?> ReceiveFabricInventoryAsync(ReceiveFabricInventoryDto request, CancellationToken ct) =>
+        ReceiveFoundationInventoryAsync(
+            request.GoodsReceiptItemId,
+            1,
+            request.UnitId,
+            request.ItemCode,
+            request.OpposingLedgerAccountCode,
+            request.SourceOperationId,
+            request.FabricTypeCode,
+            request.RollCode,
+            request.ColorValue,
+            ct);
+
+    public Task<InventoryFoundationPostingResultDto?> ReceiveConsumableInventoryAsync(ReceiveConsumableInventoryDto request, CancellationToken ct) =>
+        ReceiveFoundationInventoryAsync(
+            request.GoodsReceiptItemId,
+            2,
+            request.UnitId,
+            request.ItemCode,
+            request.OpposingLedgerAccountCode,
+            request.SourceOperationId,
+            null,
+            null,
+            null,
+            ct);
+
+    private async Task<InventoryFoundationPostingResultDto?> ReceiveFoundationInventoryAsync(
+        int goodsReceiptItemId,
+        byte inventoryClassId,
+        short unitId,
+        string itemCode,
+        string opposingLedgerAccountCode,
+        Guid sourceOperationId,
+        string? fabricTypeCode,
+        string? rollCode,
+        string? colorValue,
+        CancellationToken ct)
+    {
+        if (sourceOperationId == Guid.Empty)
+            throw new ArgumentException("SourceOperationId is required for idempotent inventory posting.");
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(itemCode))
+                throw new ArgumentException("Inventory item code is required.");
+            if (inventoryClassId == 1 && string.IsNullOrWhiteSpace(fabricTypeCode))
+                throw new ArgumentException("Fabric type code is required.");
+
+            var existing = await TryReadExistingReceiptAsync(connection, transaction, goodsReceiptItemId, inventoryClassId, unitId, itemCode, sourceOperationId, ct);
+            if (existing is not null)
+            {
+                await transaction.CommitAsync(ct);
+                return existing with { IsExisting = true };
+            }
+
+            var unitCode = await ReadUnitCodeAsync(connection, transaction, unitId, inventoryClassId, ct);
+            var opposingLedgerAccountId = await ReadOpposingLedgerAccountIdAsync(connection, transaction, opposingLedgerAccountCode, ct);
+            var receipt = await ReadGoodsReceiptSourceAsync(connection, transaction, goodsReceiptItemId, ct)
+                ?? throw new InvalidOperationException("Goods receipt item was not found.");
+            var operationalAmount = Math.Round(receipt.Quantity * receipt.UnitCost, 6, MidpointRounding.AwayFromZero);
+            var postingAmount = Math.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+            if (operationalAmount <= 0m || postingAmount <= 0m)
+                throw new InvalidOperationException("The goods receipt source amount must be positive.");
+
+            var existingItem = await ReadFoundationItemAsync(connection, transaction, itemCode.Trim(), ct);
+            if (existingItem is not null && !existingItem.HasFoundation)
+                throw new InvalidOperationException("Legacy inventory items cannot be used by the foundation posting path.");
+            if (existingItem is not null && (existingItem.InventoryClassId != inventoryClassId || existingItem.UnitId != unitId))
+                throw new InvalidOperationException("The inventory item class or unit does not match the foundation request.");
+
+            var now = DateTime.UtcNow;
+            var itemId = existingItem?.InventoryItemId ?? await InsertFoundationInventoryItemAsync(
+                connection,
+                transaction,
+                itemCode.Trim(),
+                receipt.ItemName,
+                inventoryClassId,
+                unitCode,
+                unitId,
+                receipt.Quantity,
+                operationalAmount,
+                fabricTypeCode,
+                colorValue,
+                now,
+                ct);
+
+            if (existingItem is not null)
+            {
+                await UpdateFoundationInventoryItemAsync(
+                    connection,
+                    transaction,
+                    itemId,
+                    receipt.Quantity,
+                    operationalAmount,
+                    now,
+                    ct);
+            }
+
+            var postingId = await InsertInventoryReceiptPostingAsync(
+                connection,
+                transaction,
+                goodsReceiptItemId,
+                inventoryClassId,
+                opposingLedgerAccountId,
+                sourceOperationId,
+                operationalAmount,
+                postingAmount,
+                ct);
+            var lineId = await InsertInventoryReceiptLineAsync(
+                connection,
+                transaction,
+                postingId,
+                itemId,
+                receipt.Quantity,
+                receipt.UnitCost,
+                unitId,
+                ct);
+
+            long? fabricRollId = null;
+            if (inventoryClassId == 1)
+            {
+                var resolvedRollCode = string.IsNullOrWhiteSpace(rollCode)
+                    ? $"{itemCode.Trim()}-R-{lineId}"
+                    : rollCode.Trim();
+                fabricRollId = await InsertFabricRollAsync(
+                    connection,
+                    transaction,
+                    itemId,
+                    resolvedRollCode,
+                    fabricTypeCode!.Trim(),
+                    colorValue,
+                    receipt.Quantity,
+                    receipt.UnitCost,
+                    unitId,
+                    lineId,
+                    now,
+                    ct);
+                await SetReceiptLineRollAsync(connection, transaction, lineId, fabricRollId.Value, ct);
+            }
+
+            var reference = $"GoodsReceipt:{receipt.ReceiptNumber}:Item:{goodsReceiptItemId}";
+            var transactionId = await InsertFoundationInventoryTransactionAsync(
+                connection,
+                transaction,
+                itemId,
+                inventoryClassId == 1 ? "FabricInventoryReceived" : "ConsumableInventoryReceived",
+                receipt.Quantity,
+                reference,
+                operationalAmount,
+                receipt.UnitCost,
+                sourceOperationId,
+                now,
+                ct);
+
+            var accountingEvent = await AccountingEventPostingGateway.PostInventoryReceiptAsync(
+                connection,
+                transaction,
+                inventoryClassId == 1 ? AccountingEventType.FabricInventoryReceived : AccountingEventType.ConsumableInventoryReceived,
+                postingId,
+                postingAmount,
+                reference,
+                $"Inventory receipt {receipt.ReceiptNumber} item {goodsReceiptItemId}",
+                ct);
+
+            await LinkInventoryReceiptArtifactsAsync(connection, transaction, lineId, transactionId, accountingEvent.AccountingEventId, ct);
+            await transaction.CommitAsync(ct);
+
+            return new InventoryFoundationPostingResultDto(
+                postingId,
+                itemId,
+                itemCode.Trim(),
+                receipt.Quantity,
+                operationalAmount,
+                postingAmount,
+                accountingEvent.AccountingEventId,
+                transactionId,
+                false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<InventoryFoundationPostingResultDto?> ConsumeFabricInventoryAsync(ConsumeFabricInventoryDto request, CancellationToken ct)
+    {
+        if (request.SourceOperationId == Guid.Empty)
+            throw new ArgumentException("SourceOperationId is required for idempotent inventory posting.");
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+
+        try
+        {
+            var existing = await TryReadExistingFabricConsumptionAsync(connection, transaction, request, ct);
+            if (existing is not null)
+            {
+                await transaction.CommitAsync(ct);
+                return existing with { IsExisting = true };
+            }
+
+            var roll = await ReadFabricRollForUpdateAsync(connection, transaction, request.FabricRollId, ct)
+                ?? throw new InvalidOperationException("Fabric roll was not found in the foundation inventory.");
+            if (request.Quantity <= 0m || request.Quantity > roll.AvailableQuantity)
+                throw new InvalidOperationException("The requested fabric quantity exceeds the available roll quantity.");
+
+            await ValidateOrderFabricSourceAsync(connection, transaction, request.OrderItemId, request.PieceId, ct);
+            var operationalAmount = Math.Round(request.Quantity * roll.OfficialUnitCost, 6, MidpointRounding.AwayFromZero);
+            var postingAmount = Math.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+            if (operationalAmount <= 0m || postingAmount <= 0m)
+                throw new InvalidOperationException("The fabric consumption amount must be positive.");
+
+            var now = DateTime.UtcNow;
+            var sourceId = await InsertFabricConsumptionSourceAsync(
+                connection,
+                transaction,
+                request,
+                roll,
+                operationalAmount,
+                postingAmount,
+                now,
+                ct);
+
+            await UpdateFabricRollAndFoundationAsync(
+                connection,
+                transaction,
+                roll,
+                request.Quantity,
+                operationalAmount,
+                now,
+                ct);
+
+            var reference = $"OrderItem:{request.OrderItemId}:FabricRoll:{request.FabricRollId}";
+            var transactionId = await InsertFoundationInventoryTransactionAsync(
+                connection,
+                transaction,
+                roll.InventoryItemId,
+                "FabricInventoryConsumed",
+                request.Quantity,
+                reference,
+                -operationalAmount,
+                roll.OfficialUnitCost,
+                request.SourceOperationId,
+                now,
+                ct);
+
+            var accountingEvent = await AccountingEventPostingGateway.PostFabricConsumptionAsync(
+                connection,
+                transaction,
+                sourceId,
+                postingAmount,
+                reference,
+                $"Confirmed fabric consumption for order item {request.OrderItemId}",
+                ct);
+
+            await LinkFabricConsumptionArtifactsAsync(connection, transaction, sourceId, transactionId, accountingEvent.AccountingEventId, ct);
+            await transaction.CommitAsync(ct);
+
+            return new InventoryFoundationPostingResultDto(
+                sourceId,
+                roll.InventoryItemId,
+                roll.ItemCode,
+                request.Quantity,
+                operationalAmount,
+                postingAmount,
+                accountingEvent.AccountingEventId,
+                transactionId,
+                false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<InventoryFoundationPostingResultDto?> ConsumeConsumableInventoryAsync(ConsumeConsumableInventoryDto request, CancellationToken ct)
+    {
+        if (request.SourceOperationId == Guid.Empty)
+            throw new ArgumentException("SourceOperationId is required for idempotent inventory posting.");
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+
+        try
+        {
+            var existing = await TryReadExistingConsumableConsumptionAsync(connection, transaction, request, ct);
+            if (existing is not null)
+            {
+                await transaction.CommitAsync(ct);
+                return existing with { IsExisting = true };
+            }
+
+            var item = await ReadConsumableItemForUpdateAsync(connection, transaction, request.InventoryItemId, request.UnitId, ct)
+                ?? throw new InvalidOperationException("The inventory item is not an active consumable foundation item.");
+            if (request.Quantity <= 0m || request.Quantity > item.AvailableQuantity)
+                throw new InvalidOperationException("The requested consumable quantity exceeds the available quantity.");
+
+            await ValidateProductionSourceAsync(connection, transaction, request.ProductionOrderId, request.ProductionBatchId, request.ProductMaterialId, request.InventoryItemId, ct);
+            var operationalAmount = Math.Round(request.Quantity * item.OfficialUnitCost, 6, MidpointRounding.AwayFromZero);
+            var postingAmount = Math.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+            if (operationalAmount <= 0m || postingAmount <= 0m)
+                throw new InvalidOperationException("The consumable consumption amount must be positive.");
+
+            var now = DateTime.UtcNow;
+            var sourceId = await InsertConsumableConsumptionSourceAsync(
+                connection,
+                transaction,
+                request,
+                item.OfficialUnitCost,
+                operationalAmount,
+                postingAmount,
+                now,
+                ct);
+
+            await UpdateConsumableFoundationAsync(connection, transaction, item, request.Quantity, operationalAmount, now, ct);
+            var reference = $"ProductionOrder:{request.ProductionOrderId}:InventoryItem:{request.InventoryItemId}";
+            var transactionId = await InsertFoundationInventoryTransactionAsync(
+                connection,
+                transaction,
+                request.InventoryItemId,
+                "ConsumableInventoryConsumed",
+                request.Quantity,
+                reference,
+                -operationalAmount,
+                item.OfficialUnitCost,
+                request.SourceOperationId,
+                now,
+                ct);
+            await LinkConsumptionTransactionAsync(connection, transaction, sourceId, transactionId, ct);
+
+            var accountingEvent = await AccountingEventPostingGateway.PostConsumableConsumptionAsync(
+                connection,
+                transaction,
+                sourceId,
+                postingAmount,
+                reference,
+                $"Confirmed consumable consumption for production order {request.ProductionOrderId}",
+                ct);
+
+            await LinkConsumableConsumptionArtifactsAsync(connection, transaction, sourceId, transactionId, accountingEvent.AccountingEventId, ct);
+            await transaction.CommitAsync(ct);
+
+            return new InventoryFoundationPostingResultDto(
+                sourceId,
+                request.InventoryItemId,
+                item.ItemCode,
+                request.Quantity,
+                operationalAmount,
+                postingAmount,
+                accountingEvent.AccountingEventId,
+                transactionId,
+                false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    private static async Task<InventoryFoundationPostingResultDto?> TryReadExistingReceiptAsync(SqlConnection connection, SqlTransaction transaction, int expectedGoodsReceiptItemId, byte expectedClassId, short expectedUnitId, string expectedItemCode, Guid sourceOperationId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT TOP (1) rp.InventoryReceiptPostingId, rp.InventoryClassId, rp.GoodsReceiptItemId, l.UnitId,
+                   l.InventoryItemId, i.ItemCode, l.ReceivedQuantity, rp.OperationalAmount, rp.PostingAmount,
+                   l.InventoryTransactionId, rp.AccountingEventId
+            FROM dbo.InventoryReceiptPostings rp WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.InventoryReceiptLines l ON l.InventoryReceiptPostingId = rp.InventoryReceiptPostingId
+            INNER JOIN dbo.InventoryItems i ON i.InventoryItemID = l.InventoryItemId
+            WHERE rp.SourceOperationId = @sourceOperationId";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        if (reader.GetByte(1) != expectedClassId)
+            throw new InvalidOperationException("The source operation was already used by another inventory class.");
+        if (reader.GetInt32(2) != expectedGoodsReceiptItemId || reader.GetInt16(3) != expectedUnitId || !string.Equals(reader.GetString(5), expectedItemCode.Trim(), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The source operation was already used by another inventory receipt source.");
+        if (reader.IsDBNull(9) || reader.IsDBNull(10))
+            throw new InvalidOperationException("The existing inventory receipt posting is incomplete.");
+        return new InventoryFoundationPostingResultDto(reader.GetInt64(0), reader.GetInt32(4), reader.GetString(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetDecimal(8), reader.GetInt64(10), reader.GetInt32(9), true);
+    }
+
+    private static async Task<GoodsReceiptSource?> ReadGoodsReceiptSourceAsync(SqlConnection connection, SqlTransaction transaction, int goodsReceiptItemId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT gri.ReceivedQuantity, gri.UnitCost, gr.ReceiptNumber, gri.ItemName
+            FROM dbo.GoodsReceiptItems gri WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.GoodsReceipts gr WITH (UPDLOCK, HOLDLOCK) ON gr.GoodsReceiptId = gri.GoodsReceiptId
+            WHERE gri.GoodsReceiptItemId = @goodsReceiptItemId";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@goodsReceiptItemId", goodsReceiptItemId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        return await reader.ReadAsync(ct)
+            ? new GoodsReceiptSource(reader.GetDecimal(0), reader.GetDecimal(1), reader.GetString(2), reader.GetString(3))
+            : null;
+    }
+
+    private static async Task<string> ReadUnitCodeAsync(SqlConnection connection, SqlTransaction transaction, short unitId, byte inventoryClassId, CancellationToken ct)
+    {
+        const string sql = "SELECT Code FROM dbo.InventoryUnitCatalog WITH (HOLDLOCK) WHERE UnitId=@unitId AND ((@classId=1 AND UnitId IN (1,2)) OR (@classId=2 AND UnitId=3))";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@unitId", unitId);
+        command.Parameters.AddWithValue("@classId", inventoryClassId);
+        var result = await command.ExecuteScalarAsync(ct) as string;
+        return result ?? throw new ArgumentException("The requested unit is not valid for the inventory class.");
+    }
+
+    private static async Task<int> ReadOpposingLedgerAccountIdAsync(SqlConnection connection, SqlTransaction transaction, string accountCode, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(accountCode) || accountCode.Trim() is "1101" or "1102" or "5300")
+            throw new ArgumentException("A verified non-inventory opposing ledger account is required.");
+        const string sql = "SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE AccountCode=@accountCode AND IsActive=1";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@accountCode", accountCode.Trim());
+        var result = await command.ExecuteScalarAsync(ct);
+        return result is int accountId ? accountId : throw new InvalidOperationException("The opposing ledger account is not active or does not exist.");
+    }
+
+    private static async Task<FoundationItemState?> ReadFoundationItemAsync(SqlConnection connection, SqlTransaction transaction, string itemCode, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT i.InventoryItemID, f.InventoryClassId, f.UnitId, f.OriginalQuantity, f.AvailableQuantity,
+                   f.ConsumedQuantity, f.OperationalValue
+            FROM dbo.InventoryItems i WITH (UPDLOCK, HOLDLOCK)
+            LEFT JOIN dbo.InventoryItemFoundation f WITH (UPDLOCK, HOLDLOCK) ON f.InventoryItemId = i.InventoryItemID
+            WHERE i.ItemCode=@itemCode";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@itemCode", itemCode);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        return new FoundationItemState(
+            reader.GetInt32(0),
+            !reader.IsDBNull(1),
+            reader.IsDBNull(1) ? null : reader.GetByte(1),
+            reader.IsDBNull(2) ? null : reader.GetInt16(2),
+            reader.IsDBNull(3) ? 0m : reader.GetDecimal(3),
+            reader.IsDBNull(4) ? 0m : reader.GetDecimal(4),
+            reader.IsDBNull(5) ? 0m : reader.GetDecimal(5),
+            reader.IsDBNull(6) ? 0m : reader.GetDecimal(6));
+    }
+
+    private static async Task<int> InsertFoundationInventoryItemAsync(SqlConnection connection, SqlTransaction transaction, string itemCode, string itemName, byte inventoryClassId, string unitCode, short unitId, decimal quantity, decimal operationalAmount, string? fabricTypeCode, string? colorValue, DateTime now, CancellationToken ct)
+    {
+        const string sql = @"
+            DECLARE @itemId int;
+            INSERT INTO dbo.InventoryItems
+                (ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice)
+            VALUES
+                (@itemCode, @itemName, N'Foundation', @unitCode, @quantity, @quantity, 0, 1, @now, @now, NULL, @fabricTypeCode, @colorValue, NULL, NULL,
+                 CASE WHEN @classId=1 AND @unitId=2 THEN @unitCost ELSE NULL END,
+                 CASE WHEN @classId=1 AND @unitId=1 THEN @unitCost WHEN @classId=1 AND @unitId=2 THEN @unitCost*36 ELSE NULL END);
+            SET @itemId = CONVERT(int, SCOPE_IDENTITY());
+            INSERT INTO dbo.InventoryItemFoundation
+                (InventoryItemId,InventoryClassId,UnitId,CurrencyCode,OriginalQuantity,AvailableQuantity,ConsumedQuantity,OfficialUnitCost,OperationalValue,CreatedAt,UpdatedAt)
+            VALUES
+                (@itemId,@classId,@unitId,'YER',@quantity,@quantity,0,@unitCost,@operationalAmount,@now,@now);
+            SELECT @itemId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@itemCode", itemCode);
+        command.Parameters.AddWithValue("@itemName", itemName);
+        command.Parameters.AddWithValue("@unitCode", unitCode);
+        AddDecimal(command, "@quantity", quantity);
+        command.Parameters.AddWithValue("@now", now);
+        AddNullable(command, "@fabricTypeCode", fabricTypeCode);
+        AddNullable(command, "@colorValue", colorValue);
+        command.Parameters.AddWithValue("@classId", inventoryClassId);
+        command.Parameters.AddWithValue("@unitId", unitId);
+        AddDecimal(command, "@unitCost", quantity == 0m ? 0m : operationalAmount / quantity);
+        AddDecimal(command, "@operationalAmount", operationalAmount);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task UpdateFoundationInventoryItemAsync(SqlConnection connection, SqlTransaction transaction, int itemId, decimal quantity, decimal operationalAmount, DateTime now, CancellationToken ct)
+    {
+        const string sql = @"
+            UPDATE i
+            SET CurrentQuantity=i.CurrentQuantity+@quantity,
+                AvailableQuantity=i.AvailableQuantity+@quantity,
+                UpdatedAt=@now
+            FROM dbo.InventoryItems i
+            WHERE i.InventoryItemID=@itemId;
+            UPDATE f
+            SET OriginalQuantity=f.OriginalQuantity+@quantity,
+                AvailableQuantity=f.AvailableQuantity+@quantity,
+                OperationalValue=f.OperationalValue+@operationalAmount,
+                OfficialUnitCost=CONVERT(decimal(18,6), (f.OperationalValue+@operationalAmount)/(f.OriginalQuantity+@quantity)),
+                UpdatedAt=@now
+            FROM dbo.InventoryItemFoundation f
+            WHERE f.InventoryItemId=@itemId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        AddDecimal(command, "@quantity", quantity);
+        AddDecimal(command, "@operationalAmount", operationalAmount);
+        command.Parameters.AddWithValue("@now", now);
+        command.Parameters.AddWithValue("@itemId", itemId);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<long> InsertInventoryReceiptPostingAsync(SqlConnection connection, SqlTransaction transaction, int goodsReceiptItemId, byte inventoryClassId, int opposingLedgerAccountId, Guid sourceOperationId, decimal operationalAmount, decimal postingAmount, CancellationToken ct)
+    {
+        const string sql = @"
+            INSERT INTO dbo.InventoryReceiptPostings
+                (GoodsReceiptItemId, InventoryClassId, AccountingBasisCode, OpposingLedgerAccountId, SourceOperationId, OperationalAmount, PostingAmount)
+            OUTPUT INSERTED.InventoryReceiptPostingId
+            VALUES (@goodsReceiptItemId,@classId,1,@opposingAccountId,@sourceOperationId,@operationalAmount,@postingAmount)";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@goodsReceiptItemId", goodsReceiptItemId);
+        command.Parameters.AddWithValue("@classId", inventoryClassId);
+        command.Parameters.AddWithValue("@opposingAccountId", opposingLedgerAccountId);
+        command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        AddDecimal(command, "@operationalAmount", operationalAmount);
+        AddDecimal(command, "@postingAmount", postingAmount, 2);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task<long> InsertInventoryReceiptLineAsync(SqlConnection connection, SqlTransaction transaction, long postingId, int itemId, decimal quantity, decimal unitCost, short unitId, CancellationToken ct)
+    {
+        const string sql = @"
+            INSERT INTO dbo.InventoryReceiptLines (InventoryReceiptPostingId,InventoryItemId,ReceivedQuantity,OfficialUnitCost,UnitId)
+            OUTPUT INSERTED.InventoryReceiptLineId
+            VALUES (@postingId,@itemId,@quantity,@unitCost,@unitId)";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@postingId", postingId);
+        command.Parameters.AddWithValue("@itemId", itemId);
+        AddDecimal(command, "@quantity", quantity);
+        AddDecimal(command, "@unitCost", unitCost);
+        command.Parameters.AddWithValue("@unitId", unitId);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task<long> InsertFabricRollAsync(SqlConnection connection, SqlTransaction transaction, int itemId, string rollCode, string fabricTypeCode, string? colorValue, decimal quantity, decimal unitCost, short unitId, long lineId, DateTime now, CancellationToken ct)
+    {
+        const string sql = @"
+            INSERT INTO dbo.FabricRolls
+                (InventoryItemId,RollCode,FabricTypeCode,ColorValue,OriginalQuantity,AvailableQuantity,ConsumedQuantity,UnitId,OfficialUnitCost,CurrencyCode,InventoryReceiptLineId,CreatedAt,UpdatedAt)
+            OUTPUT INSERTED.FabricRollId
+            VALUES (@itemId,@rollCode,@fabricTypeCode,@colorValue,@quantity,@quantity,0,@unitId,@unitCost,'YER',@lineId,@now,@now)";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@itemId", itemId);
+        command.Parameters.AddWithValue("@rollCode", rollCode);
+        command.Parameters.AddWithValue("@fabricTypeCode", fabricTypeCode);
+        AddNullable(command, "@colorValue", colorValue);
+        AddDecimal(command, "@quantity", quantity);
+        command.Parameters.AddWithValue("@unitId", unitId);
+        AddDecimal(command, "@unitCost", unitCost);
+        command.Parameters.AddWithValue("@lineId", lineId);
+        command.Parameters.AddWithValue("@now", now);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task SetReceiptLineRollAsync(SqlConnection connection, SqlTransaction transaction, long lineId, long rollId, CancellationToken ct)
+    {
+        await using var command = new SqlCommand("UPDATE dbo.InventoryReceiptLines SET FabricRollId=@rollId WHERE InventoryReceiptLineId=@lineId", connection, transaction);
+        command.Parameters.AddWithValue("@rollId", rollId);
+        command.Parameters.AddWithValue("@lineId", lineId);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<int> InsertFoundationInventoryTransactionAsync(SqlConnection connection, SqlTransaction transaction, int itemId, string transactionType, decimal quantity, string reference, decimal operationalCostImpact, decimal unitCost, Guid sourceOperationId, DateTime now, CancellationToken ct)
+    {
+        const string sql = @"
+            INSERT INTO dbo.InventoryTransactions
+                (InventoryItemID,TransactionType,Quantity,ReferenceNumber,Notes,CreatedAt,TotalCostImpact,UnitCost,SourceOperationId,OperationalCostImpact)
+            OUTPUT INSERTED.TransactionID
+            VALUES (@itemId,@transactionType,@quantity,@reference,@notes,@now,@cost,@unitCost,@sourceOperationId,@cost)";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@itemId", itemId);
+        command.Parameters.AddWithValue("@transactionType", transactionType);
+        AddDecimal(command, "@quantity", quantity);
+        command.Parameters.AddWithValue("@reference", reference);
+        command.Parameters.AddWithValue("@notes", "Official fabric and consumables foundation movement");
+        command.Parameters.AddWithValue("@now", now);
+        AddDecimal(command, "@cost", operationalCostImpact);
+        AddDecimal(command, "@unitCost", unitCost);
+        command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task LinkInventoryReceiptArtifactsAsync(SqlConnection connection, SqlTransaction transaction, long lineId, int transactionId, long accountingEventId, CancellationToken ct)
+    {
+        const string sql = "UPDATE dbo.InventoryReceiptLines SET InventoryTransactionId=@transactionId,AccountingEventId=@accountingEventId WHERE InventoryReceiptLineId=@lineId; UPDATE dbo.InventoryTransactions SET AccountingEventId=@accountingEventId WHERE TransactionID=@transactionId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@lineId", lineId);
+        command.Parameters.AddWithValue("@transactionId", transactionId);
+        command.Parameters.AddWithValue("@accountingEventId", accountingEventId);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<FabricRollState?> ReadFabricRollForUpdateAsync(SqlConnection connection, SqlTransaction transaction, long rollId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT fr.FabricRollId, fr.InventoryItemId, i.ItemCode, fr.AvailableQuantity, fr.UnitId, fr.OfficialUnitCost
+            FROM dbo.FabricRolls fr WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.InventoryItems i WITH (UPDLOCK, HOLDLOCK) ON i.InventoryItemID=fr.InventoryItemId AND i.IsActive=1
+            INNER JOIN dbo.InventoryItemFoundation f WITH (UPDLOCK, HOLDLOCK) ON f.InventoryItemId=fr.InventoryItemId AND f.InventoryClassId=1
+            WHERE fr.FabricRollId=@rollId";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@rollId", rollId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        return await reader.ReadAsync(ct)
+            ? new FabricRollState(reader.GetInt64(0), reader.GetInt32(1), reader.GetString(2), reader.GetDecimal(3), reader.GetInt16(4), reader.GetDecimal(5))
+            : null;
+    }
+
+    private static async Task ValidateOrderFabricSourceAsync(SqlConnection connection, SqlTransaction transaction, int orderItemId, int? pieceId, CancellationToken ct)
+    {
+        const string itemSql = "SELECT OrderID FROM dbo.OrderItems WITH (UPDLOCK,HOLDLOCK) WHERE OrderItemID=@orderItemId";
+        await using var itemCommand = new SqlCommand(itemSql, connection, transaction);
+        itemCommand.Parameters.AddWithValue("@orderItemId", orderItemId);
+        if (await itemCommand.ExecuteScalarAsync(ct) is null)
+            throw new InvalidOperationException("The order item source does not exist.");
+        if (pieceId is null) return;
+        const string pieceSql = "SELECT 1 FROM dbo.Pieces WITH (UPDLOCK,HOLDLOCK) WHERE PieceID=@pieceId AND OrderItemID=@orderItemId";
+        await using var pieceCommand = new SqlCommand(pieceSql, connection, transaction);
+        pieceCommand.Parameters.AddWithValue("@pieceId", pieceId.Value);
+        pieceCommand.Parameters.AddWithValue("@orderItemId", orderItemId);
+        if (await pieceCommand.ExecuteScalarAsync(ct) is null)
+            throw new InvalidOperationException("The piece source does not belong to the order item.");
+    }
+
+    private static async Task<long> InsertFabricConsumptionSourceAsync(SqlConnection connection, SqlTransaction transaction, ConsumeFabricInventoryDto request, FabricRollState roll, decimal operationalAmount, decimal postingAmount, DateTime now, CancellationToken ct)
+    {
+        const string sql = @"
+            INSERT INTO dbo.FabricConsumptionSources
+                (SourceOperationId,InventoryItemId,FabricRollId,OrderItemId,PieceId,ConsumedQuantity,UnitId,OfficialUnitCost,OperationalAmount,PostingAmount,ConfirmedByUserId,ConfirmedAt)
+            OUTPUT INSERTED.FabricConsumptionSourceId
+            VALUES (@sourceOperationId,@itemId,@rollId,@orderItemId,@pieceId,@quantity,@unitId,@unitCost,@operationalAmount,@postingAmount,@userId,@now)";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = request.SourceOperationId;
+        command.Parameters.AddWithValue("@itemId", roll.InventoryItemId);
+        command.Parameters.AddWithValue("@rollId", roll.FabricRollId);
+        command.Parameters.AddWithValue("@orderItemId", request.OrderItemId);
+        AddNullable(command, "@pieceId", request.PieceId);
+        AddDecimal(command, "@quantity", request.Quantity);
+        command.Parameters.AddWithValue("@unitId", roll.UnitId);
+        AddDecimal(command, "@unitCost", roll.OfficialUnitCost);
+        AddDecimal(command, "@operationalAmount", operationalAmount);
+        AddDecimal(command, "@postingAmount", postingAmount, 2);
+        AddNullable(command, "@userId", request.ConfirmedByUserId);
+        command.Parameters.AddWithValue("@now", now);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task UpdateFabricRollAndFoundationAsync(SqlConnection connection, SqlTransaction transaction, FabricRollState roll, decimal quantity, decimal operationalAmount, DateTime now, CancellationToken ct)
+    {
+        const string sql = @"
+            UPDATE dbo.FabricRolls
+            SET AvailableQuantity=AvailableQuantity-@quantity, ConsumedQuantity=ConsumedQuantity+@quantity, UpdatedAt=@now
+            WHERE FabricRollId=@rollId AND AvailableQuantity>=@quantity;
+            IF @@ROWCOUNT <> 1 THROW 51440, N'Fabric roll availability changed before consumption.', 1;
+            UPDATE dbo.InventoryItems
+            SET CurrentQuantity=CurrentQuantity-@quantity, AvailableQuantity=AvailableQuantity-@quantity, UpdatedAt=@now
+            WHERE InventoryItemID=@itemId AND AvailableQuantity>=@quantity;
+            IF @@ROWCOUNT <> 1 THROW 51441, N'Inventory item availability changed before consumption.', 1;
+            UPDATE dbo.InventoryItemFoundation
+            SET AvailableQuantity=AvailableQuantity-@quantity, ConsumedQuantity=ConsumedQuantity+@quantity, OperationalValue=OperationalValue-@operationalAmount, UpdatedAt=@now
+            WHERE InventoryItemId=@itemId AND AvailableQuantity>=@quantity AND OperationalValue>=@operationalAmount;
+            IF @@ROWCOUNT <> 1 THROW 51442, N'Foundation inventory availability changed before consumption.', 1;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        AddDecimal(command, "@quantity", quantity);
+        AddDecimal(command, "@operationalAmount", operationalAmount);
+        command.Parameters.AddWithValue("@now", now);
+        command.Parameters.AddWithValue("@rollId", roll.FabricRollId);
+        command.Parameters.AddWithValue("@itemId", roll.InventoryItemId);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<InventoryFoundationPostingResultDto?> TryReadExistingFabricConsumptionAsync(SqlConnection connection, SqlTransaction transaction, ConsumeFabricInventoryDto request, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT TOP (1) s.FabricConsumptionSourceId,s.InventoryItemId,i.ItemCode,s.ConsumedQuantity,s.OperationalAmount,s.PostingAmount,s.AccountingEventId,s.InventoryTransactionId,
+                   s.FabricRollId,s.OrderItemId,s.PieceId
+            FROM dbo.FabricConsumptionSources s WITH (UPDLOCK,HOLDLOCK)
+            INNER JOIN dbo.InventoryItems i ON i.InventoryItemID=s.InventoryItemId
+            WHERE s.SourceOperationId=@sourceOperationId";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = request.SourceOperationId;
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        if (reader.GetDecimal(3) != request.Quantity || reader.GetInt64(8) != request.FabricRollId || reader.GetInt32(9) != request.OrderItemId || (request.PieceId is null ? !reader.IsDBNull(10) : reader.IsDBNull(10) || reader.GetInt32(10) != request.PieceId.Value))
+            throw new InvalidOperationException("The source operation was already used with different fabric consumption details.");
+        if (reader.IsDBNull(6) || reader.IsDBNull(7))
+            throw new InvalidOperationException("The existing fabric consumption posting is incomplete.");
+        return new InventoryFoundationPostingResultDto(reader.GetInt64(0), reader.GetInt32(1), reader.GetString(2), reader.GetDecimal(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetInt64(6), reader.GetInt32(7), true);
+    }
+
+    private static async Task<ConsumableItemState?> ReadConsumableItemForUpdateAsync(SqlConnection connection, SqlTransaction transaction, int itemId, short unitId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT i.ItemCode,f.AvailableQuantity,f.OfficialUnitCost,f.UnitId
+            FROM dbo.InventoryItems i WITH (UPDLOCK,HOLDLOCK)
+            INNER JOIN dbo.InventoryItemFoundation f WITH (UPDLOCK,HOLDLOCK) ON f.InventoryItemId=i.InventoryItemID AND f.InventoryClassId=2 AND f.UnitId=@unitId
+            WHERE i.InventoryItemID=@itemId AND i.IsActive=1";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@itemId", itemId);
+        command.Parameters.AddWithValue("@unitId", unitId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        return await reader.ReadAsync(ct)
+            ? new ConsumableItemState(itemId, reader.GetString(0), reader.GetDecimal(1), reader.GetDecimal(2), reader.GetInt16(3))
+            : null;
+    }
+
+    private static async Task ValidateProductionSourceAsync(SqlConnection connection, SqlTransaction transaction, int productionOrderId, int? productionBatchId, int? productMaterialId, int inventoryItemId, CancellationToken ct)
+    {
+        const string orderSql = "SELECT 1 FROM dbo.ProductionOrders WITH (UPDLOCK,HOLDLOCK) WHERE ProductionOrderId=@productionOrderId";
+        await using var orderCommand = new SqlCommand(orderSql, connection, transaction);
+        orderCommand.Parameters.AddWithValue("@productionOrderId", productionOrderId);
+        if (await orderCommand.ExecuteScalarAsync(ct) is null)
+            throw new InvalidOperationException("The production order source does not exist.");
+        if (productionBatchId is not null)
+        {
+            const string batchSql = "SELECT 1 FROM dbo.ProductionBatches WITH (UPDLOCK,HOLDLOCK) WHERE ProductionBatchId=@batchId AND ProductionOrderId=@orderId";
+            await using var batchCommand = new SqlCommand(batchSql, connection, transaction);
+            batchCommand.Parameters.AddWithValue("@batchId", productionBatchId.Value);
+            batchCommand.Parameters.AddWithValue("@orderId", productionOrderId);
+            if (await batchCommand.ExecuteScalarAsync(ct) is null)
+                throw new InvalidOperationException("The production batch source does not belong to the production order.");
+        }
+        if (productMaterialId is null) return;
+        const string materialSql = "SELECT 1 FROM dbo.ProductMaterials WITH (UPDLOCK,HOLDLOCK) WHERE ProductMaterialId=@materialId AND MaterialInventoryItemId=@itemId";
+        await using var materialCommand = new SqlCommand(materialSql, connection, transaction);
+        materialCommand.Parameters.AddWithValue("@materialId", productMaterialId.Value);
+        materialCommand.Parameters.AddWithValue("@itemId", inventoryItemId);
+        if (await materialCommand.ExecuteScalarAsync(ct) is null)
+            throw new InvalidOperationException("The product material source does not belong to the consumable item.");
+    }
+
+    private static async Task<int> InsertConsumableConsumptionSourceAsync(SqlConnection connection, SqlTransaction transaction, ConsumeConsumableInventoryDto request, decimal unitCost, decimal operationalAmount, decimal postingAmount, DateTime now, CancellationToken ct)
+    {
+        const string sql = @"
+            INSERT INTO dbo.ProductionMaterialConsumptions
+                (ProductionOrderId,ProductionBatchId,InventoryItemId,ProductMaterialId,ConsumedQuantity,UnitCost,TotalCost,ConsumptionDate,ReferenceNumber,Notes,CreatedAt,UnitId,SourceOperationId,OperationalAmount,PostingAmount)
+            OUTPUT INSERTED.ProductionMaterialConsumptionId
+            VALUES (@orderId,@batchId,@itemId,@materialId,@quantity,@unitCost,@totalCost,@now,@reference,@notes,@now,@unitId,@sourceOperationId,@operationalAmount,@postingAmount)";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@orderId", request.ProductionOrderId);
+        AddNullable(command, "@batchId", request.ProductionBatchId);
+        command.Parameters.AddWithValue("@itemId", request.InventoryItemId);
+        AddNullable(command, "@materialId", request.ProductMaterialId);
+        AddDecimal(command, "@quantity", request.Quantity);
+        AddDecimal(command, "@unitCost", unitCost);
+        AddDecimal(command, "@totalCost", operationalAmount);
+        var reference = $"ProductionOrder:{request.ProductionOrderId}:InventoryItem:{request.InventoryItemId}";
+        command.Parameters.AddWithValue("@now", now);
+        command.Parameters.AddWithValue("@reference", reference);
+        command.Parameters.AddWithValue("@notes", "Official consumable inventory consumption");
+        command.Parameters.AddWithValue("@unitId", request.UnitId);
+        command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = request.SourceOperationId;
+        AddDecimal(command, "@operationalAmount", operationalAmount);
+        AddDecimal(command, "@postingAmount", postingAmount, 2);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task UpdateConsumableFoundationAsync(SqlConnection connection, SqlTransaction transaction, ConsumableItemState item, decimal quantity, decimal operationalAmount, DateTime now, CancellationToken ct)
+    {
+        const string sql = @"
+            UPDATE dbo.InventoryItems
+            SET CurrentQuantity=CurrentQuantity-@quantity, AvailableQuantity=AvailableQuantity-@quantity, UpdatedAt=@now
+            WHERE InventoryItemID=@itemId AND AvailableQuantity>=@quantity;
+            IF @@ROWCOUNT <> 1 THROW 51443, N'Consumable inventory availability changed before consumption.', 1;
+            UPDATE dbo.InventoryItemFoundation
+            SET AvailableQuantity=AvailableQuantity-@quantity, ConsumedQuantity=ConsumedQuantity+@quantity, OperationalValue=OperationalValue-@operationalAmount, UpdatedAt=@now
+            WHERE InventoryItemId=@itemId AND AvailableQuantity>=@quantity AND OperationalValue>=@operationalAmount;
+            IF @@ROWCOUNT <> 1 THROW 51444, N'Consumable foundation availability changed before consumption.', 1;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        AddDecimal(command, "@quantity", quantity);
+        AddDecimal(command, "@operationalAmount", operationalAmount);
+        command.Parameters.AddWithValue("@now", now);
+        command.Parameters.AddWithValue("@itemId", item.ItemId);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task LinkConsumptionTransactionAsync(SqlConnection connection, SqlTransaction transaction, long sourceId, int transactionId, CancellationToken ct)
+    {
+        const string sql = "UPDATE dbo.ProductionMaterialConsumptions SET InventoryTransactionId=@transactionId WHERE ProductionMaterialConsumptionId=@sourceId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@sourceId", sourceId);
+        command.Parameters.AddWithValue("@transactionId", transactionId);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task LinkFabricConsumptionArtifactsAsync(SqlConnection connection, SqlTransaction transaction, long sourceId, int transactionId, long accountingEventId, CancellationToken ct)
+    {
+        const string sql = "UPDATE dbo.FabricConsumptionSources SET InventoryTransactionId=@transactionId,AccountingEventId=@accountingEventId WHERE FabricConsumptionSourceId=@sourceId; UPDATE dbo.InventoryTransactions SET AccountingEventId=@accountingEventId WHERE TransactionID=@transactionId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@sourceId", sourceId);
+        command.Parameters.AddWithValue("@transactionId", transactionId);
+        command.Parameters.AddWithValue("@accountingEventId", accountingEventId);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task LinkConsumableConsumptionArtifactsAsync(SqlConnection connection, SqlTransaction transaction, long sourceId, int transactionId, long accountingEventId, CancellationToken ct)
+    {
+        const string sql = "UPDATE dbo.ProductionMaterialConsumptions SET InventoryTransactionId=@transactionId,AccountingEventId=@accountingEventId WHERE ProductionMaterialConsumptionId=@sourceId; UPDATE dbo.InventoryTransactions SET AccountingEventId=@accountingEventId WHERE TransactionID=@transactionId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@sourceId", sourceId);
+        command.Parameters.AddWithValue("@transactionId", transactionId);
+        command.Parameters.AddWithValue("@accountingEventId", accountingEventId);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<InventoryFoundationPostingResultDto?> TryReadExistingConsumableConsumptionAsync(SqlConnection connection, SqlTransaction transaction, ConsumeConsumableInventoryDto request, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT TOP (1) c.ProductionMaterialConsumptionId,c.InventoryItemId,i.ItemCode,c.ConsumedQuantity,c.OperationalAmount,c.PostingAmount,c.AccountingEventId,c.InventoryTransactionId,
+                   c.ProductionOrderId,c.ProductionBatchId,c.ProductMaterialId
+            FROM dbo.ProductionMaterialConsumptions c WITH (UPDLOCK,HOLDLOCK)
+            INNER JOIN dbo.InventoryItems i ON i.InventoryItemID=c.InventoryItemId
+            WHERE c.SourceOperationId=@sourceOperationId";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = request.SourceOperationId;
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        if (reader.GetInt32(1) != request.InventoryItemId || reader.GetInt32(8) != request.ProductionOrderId || reader.GetDecimal(3) != request.Quantity || (request.ProductionBatchId is null ? !reader.IsDBNull(9) : reader.IsDBNull(9) || reader.GetInt32(9) != request.ProductionBatchId.Value) || (request.ProductMaterialId is null ? !reader.IsDBNull(10) : reader.IsDBNull(10) || reader.GetInt32(10) != request.ProductMaterialId.Value))
+            throw new InvalidOperationException("The source operation was already used with different consumable consumption details.");
+        if (reader.IsDBNull(6) || reader.IsDBNull(7))
+            throw new InvalidOperationException("The existing consumable consumption posting is incomplete.");
+        return new InventoryFoundationPostingResultDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetDecimal(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetInt64(6), reader.GetInt32(7), true);
+    }
+
+    private static void AddDecimal(SqlCommand command, string name, decimal value, byte scale = 6)
+    {
+        var parameter = command.Parameters.Add(name, System.Data.SqlDbType.Decimal);
+        parameter.Precision = 18;
+        parameter.Scale = scale;
+        parameter.Value = value;
+    }
+
+    private sealed record GoodsReceiptSource(decimal Quantity, decimal UnitCost, string ReceiptNumber, string ItemName);
+    private sealed record FoundationItemState(int InventoryItemId, bool HasFoundation, byte? InventoryClassId, short? UnitId, decimal OriginalQuantity, decimal AvailableQuantity, decimal ConsumedQuantity, decimal OperationalValue);
+    private sealed record FabricRollState(long FabricRollId, int InventoryItemId, string ItemCode, decimal AvailableQuantity, short UnitId, decimal OfficialUnitCost);
+    private sealed record ConsumableItemState(int ItemId, string ItemCode, decimal AvailableQuantity, decimal OfficialUnitCost, short UnitId);
 
     public async Task<FabricBatchResultDto?> ReceiveFabricBatchAsync(CreateFabricBatchDto batch, CancellationToken ct)
     {

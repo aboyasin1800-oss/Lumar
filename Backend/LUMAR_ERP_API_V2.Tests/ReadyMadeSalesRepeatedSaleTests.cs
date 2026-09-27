@@ -11,10 +11,10 @@ namespace LUMAR_ERP_API_V2.Tests;
 public sealed class ReadyMadeSalesRepeatedSaleTests
 {
     [Fact]
-    public async Task CreateAsync_RejectsSalesThatRequireTheUnapprovedCostContract()
+    public async Task CreateAsync_RejectsHistoricalImportedProductWithoutOfficialReceipt()
     {
         var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
-            ?? "Data Source=YASIN-YASIN\\SQLEXPRESS;Initial Catalog=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True;";
+            ?? "Data Source=YASIN-YASIN\\SQLEXPRESS;Initial Catalog=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True;";
         var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
         var repository = new ReadyMadeSalesRepository(
             new ReadOnlySqlConnectionFactory(options),
@@ -23,7 +23,7 @@ public sealed class ReadyMadeSalesRepeatedSaleTests
         var reference = $"RMS-REPEAT-{Guid.NewGuid():N}";
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.CreateAsync(BuildSale(seed, reference), CancellationToken.None));
-        Assert.Equal("هذه العملية غير متاحة حتى اكتمال عقد الربط المحاسبي.", exception.Message);
+        Assert.Equal("لا يوجد رصيد مخزون رسمي للمنتج المستورد؛ لن يتم ربط سجل تاريخي تلقائياً.", exception.Message);
     }
 
     private static CreateReadyMadeSaleDto BuildSale((int CustomerId, int ProductId) seed, string reference) => new()

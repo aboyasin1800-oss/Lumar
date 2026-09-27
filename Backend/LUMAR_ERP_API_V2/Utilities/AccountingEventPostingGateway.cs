@@ -10,7 +10,14 @@ public enum AccountingEventType : byte
     RevenueRecognizedOrder = 3,
     RevenueRecognizedPrintSale = 4,
     WipToFinishedGoods = 5,
-    CustomerAdvanceApplied = 6
+    CustomerAdvanceApplied = 6,
+    FabricInventoryReceived = 7,
+    FabricInventoryConsumed = 8,
+    ConsumableInventoryReceived = 9,
+    ConsumableInventoryConsumed = 10,
+    ReadyMadeSaleCost = 11,
+    ImportedReadyMadeInventoryReceived = 12,
+    ImportedReadyMadeSaleCost = 13
 }
 
 public sealed record AccountingEventPostingResult(long AccountingEventId, int FinancialTransactionId, int JournalEntryId, bool IsExisting);
@@ -39,6 +46,181 @@ public static class AccountingEventPostingGateway
             measurementCardPrintHistoryId,
             readyMadeInventoryProductId,
             null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            referenceNumber,
+            description,
+            cancellationToken);
+
+    public static Task<AccountingEventPostingResult> PostInventoryReceiptAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        AccountingEventType accountingEventType,
+        long inventoryReceiptPostingId,
+        decimal postingAmount,
+        string? referenceNumber,
+        string? description,
+        CancellationToken cancellationToken)
+        => PostCoreAsync(
+            connection,
+            transaction,
+            accountingEventType,
+            postingAmount,
+            null,
+            null,
+            null,
+            null,
+            null,
+            inventoryReceiptPostingId,
+            null,
+            null,
+            null,
+            null,
+            null,
+            referenceNumber,
+            description,
+            cancellationToken);
+
+    public static Task<AccountingEventPostingResult> PostFabricConsumptionAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        long fabricConsumptionSourceId,
+        decimal postingAmount,
+        string? referenceNumber,
+        string? description,
+        CancellationToken cancellationToken)
+        => PostCoreAsync(
+            connection,
+            transaction,
+            AccountingEventType.FabricInventoryConsumed,
+            postingAmount,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            fabricConsumptionSourceId,
+            null,
+            null,
+            null,
+            null,
+            referenceNumber,
+            description,
+            cancellationToken);
+
+    public static Task<AccountingEventPostingResult> PostConsumableConsumptionAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int productionMaterialConsumptionId,
+        decimal postingAmount,
+        string? referenceNumber,
+        string? description,
+        CancellationToken cancellationToken)
+        => PostCoreAsync(
+            connection,
+            transaction,
+            AccountingEventType.ConsumableInventoryConsumed,
+            postingAmount,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            productionMaterialConsumptionId,
+            null,
+            null,
+            null,
+            referenceNumber,
+            description,
+            cancellationToken);
+
+    public static Task<AccountingEventPostingResult> PostReadyMadeSaleCostAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        long readyMadeSaleCostPostingId,
+        decimal postingAmount,
+        string? referenceNumber,
+        string? description,
+        CancellationToken cancellationToken)
+        => PostCoreAsync(
+            connection,
+            transaction,
+            AccountingEventType.ReadyMadeSaleCost,
+            postingAmount,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            readyMadeSaleCostPostingId,
+            null,
+            null,
+            referenceNumber,
+            description,
+            cancellationToken);
+
+    public static Task<AccountingEventPostingResult> PostImportedInventoryReceiptAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        long importedReadyMadeInventoryReceiptId,
+        decimal postingAmount,
+        string? referenceNumber,
+        string? description,
+        CancellationToken cancellationToken)
+        => PostCoreAsync(
+            connection,
+            transaction,
+            AccountingEventType.ImportedReadyMadeInventoryReceived,
+            postingAmount,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            importedReadyMadeInventoryReceiptId,
+            null,
+            referenceNumber,
+            description,
+            cancellationToken);
+
+    public static Task<AccountingEventPostingResult> PostImportedSaleCostAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        long importedReadyMadeSaleCostPostingId,
+        decimal postingAmount,
+        string? referenceNumber,
+        string? description,
+        CancellationToken cancellationToken)
+        => PostCoreAsync(
+            connection,
+            transaction,
+            AccountingEventType.ImportedReadyMadeSaleCost,
+            postingAmount,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            importedReadyMadeSaleCostPostingId,
             referenceNumber,
             description,
             cancellationToken);
@@ -61,6 +243,12 @@ public static class AccountingEventPostingGateway
             null,
             null,
             advanceApplicationId,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
             referenceNumber,
             description,
             cancellationToken);
@@ -75,6 +263,12 @@ public static class AccountingEventPostingGateway
         int? measurementCardPrintHistoryId,
         int? readyMadeInventoryProductId,
         long? customerAdvanceApplicationId,
+        long? inventoryReceiptPostingId,
+        long? fabricConsumptionSourceId,
+        int? productionMaterialConsumptionId,
+        long? readyMadeSaleCostPostingId,
+        long? importedReadyMadeInventoryReceiptId,
+        long? importedReadyMadeSaleCostPostingId,
         string? referenceNumber,
         string? description,
         CancellationToken cancellationToken)
@@ -94,6 +288,12 @@ public static class AccountingEventPostingGateway
         AddNullableInt(command, "@MeasurementCardPrintHistoryId", measurementCardPrintHistoryId);
         AddNullableInt(command, "@ReadyMadeInventoryProductId", readyMadeInventoryProductId);
         AddNullableLong(command, "@CustomerAdvanceApplicationId", customerAdvanceApplicationId);
+        AddNullableLong(command, "@InventoryReceiptPostingId", inventoryReceiptPostingId);
+        AddNullableLong(command, "@FabricConsumptionSourceId", fabricConsumptionSourceId);
+        AddNullableInt(command, "@ProductionMaterialConsumptionId", productionMaterialConsumptionId);
+        AddNullableLong(command, "@ReadyMadeSaleCostPostingId", readyMadeSaleCostPostingId);
+        AddNullableLong(command, "@ImportedReadyMadeInventoryReceiptId", importedReadyMadeInventoryReceiptId);
+        AddNullableLong(command, "@ImportedReadyMadeSaleCostPostingId", importedReadyMadeSaleCostPostingId);
         AddNullableString(command, "@ReferenceNumber", referenceNumber, 200);
         AddNullableString(command, "@Description", description, 1000);
 

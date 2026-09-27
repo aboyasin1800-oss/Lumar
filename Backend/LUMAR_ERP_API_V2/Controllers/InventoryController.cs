@@ -87,21 +87,59 @@ public sealed class InventoryController(IInventoryService service) : ControllerB
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<FabricBatchResultDto>> ReceiveFabricBatch(CreateFabricBatchDto batch, CancellationToken ct)
     {
-        if (batch.SupplierId <= 0) return BadRequest("Supplier is required.");
-        if (string.IsNullOrWhiteSpace(batch.InvoiceNumber)) return BadRequest("Invoice number is required.");
-        if (batch.Rolls == null || batch.Rolls.Count == 0) return BadRequest("At least one roll is required.");
+        return StatusCode(StatusCodes.Status405MethodNotAllowed, "Legacy fabric batch input is disabled. Use the official goods-receipt foundation endpoint.");
+    }
 
-        foreach (var roll in batch.Rolls)
-        {
-            if (string.IsNullOrWhiteSpace(roll.FabricCode)) return BadRequest("Fabric code is required for all rolls.");
-            if (string.IsNullOrWhiteSpace(roll.FabricType)) return BadRequest("Fabric type is required for all rolls.");
-            if (roll.FabricWidth <= 0) return BadRequest("Fabric width must be positive.");
-            if (roll.QuantityYards <= 0) return BadRequest("Quantity of yards must be positive.");
-            if (roll.YardPrice <= 0) return BadRequest("Yard price must be positive.");
-        }
+    [HttpPost("foundation/fabric-receipts")]
+    [ProducesResponseType<InventoryFoundationPostingResultDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<InventoryFoundationPostingResultDto>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<InventoryFoundationPostingResultDto>> ReceiveFoundationFabric(ReceiveFabricInventoryDto request, CancellationToken ct)
+    {
+        if (request.GoodsReceiptItemId <= 0 || string.IsNullOrWhiteSpace(request.ItemCode) || string.IsNullOrWhiteSpace(request.FabricTypeCode))
+            return BadRequest("Goods receipt item, item code, and fabric type code are required.");
+        if (request.UnitId is not (1 or 2) || string.IsNullOrWhiteSpace(request.OpposingLedgerAccountCode) || request.SourceOperationId == Guid.Empty)
+            return BadRequest("A valid fabric unit, opposing ledger account, and source operation id are required.");
 
-        var result = await service.ReceiveFabricBatchAsync(batch, ct);
-        return result is null ? NotFound("Supplier does not exist.") : StatusCode(StatusCodes.Status201Created, result);
+        var result = await service.ReceiveFabricInventoryAsync(request, ct);
+        return result is null ? NotFound() : result.IsExisting ? Ok(result) : StatusCode(StatusCodes.Status201Created, result);
+    }
+
+    [HttpPost("foundation/consumable-receipts")]
+    [ProducesResponseType<InventoryFoundationPostingResultDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<InventoryFoundationPostingResultDto>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<InventoryFoundationPostingResultDto>> ReceiveFoundationConsumable(ReceiveConsumableInventoryDto request, CancellationToken ct)
+    {
+        if (request.GoodsReceiptItemId <= 0 || string.IsNullOrWhiteSpace(request.ItemCode) || string.IsNullOrWhiteSpace(request.OpposingLedgerAccountCode) || request.SourceOperationId == Guid.Empty)
+            return BadRequest("Goods receipt item, item code, opposing ledger account, and source operation id are required.");
+        if (request.UnitId != 3) return BadRequest("Consumable inventory must use the formal piece unit.");
+
+        var result = await service.ReceiveConsumableInventoryAsync(request, ct);
+        return result is null ? NotFound() : result.IsExisting ? Ok(result) : StatusCode(StatusCodes.Status201Created, result);
+    }
+
+    [HttpPost("foundation/fabric-consumptions")]
+    [ProducesResponseType<InventoryFoundationPostingResultDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<InventoryFoundationPostingResultDto>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<InventoryFoundationPostingResultDto>> ConsumeFoundationFabric(ConsumeFabricInventoryDto request, CancellationToken ct)
+    {
+        if (request.FabricRollId <= 0 || request.OrderItemId <= 0 || request.Quantity <= 0 || request.SourceOperationId == Guid.Empty)
+            return BadRequest("Fabric roll, order item, positive quantity, and source operation id are required.");
+
+        var result = await service.ConsumeFabricInventoryAsync(request, ct);
+        return result is null ? NotFound() : result.IsExisting ? Ok(result) : StatusCode(StatusCodes.Status201Created, result);
+    }
+
+    [HttpPost("foundation/consumable-consumptions")]
+    [ProducesResponseType<InventoryFoundationPostingResultDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<InventoryFoundationPostingResultDto>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<InventoryFoundationPostingResultDto>> ConsumeFoundationConsumable(ConsumeConsumableInventoryDto request, CancellationToken ct)
+    {
+        if (request.ProductionOrderId <= 0 || request.InventoryItemId <= 0 || request.Quantity <= 0 || request.SourceOperationId == Guid.Empty)
+            return BadRequest("Production order, inventory item, positive quantity, and source operation id are required.");
+        if (request.UnitId != 3) return BadRequest("Consumable inventory must use the formal piece unit.");
+
+        var result = await service.ConsumeConsumableInventoryAsync(request, ct);
+        return result is null ? NotFound() : result.IsExisting ? Ok(result) : StatusCode(StatusCodes.Status201Created, result);
     }
 
     [HttpPost("items")]

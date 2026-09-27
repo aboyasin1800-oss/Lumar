@@ -17,4 +17,8 @@ public sealed class InventoryService(IInventoryRepository repository) : IInvento
     public Task<ImportedReadyMadeProductDto?> UpsertImportedProductAsync(CreateImportedProductDto product, CancellationToken ct) => repository.UpsertImportedProductAsync(product, ct);
     public Task<InventoryItemDto?> UpsertToolItemAsync(CreateToolItemDto tool, CancellationToken ct) => repository.UpsertToolItemAsync(tool, ct);
     public Task<FabricBatchResultDto?> ReceiveFabricBatchAsync(CreateFabricBatchDto batch, CancellationToken ct) => repository.ReceiveFabricBatchAsync(batch, ct);
+    public Task<InventoryFoundationPostingResultDto?> ReceiveFabricInventoryAsync(ReceiveFabricInventoryDto request, CancellationToken ct) => repository.ReceiveFabricInventoryAsync(request, ct);
+    public Task<InventoryFoundationPostingResultDto?> ReceiveConsumableInventoryAsync(ReceiveConsumableInventoryDto request, CancellationToken ct) => repository.ReceiveConsumableInventoryAsync(request, ct);
+    public Task<InventoryFoundationPostingResultDto?> ConsumeFabricInventoryAsync(ConsumeFabricInventoryDto request, CancellationToken ct) => repository.ConsumeFabricInventoryAsync(request, ct);
+    public Task<InventoryFoundationPostingResultDto?> ConsumeConsumableInventoryAsync(ConsumeConsumableInventoryDto request, CancellationToken ct) => repository.ConsumeConsumableInventoryAsync(request, ct);
 }

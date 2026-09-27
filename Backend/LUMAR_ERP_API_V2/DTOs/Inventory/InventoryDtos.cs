@@ -123,3 +123,104 @@ public sealed record FabricBatchResultDto(
     string ReferenceNumber,
     DateTime CreatedAt
 );
+
+public sealed class ReceiveFabricInventoryDto
+{
+    [Range(1, int.MaxValue)]
+    public int GoodsReceiptItemId { get; init; }
+
+    [Required, StringLength(100)]
+    public string ItemCode { get; init; } = string.Empty;
+
+    [Required, StringLength(100)]
+    public string FabricTypeCode { get; init; } = string.Empty;
+
+    [StringLength(100)]
+    public string? RollCode { get; init; }
+
+    [StringLength(100)]
+    public string? ColorValue { get; init; }
+
+    [Range(1, 2)]
+    public short UnitId { get; init; } = 1;
+
+    [Required, StringLength(100)]
+    public string OpposingLedgerAccountCode { get; init; } = string.Empty;
+
+    public Guid SourceOperationId { get; init; }
+}
+
+public sealed class ReceiveConsumableInventoryDto
+{
+    [Range(1, int.MaxValue)]
+    public int GoodsReceiptItemId { get; init; }
+
+    [Required, StringLength(100)]
+    public string ItemCode { get; init; } = string.Empty;
+
+    [Range(3, 3)]
+    public short UnitId { get; init; } = 3;
+
+    [Required, StringLength(100)]
+    public string OpposingLedgerAccountCode { get; init; } = string.Empty;
+
+    public Guid SourceOperationId { get; init; }
+}
+
+public sealed class ConsumeFabricInventoryDto
+{
+    [Range(1, long.MaxValue)]
+    public long FabricRollId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int OrderItemId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? PieceId { get; init; }
+
+    [Range(typeof(decimal), "0.000001", "1000000000")]
+    public decimal Quantity { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? ConfirmedByUserId { get; init; }
+
+    public Guid SourceOperationId { get; init; }
+}
+
+public sealed class ConsumeConsumableInventoryDto
+{
+    [Range(1, int.MaxValue)]
+    public int ProductionOrderId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? ProductionBatchId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int InventoryItemId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? ProductMaterialId { get; init; }
+
+    [Range(typeof(decimal), "0.000001", "1000000000")]
+    public decimal Quantity { get; init; }
+
+    [Range(3, 3)]
+    public short UnitId { get; init; } = 3;
+
+    [Range(1, int.MaxValue)]
+    public int? ConfirmedByUserId { get; init; }
+
+    public Guid SourceOperationId { get; init; }
+}
+
+public sealed record InventoryFoundationPostingResultDto(
+    long SourceRecordId,
+    int InventoryItemId,
+    string ItemCode,
+    decimal Quantity,
+    decimal OperationalAmount,
+    decimal PostingAmount,
+    long AccountingEventId,
+    int InventoryTransactionId,
+    bool IsExisting
+);
