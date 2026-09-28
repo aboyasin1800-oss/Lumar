@@ -11,19 +11,25 @@ namespace LUMAR_ERP_API_V2.Tests;
 public sealed class ReadyMadeSalesRepeatedSaleTests
 {
     [Fact]
-    public async Task CreateAsync_RejectsHistoricalImportedProductWithoutOfficialReceipt()
+    public async Task CreateAsync_RejectsSeededImportedProductWithoutOfficialReceipt()
     {
-        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
-            ?? "Data Source=YASIN-YASIN\\SQLEXPRESS;Initial Catalog=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True;";
+        var connectionString = GetValidationConnectionString();
         var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
         var repository = new ReadyMadeSalesRepository(
             new ReadOnlySqlConnectionFactory(options),
             new OperationalSqlConnectionFactory(options));
-        var seed = await ReadSeedAsync(connectionString);
+        var seed = await SeedAsync(connectionString);
         var reference = $"RMS-REPEAT-{Guid.NewGuid():N}";
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.CreateAsync(BuildSale(seed, reference), CancellationToken.None));
-        Assert.Equal("لا يوجد رصيد مخزون رسمي للمنتج المستورد؛ لن يتم ربط سجل تاريخي تلقائياً.", exception.Message);
+        try
+        {
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.CreateAsync(BuildSale(seed, reference), CancellationToken.None));
+            Assert.Equal("لا يوجد رصيد مخزون رسمي للمنتج المستورد؛ لن يتم ربط سجل تاريخي تلقائياً.", exception.Message);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
     }
 
     private static CreateReadyMadeSaleDto BuildSale((int CustomerId, int ProductId) seed, string reference) => new()
@@ -41,18 +47,59 @@ public sealed class ReadyMadeSalesRepeatedSaleTests
         }],
     };
 
-    private static async Task<(int CustomerId, int ProductId)> ReadSeedAsync(string connectionString)
+    private static string GetValidationConnectionString()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must target the validation database.");
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_CUSTOMERS_ONLY_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Ready-made repeated-sale tests are restricted to the validation database.");
+        return builder.ConnectionString;
+    }
+
+    private static async Task<(int CustomerId, int ProductId)> SeedAsync(string connectionString)
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..12];
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
+        try
+        {
+            await using var command = new SqlCommand(@"
+                INSERT INTO dbo.Customers (CustomerCode, CustomerName, PhoneNumber, TotalPoints, TotalPieces, TotalDebts, IsActive)
+                OUTPUT INSERTED.CustomerID
+                VALUES (@customerCode, N'عميل اختبار بيع جاهز', @phoneNumber, 0, 0, 0, 1);", connection, transaction);
+            command.Parameters.AddWithValue("@customerCode", $"RMS-{suffix}");
+            command.Parameters.AddWithValue("@phoneNumber", $"011{suffix[..9]}");
+            var customerId = Convert.ToInt32(await command.ExecuteScalarAsync());
+
+            command.CommandText = @"
+                INSERT INTO dbo.ImportedReadyMadeProducts
+                    (ProductName, ProductType, ProductCode, Unit, Quantity, PurchasePrice, SellingPrice, IsActive, Category, CreatedAt)
+                OUTPUT INSERTED.ImportedReadyMadeProductId
+                VALUES (N'منتج مستورد لاختبار الرفض', N'جاهز', @productCode, N'قطعة', 2, 10, 20, 1, N'اختبار', SYSUTCDATETIME());";
+            command.Parameters.Clear();
+            command.Parameters.AddWithValue("@productCode", $"RMS-{suffix}");
+            var productId = Convert.ToInt32(await command.ExecuteScalarAsync());
+            await transaction.CommitAsync();
+            return (customerId, productId);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    private static async Task CleanupAsync(string connectionString, (int CustomerId, int ProductId) seed)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new SqlCommand(@"
-            SELECT TOP (1) c.CustomerID, p.ImportedReadyMadeProductId
-            FROM dbo.Customers c
-            CROSS JOIN dbo.ImportedReadyMadeProducts p
-            WHERE c.IsActive = 1 AND p.IsActive = 1 AND p.Quantity >= 2
-            ORDER BY c.CustomerID, p.ImportedReadyMadeProductId;", connection);
-        await using var reader = await command.ExecuteReaderAsync();
-        if (!await reader.ReadAsync()) throw new InvalidOperationException("لا توجد بيانات اختبار متاحة لبيعين متتاليين.");
-        return (reader.GetInt32(0), reader.GetInt32(1));
+            DELETE FROM dbo.ImportedReadyMadeProducts WHERE ImportedReadyMadeProductId = @productId;
+            DELETE FROM dbo.Customers WHERE CustomerID = @customerId;", connection);
+        command.Parameters.AddWithValue("@productId", seed.ProductId);
+        command.Parameters.AddWithValue("@customerId", seed.CustomerId);
+        await command.ExecuteNonQueryAsync();
     }
 }

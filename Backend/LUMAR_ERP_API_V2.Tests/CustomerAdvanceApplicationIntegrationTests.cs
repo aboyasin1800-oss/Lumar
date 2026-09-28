@@ -159,7 +159,8 @@ DELETE FROM dbo.Orders WHERE OrderID=@orderId;", connection);
         return Convert.ToDecimal(await command.ExecuteScalarAsync());
     }
 
-    private static string GetConnectionString() => "Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True";
+    private static string GetConnectionString() => Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+        ?? "Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True";
 
     private sealed record Fixture(OrderRepository Repository, int OrderId, string OrderNumber, int CustomerId, IReadOnlyList<int> PaymentIds, DateTime CreatedAt);
 }

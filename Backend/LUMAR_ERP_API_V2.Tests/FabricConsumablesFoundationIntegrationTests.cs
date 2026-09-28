@@ -14,6 +14,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests
     public async Task OfficialFabricBatch_CreatesPurchaseReceiptFoundationAndBalancedEntry()
     {
         var connectionString = GetConnectionString();
+        var support = await SeedOfficialBatchSupportAsync(connectionString);
         var suffix = Guid.NewGuid().ToString("N")[..12];
         var invoiceNumber = $"FOUND-BATCH-{suffix}";
         var fabricCode = $"FAB-BATCH-{suffix}";
@@ -23,7 +24,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests
             var result = await CreateRepository(connectionString).ReceiveFabricBatchAsync(
                 new CreateFabricBatchDto
                 {
-                    SupplierId = await ReadFirstSupplierIdAsync(connectionString),
+                    SupplierId = support.SupplierId,
                     InvoiceNumber = invoiceNumber,
                     PurchaseDate = DateTime.UtcNow,
                     Rolls = [new CreateFabricRollDto
@@ -51,7 +52,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests
             var retry = await CreateRepository(connectionString).ReceiveFabricBatchAsync(
                 new CreateFabricBatchDto
                 {
-                    SupplierId = await ReadFirstSupplierIdAsync(connectionString),
+                    SupplierId = support.SupplierId,
                     InvoiceNumber = invoiceNumber,
                     Rolls = [new CreateFabricRollDto
                     {
@@ -71,6 +72,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests
         finally
         {
             await CleanupOfficialFabricBatchAsync(connectionString, invoiceNumber, fabricCode);
+            await CleanupOfficialBatchSupportAsync(connectionString, support);
         }
     }
 
@@ -221,7 +223,15 @@ public sealed class FabricConsumablesFoundationIntegrationTests
 
             Assert.Equal(4.765433m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.FabricRolls WHERE FabricRollId=@id", fabricRollId));
             Assert.Equal(1.875m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", consumableReceipt.InventoryItemId));
-            Assert.Equal(4, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.AccountingEvents WHERE AccountingEventType IN (7,8,9,10) AND (InventoryReceiptPostingId IS NOT NULL OR FabricConsumptionSourceId IS NOT NULL OR ProductionMaterialConsumptionId IS NOT NULL)", null));
+            Assert.Equal(4, await CountAsync(connectionString, @"
+                SELECT COUNT(*)
+                FROM dbo.AccountingEvents
+                WHERE AccountingEventType IN (7,8,9,10)
+                  AND (
+                      InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation))
+                      OR FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM dbo.FabricConsumptionSources WHERE SourceOperationId=@fabricConsumptionOperation)
+                      OR ProductionMaterialConsumptionId IN (SELECT ProductionMaterialConsumptionId FROM dbo.ProductionMaterialConsumptions WHERE SourceOperationId=@consumableConsumptionOperation)
+                  )", seed));
         }
         finally
         {
@@ -283,14 +293,14 @@ public sealed class FabricConsumablesFoundationIntegrationTests
             ?? "Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True";
         var builder = new SqlConnectionStringBuilder(connectionString);
         if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_FOUNDATION_GAP_TEST", StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_FOUNDATION_GAP_TEST", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_CUSTOMERS_ONLY_VALIDATION", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Fabric foundation tests are restricted to the approved test databases.");
         return builder.ConnectionString;
     }
 
     private static async Task<TestSeed> SeedAsync(string connectionString)
     {
-        await CleanupLeakedSeedsAsync(connectionString);
         var suffix = Guid.NewGuid().ToString("N");
         var seed = new TestSeed(
             $"FAB-FOUND-{suffix[..12]}",
@@ -306,9 +316,27 @@ public sealed class FabricConsumablesFoundationIntegrationTests
         try
         {
             var now = DateTime.UtcNow;
-            var purchaseOrderId = await ReadFirstIdAsync(connection, transaction, "SELECT TOP(1) PurchaseOrderId FROM dbo.PurchaseOrders ORDER BY PurchaseOrderId");
-            var supplierId = await ReadFirstIdAsync(connection, transaction, "SELECT TOP(1) SupplierId FROM dbo.Suppliers ORDER BY SupplierId");
-            var orderId = await ReadFirstIdAsync(connection, transaction, "SELECT TOP(1) OrderID FROM dbo.Orders ORDER BY OrderID");
+            await SeedLedgerAccountsAsync(connection, transaction);
+            var supplierId = await InsertScalarAsync(connection, transaction, @"
+                INSERT INTO dbo.Suppliers (SupplierCode, SupplierName, IsActive, CreatedAt)
+                OUTPUT INSERTED.SupplierId
+                VALUES (@code, N'مورد اختبار Fabric', 1, @now);", ("@code", $"SF-{suffix[..12]}"), ("@now", now));
+            var customerId = await InsertScalarAsync(connection, transaction, @"
+                INSERT INTO dbo.Customers (CustomerCode, CustomerName, PhoneNumber, TotalPoints, TotalPieces, TotalDebts, IsActive)
+                OUTPUT INSERTED.CustomerID
+                VALUES (@code, N'عميل اختبار Fabric', @phone, 0, 0, 0, 1);",
+                ("@code", $"CF-{suffix[..12]}"), ("@phone", $"012{suffix[..9]}"));
+            var orderId = await InsertScalarAsync(connection, transaction, @"
+                INSERT INTO dbo.Orders
+                    (OrderNumber, CustomerID, OrderDate, TotalAmount, DiscountAmount, PaidAmount, RemainingAmount, UrgencyStatus, OrderStatus, CreatedDate, SaleCategory, RevenueRecognized, RevenueReversalCreated)
+                OUTPUT INSERTED.OrderID
+                VALUES (@number, @customerId, @now, 0, 0, 0, 0, N'Normal', N'New', @now, N'Custom', 0, 0);",
+                ("@number", $"ORD-FOUND-{suffix[..12]}"), ("@customerId", customerId), ("@now", now));
+            var purchaseOrderId = await InsertScalarAsync(connection, transaction, @"
+                INSERT INTO dbo.PurchaseOrders (PurchaseOrderNumber, SupplierId, OrderDate, Status, TotalAmount, CreatedAt)
+                OUTPUT INSERTED.PurchaseOrderId
+                VALUES (@number, @supplierId, @now, N'New', 189, @now);",
+                ("@number", $"PO-FOUND-{suffix[..12]}"), ("@supplierId", supplierId), ("@now", now));
             var goodsReceiptId = await InsertScalarAsync(connection, transaction, @"
                 INSERT INTO dbo.GoodsReceipts (SupplierId,PurchaseOrderId,ReceiptNumber,ReceiptDate,Notes,CreatedAt)
                 OUTPUT INSERTED.GoodsReceiptId
@@ -352,7 +380,11 @@ public sealed class FabricConsumablesFoundationIntegrationTests
                 ProductionOrderId = productionOrderId,
                 GoodsReceiptId = goodsReceiptId,
                 ProductId = productId,
-                BillOfMaterialsId = bomId
+                BillOfMaterialsId = bomId,
+                SupplierId = supplierId,
+                CustomerId = customerId,
+                PurchaseOrderId = purchaseOrderId,
+                OrderId = orderId
             };
         }
         catch
@@ -396,7 +428,11 @@ public sealed class FabricConsumablesFoundationIntegrationTests
             DELETE FROM dbo.BillOfMaterials WHERE BillOfMaterialsId=@bomId;
             DELETE FROM dbo.Products WHERE ProductId=@productId;
             DELETE FROM dbo.GoodsReceiptItems WHERE GoodsReceiptItemId IN (@fabricReceiptItemId,@consumableReceiptItemId);
-            DELETE FROM dbo.GoodsReceipts WHERE GoodsReceiptId=@goodsReceiptId;", connection);
+            DELETE FROM dbo.GoodsReceipts WHERE GoodsReceiptId=@goodsReceiptId;
+            DELETE FROM dbo.PurchaseOrders WHERE PurchaseOrderId=@purchaseOrderId;
+            DELETE FROM dbo.Orders WHERE OrderID=@orderId;
+            DELETE FROM dbo.Suppliers WHERE SupplierId=@supplierId;
+            DELETE FROM dbo.Customers WHERE CustomerID=@customerId;", connection);
         command.Parameters.AddWithValue("@fabricReceiptOperation", seed.FabricReceiptOperationId);
         command.Parameters.AddWithValue("@consumableReceiptOperation", seed.ConsumableReceiptOperationId);
         command.Parameters.AddWithValue("@fabricConsumptionOperation", seed.FabricConsumptionOperationId);
@@ -411,57 +447,43 @@ public sealed class FabricConsumablesFoundationIntegrationTests
         command.Parameters.AddWithValue("@fabricReceiptItemId", seed.FabricReceiptItemId);
         command.Parameters.AddWithValue("@consumableReceiptItemId", seed.ConsumableReceiptItemId);
         command.Parameters.AddWithValue("@goodsReceiptId", seed.GoodsReceiptId);
+        command.Parameters.AddWithValue("@purchaseOrderId", seed.PurchaseOrderId);
+        command.Parameters.AddWithValue("@orderId", seed.OrderId);
+        command.Parameters.AddWithValue("@supplierId", seed.SupplierId);
+        command.Parameters.AddWithValue("@customerId", seed.CustomerId);
         await command.ExecuteNonQueryAsync();
     }
 
-    private static async Task CleanupLeakedSeedsAsync(string connectionString)
+    private static async Task<OfficialBatchSupportSeed> SeedOfficialBatchSupportAsync(string connectionString)
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..12];
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
+        try
+        {
+            await SeedLedgerAccountsAsync(connection, transaction);
+            var supplierId = await InsertScalarAsync(connection, transaction, @"
+                INSERT INTO dbo.Suppliers (SupplierCode, SupplierName, IsActive, CreatedAt)
+                OUTPUT INSERTED.SupplierId
+                VALUES (@code, N'مورد اختبار دفعة Fabric', 1, SYSUTCDATETIME());", ("@code", $"SB-{suffix}"));
+            await transaction.CommitAsync();
+            return new OfficialBatchSupportSeed(supplierId);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    private static async Task CleanupOfficialBatchSupportAsync(string connectionString, OfficialBatchSupportSeed support)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new SqlCommand(@"
-            DECLARE @postingIds TABLE (InventoryReceiptPostingId bigint);
-            DECLARE @lineIds TABLE (InventoryReceiptLineId bigint);
-            DECLARE @rollIds TABLE (FabricRollId bigint);
-            DECLARE @itemIds TABLE (InventoryItemId int);
-            DECLARE @eventIds TABLE (AccountingEventId bigint);
-            INSERT INTO @postingIds
-            SELECT irp.InventoryReceiptPostingId
-            FROM dbo.InventoryReceiptPostings irp
-            INNER JOIN dbo.GoodsReceiptItems gri ON gri.GoodsReceiptItemId=irp.GoodsReceiptItemId
-            INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId=gri.GoodsReceiptId
-            WHERE gr.ReceiptNumber LIKE N'GR-FOUND-%';
-            INSERT INTO @lineIds SELECT InventoryReceiptLineId FROM dbo.InventoryReceiptLines WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM @postingIds);
-                INSERT INTO @rollIds SELECT FabricRollId FROM dbo.FabricRolls WHERE InventoryReceiptLineId IN (SELECT InventoryReceiptLineId FROM @lineIds);
-                INSERT INTO @itemIds SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode LIKE N'FAB-FOUND-%' OR ItemCode LIKE N'CON-FOUND-%';
-                INSERT INTO @eventIds
-                SELECT AccountingEventId FROM dbo.AccountingEvents
-                WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM @postingIds)
-                    OR FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM dbo.FabricConsumptionSources WHERE FabricRollId IN (SELECT FabricRollId FROM @rollIds))
-                    OR ProductionMaterialConsumptionId IN (SELECT ProductionMaterialConsumptionId FROM dbo.ProductionMaterialConsumptions WHERE InventoryItemId IN (SELECT InventoryItemId FROM @itemIds));
-            UPDATE dbo.InventoryTransactions SET AccountingEventId=NULL WHERE SourceOperationId IN (SELECT SourceOperationId FROM dbo.InventoryReceiptPostings WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM @postingIds));
-            UPDATE dbo.InventoryReceiptPostings SET AccountingEventId=NULL WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM @postingIds);
-            UPDATE dbo.InventoryReceiptLines SET AccountingEventId=NULL,InventoryTransactionId=NULL,FabricRollId=NULL WHERE InventoryReceiptLineId IN (SELECT InventoryReceiptLineId FROM @lineIds);
-            DELETE FROM dbo.JournalEntryLines WHERE JournalEntryId IN (SELECT JournalEntryId FROM dbo.JournalEntries WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds));
-            DELETE FROM dbo.JournalEntries WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
-            DELETE FROM dbo.FinancialTransactions WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
-            DELETE FROM dbo.AccountingEvents WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
-            DELETE FROM dbo.InventoryTransactions WHERE SourceOperationId IN (SELECT SourceOperationId FROM dbo.InventoryReceiptPostings WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM @postingIds));
-            UPDATE dbo.FabricConsumptionSources SET AccountingEventId=NULL,InventoryTransactionId=NULL WHERE FabricRollId IN (SELECT FabricRollId FROM @rollIds);
-            UPDATE dbo.ProductionMaterialConsumptions SET AccountingEventId=NULL,InventoryTransactionId=NULL WHERE InventoryItemId IN (SELECT InventoryItemId FROM @itemIds);
-            DELETE FROM dbo.FabricConsumptionSources WHERE FabricRollId IN (SELECT FabricRollId FROM @rollIds);
-            DELETE FROM dbo.ProductionMaterialConsumptions WHERE InventoryItemId IN (SELECT InventoryItemId FROM @itemIds);
-            DELETE FROM dbo.FabricRolls WHERE FabricRollId IN (SELECT FabricRollId FROM @rollIds) OR InventoryItemId IN (SELECT InventoryItemId FROM @itemIds);
-            DELETE FROM dbo.InventoryReceiptLines WHERE InventoryReceiptLineId IN (SELECT InventoryReceiptLineId FROM @lineIds);
-            DELETE FROM dbo.InventoryReceiptPostings WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM @postingIds);
-            DELETE FROM dbo.InventoryItemFoundation WHERE InventoryItemId IN (SELECT InventoryItemId FROM @itemIds);
-            DELETE FROM dbo.InventoryItems WHERE InventoryItemId IN (SELECT InventoryItemId FROM @itemIds);
-            DELETE FROM dbo.Pieces WHERE TrackingCode LIKE N'TRK-FOUND-%';
-            DELETE FROM dbo.OrderItems WHERE FabricCode LIKE N'FAB-FOUND-%';
-            DELETE FROM dbo.ProductionOrders WHERE ProductionOrderNumber LIKE N'PO-FOUND-%';
-            DELETE FROM dbo.BillOfMaterials WHERE Notes=N'Foundation integration seed' AND ProductId IN (SELECT ProductId FROM dbo.Products WHERE ProductCode LIKE N'PROD-FOUND-%');
-            DELETE FROM dbo.Products WHERE ProductCode LIKE N'PROD-FOUND-%';
-            DELETE FROM dbo.GoodsReceiptItems WHERE GoodsReceiptId IN (SELECT GoodsReceiptId FROM dbo.GoodsReceipts WHERE ReceiptNumber LIKE N'GR-FOUND-%');
-            DELETE FROM dbo.GoodsReceipts WHERE ReceiptNumber LIKE N'GR-FOUND-%';", connection);
+            DELETE FROM dbo.Suppliers WHERE SupplierId = @supplierId;", connection);
+        command.Parameters.AddWithValue("@supplierId", support.SupplierId);
         await command.ExecuteNonQueryAsync();
     }
 
@@ -510,6 +532,14 @@ public sealed class FabricConsumablesFoundationIntegrationTests
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
+    private static async Task SeedLedgerAccountsAsync(SqlConnection connection, SqlTransaction transaction)
+    {
+        await using var command = new SqlCommand(@"
+            IF (SELECT COUNT(*) FROM dbo.LedgerAccounts WHERE IsActive = 1 AND AccountCode IN (N'1000',N'1101',N'1102',N'1130',N'2100',N'5300')) <> 6
+                THROW 51002, N'Fabric integration fixture requires the six reference ledger accounts.', 1;", connection, transaction);
+        await command.ExecuteNonQueryAsync();
+    }
+
     private static async Task<int> ReadFirstIdAsync(SqlConnection connection, SqlTransaction transaction, string sql)
     {
         await using var command = new SqlCommand(sql, connection, transaction);
@@ -534,6 +564,13 @@ public sealed class FabricConsumablesFoundationIntegrationTests
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new SqlCommand(sql, connection);
+        if (value is TestSeed seed)
+        {
+            command.Parameters.AddWithValue("@fabricReceiptOperation", seed.FabricReceiptOperationId);
+            command.Parameters.AddWithValue("@consumableReceiptOperation", seed.ConsumableReceiptOperationId);
+            command.Parameters.AddWithValue("@fabricConsumptionOperation", seed.FabricConsumptionOperationId);
+            command.Parameters.AddWithValue("@consumableConsumptionOperation", seed.ConsumableConsumptionOperationId);
+        }
         if (sql.Contains("@id", StringComparison.Ordinal)) command.Parameters.AddWithValue("@id", value ?? DBNull.Value);
         if (sql.Contains("@name", StringComparison.Ordinal)) command.Parameters.AddWithValue("@name", value ?? DBNull.Value);
         if (sql.Contains("@operation", StringComparison.Ordinal)) command.Parameters.AddWithValue("@operation", value ?? DBNull.Value);
@@ -584,5 +621,11 @@ public sealed class FabricConsumablesFoundationIntegrationTests
         public int GoodsReceiptId { get; init; }
         public int ProductId { get; init; }
         public int BillOfMaterialsId { get; init; }
+        public int SupplierId { get; init; }
+        public int CustomerId { get; init; }
+        public int PurchaseOrderId { get; init; }
+        public int OrderId { get; init; }
     }
+
+    private sealed record OfficialBatchSupportSeed(int SupplierId);
 }

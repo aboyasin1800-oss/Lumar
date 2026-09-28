@@ -12,6 +12,7 @@ class _ReferralCodesRepository extends ReferralRepository {
           customerId: 50,
           customerCode: 'C10046',
           customerName: 'مسعد مسعد',
+          phoneNumber: '01000000050',
         ),
       ];
 
