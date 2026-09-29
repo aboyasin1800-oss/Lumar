@@ -198,6 +198,63 @@
 			"args": [],
 			"isBackground": false,
 			"problemMatcher": []
+		},
+		{
+			"label": "ES6 Focused Goods Receipt Tests",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"test",
+				"Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj",
+				"--no-restore",
+				"--filter",
+				"FullyQualifiedName~GoodsReceiptRuntimeIntegrationTests",
+				"--logger",
+				"console;verbosity=detailed"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "ES6 Focused Goods Receipt Tests Isolated",
+			"type": "shell",
+			"command": "dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~GoodsReceiptRuntimeIntegrationTests --logger 'console;verbosity=detailed' -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6-focused\\",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "ES6 Apply Test Database Migrations",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; foreach($path in @('Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_6_ITEM_IDENTITY_FOUNDATION_01.sql','Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_6_WAREHOUSE_IDENTITY_FOUNDATION_02.sql','Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_6_GOODS_RECEIPT_RUNTIME_03.sql')) { if(!(Test-Path $path)){ throw \"Migration file not found: $path\" }; $sql=Get-Content $path -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $cmd.ExecuteNonQuery() | Out-Null; Write-Output \"APPLIED $path\" } finally { $cn.Close() } }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6 Apply Remaining Test Database Migrations",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; foreach($path in @('Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_6_WAREHOUSE_IDENTITY_FOUNDATION_02.sql','Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_6_GOODS_RECEIPT_RUNTIME_03.sql')) { $sql=Get-Content $path -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $cmd.ExecuteNonQuery() | Out-Null; Write-Output \"APPLIED $path\" } finally { $cn.Close() } }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6 Apply Runtime Test Database Migration",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; $sql=Get-Content 'Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_6_GOODS_RECEIPT_RUNTIME_03.sql' -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $cmd.ExecuteNonQuery() | Out-Null; Write-Output 'ES6_RUNTIME_MIGRATION_APPLIED' } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6 Apply Required Reversal Foundation",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; $sql=Get-Content 'Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_2_REVERSAL_FOUNDATION_02.sql' -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $cmd.ExecuteNonQuery() | Out-Null; Write-Output 'ES2_REVERSAL_FOUNDATION_APPLIED' } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }

@@ -1,5 +1,6 @@
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Inventory;
+using LUMAR_ERP_API_V2.FinancialFoundation;
 using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
@@ -840,6 +841,230 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             null,
             ct);
 
+    public async Task<GoodsReceiptRuntimeResult> CreateGoodsReceiptAsync(CreateGoodsReceiptDto request, CancellationToken ct)
+    {
+        ValidateGoodsReceipt(request);
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        try
+        {
+            var existing = await ReadExistingGoodsReceiptAsync(connection, transaction, request.SourceOperationId, ct);
+            if (existing is not null)
+            {
+                await transaction.CommitAsync(ct);
+                return existing with { IsExisting = true };
+            }
+
+            await ValidateGoodsReceiptHeaderAsync(connection, transaction, request, ct);
+            var receiptId = await InsertGoodsReceiptAsync(connection, transaction, request, ct);
+            foreach (var item in request.Items)
+                await PostGoodsReceiptItemAsync(connection, transaction, receiptId, request, item, ct);
+
+            await transaction.CommitAsync(ct);
+            return new GoodsReceiptRuntimeResult(receiptId, request.ReceiptNumber.Trim(), false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<GoodsReceiptReversalResult> ReverseGoodsReceiptAsync(ReverseGoodsReceiptDto request, CancellationToken ct)
+    {
+        if (request.GoodsReceiptId <= 0 || request.SourceOperationId == Guid.Empty || string.IsNullOrWhiteSpace(request.Reason) || string.IsNullOrWhiteSpace(request.ReversedBy))
+            throw new ArgumentException("A complete goods receipt reversal is required.");
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        try
+        {
+            var existing = await ReadExistingGoodsReceiptReversalAsync(connection, transaction, request.SourceOperationId, ct);
+            if (existing is not null)
+            {
+                await transaction.CommitAsync(ct);
+                return existing with { IsExisting = true };
+            }
+
+            var items = await ReadPostedGoodsReceiptItemsAsync(connection, transaction, request.GoodsReceiptId, ct);
+            if (items.Count == 0)
+                throw new InvalidOperationException("The goods receipt is unavailable or is not posted.");
+
+            var reversalId = await InsertGoodsReceiptReversalAsync(connection, transaction, request, ct);
+            foreach (var item in items)
+                await ReverseGoodsReceiptItemAsync(connection, transaction, reversalId, request, item, ct);
+            await SetGoodsReceiptStatusAsync(connection, transaction, request.GoodsReceiptId, "Reversed", ct);
+
+            await transaction.CommitAsync(ct);
+            return new GoodsReceiptReversalResult(reversalId, false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    private static void ValidateGoodsReceipt(CreateGoodsReceiptDto request)
+    {
+        if (request.SupplierId <= 0 || request.WarehouseId <= 0 || request.SourceOperationId == Guid.Empty || string.IsNullOrWhiteSpace(request.ReceiptNumber) || string.IsNullOrWhiteSpace(request.CreatedBy) || request.Items.Count == 0)
+            throw new ArgumentException("Supplier, warehouse, receipt number, creator, operation, and items are required.");
+        if (request.Items.Any(x => x.InventoryItemId <= 0 || x.Quantity <= 0m || x.UnitCost <= 0m))
+            throw new ArgumentException("Every goods receipt item requires a positive inventory item, quantity, and unit cost.");
+        if (request.Items.Select(x => x.InventoryItemId).Distinct().Count() != request.Items.Count)
+            throw new ArgumentException("An inventory item may appear only once in a goods receipt.");
+    }
+
+    private static async Task<GoodsReceiptRuntimeResult?> ReadExistingGoodsReceiptAsync(SqlConnection c, SqlTransaction t, Guid operation, CancellationToken ct)
+    {
+        await using var cmd = new SqlCommand("SELECT GoodsReceiptId,ReceiptNumber FROM dbo.GoodsReceipts WITH(UPDLOCK,HOLDLOCK) WHERE SourceOperationId=@operation", c, t);
+        cmd.Parameters.Add("@operation", System.Data.SqlDbType.UniqueIdentifier).Value = operation;
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        return await r.ReadAsync(ct) ? new GoodsReceiptRuntimeResult(r.GetInt32(0), r.GetString(1), true) : null;
+    }
+
+    private static async Task ValidateGoodsReceiptHeaderAsync(SqlConnection c, SqlTransaction t, CreateGoodsReceiptDto request, CancellationToken ct)
+    {
+        await using var cmd = new SqlCommand(@"
+            IF NOT EXISTS(SELECT 1 FROM dbo.Suppliers WITH(UPDLOCK,HOLDLOCK) WHERE SupplierId=@supplier AND IsActive=1) THROW 52430,N'Supplier is unavailable.',1;
+            IF NOT EXISTS(SELECT 1 FROM dbo.Warehouses WITH(UPDLOCK,HOLDLOCK) WHERE WarehouseId=@warehouse AND IsActive=1) THROW 52431,N'Warehouse is unavailable.',1;
+            IF @purchaseOrderId IS NOT NULL AND NOT EXISTS(SELECT 1 FROM dbo.PurchaseOrders WITH(UPDLOCK,HOLDLOCK) WHERE PurchaseOrderId=@purchaseOrderId AND SupplierId=@supplier) THROW 52432,N'Purchase order does not belong to supplier.',1;", c, t);
+        cmd.Parameters.AddWithValue("@supplier", request.SupplierId); cmd.Parameters.AddWithValue("@warehouse", request.WarehouseId);
+        cmd.Parameters.AddWithValue("@purchaseOrderId", request.PurchaseOrderId ?? (object)DBNull.Value);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<int> InsertGoodsReceiptAsync(SqlConnection c, SqlTransaction t, CreateGoodsReceiptDto request, CancellationToken ct)
+    {
+        await using var cmd = new SqlCommand(@"
+            INSERT dbo.GoodsReceipts(SupplierId,PurchaseOrderId,WarehouseId,ReceiptNumber,ReceiptDate,Notes,CreatedAt,SourceOperationId,ReceiptStatus)
+            OUTPUT INSERTED.GoodsReceiptId VALUES(@supplier,@po,@warehouse,@number,@date,@notes,SYSUTCDATETIME(),@operation,N'Posted')", c, t);
+        cmd.Parameters.AddWithValue("@supplier", request.SupplierId); cmd.Parameters.AddWithValue("@po", request.PurchaseOrderId ?? (object)DBNull.Value); cmd.Parameters.AddWithValue("@warehouse", request.WarehouseId);
+        cmd.Parameters.AddWithValue("@number", request.ReceiptNumber.Trim()); cmd.Parameters.AddWithValue("@date", request.ReceiptDate); cmd.Parameters.AddWithValue("@notes", request.Notes ?? (object)DBNull.Value);
+        cmd.Parameters.Add("@operation", System.Data.SqlDbType.UniqueIdentifier).Value = request.SourceOperationId;
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task PostGoodsReceiptItemAsync(SqlConnection c, SqlTransaction t, int receiptId, CreateGoodsReceiptDto request, CreateGoodsReceiptItemDto line, CancellationToken ct)
+    {
+        var item = await ReadReceiptInventoryItemAsync(c, t, line.InventoryItemId, ct) ?? throw new InvalidOperationException("The inventory item is not an active foundation item.");
+        var invoice = await ValidateInvoiceLineAsync(c, t, request.SupplierId, line, ct);
+        var itemName = item.ItemName;
+        var receiptItemId = await InsertGoodsReceiptItemAsync(c, t, receiptId, itemName, line, ct);
+        await MatchPurchaseOrderAsync(c, t, request.PurchaseOrderId, receiptItemId, itemName, line, ct);
+        await RecordInvoiceDifferenceAsync(c, t, receiptItemId, invoice, line, ct);
+
+        var operationalAmount = decimal.Round(line.Quantity * line.UnitCost, 6, MidpointRounding.AwayFromZero);
+        var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+        var lineOperation = DeriveOperationId(request.SourceOperationId, receiptItemId);
+        await UpdateFoundationInventoryItemAsync(c, t, item.InventoryItemId, line.Quantity, operationalAmount, DateTime.UtcNow, ct);
+        var postingId = await InsertInventoryReceiptPostingAsync(c, t, receiptItemId, item.InventoryClassId, await ReadOpposingLedgerAccountIdAsync(c, t, "2100", ct), lineOperation, operationalAmount, postingAmount, ct);
+        var postingLineId = await InsertInventoryReceiptLineAsync(c, t, postingId, item.InventoryItemId, line.Quantity, line.UnitCost, item.UnitId, ct);
+        if (item.InventoryClassId == 1)
+        {
+            if (string.IsNullOrWhiteSpace(line.RollCode)) throw new ArgumentException("A roll code is required for fabric receipts.");
+            var rollId = await InsertFabricRollAsync(c, t, item.InventoryItemId, line.RollCode.Trim(), item.FabricTypeCode ?? item.ItemCode, item.ColorValue, line.Quantity, line.UnitCost, item.UnitId, postingLineId, DateTime.UtcNow, ct);
+            await SetReceiptLineRollAsync(c, t, postingLineId, rollId, ct);
+        }
+        var reference = $"GoodsReceipt:{request.ReceiptNumber.Trim()}:Item:{receiptItemId}";
+        var transactionId = await InsertFoundationInventoryTransactionAsync(c, t, item.InventoryItemId, "GoodsReceiptReceived", line.Quantity, reference, operationalAmount, line.UnitCost, lineOperation, DateTime.UtcNow, ct);
+        await SetInventoryTransactionWarehouseAsync(c, t, transactionId, request.WarehouseId, ct);
+        var accounting = await AccountingEventPostingGateway.PostInventoryReceiptAsync(c, t, item.InventoryClassId == 1 ? AccountingEventType.FabricInventoryReceived : AccountingEventType.ConsumableInventoryReceived, postingId, postingAmount, reference, $"Goods receipt {request.ReceiptNumber.Trim()} item {receiptItemId}", ct);
+        await LinkInventoryReceiptArtifactsAsync(c, t, postingLineId, transactionId, accounting.AccountingEventId, ct);
+    }
+
+    private static async Task<ReceiptInventoryItem?> ReadReceiptInventoryItemAsync(SqlConnection c, SqlTransaction t, int itemId, CancellationToken ct)
+    {
+        await using var cmd = new SqlCommand(@"SELECT i.InventoryItemID,i.ItemName,i.ItemCode,f.InventoryClassId,f.UnitId,i.FabricCategory,i.FabricColor FROM dbo.InventoryItems i WITH(UPDLOCK,HOLDLOCK) JOIN dbo.InventoryItemFoundation f WITH(UPDLOCK,HOLDLOCK) ON f.InventoryItemId=i.InventoryItemID WHERE i.InventoryItemID=@id AND i.IsActive=1", c, t);
+        cmd.Parameters.AddWithValue("@id", itemId); await using var r = await cmd.ExecuteReaderAsync(ct);
+        return await r.ReadAsync(ct) ? new ReceiptInventoryItem(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetByte(3), r.GetInt16(4), r.IsDBNull(5) ? null : r.GetString(5), r.IsDBNull(6) ? null : r.GetString(6)) : null;
+    }
+
+    private static async Task<InvoiceLineMatch?> ValidateInvoiceLineAsync(SqlConnection c, SqlTransaction t, int supplierId, CreateGoodsReceiptItemDto line, CancellationToken ct)
+    {
+        if (!line.SupplierInvoiceLineId.HasValue) return null;
+        await using var cmd = new SqlCommand(@"SELECT sil.SupplierInvoiceLineId,sil.Quantity,sil.UnitCost FROM dbo.SupplierInvoiceLines sil WITH(UPDLOCK,HOLDLOCK) JOIN dbo.SupplierInvoices si WITH(UPDLOCK,HOLDLOCK) ON si.SupplierInvoiceId=sil.SupplierInvoiceId WHERE sil.SupplierInvoiceLineId=@id AND sil.InventoryItemId=@itemId AND si.SupplierId=@supplier AND sil.Status=N'Posted'", c, t);
+        cmd.Parameters.AddWithValue("@id", line.SupplierInvoiceLineId.Value); cmd.Parameters.AddWithValue("@itemId", line.InventoryItemId); cmd.Parameters.AddWithValue("@supplier", supplierId);
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        if (!await r.ReadAsync(ct)) throw new InvalidOperationException("Supplier invoice line does not match the receipt supplier or inventory item.");
+        return new InvoiceLineMatch(r.GetInt64(0), r.GetDecimal(1), r.GetDecimal(2));
+    }
+
+    private static async Task<int> InsertGoodsReceiptItemAsync(SqlConnection c, SqlTransaction t, int receiptId, string itemName, CreateGoodsReceiptItemDto line, CancellationToken ct)
+    {
+        await using var cmd = new SqlCommand(@"INSERT dbo.GoodsReceiptItems(GoodsReceiptId,ItemName,ReceivedQuantity,UnitCost,LineTotal,InventoryItemId,SourceOperationId,LineStatus,SupplierInvoiceLineId) OUTPUT INSERTED.GoodsReceiptItemId VALUES(@receipt,@name,@quantity,@cost,@total,@item,NULL,N'Posted',@invoiceLine)", c, t);
+        cmd.Parameters.AddWithValue("@receipt", receiptId); cmd.Parameters.AddWithValue("@name", itemName); AddDecimal(cmd, "@quantity", line.Quantity); AddDecimal(cmd, "@cost", line.UnitCost); AddDecimal(cmd, "@total", decimal.Round(line.Quantity * line.UnitCost, 6, MidpointRounding.AwayFromZero)); cmd.Parameters.AddWithValue("@item", line.InventoryItemId); cmd.Parameters.AddWithValue("@invoiceLine", line.SupplierInvoiceLineId ?? (object)DBNull.Value);
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task MatchPurchaseOrderAsync(SqlConnection c, SqlTransaction t, int? purchaseOrderId, int receiptItemId, string itemName, CreateGoodsReceiptItemDto line, CancellationToken ct)
+    {
+        if (!purchaseOrderId.HasValue) return;
+        await using var cmd = new SqlCommand(@"SELECT TOP(1) poi.Quantity,poi.UnitCost,COALESCE((SELECT SUM(gri.ReceivedQuantity) FROM dbo.GoodsReceiptItems gri JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId=gri.GoodsReceiptId WHERE gr.PurchaseOrderId=poi.PurchaseOrderId AND gri.ItemName=poi.ItemName AND gri.GoodsReceiptItemId<>@receiptItem AND ISNULL(gri.LineStatus,N'Posted')=N'Posted'),0) FROM dbo.PurchaseOrderItems poi WITH(UPDLOCK,HOLDLOCK) WHERE poi.PurchaseOrderId=@po AND poi.ItemName=@name", c, t);
+        cmd.Parameters.AddWithValue("@po", purchaseOrderId.Value); cmd.Parameters.AddWithValue("@name", itemName); cmd.Parameters.AddWithValue("@receiptItem", receiptItemId); await using var r = await cmd.ExecuteReaderAsync(ct);
+        if (!await r.ReadAsync(ct)) { await InsertDifferenceAsync(c, t, receiptItemId, "PurchaseOrderItemMissing", null, line.Quantity, null, line.UnitCost, ct); return; }
+        var ordered = r.GetDecimal(0); var cost = r.GetDecimal(1); var alreadyReceived = r.GetDecimal(2); await r.CloseAsync();
+        if (alreadyReceived + line.Quantity > ordered) await InsertDifferenceAsync(c, t, receiptItemId, "PurchaseOrderQuantityVariance", ordered - alreadyReceived, line.Quantity, cost, line.UnitCost, ct);
+        if (cost != line.UnitCost) await InsertDifferenceAsync(c, t, receiptItemId, "PurchaseOrderCostVariance", ordered, line.Quantity, cost, line.UnitCost, ct);
+    }
+
+    private static Task RecordInvoiceDifferenceAsync(SqlConnection c, SqlTransaction t, int receiptItemId, InvoiceLineMatch? invoice, CreateGoodsReceiptItemDto line, CancellationToken ct) => invoice is null ? Task.CompletedTask : invoice.Quantity != line.Quantity || invoice.UnitCost != line.UnitCost ? InsertDifferenceAsync(c, t, receiptItemId, "SupplierInvoiceVariance", invoice.Quantity, line.Quantity, invoice.UnitCost, line.UnitCost, ct) : Task.CompletedTask;
+
+    private static async Task InsertDifferenceAsync(SqlConnection c, SqlTransaction t, int receiptItemId, string type, decimal? expectedQuantity, decimal actualQuantity, decimal? expectedUnitCost, decimal actualUnitCost, CancellationToken ct)
+    { await using var cmd = new SqlCommand("INSERT dbo.GoodsReceiptDifferences(GoodsReceiptItemId,DifferenceType,ExpectedQuantity,ActualQuantity,ExpectedUnitCost,ActualUnitCost) VALUES(@item,@type,@expectedQuantity,@actualQuantity,@expectedCost,@actualCost)", c, t); cmd.Parameters.AddWithValue("@item", receiptItemId); cmd.Parameters.AddWithValue("@type", type); AddNullable(cmd, "@expectedQuantity", expectedQuantity); AddDecimal(cmd, "@actualQuantity", actualQuantity); AddNullable(cmd, "@expectedCost", expectedUnitCost); AddDecimal(cmd, "@actualCost", actualUnitCost); await cmd.ExecuteNonQueryAsync(ct); }
+
+    private static async Task SetInventoryTransactionWarehouseAsync(SqlConnection c, SqlTransaction t, int transactionId, int warehouseId, CancellationToken ct)
+    { await using var cmd = new SqlCommand("UPDATE dbo.InventoryTransactions SET WarehouseId=@warehouse WHERE TransactionID=@transaction", c, t); cmd.Parameters.AddWithValue("@warehouse", warehouseId); cmd.Parameters.AddWithValue("@transaction", transactionId); await cmd.ExecuteNonQueryAsync(ct); }
+
+    private static async Task<GoodsReceiptReversalResult?> ReadExistingGoodsReceiptReversalAsync(SqlConnection c, SqlTransaction t, Guid operation, CancellationToken ct)
+    { await using var cmd = new SqlCommand("SELECT GoodsReceiptReversalId FROM dbo.GoodsReceiptReversals WITH(UPDLOCK,HOLDLOCK) WHERE SourceOperationId=@operation", c, t); cmd.Parameters.Add("@operation", System.Data.SqlDbType.UniqueIdentifier).Value = operation; var value = await cmd.ExecuteScalarAsync(ct); return value is null ? null : new GoodsReceiptReversalResult(Convert.ToInt64(value), true); }
+
+    private static async Task<List<PostedGoodsReceiptItem>> ReadPostedGoodsReceiptItemsAsync(SqlConnection c, SqlTransaction t, int receiptId, CancellationToken ct)
+    {
+        const string sql = @"SELECT gri.GoodsReceiptItemId,gri.InventoryItemId,gri.ReceivedQuantity,gri.UnitCost,gr.WarehouseId,f.InventoryClassId,f.UnitId,irl.InventoryReceiptLineId,irl.InventoryTransactionId,irl.AccountingEventId,irl.FabricRollId
+            FROM dbo.GoodsReceipts gr WITH(UPDLOCK,HOLDLOCK) JOIN dbo.GoodsReceiptItems gri WITH(UPDLOCK,HOLDLOCK) ON gri.GoodsReceiptId=gr.GoodsReceiptId JOIN dbo.InventoryItemFoundation f WITH(UPDLOCK,HOLDLOCK) ON f.InventoryItemId=gri.InventoryItemId JOIN dbo.InventoryReceiptPostings irp WITH(UPDLOCK,HOLDLOCK) ON irp.GoodsReceiptItemId=gri.GoodsReceiptItemId JOIN dbo.InventoryReceiptLines irl WITH(UPDLOCK,HOLDLOCK) ON irl.InventoryReceiptPostingId=irp.InventoryReceiptPostingId WHERE gr.GoodsReceiptId=@receipt AND gr.ReceiptStatus=N'Posted' AND gri.LineStatus=N'Posted'";
+        await using var cmd = new SqlCommand(sql, c, t); cmd.Parameters.AddWithValue("@receipt", receiptId); await using var r = await cmd.ExecuteReaderAsync(ct); var rows = new List<PostedGoodsReceiptItem>();
+        while (await r.ReadAsync(ct)) rows.Add(new PostedGoodsReceiptItem(r.GetInt32(0), r.GetInt32(1), r.GetDecimal(2), r.GetDecimal(3), r.GetInt32(4), r.GetByte(5), r.GetInt16(6), r.GetInt64(7), r.GetInt32(8), r.GetInt64(9), r.IsDBNull(10) ? null : r.GetInt64(10)));
+        return rows;
+    }
+
+    private static async Task<long> InsertGoodsReceiptReversalAsync(SqlConnection c, SqlTransaction t, ReverseGoodsReceiptDto request, CancellationToken ct)
+    { await using var cmd = new SqlCommand("INSERT dbo.GoodsReceiptReversals(OriginalGoodsReceiptId,SourceOperationId,Reason,ReversedBy) OUTPUT INSERTED.GoodsReceiptReversalId VALUES(@receipt,@operation,@reason,@by)", c, t); cmd.Parameters.AddWithValue("@receipt", request.GoodsReceiptId); cmd.Parameters.Add("@operation", System.Data.SqlDbType.UniqueIdentifier).Value = request.SourceOperationId; cmd.Parameters.AddWithValue("@reason", request.Reason.Trim()); cmd.Parameters.AddWithValue("@by", request.ReversedBy.Trim()); return Convert.ToInt64(await cmd.ExecuteScalarAsync(ct)); }
+
+    private static async Task ReverseGoodsReceiptItemAsync(SqlConnection c, SqlTransaction t, long reversalId, ReverseGoodsReceiptDto request, PostedGoodsReceiptItem item, CancellationToken ct)
+    {
+        if (item.InventoryClassId == 1)
+            await EnsureFabricRollCanReverseAsync(c, t, item, ct);
+        else
+            await EnsureFoundationQuantityCanReverseAsync(c, t, item, ct);
+
+        var operationalAmount = decimal.Round(item.Quantity * item.UnitCost, 6, MidpointRounding.AwayFromZero);
+        await ReverseFoundationInventoryAsync(c, t, item.InventoryItemId, item.Quantity, operationalAmount, ct);
+        var operation = DeriveOperationId(request.SourceOperationId, item.GoodsReceiptItemId);
+        var transactionId = await InsertFoundationInventoryTransactionAsync(c, t, item.InventoryItemId, "GoodsReceiptReversed", -item.Quantity, $"GoodsReceiptReversal:{request.GoodsReceiptId}:Item:{item.GoodsReceiptItemId}", -operationalAmount, item.UnitCost, operation, DateTime.UtcNow, ct);
+        await SetInventoryTransactionWarehouseAsync(c, t, transactionId, item.WarehouseId, ct);
+        var reversalEvent = await FoundationPostingGateway.ReverseAsync(c, t, item.AccountingEventId, operation, $"GoodsReceiptReversal:{request.GoodsReceiptId}:Item:{item.GoodsReceiptItemId}", request.Reason.Trim(), request.ReversedBy.Trim(), ct);
+        await using var cmd = new SqlCommand(@"INSERT dbo.GoodsReceiptReversalLines(GoodsReceiptReversalId,GoodsReceiptItemId,InventoryTransactionId,AccountingEventId) VALUES(@reversal,@item,@transaction,@event); UPDATE dbo.GoodsReceiptItems SET LineStatus=N'Reversed' WHERE GoodsReceiptItemId=@item;", c, t);
+        cmd.Parameters.AddWithValue("@reversal", reversalId); cmd.Parameters.AddWithValue("@item", item.GoodsReceiptItemId); cmd.Parameters.AddWithValue("@transaction", transactionId); cmd.Parameters.AddWithValue("@event", reversalEvent.AccountingEventId); await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task EnsureFoundationQuantityCanReverseAsync(SqlConnection c, SqlTransaction t, PostedGoodsReceiptItem item, CancellationToken ct)
+    { await using var cmd = new SqlCommand("IF NOT EXISTS(SELECT 1 FROM dbo.InventoryItemFoundation WITH(UPDLOCK,HOLDLOCK) WHERE InventoryItemId=@item AND AvailableQuantity>=@quantity) THROW 52433,N'Goods receipt inventory was consumed and cannot be reversed.',1;", c, t); cmd.Parameters.AddWithValue("@item", item.InventoryItemId); AddDecimal(cmd, "@quantity", item.Quantity); await cmd.ExecuteNonQueryAsync(ct); }
+
+    private static async Task EnsureFabricRollCanReverseAsync(SqlConnection c, SqlTransaction t, PostedGoodsReceiptItem item, CancellationToken ct)
+    { if (!item.FabricRollId.HasValue) throw new InvalidOperationException("Fabric receipt does not own a roll."); await using var cmd = new SqlCommand("IF NOT EXISTS(SELECT 1 FROM dbo.FabricRolls WITH(UPDLOCK,HOLDLOCK) WHERE FabricRollId=@roll AND AvailableQuantity=@quantity AND ConsumedQuantity=0) THROW 52434,N'Fabric receipt was consumed and cannot be reversed.',1; DELETE FROM dbo.FabricRolls WHERE FabricRollId=@roll;", c, t); cmd.Parameters.AddWithValue("@roll", item.FabricRollId.Value); AddDecimal(cmd, "@quantity", item.Quantity); await cmd.ExecuteNonQueryAsync(ct); }
+
+    private static async Task ReverseFoundationInventoryAsync(SqlConnection c, SqlTransaction t, int itemId, decimal quantity, decimal amount, CancellationToken ct)
+    { await using var cmd = new SqlCommand(@"UPDATE dbo.InventoryItems SET CurrentQuantity=CurrentQuantity-@quantity,AvailableQuantity=AvailableQuantity-@quantity,UpdatedAt=SYSUTCDATETIME() WHERE InventoryItemID=@item; UPDATE dbo.InventoryItemFoundation SET OriginalQuantity=OriginalQuantity-@quantity,AvailableQuantity=AvailableQuantity-@quantity,OperationalValue=OperationalValue-@amount,OfficialUnitCost=CASE WHEN OriginalQuantity-@quantity=0 THEN OfficialUnitCost ELSE CONVERT(decimal(18,6),(OperationalValue-@amount)/(OriginalQuantity-@quantity)) END,UpdatedAt=SYSUTCDATETIME() WHERE InventoryItemId=@item;", c, t); cmd.Parameters.AddWithValue("@item", itemId); AddDecimal(cmd, "@quantity", quantity); AddDecimal(cmd, "@amount", amount); await cmd.ExecuteNonQueryAsync(ct); }
+
+    private static async Task SetGoodsReceiptStatusAsync(SqlConnection c, SqlTransaction t, int receiptId, string status, CancellationToken ct)
+    { await using var cmd = new SqlCommand("UPDATE dbo.GoodsReceipts SET ReceiptStatus=@status WHERE GoodsReceiptId=@receipt", c, t); cmd.Parameters.AddWithValue("@status", status); cmd.Parameters.AddWithValue("@receipt", receiptId); await cmd.ExecuteNonQueryAsync(ct); }
+
+    private static Guid DeriveOperationId(Guid root, int itemId)
+    { var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{root:N}:{itemId}")); return new Guid(bytes[..16]); }
+
     private async Task<InventoryFoundationPostingResultDto?> ReceiveFoundationInventoryAsync(
         int goodsReceiptItemId,
         byte inventoryClassId,
@@ -1651,6 +1876,9 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
     }
 
     private sealed record GoodsReceiptSource(decimal Quantity, decimal UnitCost, string ReceiptNumber, string ItemName);
+    private sealed record ReceiptInventoryItem(int InventoryItemId, string ItemName, string ItemCode, byte InventoryClassId, short UnitId, string? FabricTypeCode, string? ColorValue);
+    private sealed record InvoiceLineMatch(long SupplierInvoiceLineId, decimal Quantity, decimal UnitCost);
+    private sealed record PostedGoodsReceiptItem(int GoodsReceiptItemId, int InventoryItemId, decimal Quantity, decimal UnitCost, int WarehouseId, byte InventoryClassId, short UnitId, long InventoryReceiptLineId, int InventoryTransactionId, long AccountingEventId, long? FabricRollId);
     private sealed record FoundationItemState(int InventoryItemId, bool HasFoundation, byte? InventoryClassId, short? UnitId, decimal OriginalQuantity, decimal AvailableQuantity, decimal ConsumedQuantity, decimal OperationalValue);
     private sealed record FabricRollState(long FabricRollId, int InventoryItemId, string ItemCode, decimal AvailableQuantity, short UnitId, decimal OfficialUnitCost);
     private sealed record ConsumableItemState(int ItemId, string ItemCode, decimal AvailableQuantity, decimal OfficialUnitCost, short UnitId);

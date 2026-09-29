@@ -59,7 +59,7 @@ public sealed class EmployeePaymentIntegrationTests
     [Fact]
     public async Task Payments_RollbackLeavesNoPartialRecordsFromIndependentConnection()
     {
-        var operation = Guid.NewGuid(); long employeeId;
+        var operation = Guid.NewGuid(); int employeeId;
         await using (var connection = new SqlConnection(ConnectionString()))
         {
             await connection.OpenAsync(); await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.Serializable);

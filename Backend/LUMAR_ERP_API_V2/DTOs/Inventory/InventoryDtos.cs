@@ -225,3 +225,37 @@ public sealed record InventoryFoundationPostingResultDto(
     int InventoryTransactionId,
     bool IsExisting
 );
+
+public sealed class CreateGoodsReceiptDto
+{
+    public int SupplierId { get; init; }
+    public int? PurchaseOrderId { get; init; }
+    public int WarehouseId { get; init; }
+    public string ReceiptNumber { get; init; } = string.Empty;
+    public DateTime ReceiptDate { get; init; } = DateTime.UtcNow;
+    public string? Notes { get; init; }
+    public string CreatedBy { get; init; } = string.Empty;
+    public Guid SourceOperationId { get; init; }
+    public IReadOnlyList<CreateGoodsReceiptItemDto> Items { get; init; } = [];
+}
+
+public sealed class CreateGoodsReceiptItemDto
+{
+    public int InventoryItemId { get; init; }
+    public decimal Quantity { get; init; }
+    public decimal UnitCost { get; init; }
+    public int? SupplierInvoiceLineId { get; init; }
+    public string? RollCode { get; init; }
+}
+
+public sealed record GoodsReceiptRuntimeResult(int GoodsReceiptId, string ReceiptNumber, bool IsExisting);
+
+public sealed class ReverseGoodsReceiptDto
+{
+    public int GoodsReceiptId { get; init; }
+    public Guid SourceOperationId { get; init; }
+    public string Reason { get; init; } = string.Empty;
+    public string ReversedBy { get; init; } = string.Empty;
+}
+
+public sealed record GoodsReceiptReversalResult(long GoodsReceiptReversalId, bool IsExisting);

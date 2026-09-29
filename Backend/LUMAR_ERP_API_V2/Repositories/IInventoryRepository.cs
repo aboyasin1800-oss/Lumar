@@ -19,6 +19,8 @@ public interface IInventoryRepository
     Task<FabricBatchResultDto?> ReceiveFabricBatchAsync(CreateFabricBatchDto batch, CancellationToken cancellationToken);
     Task<InventoryFoundationPostingResultDto?> ReceiveFabricInventoryAsync(ReceiveFabricInventoryDto request, CancellationToken cancellationToken);
     Task<InventoryFoundationPostingResultDto?> ReceiveConsumableInventoryAsync(ReceiveConsumableInventoryDto request, CancellationToken cancellationToken);
+    Task<GoodsReceiptRuntimeResult> CreateGoodsReceiptAsync(CreateGoodsReceiptDto request, CancellationToken cancellationToken);
+    Task<GoodsReceiptReversalResult> ReverseGoodsReceiptAsync(ReverseGoodsReceiptDto request, CancellationToken cancellationToken);
     Task<InventoryFoundationPostingResultDto?> ConsumeFabricInventoryAsync(ConsumeFabricInventoryDto request, CancellationToken cancellationToken);
     Task<InventoryFoundationPostingResultDto?> ConsumeConsumableInventoryAsync(ConsumeConsumableInventoryDto request, CancellationToken cancellationToken);
 }

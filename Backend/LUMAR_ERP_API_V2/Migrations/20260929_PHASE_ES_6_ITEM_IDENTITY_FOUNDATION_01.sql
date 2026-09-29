@@ -1,0 +1,11 @@
+SET XACT_ABORT ON;
+IF DB_NAME()<>N'LUMAR_ERP_TEST' THROW 52400,N'ES-6 is restricted to LUMAR_ERP_TEST.',1;
+BEGIN TRY BEGIN TRANSACTION;
+IF OBJECT_ID(N'dbo.SupplierInvoiceLines',N'U') IS NOT NULL OR COL_LENGTH(N'dbo.GoodsReceiptItems',N'InventoryItemId') IS NOT NULL THROW 52401,N'ES-6 item identity already exists.',1;
+CREATE TABLE dbo.SupplierInvoiceLines(
+ SupplierInvoiceLineId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,SupplierInvoiceId int NOT NULL,InventoryItemId int NOT NULL,Quantity decimal(18,6) NOT NULL,UnitCost decimal(18,6) NOT NULL,RollCount int NULL,SourceOperationId uniqueidentifier NOT NULL,Status nvarchar(20) NOT NULL,CreatedBy nvarchar(100) NOT NULL,CreatedAt datetime2(7) NOT NULL CONSTRAINT DF_SupplierInvoiceLines_CreatedAt DEFAULT SYSUTCDATETIME(),
+ CONSTRAINT FK_SupplierInvoiceLines_Invoice FOREIGN KEY(SupplierInvoiceId) REFERENCES dbo.SupplierInvoices(SupplierInvoiceId),CONSTRAINT FK_SupplierInvoiceLines_Item FOREIGN KEY(InventoryItemId) REFERENCES dbo.InventoryItems(InventoryItemID),CONSTRAINT UQ_SupplierInvoiceLines_Operation UNIQUE(SourceOperationId),CONSTRAINT CK_SupplierInvoiceLines_Values CHECK(Quantity>0 AND UnitCost>0 AND (RollCount IS NULL OR RollCount>0)),CONSTRAINT CK_SupplierInvoiceLines_Status CHECK(Status IN(N'Posted',N'Reversed')));
+ALTER TABLE dbo.GoodsReceiptItems ADD InventoryItemId int NULL,SourceOperationId uniqueidentifier NULL,OriginalGoodsReceiptItemId int NULL,LineStatus nvarchar(20) NULL;
+ALTER TABLE dbo.GoodsReceiptItems ADD CONSTRAINT FK_GoodsReceiptItems_InventoryItem FOREIGN KEY(InventoryItemId) REFERENCES dbo.InventoryItems(InventoryItemID),CONSTRAINT FK_GoodsReceiptItems_Original FOREIGN KEY(OriginalGoodsReceiptItemId) REFERENCES dbo.GoodsReceiptItems(GoodsReceiptItemId),CONSTRAINT CK_GoodsReceiptItems_ES6_Status CHECK(LineStatus IS NULL OR LineStatus IN(N'Draft',N'Posted',N'Reversed'));
+EXEC(N'CREATE UNIQUE INDEX UX_GoodsReceiptItems_SourceOperation ON dbo.GoodsReceiptItems(SourceOperationId) WHERE SourceOperationId IS NOT NULL;');
+COMMIT TRANSACTION; END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
