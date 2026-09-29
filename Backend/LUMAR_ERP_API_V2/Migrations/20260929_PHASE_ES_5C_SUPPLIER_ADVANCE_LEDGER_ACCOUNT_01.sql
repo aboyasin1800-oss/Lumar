@@ -1,5 +1,5 @@
 SET XACT_ABORT ON;
-IF DB_NAME()<>N'LUMAR_ERP_TEST' THROW 52310,N'ES-5C is restricted to LUMAR_ERP_TEST.',1;
+IF DB_NAME() NOT IN(N'LUMAR_ERP_TEST',N'LUMAR_ERP_ES_VALIDATION') THROW 52310,N'ES-5C is restricted to approved ES validation databases.',1;
 BEGIN TRY BEGIN TRANSACTION;
 IF EXISTS(SELECT 1 FROM dbo.LedgerAccounts WHERE AccountCode=N'SUPPLIER_ADVANCE') THROW 52311,N'Supplier advance ledger account already exists.',1;
 IF NOT EXISTS(SELECT 1 FROM dbo.AccountRoleMappings WHERE AccountRole=N'SupplierAdvance') THROW 52312,N'SupplierAdvance role is required.',1;

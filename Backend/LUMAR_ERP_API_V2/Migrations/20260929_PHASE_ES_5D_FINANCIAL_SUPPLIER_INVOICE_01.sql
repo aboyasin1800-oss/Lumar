@@ -1,5 +1,5 @@
 SET XACT_ABORT ON;
-IF DB_NAME()<>N'LUMAR_ERP_TEST' THROW 52320,N'ES-5D is restricted to LUMAR_ERP_TEST.',1;
+IF DB_NAME() NOT IN(N'LUMAR_ERP_TEST',N'LUMAR_ERP_ES_VALIDATION') THROW 52320,N'ES-5D is restricted to approved ES validation databases.',1;
 BEGIN TRY BEGIN TRANSACTION;
 IF COL_LENGTH(N'dbo.SupplierInvoices',N'PurchaseOrderId') IS NULL THROW 52321,N'SupplierInvoices.PurchaseOrderId is required.',1;
 ALTER TABLE dbo.SupplierInvoices ALTER COLUMN PurchaseOrderId int NULL;

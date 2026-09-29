@@ -1,5 +1,5 @@
 SET XACT_ABORT ON;
-IF DB_NAME()<>N'LUMAR_ERP_TEST' THROW 52200,N'ES-4 is restricted to LUMAR_ERP_TEST.',1;
+IF DB_NAME() NOT IN(N'LUMAR_ERP_TEST',N'LUMAR_ERP_ES_VALIDATION') THROW 52200,N'ES-4 is restricted to approved ES validation databases.',1;
 BEGIN TRY BEGIN TRANSACTION;
 IF OBJECT_ID(N'dbo.EmployeePayments',N'U') IS NOT NULL THROW 52201,N'ES-4 already exists.',1;
 CREATE TABLE dbo.EmployeePayments(

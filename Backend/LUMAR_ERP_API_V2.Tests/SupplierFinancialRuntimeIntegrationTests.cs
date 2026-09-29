@@ -486,7 +486,7 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
     private static string ConnectionString()
     {
         var builder = new SqlConnectionStringBuilder(Environment.GetEnvironmentVariable("Lumar__ConnectionString") ?? "Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True");
-        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("ES-5 tests are restricted to LUMAR_ERP_TEST.");
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase) && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("ES-5 tests require an approved ES validation database.");
         return builder.ConnectionString;
     }
 }

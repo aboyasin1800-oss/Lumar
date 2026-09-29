@@ -1,5 +1,5 @@
 SET XACT_ABORT ON;
-IF DB_NAME()<>N'LUMAR_ERP_TEST' THROW 52100,N'ES-3 is restricted to LUMAR_ERP_TEST.',1;
+IF DB_NAME() NOT IN(N'LUMAR_ERP_TEST',N'LUMAR_ERP_ES_VALIDATION') THROW 52100,N'ES-3 is restricted to approved ES validation databases.',1;
 BEGIN TRY BEGIN TRANSACTION;
 IF OBJECT_ID(N'dbo.EmployeeDailyAccruals',N'U') IS NOT NULL THROW 52101,N'ES-3 already exists.',1;
 ALTER TABLE dbo.EmployeeLedgerEntries DROP CONSTRAINT CK_EmployeeLedgerEntries_BalanceEffect;

@@ -972,6 +972,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         var transactionId = await InsertFoundationInventoryTransactionAsync(c, t, item.InventoryItemId, "GoodsReceiptReceived", line.Quantity, reference, operationalAmount, line.UnitCost, lineOperation, DateTime.UtcNow, ct);
         await SetInventoryTransactionWarehouseAsync(c, t, transactionId, request.WarehouseId, ct);
         var accounting = await AccountingEventPostingGateway.PostInventoryReceiptAsync(c, t, item.InventoryClassId == 1 ? AccountingEventType.FabricInventoryReceived : AccountingEventType.ConsumableInventoryReceived, postingId, postingAmount, reference, $"Goods receipt {request.ReceiptNumber.Trim()} item {receiptItemId}", ct);
+        await SetInventoryReceiptAccountingEventPostedAsync(c, t, accounting.AccountingEventId, ct);
         await LinkInventoryReceiptArtifactsAsync(c, t, postingLineId, transactionId, accounting.AccountingEventId, ct);
     }
 
@@ -1017,6 +1018,9 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
 
     private static async Task SetInventoryTransactionWarehouseAsync(SqlConnection c, SqlTransaction t, int transactionId, int warehouseId, CancellationToken ct)
     { await using var cmd = new SqlCommand("UPDATE dbo.InventoryTransactions SET WarehouseId=@warehouse WHERE TransactionID=@transaction", c, t); cmd.Parameters.AddWithValue("@warehouse", warehouseId); cmd.Parameters.AddWithValue("@transaction", transactionId); await cmd.ExecuteNonQueryAsync(ct); }
+
+    private static async Task SetInventoryReceiptAccountingEventPostedAsync(SqlConnection c, SqlTransaction t, long accountingEventId, CancellationToken ct)
+    { await using var cmd = new SqlCommand("UPDATE dbo.AccountingEvents SET Status=N'Posted' WHERE AccountingEventId=@event", c, t); cmd.Parameters.AddWithValue("@event", accountingEventId); await cmd.ExecuteNonQueryAsync(ct); }
 
     private static async Task<GoodsReceiptReversalResult?> ReadExistingGoodsReceiptReversalAsync(SqlConnection c, SqlTransaction t, Guid operation, CancellationToken ct)
     { await using var cmd = new SqlCommand("SELECT GoodsReceiptReversalId FROM dbo.GoodsReceiptReversals WITH(UPDLOCK,HOLDLOCK) WHERE SourceOperationId=@operation", c, t); cmd.Parameters.Add("@operation", System.Data.SqlDbType.UniqueIdentifier).Value = operation; var value = await cmd.ExecuteScalarAsync(ct); return value is null ? null : new GoodsReceiptReversalResult(Convert.ToInt64(value), true); }

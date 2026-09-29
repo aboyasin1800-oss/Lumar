@@ -255,6 +255,462 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "ES6 Inspect Reversal Event Foundation",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=\"SET NOCOUNT ON; SELECT c.name FROM sys.columns c WHERE c.object_id=OBJECT_ID('dbo.AccountingEvents') AND c.name IN ('SourceType','SourceId','SourceOperationId','OriginalAccountingEventId','ReversalReason','ReversedBy','ReversedAt','Status'); SELECT AccountingEventType,IsEnabled,IsBusinessRuntimeEnabled FROM dbo.AccountingEventDefinitions WHERE AccountingEventType=33; SELECT name FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.AccountingEvents') AND name='UX_AccountingEvents_Original_Reversal';\"; $r=$cmd.ExecuteReader(); while($r.Read()){Write-Output ('COLUMN='+$r.GetValue(0))}; while($r.NextResult()){while($r.Read()){Write-Output ('RESULT='+$r.GetValue(0)+'|'+$r.GetValue(1)+'|'+$r.GetValue(2))}}; $r.Close() } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6 Inspect Reversal Event Foundation Quoted",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText='SET NOCOUNT ON; SELECT c.name FROM sys.columns c WHERE c.object_id=OBJECT_ID(''dbo.AccountingEvents'') AND c.name IN (''SourceType'',''SourceId'',''SourceOperationId'',''OriginalAccountingEventId'',''ReversalReason'',''ReversedBy'',''ReversedAt'',''Status''); SELECT AccountingEventType,IsEnabled,IsBusinessRuntimeEnabled FROM dbo.AccountingEventDefinitions WHERE AccountingEventType=33; SELECT name FROM sys.indexes WHERE object_id=OBJECT_ID(''dbo.AccountingEvents'') AND name=''UX_AccountingEvents_Original_Reversal'';'; $r=$cmd.ExecuteReader(); while($r.Read()){Write-Output ('COLUMN='+$r.GetValue(0))}; while($r.NextResult()){while($r.Read()){Write-Output ('RESULT='+($r.GetValues([object[]]@()) -join '|'))}}; $r.Close() } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6 Apply Required Accounting Foundation",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; foreach($path in @('Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_2_CASHOUT_ACCOUNTING_FOUNDATION_01.sql','Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_2_REVERSAL_FOUNDATION_02.sql')) { $sql=Get-Content $path -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $cmd.ExecuteNonQuery() | Out-Null; Write-Output \"APPLIED $path\" } finally { $cn.Close() } }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6 Apply Required Reversal Foundation Corrected",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; $sql=Get-Content 'Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_2_REVERSAL_FOUNDATION_02.sql' -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $cmd.ExecuteNonQuery() | Out-Null; Write-Output 'ES2_REVERSAL_FOUNDATION_APPLIED' } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6 Full Backend Tests Isolated",
+			"type": "shell",
+			"command": "dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --logger 'console;verbosity=minimal' -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6-full-tests\\",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "ES6 Backend Build Isolated",
+			"type": "shell",
+			"command": "dotnet build Backend/LUMAR_ERP_API_V2/LUMAR_ERP_API_V2.csproj --no-restore -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6-build\\",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6 Database Integrity Check",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText='SET NOCOUNT ON; SELECT ''WAREHOUSES='' + CONVERT(varchar(20),COUNT(*)) FROM dbo.Warehouses; SELECT ''INVOICE_LINES='' + CONVERT(varchar(20),COUNT(*)) FROM dbo.SupplierInvoiceLines; SELECT ''RECEIPT_STATUS_COLUMN='' + CONVERT(varchar(20),COUNT(*)) FROM sys.columns WHERE object_id=OBJECT_ID(''dbo.GoodsReceipts'') AND name=''ReceiptStatus''; SELECT ''RECEIPT_OPERATION_INDEX='' + CONVERT(varchar(20),COUNT(*)) FROM sys.indexes WHERE object_id=OBJECT_ID(''dbo.GoodsReceipts'') AND name=''UX_GoodsReceipts_ES6_SourceOperation''; SELECT ''ORPHAN_RECEIPT_ITEMS='' + CONVERT(varchar(20),COUNT(*)) FROM dbo.GoodsReceiptItems gri LEFT JOIN dbo.InventoryItems i ON i.InventoryItemID=gri.InventoryItemId WHERE gri.InventoryItemId IS NOT NULL AND i.InventoryItemID IS NULL; SELECT ''ES6_TEST_ROWS='' + CONVERT(varchar(20),COUNT(*)) FROM dbo.GoodsReceipts WHERE ReceiptNumber LIKE ''ES6-%'';'; $r=$cmd.ExecuteReader(); do { while($r.Read()){Write-Output $r.GetString(0)} } while($r.NextResult()); $r.Close() } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6 Extract Full Suite Failures",
+			"type": "shell",
+			"command": "Select-String -Path 'C:\\Users\\LENOVO\\AppData\\Roaming\\Code\\User\\workspaceStorage\\2140fa7c1aa4ad7e55c4733d41e26cce\\GitHub.copilot-chat\\chat-session-resources\\bf163c4a-0e25-4de7-b92d-50f251616566\\call_nRHUuZS6y8TRf2RPPSN27L0k__vscode-1790503295094\\content.txt' -Pattern '^  Failed |^    D:\\\\YASIN\\\\.*error TESTERROR:|^Test summary:' | ForEach-Object { $_.Line }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "ES6 Extract xUnit Failed Tests",
+			"type": "shell",
+			"command": "Select-String -Path 'C:\\Users\\LENOVO\\AppData\\Roaming\\Code\\User\\workspaceStorage\\2140fa7c1aa4ad7e55c4733d41e26cce\\GitHub.copilot-chat\\chat-session-resources\\bf163c4a-0e25-4de7-b92d-50f251616566\\call_nRHUuZS6y8TRf2RPPSN27L0k__vscode-1790503295094\\content.txt' -Pattern '\\[FAIL\\]' | ForEach-Object { $_.Line } | Sort-Object -Unique",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "ES6 Extract Test Error Files",
+			"type": "shell",
+			"command": "Select-String -Path 'C:\\Users\\LENOVO\\AppData\\Roaming\\Code\\User\\workspaceStorage\\2140fa7c1aa4ad7e55c4733d41e26cce\\GitHub.copilot-chat\\chat-session-resources\\bf163c4a-0e25-4de7-b92d-50f251616566\\call_nRHUuZS6y8TRf2RPPSN27L0k__vscode-1790503295094\\content.txt' -Pattern 'error TESTERROR' | ForEach-Object { $_.Line }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "ES6 Extract Failure Details",
+			"type": "shell",
+			"command": "Select-String -Path 'C:\\Users\\LENOVO\\AppData\\Roaming\\Code\\User\\workspaceStorage\\2140fa7c1aa4ad7e55c4733d41e26cce\\GitHub.copilot-chat\\chat-session-resources\\bf163c4a-0e25-4de7-b92d-50f251616566\\call_nRHUuZS6y8TRf2RPPSN27L0k__vscode-1790503295094\\content.txt' -Pattern 'error TESTERROR' -Context 0,6 | ForEach-Object { $_.ToString() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "ES6G Apply ES5 Foundation Test Migration",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; $sql=Get-Content 'Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_5E_SUPPLIER_FINANCIAL_RUNTIME_01.sql' -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $cmd.ExecuteNonQuery() | Out-Null; Write-Output 'ES5E_FOUNDATION_APPLIED_TO_LUMAR_ERP_TEST' } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6G Supplier Financial Runtime Tests",
+			"type": "shell",
+			"command": "dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~SupplierFinancialRuntimeIntegrationTests --logger 'console;verbosity=detailed' -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6g-supplier-tests\\",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "ES6G Audit Test Foundation Schema",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText='SET NOCOUNT ON; SELECT DB_NAME() AS TargetDatabase; SELECT o.name FROM sys.objects o WHERE o.name IN (''EmployeeLedgerEntries'',''SupplierLedgerEntries'',''AccountingEventDefinitions'',''AccountRoleMappings'',''SupplierFinancialInvoices'',''SupplierFinancialPayments'',''SupplierFinancialPaymentAllocations'',''GoodsReceipts'',''GoodsReceiptItems'',''InventoryReceiptPostings'') ORDER BY o.name; SELECT p.name FROM sys.procedures p WHERE p.name IN (''usp_PostFoundationAccountingEvent'',''usp_ReverseFoundationAccountingEvent'',''usp_PostFoundationCashMovement'') ORDER BY p.name; SELECT c.name,c.is_nullable,c.system_type_id FROM sys.columns c WHERE c.object_id=OBJECT_ID(''dbo.Employees'') AND c.name=''PieceWageRate''; SELECT c.name FROM sys.columns c WHERE c.object_id=OBJECT_ID(''dbo.SupplierLedgerEntries'') AND c.name IN (''SourceOperationId'',''EntryType'',''Amount'',''BalanceEffect'',''SourceType'',''SourceId'') ORDER BY c.name;'; $r=$cmd.ExecuteReader(); do { while($r.Read()){ $values=for($i=0;$i -lt $r.FieldCount;$i++){ $r.GetValue($i) }; Write-Output ($values -join '|') } } while($r.NextResult()); $r.Close() } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6G Apply ES1 And ES5D Test Migrations",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; foreach($path in @('Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_1_IDENTITY_LEDGER_FOUNDATION_01.sql','Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_5D_FINANCIAL_SUPPLIER_INVOICE_01.sql')) { $sql=Get-Content $path -Raw; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $cmd.ExecuteNonQuery() | Out-Null; Write-Output \"APPLIED $path\" } finally { $cn.Close() } }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6G Audit ES1 Employee Classification Blocker",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText='SELECT EmployeeID,EmployeeCode,SalaryType,BasicSalary,PieceWageRate,IsActive FROM dbo.Employees WHERE SalaryType IS NULL OR SalaryType NOT IN (N''BasicSalary'',N''PieceWage'') OR (SalaryType=N''BasicSalary'' AND BasicSalary<=0) OR (SalaryType=N''PieceWage'' AND BasicSalary<>0) ORDER BY EmployeeID;'; $r=$cmd.ExecuteReader(); while($r.Read()){Write-Output (($r.GetValue(0),$r.GetValue(1),$r.GetValue(2),$r.GetValue(3),$r.GetValue(4),$r.GetValue(5)) -join '|')}; $r.Close() } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6H Audit Employee Blocker Details",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText='SET NOCOUNT ON; SELECT EmployeeID,EmployeeCode,EmployeeName,IsActive,SalaryType,BasicSalary,PieceWageRate,HireDate,CreatedAt,UpdatedAt FROM dbo.Employees WHERE SalaryType IS NULL OR SalaryType NOT IN (N''BasicSalary'',N''PieceWage'') OR (SalaryType=N''BasicSalary'' AND BasicSalary<=0) OR (SalaryType=N''PieceWage'' AND BasicSalary<>0) ORDER BY EmployeeID; SELECT c.name FROM sys.columns c WHERE c.object_id=OBJECT_ID(''dbo.Employees'') AND c.name IN (''BaseSalary'',''FixedSalary'',''EmploymentStartDate'',''HireDate'',''CreatedAt'',''UpdatedAt'',''PieceWageRate'');'; $r=$cmd.ExecuteReader(); do { while($r.Read()){ $v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}}; Write-Output ($v -join '|') } } while($r.NextResult()); $r.Close() } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6H Compare Blocker Employee Origins",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText='SET NOCOUNT ON; WITH blocked AS (SELECT EmployeeCode FROM dbo.Employees WHERE SalaryType IS NULL OR SalaryType NOT IN (N''BasicSalary'',N''PieceWage'') OR (SalaryType=N''BasicSalary'' AND BasicSalary<=0) OR (SalaryType=N''PieceWage'' AND BasicSalary<>0)) SELECT b.EmployeeCode,CASE WHEN p.EmployeeID IS NULL THEN 0 ELSE 1 END AS ExistsInProduction,CASE WHEN g.EmployeeID IS NULL THEN 0 ELSE 1 END AS ExistsInGolden FROM blocked b LEFT JOIN LUMAR_ERP.dbo.Employees p ON p.EmployeeCode=b.EmployeeCode LEFT JOIN LUMAR_ERP_CUSTOMERS_ONLY_TEST.dbo.Employees g ON g.EmployeeCode=b.EmployeeCode ORDER BY b.EmployeeCode;'; $r=$cmd.ExecuteReader(); while($r.Read()){Write-Output (($r.GetString(0),$r.GetInt32(1),$r.GetInt32(2)) -join '|')}; $r.Close() } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6H Audit Blocker Employee Relations",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=\"SET NOCOUNT ON; DECLARE @tables table(TableName sysname, ColumnName sysname); INSERT @tables SELECT t.name,c.name FROM sys.tables t JOIN sys.columns c ON c.object_id=t.object_id WHERE c.name IN(N'EmployeeId',N'EmployeeID') AND t.name IN(N'PayrollRecords',N'PayrollItems',N'PieceWageRecords',N'EmployeeLedgerEntries',N'Employee_Draws',N'EmployeeAttendances',N'LeaveRequests',N'EmployeeStatusHistory',N'EmployeePayments',N'EmployeeDailyAccruals',N'EmployeeSeasonalBonuses',N'EmployeeAdvances',N'EmployeeDailyExpenses'); DECLARE @sql nvarchar(max)=N''; SELECT @sql=@sql+N'SELECT e.EmployeeID,e.EmployeeCode,N''' + REPLACE(TableName,'''','''''') + N''' AS RelatedTable,COUNT(r.' + QUOTENAME(ColumnName) + N') AS RelatedCount FROM dbo.Employees e LEFT JOIN dbo.' + QUOTENAME(TableName) + N' r ON r.' + QUOTENAME(ColumnName) + N'=e.EmployeeID WHERE e.SalaryType IS NULL OR e.SalaryType NOT IN(N''''BasicSalary'''',N''''PieceWage'''') OR (e.SalaryType=N''''BasicSalary'''' AND e.BasicSalary<=0) OR (e.SalaryType=N''''PieceWage'''' AND e.BasicSalary<>0) GROUP BY e.EmployeeID,e.EmployeeCode UNION ALL ' FROM @tables; SET @sql=LEFT(@sql,LEN(@sql)-10); EXEC sp_executesql @sql;\"; $r=$cmd.ExecuteReader(); while($r.Read()){Write-Output (($r.GetValue(0),$r.GetValue(1),$r.GetValue(2),$r.GetValue(3)) -join '|')}; $r.Close() } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6I Audit Employee Relation Schema",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs\n$cn.Open()\ntry {\n  $cmd=$cn.CreateCommand()\n  $cmd.CommandText=@'\nSELECT t.name AS TableName,c.name AS EmployeeColumn\nFROM sys.tables t\nJOIN sys.columns c ON c.object_id=t.object_id\nWHERE c.name IN(N'EmployeeId',N'EmployeeID')\n  AND t.name IN(N'PayrollRecords',N'PayrollItems',N'PieceWageRecords',N'EmployeeLedgerEntries',N'Employee_Draws',N'EmployeeDraws',N'EmployeeAttendances')\nORDER BY t.name;\n'@\n  $r=$cmd.ExecuteReader()\n  while($r.Read()){ Write-Output ($r.GetString(0)+'|'+$r.GetString(1)) }\n  $r.Close()\n} finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6I Audit Payroll Relation Schema",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs\n$cn.Open()\ntry {\n  $cmd=$cn.CreateCommand()\n  $cmd.CommandText=@'\nSELECT t.name,c.name\nFROM sys.tables t JOIN sys.columns c ON c.object_id=t.object_id\nWHERE t.name IN(N'PayrollRecords',N'PayrollItems',N'PieceWageRecords',N'EmployeeAttendances')\nORDER BY t.name,c.column_id;\n'@\n  $r=$cmd.ExecuteReader()\n  while($r.Read()){ Write-Output ($r.GetString(0)+'|'+$r.GetString(1)) }\n  $r.Close()\n} finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6I Audit Full Employee Classification Relations",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs\n$cn.Open()\ntry {\n  $cmd=$cn.CreateCommand()\n  $cmd.CommandText=@'\nWITH blocked AS (\n SELECT EmployeeID,EmployeeCode,EmployeeName,IsActive,SalaryType,BasicSalary,PieceWageRate,HireDate\n FROM dbo.Employees\n WHERE SalaryType IS NULL OR SalaryType NOT IN(N'BasicSalary',N'PieceWage')\n    OR (SalaryType=N'BasicSalary' AND BasicSalary<=0)\n    OR (SalaryType=N'PieceWage' AND BasicSalary<>0)\n)\nSELECT b.EmployeeID,b.EmployeeCode,b.EmployeeName,b.IsActive,b.SalaryType,b.BasicSalary,b.PieceWageRate,b.HireDate,\n COUNT(DISTINCT pr.PayrollRecordId) AS PayrollRecords,\n COUNT(DISTINCT pi.PayrollItemId) AS PayrollItems,\n COUNT(DISTINCT pw.PieceWageRecordID) AS PieceWageRecords,\n COUNT(DISTINCT ea.EmployeeAttendanceId) AS AttendanceRecords,\n MIN(pr.PayrollRecordId) AS FirstPayrollRecord,MAX(pr.PayrollRecordId) AS LastPayrollRecord,\n MIN(pw.PieceWageRecordID) AS FirstPieceWageRecord,MAX(pw.PieceWageRecordID) AS LastPieceWageRecord,\n SUM(CASE WHEN pr.BasicSalaryAmount>0 THEN 1 ELSE 0 END) AS BasicPayrollCount,\n SUM(CASE WHEN pr.PieceWageAmount>0 THEN 1 ELSE 0 END) AS PiecePayrollCount,\n SUM(CASE WHEN pi.ItemType LIKE N'%Piece%' OR pi.ItemName LIKE N'%قطعة%' THEN 1 ELSE 0 END) AS PiecePayrollItemCount,\n SUM(CASE WHEN pi.ItemType LIKE N'%Salary%' OR pi.ItemName LIKE N'%راتب%' THEN 1 ELSE 0 END) AS SalaryPayrollItemCount\nFROM blocked b\nLEFT JOIN dbo.PayrollRecords pr ON pr.EmployeeId=b.EmployeeID\nLEFT JOIN dbo.PayrollItems pi ON pi.PayrollRecordId=pr.PayrollRecordId\nLEFT JOIN dbo.PieceWageRecords pw ON pw.EmployeeId=b.EmployeeID\nLEFT JOIN dbo.EmployeeAttendances ea ON ea.EmployeeId=b.EmployeeID\nGROUP BY b.EmployeeID,b.EmployeeCode,b.EmployeeName,b.IsActive,b.SalaryType,b.BasicSalary,b.PieceWageRate,b.HireDate\nORDER BY b.EmployeeID;\n'@\n  $r=$cmd.ExecuteReader()\n  while($r.Read()){ $v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}}; Write-Output ($v -join '|') }\n  $r.Close()\n} finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6I Verify PieceWage Classifications",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs\n$cn.Open()\ntry {\n  $cmd=$cn.CreateCommand()\n  $cmd.CommandText=@'\nSELECT EmployeeCode, SalaryType, BasicSalary, PieceWageRate\nFROM dbo.Employees\nWHERE EmployeeCode IN (N'MO-0033', N'M-90002')\nORDER BY EmployeeCode;\n'@\n  $r=$cmd.ExecuteReader()\n  while($r.Read()) { Write-Output ('CLASSIFICATION|'+$r.GetValue(0)+'|'+$r.GetValue(1)+'|'+$r.GetValue(2)+'|'+$r.GetValue(3)) }\n  $r.Close()\n} finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6I Apply Authorized PieceWage Classifications",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs\n$cn.Open()\ntry {\n  $tx=$cn.BeginTransaction()\n  try {\n    $cmd=$cn.CreateCommand(); $cmd.Transaction=$tx\n    $cmd.CommandText=@'\nUPDATE dbo.Employees\nSET SalaryType=N'PieceWage', UpdatedAt=SYSUTCDATETIME()\nWHERE EmployeeCode IN (N'MO-0033', N'M-90002')\n  AND (SalaryType IS NULL OR SalaryType<>N'PieceWage');\nSELECT @@ROWCOUNT;\n'@\n    $affected=[int]$cmd.ExecuteScalar()\n    if($affected -ne 2) { throw \"Expected 2 updated records; got $affected.\" }\n    $cmd.CommandText=@'\nSELECT EmployeeCode, SalaryType, BasicSalary, PieceWageRate\nFROM dbo.Employees\nWHERE EmployeeCode IN (N'MO-0033', N'M-90002')\nORDER BY EmployeeCode;\n'@\n    $r=$cmd.ExecuteReader()\n    while($r.Read()) { Write-Output ('UPDATED|'+$r.GetValue(0)+'|'+$r.GetValue(1)+'|'+$r.GetValue(2)+'|'+$r.GetValue(3)) }\n    $r.Close()\n    $tx.Commit()\n    Write-Output 'COMMITTED=2'\n  } catch { $tx.Rollback(); throw }\n} finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6I Reverify PieceWage Classifications",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs\n$cn.Open()\ntry {\n  $cmd=$cn.CreateCommand()\n  $cmd.CommandText=@'\nSELECT EmployeeCode, SalaryType, BasicSalary, PieceWageRate\nFROM dbo.Employees\nWHERE EmployeeCode IN (N'MO-0033', N'M-90002')\nORDER BY EmployeeCode;\n'@\n  $r=$cmd.ExecuteReader()\n  while($r.Read()) { Write-Output ('VERIFIED|'+$r.GetValue(0)+'|'+$r.GetValue(1)+'|'+$r.GetValue(2)+'|'+$r.GetValue(3)) }\n  $r.Close()\n} finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6I Latest Evidence For Remaining Employees",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs\n$cn.Open()\ntry {\n  $cmd=$cn.CreateCommand()\n  $cmd.CommandText=@'\nWITH target AS (\n SELECT EmployeeId,EmployeeCode,EmployeeName,IsActive,SalaryType,BasicSalary,PieceWageRate\n FROM dbo.Employees\n WHERE EmployeeCode IN (N'M-90001',N'EMPOK-20260723203306',N'M-90020',N'M-0031',N'M-0032',N'M-0034',N'M-0035',N'M-0036',N'M-0037')\n)\nSELECT t.EmployeeCode,t.EmployeeName,t.IsActive,t.SalaryType,t.BasicSalary,t.PieceWageRate,\n pr.PayrollRecordId,pr.CreatedAt AS PayrollCreatedAt,pr.Status AS PayrollStatus,pr.BasicSalaryAmount,pr.PieceWageAmount,pr.GrossAmount,pr.NetAmount,\n ea.EmployeeAttendanceId,ea.AttendanceDate,ea.CreatedAt AS AttendanceCreatedAt,ea.IsAbsent,ea.WorkedHours,ea.OvertimeHours,\n pw.PieceWageRecordID,pw.CreatedAt AS PieceWageCreatedAt,pw.Status AS PieceWageStatus,pw.Stage,pw.Quantity,pw.WageRate,pw.TotalWage,pw.PayrollRecordId AS PieceWagePayrollRecordId,\n pi.PayrollItemId,pi.ItemType,pi.ItemName,pi.Quantity AS PayrollItemQuantity,pi.Rate AS PayrollItemRate,pi.Amount AS PayrollItemAmount,pi.Notes AS PayrollItemNotes\nFROM target t\nOUTER APPLY (SELECT TOP (1) * FROM dbo.PayrollRecords WHERE EmployeeId=t.EmployeeId ORDER BY CreatedAt DESC,PayrollRecordId DESC) pr\nOUTER APPLY (SELECT TOP (1) * FROM dbo.EmployeeAttendances WHERE EmployeeId=t.EmployeeId ORDER BY AttendanceDate DESC,CreatedAt DESC,EmployeeAttendanceId DESC) ea\nOUTER APPLY (SELECT TOP (1) * FROM dbo.PieceWageRecords WHERE EmployeeId=t.EmployeeId ORDER BY CreatedAt DESC,PieceWageRecordID DESC) pw\nOUTER APPLY (SELECT TOP (1) pi.* FROM dbo.PayrollItems pi JOIN dbo.PayrollRecords itemPr ON itemPr.PayrollRecordId=pi.PayrollRecordId WHERE itemPr.EmployeeId=t.EmployeeId ORDER BY pi.PayrollItemId DESC) pi\nORDER BY t.EmployeeCode;\n'@\n  $r=$cmd.ExecuteReader()\n  while($r.Read()) { $values=for($i=0;$i -lt $r.FieldCount;$i++){ if($r.IsDBNull($i)){''}else{$r.GetValue($i)} }; Write-Output ($values -join '|') }\n  $r.Close()\n} finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Inventory Official Migrations",
+			"type": "shell",
+			"command": "Get-ChildItem 'Backend/LUMAR_ERP_API_V2/Migrations' -Filter '*.sql' | Where-Object { $_.Name -match 'PHASE_ES_[1-6]|READY_MADE|SUPPLIER_FINANCIAL' } | Sort-Object Name | ForEach-Object { Write-Output $_.Name }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Preserve Current Environment Evidence",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs\n$cn.Open()\ntry {\n $cmd=$cn.CreateCommand()\n $cmd.CommandText=@'\nSELECT DB_NAME() AS DatabaseName, COUNT(*) AS EmployeeCount FROM dbo.Employees;\nSELECT name FROM sys.tables WHERE name IN(N'Employees',N'SupplierLedgerEntries',N'SupplierFinancialInvoices',N'GoodsReceipts',N'GoodsReceiptItems',N'Warehouses',N'InventoryItems') ORDER BY name;\nSELECT COUNT(*) AS UnclassifiedEmployees FROM dbo.Employees WHERE SalaryType IS NULL OR SalaryType NOT IN(N'BasicSalary',N'PieceWage');\n'@\n $r=$cmd.ExecuteReader(); $set=0; do { while($r.Read()){ $v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}}; Write-Output ('SET'+$set+'|'+($v -join '|')) }; $set++ } while($r.NextResult()); $r.Close()\n} finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Audit Validation Baselines",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=master;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs\n$cn.Open()\ntry {\n $cmd=$cn.CreateCommand()\n $cmd.CommandText=@'\nSELECT name,state_desc FROM sys.databases WHERE name IN(N'LUMAR_ERP_ES_VALIDATION',N'LUMAR_ERP_CUSTOMERS_ONLY_TEST',N'LUMAR_ERP_CUSTOMERS_ONLY_VALIDATION',N'LUMAR_ERP_TEST',N'LUMAR_ERP') ORDER BY name;\nSELECT DB_NAME() AS ConnectedDatabase;\n'@\n $r=$cmd.ExecuteReader(); $set=0; do { while($r.Read()){ $v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}}; Write-Output ('SET'+$set+'|'+($v -join '|')) }; $set++ } while($r.NextResult()); $r.Close()\n} finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Compare Clean Baseline Contracts",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=master;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs\n$cn.Open()\ntry {\n $cmd=$cn.CreateCommand()\n $cmd.CommandText=@'\nDECLARE @sql nvarchar(max)=N'';\nSELECT @sql=STRING_AGG(CAST(N''USE ''+QUOTENAME(name)+N''; SELECT DB_NAME() AS DbName, (SELECT COUNT(*) FROM sys.tables) AS TableCount, CASE WHEN OBJECT_ID(N''''dbo.Employees'''',N''''U'''') IS NULL THEN -1 ELSE (SELECT COUNT(*) FROM dbo.Employees) END AS EmployeeCount, CASE WHEN OBJECT_ID(N''''dbo.GoodsReceipts'''',N''''U'''') IS NULL THEN 0 ELSE 1 END AS HasGoodsReceipts, CASE WHEN OBJECT_ID(N''''dbo.SupplierLedgerEntries'''',N''''U'''') IS NULL THEN 0 ELSE 1 END AS HasSupplierLedgerEntries;'' AS nvarchar(max)),CHAR(10)) FROM sys.databases WHERE name IN(N''LUMAR_ERP_CUSTOMERS_ONLY_TEST'',N''LUMAR_ERP_CUSTOMERS_ONLY_VALIDATION'',N''LUMAR_ERP_TEST''); EXEC sp_executesql @sql;\n'@\n $r=$cmd.ExecuteReader(); do { while($r.Read()){ $v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}}; Write-Output ($v -join '|') } } while($r.NextResult()); $r.Close()\n} finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Inspect Customers Only Test Baseline",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_CUSTOMERS_ONLY_TEST;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open()\ntry { $cmd=$cn.CreateCommand(); $cmd.CommandText=@'\nSELECT DB_NAME(),(SELECT COUNT(*) FROM sys.tables),(SELECT COUNT(*) FROM dbo.Employees),OBJECT_ID(N'dbo.SupplierLedgerEntries',N'U'),OBJECT_ID(N'dbo.GoodsReceipts',N'U'),OBJECT_ID(N'dbo.AccountingEvents',N'U');\nSELECT name FROM sys.tables WHERE name IN(N'Employees',N'Suppliers',N'SupplierLedgerEntries',N'GoodsReceipts',N'InventoryItems',N'Warehouses',N'AccountingEvents',N'CashMovements',N'LedgerAccounts') ORDER BY name;\n'@; $r=$cmd.ExecuteReader(); $s=0; do {while($r.Read()){ $v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Inspect Customers Validation Baseline",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_CUSTOMERS_ONLY_VALIDATION;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open()\ntry { $cmd=$cn.CreateCommand(); $cmd.CommandText=@'\nSELECT DB_NAME(),(SELECT COUNT(*) FROM sys.tables),(SELECT COUNT(*) FROM dbo.Employees),OBJECT_ID(N'dbo.SupplierLedgerEntries',N'U'),OBJECT_ID(N'dbo.GoodsReceipts',N'U'),OBJECT_ID(N'dbo.AccountingEvents',N'U');\nSELECT name FROM sys.tables WHERE name IN(N'Employees',N'Suppliers',N'SupplierLedgerEntries',N'GoodsReceipts',N'InventoryItems',N'Warehouses',N'AccountingEvents',N'CashMovements',N'LedgerAccounts') ORDER BY name;\n'@; $r=$cmd.ExecuteReader(); $s=0; do {while($r.Read()){ $v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Read Clean Baseline Restore Metadata",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=master;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open()\ntry { $cmd=$cn.CreateCommand(); $cmd.CommandTimeout=120; $cmd.CommandText=@'\nSELECT name,physical_name FROM sys.master_files WHERE database_id=DB_ID(N'LUMAR_ERP_CUSTOMERS_ONLY_TEST') ORDER BY file_id;\nSELECT CONVERT(nvarchar(260),SERVERPROPERTY('InstanceDefaultDataPath')),CONVERT(nvarchar(260),SERVERPROPERTY('InstanceDefaultLogPath'));\n'@; $r=$cmd.ExecuteReader(); $s=0; do {while($r.Read()){ $v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Create Clean Isolated Validation Database",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=master;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open()\ntry {\n  $cmd=$cn.CreateCommand(); $cmd.CommandTimeout=300\n  $cmd.CommandText=@'\nIF DB_ID(N'LUMAR_ERP_ES_VALIDATION') IS NOT NULL\n    THROW 53000, N'LUMAR_ERP_ES_VALIDATION already exists; creation is refused.', 1;\nBACKUP DATABASE [LUMAR_ERP_CUSTOMERS_ONLY_TEST]\nTO DISK=N'C:\\Program Files\\Microsoft SQL Server\\MSSQL16.SQLEXPRESS\\MSSQL\\DATA\\LUMAR_ERP_ES_VALIDATION_ES6J.bak'\nWITH COPY_ONLY, INIT, COMPRESSION, STATS=10;\nRESTORE DATABASE [LUMAR_ERP_ES_VALIDATION]\nFROM DISK=N'C:\\Program Files\\Microsoft SQL Server\\MSSQL16.SQLEXPRESS\\MSSQL\\DATA\\LUMAR_ERP_ES_VALIDATION_ES6J.bak'\nWITH MOVE N'LUMAR_ERP' TO N'C:\\Program Files\\Microsoft SQL Server\\MSSQL16.SQLEXPRESS\\MSSQL\\DATA\\LUMAR_ERP_ES_VALIDATION.mdf',\n     MOVE N'LUMAR_ERP_log' TO N'C:\\Program Files\\Microsoft SQL Server\\MSSQL16.SQLEXPRESS\\MSSQL\\DATA\\LUMAR_ERP_ES_VALIDATION_log.ldf',\n     RECOVERY, STATS=10;\nSELECT name,state_desc FROM sys.databases WHERE name=N'LUMAR_ERP_ES_VALIDATION';\n'@\n  $r=$cmd.ExecuteReader(); do { while($r.Read()){ Write-Output ('CREATED|'+$r.GetValue(0)+'|'+$r.GetValue(1)) } } while($r.NextResult()); $r.Close()\n} finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Create Clean Isolated Validation Database Retry",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=master;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open()\ntry {\n  $cmd=$cn.CreateCommand(); $cmd.CommandTimeout=300\n  $cmd.CommandText=@'\nIF DB_ID(N'LUMAR_ERP_ES_VALIDATION') IS NOT NULL\n    THROW 53000, N'LUMAR_ERP_ES_VALIDATION already exists; creation is refused.', 1;\nBACKUP DATABASE [LUMAR_ERP_CUSTOMERS_ONLY_TEST]\nTO DISK=N'C:\\Program Files\\Microsoft SQL Server\\MSSQL16.SQLEXPRESS\\MSSQL\\DATA\\LUMAR_ERP_ES_VALIDATION_ES6J.bak'\nWITH COPY_ONLY, INIT, STATS=10;\nRESTORE DATABASE [LUMAR_ERP_ES_VALIDATION]\nFROM DISK=N'C:\\Program Files\\Microsoft SQL Server\\MSSQL16.SQLEXPRESS\\MSSQL\\DATA\\LUMAR_ERP_ES_VALIDATION_ES6J.bak'\nWITH MOVE N'LUMAR_ERP' TO N'C:\\Program Files\\Microsoft SQL Server\\MSSQL16.SQLEXPRESS\\MSSQL\\DATA\\LUMAR_ERP_ES_VALIDATION.mdf',\n     MOVE N'LUMAR_ERP_log' TO N'C:\\Program Files\\Microsoft SQL Server\\MSSQL16.SQLEXPRESS\\MSSQL\\DATA\\LUMAR_ERP_ES_VALIDATION_log.ldf',\n     RECOVERY, STATS=10;\nSELECT name,state_desc FROM sys.databases WHERE name=N'LUMAR_ERP_ES_VALIDATION';\n'@\n  $r=$cmd.ExecuteReader(); do { while($r.Read()){ Write-Output ('CREATED|'+$r.GetValue(0)+'|'+$r.GetValue(1)) } } while($r.NextResult()); $r.Close()\n} finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Verify Clean Validation Baseline",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open()\ntry { $cmd=$cn.CreateCommand(); $cmd.CommandText=@'\nSELECT DB_NAME() AS DatabaseName,(SELECT COUNT(*) FROM dbo.Employees) AS EmployeeCount,(SELECT COUNT(*) FROM sys.tables) AS TableCount;\nSELECT name FROM sys.tables WHERE name IN(N'EmployeeLedgerEntries',N'AccountingEventDefinitions',N'EmployeeDailyEligibility',N'EmployeePayments',N'SupplierFinancialInvoices',N'GoodsReceiptReversals') ORDER BY name;\n'@; $r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Apply ES1 Foundation Validation",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\n$path='Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_1_IDENTITY_LEDGER_FOUNDATION_01.sql'\n$sql=Get-Content $path -Raw\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open()\ntry { $cmd=$cn.CreateCommand();$cmd.CommandText=$sql;$cmd.CommandTimeout=120;$cmd.ExecuteNonQuery()|Out-Null;Write-Output 'ES1_APPLIED' } finally {$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Verify ES1 Foundation Validation",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open()\ntry{$cmd=$cn.CreateCommand();$cmd.CommandText=@'\nSELECT OBJECT_ID(N'dbo.EmployeeLedgerEntries',N'U') AS EmployeeLedgerEntries,OBJECT_ID(N'dbo.CK_Employees_OfficialSalaryType',N'C') AS ConstraintObject;\nSELECT name FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.Employees') AND name=N'CK_Employees_OfficialSalaryType';\nSELECT name FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.EmployeeLedgerEntries') AND name=N'UX_EmployeeLedgerEntries_SourceOperation_EntryType';\n'@;$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Apply ES2 CashOut Foundation Validation",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\n$path='Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_2_CASHOUT_ACCOUNTING_FOUNDATION_01.sql'\n$sql=Get-Content $path -Raw\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open()\ntry{$cmd=$cn.CreateCommand();$cmd.CommandText=$sql;$cmd.CommandTimeout=120;$cmd.ExecuteNonQuery()|Out-Null;Write-Output 'ES2_CASHOUT_APPLIED'}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Verify ES2 CashOut Foundation",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open()\ntry{$cmd=$cn.CreateCommand();$cmd.CommandText=@'\nSELECT OBJECT_ID(N'dbo.AccountingEventDefinitions',N'U'),OBJECT_ID(N'dbo.AccountRoleMappings',N'U'),COUNT(*) FROM dbo.AccountingEventDefinitions WHERE AccountingEventType BETWEEN 20 AND 33;\nSELECT name FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.AccountingEvents') AND name=N'UX_AccountingEvents_SourceOperation_EventType';\n'@;$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Apply ES2-ES6 Validation Migrations In Order",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\n$migrations=@(\n '20260929_PHASE_ES_2_REVERSAL_FOUNDATION_02.sql',\n '20260929_PHASE_ES_3A_DAILY_ELIGIBILITY_FOUNDATION_01.sql',\n '20260929_PHASE_ES_3_EMPLOYEE_ACCRUALS_01.sql',\n '20260929_PHASE_ES_4_EMPLOYEE_PAYMENTS_01.sql',\n '20260929_PHASE_ES_5B_SUPPLIER_ADVANCE_ROLE_01.sql',\n '20260929_PHASE_ES_5C_SUPPLIER_ADVANCE_LEDGER_ACCOUNT_01.sql',\n '20260929_PHASE_ES_5D_FINANCIAL_SUPPLIER_INVOICE_01.sql',\n '20260929_PHASE_ES_5E_SUPPLIER_FINANCIAL_RUNTIME_01.sql',\n '20260929_PHASE_ES_5F_SUPPLIER_ALLOCATION_ACCOUNTING_01.sql',\n '20260929_PHASE_ES_6_ITEM_IDENTITY_FOUNDATION_01.sql',\n '20260929_PHASE_ES_6_WAREHOUSE_IDENTITY_FOUNDATION_02.sql',\n '20260929_PHASE_ES_6_GOODS_RECEIPT_RUNTIME_03.sql'\n)\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open()\ntry { $cmd=$cn.CreateCommand();$cmd.CommandTimeout=120; foreach($migration in $migrations){$cmd.CommandText=Get-Content (Join-Path 'Backend/LUMAR_ERP_API_V2/Migrations' $migration) -Raw;$cmd.ExecuteNonQuery()|Out-Null;Write-Output ('APPLIED|'+$migration)} } finally {$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Inspect ES3A Missing Leave Contract",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open()\ntry{$cmd=$cn.CreateCommand();$cmd.CommandText=@'\nSELECT c.name,c.system_type_id,c.max_length,c.is_nullable FROM sys.columns c WHERE c.object_id=OBJECT_ID(N'dbo.LeaveRequests') ORDER BY c.column_id;\nSELECT OBJECT_ID(N'dbo.EmployeeDailyEligibility',N'U') AS EligibilityTable;\n'@;$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Retry ES3A Eligibility Foundation",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True'\n$sql=Get-Content 'Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_3A_DAILY_ELIGIBILITY_FOUNDATION_01.sql' -Raw\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open()\ntry{$cmd=$cn.CreateCommand();$cmd.CommandText=$sql;$cmd.CommandTimeout=120;$cmd.ExecuteNonQuery()|Out-Null;Write-Output 'ES3A_APPLIED'}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Apply Remaining ES3-ES6 Migrations",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\n$migrations=@(\n '20260929_PHASE_ES_3_EMPLOYEE_ACCRUALS_01.sql',\n '20260929_PHASE_ES_4_EMPLOYEE_PAYMENTS_01.sql',\n '20260929_PHASE_ES_5B_SUPPLIER_ADVANCE_ROLE_01.sql',\n '20260929_PHASE_ES_5C_SUPPLIER_ADVANCE_LEDGER_ACCOUNT_01.sql',\n '20260929_PHASE_ES_5D_FINANCIAL_SUPPLIER_INVOICE_01.sql',\n '20260929_PHASE_ES_5E_SUPPLIER_FINANCIAL_RUNTIME_01.sql',\n '20260929_PHASE_ES_5F_SUPPLIER_ALLOCATION_ACCOUNTING_01.sql',\n '20260929_PHASE_ES_6_ITEM_IDENTITY_FOUNDATION_01.sql',\n '20260929_PHASE_ES_6_WAREHOUSE_IDENTITY_FOUNDATION_02.sql',\n '20260929_PHASE_ES_6_GOODS_RECEIPT_RUNTIME_03.sql'\n)\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open()\ntry { $cmd=$cn.CreateCommand();$cmd.CommandTimeout=120; foreach($migration in $migrations){$cmd.CommandText=Get-Content (Join-Path 'Backend/LUMAR_ERP_API_V2/Migrations' $migration) -Raw;$cmd.ExecuteNonQuery()|Out-Null;Write-Output ('APPLIED|'+$migration)} } finally {$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Verify ES1-ES6 Validation Schema",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open()\ntry{$cmd=$cn.CreateCommand();$cmd.CommandText=@'\nSELECT name FROM sys.tables WHERE name IN(N'EmployeeLedgerEntries',N'AccountingEventDefinitions',N'AccountRoleMappings',N'EmployeeDailyEligibility',N'EmployeeDailyAccruals',N'EmployeePayments',N'SupplierFinancialInvoices',N'SupplierFinancialPayments',N'SupplierFinancialPaymentAllocations',N'InventoryItemFoundation',N'Warehouses',N'GoodsReceiptReversals',N'GoodsReceiptReversalLines') ORDER BY name;\nSELECT name FROM sys.check_constraints WHERE name IN(N'CK_Employees_OfficialSalaryType',N'CK_LeaveRequests_PaymentClassification');\nSELECT name FROM sys.indexes WHERE name IN(N'UX_GoodsReceipts_SourceOperation',N'UX_EmployeeLedgerEntries_SourceOperation_EntryType',N'UX_SupplierLedgerEntries_SourceOperation_EntryType') ORDER BY name;\nSELECT name FROM sys.foreign_keys WHERE name LIKE N'FK_GoodsReceipt%' OR name LIKE N'FK_SupplierFinancial%' ORDER BY name;\n'@;$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J CashOut Foundation Validation Test",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~CashOutAccountingFoundationIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6j-cashout\\ --logger 'console;verbosity=detailed'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Retry CashOut Foundation Validation Test",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~CashOutAccountingFoundationIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6j-cashout-retry\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Map CashOut Failure Line",
+			"type": "shell",
+			"command": "$line=0;Get-Content 'Backend/LUMAR_ERP_API_V2.Tests/CashOutAccountingFoundationIntegrationTests.cs'|ForEach-Object{$line++;if($line -ge 20 -and $line -le 60){Write-Output ($line.ToString()+'|'+$_)}}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Inspect Accounting Idempotency Contract",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open()\ntry{$cmd=$cn.CreateCommand();$cmd.CommandText=@'\nSELECT i.name,i.is_unique,i.has_filter,i.filter_definition FROM sys.indexes i WHERE i.object_id=OBJECT_ID(N'dbo.AccountingEvents') ORDER BY i.index_id;\nSELECT COUNT(*) AS EventCount,COUNT(DISTINCT SourceOperationId) AS Operations FROM dbo.AccountingEvents;\nSELECT OBJECT_DEFINITION(OBJECT_ID(N'dbo.usp_PostFoundationAccountingEvent'));\n'@;$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Verify CashOut Gateway Result Handling",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~CashOutAccountingFoundationIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6j-cashout-gateway\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Final CashOut Foundation Test",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~CashOutAccountingFoundationIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6j-cashout-final\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Verify CashOut Reversal Result Handling",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~CashOutAccountingFoundationIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6j-cashout-reversal\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Employee Accrual Validation Test",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~EmployeeAccrualRuntimeIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6j-es3\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6J Retry Employee Accrual Validation Test",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~EmployeeAccrualRuntimeIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6j-es3-retry\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6K Audit Employee Fixture Contract",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open()\ntry{$cmd=$cn.CreateCommand();$cmd.CommandText=@'\nSELECT c.column_id,c.name,t.name,c.max_length,c.precision,c.scale,c.is_nullable,dc.definition AS DefaultDefinition FROM sys.columns c JOIN sys.types t ON t.user_type_id=c.user_type_id LEFT JOIN sys.default_constraints dc ON dc.parent_object_id=c.object_id AND dc.parent_column_id=c.column_id WHERE c.object_id=OBJECT_ID(N'dbo.Employees') ORDER BY c.column_id;\nSELECT cc.name,cc.definition FROM sys.check_constraints cc WHERE cc.parent_object_id=OBJECT_ID(N'dbo.Employees') ORDER BY cc.name;\nSELECT OBJECT_SCHEMA_NAME(o.object_id),o.name,o.type_desc FROM sys.objects o WHERE o.parent_object_id=OBJECT_ID(N'dbo.Employees') AND o.type IN(N'TR',N'F') ORDER BY o.type_desc,o.name;\n'@;$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6K Verify Employee Accrual Fixtures",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~EmployeeAccrualRuntimeIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6k-es3\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6K Employee Payment Validation Test",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~EmployeePaymentIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6k-es4\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }

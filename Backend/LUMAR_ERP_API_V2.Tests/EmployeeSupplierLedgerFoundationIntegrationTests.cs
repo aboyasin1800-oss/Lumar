@@ -90,8 +90,9 @@ public sealed class EmployeeSupplierLedgerFoundationIntegrationTests
         var value = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
             ?? "Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True";
         var builder = new SqlConnectionStringBuilder(value);
-        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Phase ES-1 tests are restricted to LUMAR_ERP_TEST.");
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Phase ES-1 tests require an approved ES validation database.");
         return builder.ConnectionString;
     }
 
@@ -105,9 +106,9 @@ public sealed class EmployeeSupplierLedgerFoundationIntegrationTests
                 VALUES (@departmentCode, N'قسم اختبار الدفتر', 1, SYSUTCDATETIME());
                 SET @departmentId = SCOPE_IDENTITY();
             END;
-            INSERT INTO dbo.Employees (EmployeeCode, EmployeeName, FullName, DepartmentId, BasicSalary, SalaryType, HireDate, Status, IsActive, CreatedAt)
+            INSERT INTO dbo.Employees (EmployeeCode, EmployeeName, FullName, DepartmentId, BasicSalary, SalaryType, HireDate, Status, IsActive, CreatedAt, PieceWageRate, OvertimeHourlyRate)
             OUTPUT INSERTED.EmployeeID
-            VALUES (@employeeCode, N'موظف اختبار الدفتر', N'موظف اختبار الدفتر', @departmentId, 100, N'BasicSalary', CAST(SYSUTCDATETIME() AS date), N'Active', 1, SYSUTCDATETIME());
+            VALUES (@employeeCode, N'موظف اختبار الدفتر', N'موظف اختبار الدفتر', @departmentId, 100, N'BasicSalary', CAST(SYSUTCDATETIME() AS date), N'Active', 1, SYSUTCDATETIME(), 0, 25);
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@departmentCode", $"ES1-{suffix}");

@@ -1,8 +1,8 @@
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
-IF DB_NAME() <> N'LUMAR_ERP_TEST'
-    THROW 51900, N'This Phase ES-2 migration is restricted to LUMAR_ERP_TEST.', 1;
+IF DB_NAME() NOT IN (N'LUMAR_ERP_TEST', N'LUMAR_ERP_ES_VALIDATION')
+    THROW 51900, N'This Phase ES-2 migration is restricted to approved ES validation databases.', 1;
 
 BEGIN TRY
     BEGIN TRANSACTION;
@@ -28,7 +28,7 @@ BEGIN TRY
         CreditAccountRole nvarchar(50) NULL,
         CashDirection tinyint NULL,
         RequiresCashMovement bit NOT NULL,
-        LiabilityImpact tinyint NOT NULL,
+        LiabilityImpact smallint NOT NULL,
         ExpenseImpact tinyint NOT NULL,
         InventoryImpact tinyint NOT NULL,
         IsEnabled bit NOT NULL CONSTRAINT DF_AccountingEventDefinitions_IsEnabled DEFAULT 0,
@@ -120,15 +120,10 @@ BEGIN TRY
                 AND SourceType IS NOT NULL AND SourceId IS NOT NULL AND SourceOperationId IS NOT NULL AND CreatedBy IS NOT NULL)
         );
 
-    CREATE UNIQUE INDEX UX_AccountingEvents_SourceOperation_EventType
-        ON dbo.AccountingEvents(SourceOperationId, AccountingEventType)
-        WHERE SourceOperationId IS NOT NULL;
-    CREATE UNIQUE INDEX UX_AccountingEvents_Original_Reversal
-        ON dbo.AccountingEvents(OriginalAccountingEventId) WHERE AccountingEventType=33;
-    CREATE UNIQUE INDEX UX_CashMovements_SourceOperation
-        ON dbo.CashMovements(SourceOperationId) WHERE SourceOperationId IS NOT NULL;
-    CREATE UNIQUE INDEX UX_CashMovements_Original_Reversal
-        ON dbo.CashMovements(OriginalCashMovementId) WHERE OriginalCashMovementId IS NOT NULL;
+    EXEC(N'CREATE UNIQUE INDEX UX_AccountingEvents_SourceOperation_EventType ON dbo.AccountingEvents(SourceOperationId, AccountingEventType) WHERE SourceOperationId IS NOT NULL;');
+    EXEC(N'CREATE UNIQUE INDEX UX_AccountingEvents_Original_Reversal ON dbo.AccountingEvents(OriginalAccountingEventId) WHERE AccountingEventType=33;');
+    EXEC(N'CREATE UNIQUE INDEX UX_CashMovements_SourceOperation ON dbo.CashMovements(SourceOperationId) WHERE SourceOperationId IS NOT NULL;');
+    EXEC(N'CREATE UNIQUE INDEX UX_CashMovements_Original_Reversal ON dbo.CashMovements(OriginalCashMovementId) WHERE OriginalCashMovementId IS NOT NULL;');
 
     EXEC(N'
 CREATE OR ALTER PROCEDURE dbo.usp_PostFoundationCashMovement

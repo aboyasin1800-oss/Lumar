@@ -1,8 +1,8 @@
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
-IF DB_NAME() <> N'LUMAR_ERP_TEST'
-    THROW 51800, N'This Phase ES-1 migration is restricted to LUMAR_ERP_TEST.', 1;
+IF DB_NAME() NOT IN (N'LUMAR_ERP_TEST', N'LUMAR_ERP_ES_VALIDATION')
+    THROW 51800, N'This Phase ES-1 migration is restricted to approved ES validation databases.', 1;
 
 BEGIN TRY
     BEGIN TRANSACTION;
@@ -153,15 +153,9 @@ BEGIN TRY
     CREATE INDEX IX_EmployeeLedgerEntries_Employee_OccurredAt
         ON dbo.EmployeeLedgerEntries(EmployeeId, OccurredAt, EmployeeLedgerEntryId);
 
-    CREATE UNIQUE INDEX UX_SupplierLedgerEntries_SourceOperation_EntryType
-        ON dbo.SupplierLedgerEntries(SourceOperationId, EntryType)
-        WHERE SourceOperationId IS NOT NULL;
-    CREATE UNIQUE INDEX UX_SupplierLedgerEntries_OriginalEntry_Reversal
-        ON dbo.SupplierLedgerEntries(OriginalEntryId)
-        WHERE EntryType = N'Reversal';
-    CREATE INDEX IX_SupplierLedgerEntries_Supplier_OccurredAt
-        ON dbo.SupplierLedgerEntries(SupplierId, OccurredAt, SupplierLedgerEntryId)
-        WHERE OccurredAt IS NOT NULL;
+    EXEC(N'CREATE UNIQUE INDEX UX_SupplierLedgerEntries_SourceOperation_EntryType ON dbo.SupplierLedgerEntries(SourceOperationId, EntryType) WHERE SourceOperationId IS NOT NULL;');
+    EXEC(N'CREATE UNIQUE INDEX UX_SupplierLedgerEntries_OriginalEntry_Reversal ON dbo.SupplierLedgerEntries(OriginalEntryId) WHERE EntryType = N''Reversal'';');
+    EXEC(N'CREATE INDEX IX_SupplierLedgerEntries_Supplier_OccurredAt ON dbo.SupplierLedgerEntries(SupplierId, OccurredAt, SupplierLedgerEntryId) WHERE OccurredAt IS NOT NULL;');
 
     COMMIT TRANSACTION;
 END TRY

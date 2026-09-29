@@ -1,5 +1,5 @@
 SET XACT_ABORT ON;
-IF DB_NAME()<>N'LUMAR_ERP_TEST' THROW 52420,N'ES-6 goods receipt runtime is restricted to LUMAR_ERP_TEST.',1;
+IF DB_NAME() NOT IN(N'LUMAR_ERP_TEST',N'LUMAR_ERP_ES_VALIDATION') THROW 52420,N'ES-6 goods receipt runtime is restricted to approved ES validation databases.',1;
 IF OBJECT_ID(N'dbo.Warehouses',N'U') IS NULL OR OBJECT_ID(N'dbo.SupplierInvoiceLines',N'U') IS NULL OR COL_LENGTH(N'dbo.GoodsReceiptItems',N'InventoryItemId') IS NULL THROW 52421,N'ES-6 identity foundations are required.',1;
 BEGIN TRY BEGIN TRANSACTION;
 IF COL_LENGTH(N'dbo.GoodsReceipts',N'SourceOperationId') IS NULL ALTER TABLE dbo.GoodsReceipts ADD SourceOperationId uniqueidentifier NULL;

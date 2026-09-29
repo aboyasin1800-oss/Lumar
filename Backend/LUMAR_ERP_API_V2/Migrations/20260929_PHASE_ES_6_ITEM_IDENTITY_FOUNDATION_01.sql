@@ -1,5 +1,5 @@
 SET XACT_ABORT ON;
-IF DB_NAME()<>N'LUMAR_ERP_TEST' THROW 52400,N'ES-6 is restricted to LUMAR_ERP_TEST.',1;
+IF DB_NAME() NOT IN(N'LUMAR_ERP_TEST',N'LUMAR_ERP_ES_VALIDATION') THROW 52400,N'ES-6 is restricted to approved ES validation databases.',1;
 BEGIN TRY BEGIN TRANSACTION;
 IF OBJECT_ID(N'dbo.SupplierInvoiceLines',N'U') IS NOT NULL OR COL_LENGTH(N'dbo.GoodsReceiptItems',N'InventoryItemId') IS NOT NULL THROW 52401,N'ES-6 item identity already exists.',1;
 CREATE TABLE dbo.SupplierInvoiceLines(

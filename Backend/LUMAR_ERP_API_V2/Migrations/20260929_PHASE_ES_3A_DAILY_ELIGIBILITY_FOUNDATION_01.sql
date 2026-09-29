@@ -1,9 +1,9 @@
 SET XACT_ABORT ON;
-IF DB_NAME()<>N'LUMAR_ERP_TEST' THROW 52000,N'ES-3A is restricted to LUMAR_ERP_TEST.',1;
+IF DB_NAME() NOT IN(N'LUMAR_ERP_TEST',N'LUMAR_ERP_ES_VALIDATION') THROW 52000,N'ES-3A is restricted to approved ES validation databases.',1;
 BEGIN TRY BEGIN TRANSACTION;
 IF OBJECT_ID(N'dbo.EmployeeDailyEligibility',N'U') IS NOT NULL OR OBJECT_ID(N'dbo.EmployeeStatusHistory',N'U') IS NOT NULL THROW 52001,N'ES-3A already exists.',1;
 ALTER TABLE dbo.LeaveRequests ADD PaymentClassification nvarchar(10) NULL;
-ALTER TABLE dbo.LeaveRequests ADD CONSTRAINT CK_LeaveRequests_PaymentClassification CHECK(PaymentClassification IN(N'Paid',N'Unpaid') OR PaymentClassification IS NULL);
+EXEC(N'ALTER TABLE dbo.LeaveRequests ADD CONSTRAINT CK_LeaveRequests_PaymentClassification CHECK(PaymentClassification IN(N''Paid'',N''Unpaid'') OR PaymentClassification IS NULL);');
 CREATE TABLE dbo.EmployeeStatusHistory(
  EmployeeStatusHistoryId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,EmployeeId int NOT NULL,EffectiveDate date NOT NULL,Status nvarchar(20) NOT NULL,CreatedBy nvarchar(100) NOT NULL,CreatedAt datetime2(7) NOT NULL CONSTRAINT DF_EmployeeStatusHistory_CreatedAt DEFAULT SYSUTCDATETIME(),
  CONSTRAINT FK_EmployeeStatusHistory_Employee FOREIGN KEY(EmployeeId) REFERENCES dbo.Employees(EmployeeID),CONSTRAINT UQ_EmployeeStatusHistory_Employee_Date UNIQUE(EmployeeId,EffectiveDate),CONSTRAINT CK_EmployeeStatusHistory_Status CHECK(Status IN(N'Active',N'Inactive',N'Terminated')));

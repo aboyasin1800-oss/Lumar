@@ -37,8 +37,15 @@ public static class FoundationPostingGateway
         command.Parameters.Add("@RecipientType", SqlDbType.NVarChar, 50).Value = request.RecipientType ?? (object)DBNull.Value;
         command.Parameters.Add("@RecipientId", SqlDbType.BigInt).Value = request.RecipientId ?? (object)DBNull.Value;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException("The foundation accounting event was not created.");
-        return new FoundationPostingResult(reader.GetInt64(0), reader.GetBoolean(1));
+        FoundationPostingResult? result = null;
+        do
+        {
+            if (await reader.ReadAsync(cancellationToken))
+                result = new FoundationPostingResult(reader.GetInt64(0), reader.GetBoolean(1));
+        }
+        while (await reader.NextResultAsync(cancellationToken));
+
+        return result ?? throw new InvalidOperationException("The foundation accounting event was not created.");
     }
 
     public static async Task<FoundationPostingResult> ReverseAsync(SqlConnection connection, SqlTransaction transaction, long originalEventId, Guid sourceOperationId, string referenceNumber, string reason, string reversedBy, CancellationToken cancellationToken)
@@ -50,7 +57,14 @@ public static class FoundationPostingGateway
         command.Parameters.AddWithValue("@Reason", reason);
         command.Parameters.AddWithValue("@ReversedBy", reversedBy);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException("The foundation reversal was not created.");
-        return new FoundationPostingResult(reader.GetInt64(0), reader.GetBoolean(1));
+        FoundationPostingResult? result = null;
+        do
+        {
+            if (await reader.ReadAsync(cancellationToken))
+                result = new FoundationPostingResult(reader.GetInt64(0), reader.GetBoolean(1));
+        }
+        while (await reader.NextResultAsync(cancellationToken));
+
+        return result ?? throw new InvalidOperationException("The foundation reversal was not created.");
     }
 }
