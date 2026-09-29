@@ -867,6 +867,23 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "ES7B1 Isolated Tests Temporary",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"test",
+				"Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj",
+				"--no-restore",
+				"-p:UseAppHost=false",
+				"-p:OutDir=D:\\YASIN\\_validation_obj\\es7b1-tests\\",
+				"--filter",
+				"FullyQualifiedName~Es7SecurityFoundationTests"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
 		}
 	]
 }

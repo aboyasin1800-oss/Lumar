@@ -1,4 +1,5 @@
 using LUMAR_ERP_API_V2.Configuration;
+using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.ErrorHandling;
 using LUMAR_ERP_API_V2.Repositories;
@@ -8,6 +9,7 @@ using LUMAR_ERP_API_V2.Utilities;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers(options => options.Filters.Add<GlobalApiErrorResultFilter>());
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options => options.CustomSchemaIds(type => type.FullName!));
 builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection(DatabaseOptions.SectionName));
@@ -73,6 +75,7 @@ builder.Services.AddScoped<IPricingEngineService, PricingEngineService>();
 builder.Services.AddScoped<IConsumptionRulesService, ConsumptionRulesService>();
 builder.Services.AddScoped<ISalesReferenceService, SalesReferenceService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IAuthenticatedUserContext, AuthenticatedUserContext>();
 builder.Services.AddScoped<IOrderLoyaltyIntegrationService, OrderLoyaltyIntegrationService>();
 builder.Services.AddScoped<ICancelledPieceReadyInventoryTransferService, CancelledPieceReadyInventoryTransferService>();
 builder.Services.AddScoped<ICancelledPieceDispositionRepository, CancelledPieceDispositionRepository>();

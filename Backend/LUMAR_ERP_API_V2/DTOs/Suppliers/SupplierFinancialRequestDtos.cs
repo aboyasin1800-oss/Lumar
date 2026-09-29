@@ -1,0 +1,11 @@
+using LUMAR_ERP_API_V2.FinancialFoundation;
+
+namespace LUMAR_ERP_API_V2.DTOs.Suppliers;
+
+public sealed record CreateSupplierInvoiceRequestDto(int SupplierId, string InvoiceNumber, DateOnly InvoiceDate, DateOnly DueDate, decimal Amount, string? Notes, Guid SourceOperationId, string CurrencyCode = "YER");
+
+public sealed record CreateSupplierPaymentRequestDto(int SupplierId, int? SupplierInvoiceId, decimal Amount, DateOnly PaymentDate, int CashAccountId, SupplierPaymentKind PaymentKind, string PaymentMethod, string ReferenceNumber, string? Notes, Guid SourceOperationId, string CurrencyCode = "YER");
+
+public sealed record AllocateSupplierPaymentRequestDto(int SupplierPaymentId, int SupplierInvoiceId, decimal Amount, DateOnly AllocationDate, Guid SourceOperationId, string ReferenceNumber);
+
+public sealed record ReverseSupplierFinancialRequestDto(string DocumentType, int DocumentId, Guid SourceOperationId, string Reason);
