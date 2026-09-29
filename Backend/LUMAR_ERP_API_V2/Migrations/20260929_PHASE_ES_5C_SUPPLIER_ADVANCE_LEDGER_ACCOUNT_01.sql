@@ -1,0 +1,10 @@
+SET XACT_ABORT ON;
+IF DB_NAME()<>N'LUMAR_ERP_TEST' THROW 52310,N'ES-5C is restricted to LUMAR_ERP_TEST.',1;
+BEGIN TRY BEGIN TRANSACTION;
+IF EXISTS(SELECT 1 FROM dbo.LedgerAccounts WHERE AccountCode=N'SUPPLIER_ADVANCE') THROW 52311,N'Supplier advance ledger account already exists.',1;
+IF NOT EXISTS(SELECT 1 FROM dbo.AccountRoleMappings WHERE AccountRole=N'SupplierAdvance') THROW 52312,N'SupplierAdvance role is required.',1;
+INSERT dbo.LedgerAccounts(AccountCode,AccountName,AccountType,IsActive,CreatedAt) VALUES(N'SUPPLIER_ADVANCE',N'ديون لصالح المؤسسة',N'Asset',1,SYSUTCDATETIME());
+DECLARE @ledgerAccountId int=SCOPE_IDENTITY();
+UPDATE dbo.AccountRoleMappings SET LedgerAccountId=@ledgerAccountId,IsEnabled=1 WHERE AccountRole=N'SupplierAdvance';
+UPDATE dbo.AccountingEventDefinitions SET DebitAccountRole=N'SupplierAdvance',CreditAccountRole=N'Cash',CashDirection=2,RequiresCashMovement=1,IsEnabled=1,IsBusinessRuntimeEnabled=0 WHERE AccountingEventType=30;
+COMMIT TRANSACTION; END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
