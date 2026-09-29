@@ -52,7 +52,6 @@ BEGIN TRY
 
         CONSTRAINT PK_SupplierFinancialPayments PRIMARY KEY (SupplierPaymentId),
         CONSTRAINT UQ_SupplierFinancialPayments_SourceOperation UNIQUE (SourceOperationId),
-        CONSTRAINT UQ_SupplierFinancialPayments_OriginalReversal UNIQUE (OriginalSupplierPaymentId),
         CONSTRAINT FK_SupplierFinancialPayments_Payment FOREIGN KEY (SupplierPaymentId) REFERENCES dbo.SupplierPayments(SupplierPaymentId),
         CONSTRAINT FK_SupplierFinancialPayments_Cash FOREIGN KEY (CashAccountId) REFERENCES dbo.CashAccounts(CashAccountId),
         CONSTRAINT FK_SupplierFinancialPayments_Event FOREIGN KEY (AccountingEventId) REFERENCES dbo.AccountingEvents(AccountingEventId),
@@ -84,6 +83,7 @@ BEGIN TRY
     );
 
     CREATE INDEX IX_SupplierFinancialPayments_Status ON dbo.SupplierFinancialPayments(Status, PaymentKind, SupplierPaymentId);
+    CREATE UNIQUE INDEX UX_SupplierFinancialPayments_OriginalReversal ON dbo.SupplierFinancialPayments(OriginalSupplierPaymentId) WHERE OriginalSupplierPaymentId IS NOT NULL;
     CREATE INDEX IX_SupplierFinancialPaymentAllocations_Status ON dbo.SupplierFinancialPaymentAllocations(Status, SupplierPaymentAllocationId);
 
     COMMIT TRANSACTION;

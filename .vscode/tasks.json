@@ -711,6 +711,118 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "ES6L Audit Employee Payment Reversal Constraint",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop';$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True';$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open();try{$cmd=$cn.CreateCommand();$cmd.CommandText=@'\nSELECT kc.name,kc.type_desc,i.name AS IndexName,i.has_filter,i.filter_definition FROM sys.key_constraints kc JOIN sys.indexes i ON i.object_id=kc.parent_object_id AND i.index_id=kc.unique_index_id WHERE kc.parent_object_id=OBJECT_ID(N'dbo.EmployeePayments');\nSELECT c.name FROM sys.index_columns ic JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id JOIN sys.indexes i ON i.object_id=ic.object_id AND i.index_id=ic.index_id WHERE i.name=N'UQ_EmployeePayments_OriginalReversal';\nSELECT COUNT(*) AS OriginalPayments,SUM(CASE WHEN OriginalPaymentId IS NOT NULL THEN 1 ELSE 0 END) AS Reversals FROM dbo.EmployeePayments;\nSELECT OriginalPaymentId,COUNT(*) AS DuplicateCount FROM dbo.EmployeePayments WHERE OriginalPaymentId IS NOT NULL GROUP BY OriginalPaymentId HAVING COUNT(*)>1;\nSELECT fk.name,OBJECT_NAME(fk.referenced_object_id) AS ReferencedTable FROM sys.foreign_keys fk WHERE fk.parent_object_id=OBJECT_ID(N'dbo.EmployeePayments');\n'@;$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6L Apply Employee Payment Reversal Constraint Fix",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop';$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True';$sql=Get-Content 'Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_4_EMPLOYEE_PAYMENT_REVERSAL_CONSTRAINT_FIX_02.sql' -Raw;$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open();try{$cmd=$cn.CreateCommand();$cmd.CommandText=$sql;$cmd.ExecuteNonQuery()|Out-Null;Write-Output 'ES4_REVERSAL_INDEX_FIXED'}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6L Verify Filtered Reversal Index",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop';$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True';$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open();try{$cmd=$cn.CreateCommand();$cmd.CommandText=\"SELECT name,is_unique,has_filter,filter_definition FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.EmployeePayments') AND name=N'UX_EmployeePayments_OriginalReversal'; SELECT COUNT(*) FROM sys.key_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.EmployeePayments') AND name=N'UQ_EmployeePayments_OriginalReversal';\";$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){$r.GetValue($i)};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6M Verify Payment Reversal Schema",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'\n$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True'\n$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open()\ntry{$cmd=$cn.CreateCommand();$cmd.CommandText=@'\nSELECT @@SERVERNAME AS ServerName,DB_NAME() AS DatabaseName;\nSELECT i.name,i.is_unique,i.has_filter,i.filter_definition,c.name AS IndexedColumn FROM sys.indexes i JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id WHERE i.object_id=OBJECT_ID(N'dbo.EmployeePayments') AND i.name=N'UX_EmployeePayments_OriginalReversal';\nSELECT COUNT(*) AS OldConstraintCount FROM sys.key_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.EmployeePayments') AND name=N'UQ_EmployeePayments_OriginalReversal';\nSELECT name AS ForeignKeyName FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'dbo.EmployeePayments') AND name=N'FK_EmployeePayments_Original';\nSELECT COUNT(*) AS DuplicateCount FROM (SELECT OriginalPaymentId FROM dbo.EmployeePayments WHERE OriginalPaymentId IS NOT NULL GROUP BY OriginalPaymentId HAVING COUNT(*)>1) d;\nSELECT COUNT(*) AS OrphanCount FROM dbo.EmployeePayments p LEFT JOIN dbo.EmployeePayments o ON o.EmployeePaymentId=p.OriginalPaymentId WHERE p.OriginalPaymentId IS NOT NULL AND o.EmployeePaymentId IS NULL;\nSELECT COUNT(*) AS SelfReversalCount FROM dbo.EmployeePayments WHERE OriginalPaymentId=EmployeePaymentId;\n'@;$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6M Employee Payment Verification Test",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~EmployeePaymentIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6m-es4\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6N Audit Department Fixture Contract",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop';$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True';$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open();try{$cmd=$cn.CreateCommand();$cmd.CommandText=@'\nSELECT c.name,c.is_nullable FROM sys.columns c WHERE c.object_id=OBJECT_ID(N'dbo.Employees') AND c.name=N'DepartmentId';\nSELECT kc.name,c.name FROM sys.key_constraints kc JOIN sys.index_columns ic ON ic.object_id=kc.parent_object_id AND ic.index_id=kc.unique_index_id JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id WHERE kc.parent_object_id=OBJECT_ID(N'dbo.Departments');\nSELECT fk.name,OBJECT_NAME(fk.referenced_object_id) FROM sys.foreign_keys fk WHERE fk.parent_object_id=OBJECT_ID(N'dbo.Employees') AND fk.name=N'FK_Employees_Departments_DepartmentId';\nSELECT COUNT(*) FROM dbo.Departments;\n'@;$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6N Verify Employee Payment Department Fixture",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~EmployeePaymentIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6n-es4\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6N Employee Supplier Ledger Foundation Test",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~EmployeeSupplierLedgerFoundationIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6n-es1-ledger\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6N Supplier Financial Runtime Test",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~SupplierFinancialRuntimeIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6n-es5\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6O Audit Supplier Financial Payment Reversal Constraint",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop';$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True';$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open();try{$cmd=$cn.CreateCommand();$cmd.CommandText=@'\nSELECT kc.name,kc.type_desc,i.name,i.has_filter,i.filter_definition FROM sys.key_constraints kc JOIN sys.indexes i ON i.object_id=kc.parent_object_id AND i.index_id=kc.unique_index_id WHERE kc.parent_object_id=OBJECT_ID(N'dbo.SupplierFinancialPayments');\nSELECT c.name FROM sys.index_columns ic JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id JOIN sys.indexes i ON i.object_id=ic.object_id AND i.index_id=ic.index_id WHERE i.name=N'UQ_SupplierFinancialPayments_OriginalReversal';\nSELECT SUM(CASE WHEN OriginalPaymentId IS NULL THEN 1 ELSE 0 END),SUM(CASE WHEN OriginalPaymentId IS NOT NULL THEN 1 ELSE 0 END) FROM dbo.SupplierFinancialPayments;\nSELECT OriginalPaymentId,COUNT(*) FROM dbo.SupplierFinancialPayments WHERE OriginalPaymentId IS NOT NULL GROUP BY OriginalPaymentId HAVING COUNT(*)>1;\nSELECT fk.name,OBJECT_NAME(fk.referenced_object_id) FROM sys.foreign_keys fk WHERE fk.parent_object_id=OBJECT_ID(N'dbo.SupplierFinancialPayments');\n'@;$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6O Audit Supplier Reversal Constraint Corrected",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop';$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True';$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open();try{$cmd=$cn.CreateCommand();$cmd.CommandText=@'\nSELECT kc.name,kc.type_desc,i.name,i.has_filter,i.filter_definition FROM sys.key_constraints kc JOIN sys.indexes i ON i.object_id=kc.parent_object_id AND i.index_id=kc.unique_index_id WHERE kc.parent_object_id=OBJECT_ID(N'dbo.SupplierFinancialPayments');\nSELECT SUM(CASE WHEN OriginalSupplierPaymentId IS NULL THEN 1 ELSE 0 END),SUM(CASE WHEN OriginalSupplierPaymentId IS NOT NULL THEN 1 ELSE 0 END) FROM dbo.SupplierFinancialPayments;\nSELECT OriginalSupplierPaymentId,COUNT(*) FROM dbo.SupplierFinancialPayments WHERE OriginalSupplierPaymentId IS NOT NULL GROUP BY OriginalSupplierPaymentId HAVING COUNT(*)>1;\nSELECT fk.name,OBJECT_NAME(fk.referenced_object_id) FROM sys.foreign_keys fk WHERE fk.parent_object_id=OBJECT_ID(N'dbo.SupplierFinancialPayments') AND fk.name=N'FK_SupplierFinancialPayments_Original';\n'@;$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){if($r.IsDBNull($i)){''}else{$r.GetValue($i)}};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6O Apply Supplier Payment Reversal Constraint Fix",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop';$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True';$sql=Get-Content 'Backend/LUMAR_ERP_API_V2/Migrations/20260929_PHASE_ES_5_SUPPLIER_PAYMENT_REVERSAL_CONSTRAINT_FIX_02.sql' -Raw;$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open();try{$cmd=$cn.CreateCommand();$cmd.CommandText=$sql;$cmd.ExecuteNonQuery()|Out-Null;Write-Output 'ES5_SUPPLIER_REVERSAL_INDEX_FIXED'}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6O Verify Supplier Reversal Index",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop';$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True';$cn=New-Object System.Data.SqlClient.SqlConnection $cs;$cn.Open();try{$cmd=$cn.CreateCommand();$cmd.CommandText=@'\nSELECT i.name,i.is_unique,i.has_filter,i.filter_definition FROM sys.indexes i WHERE i.object_id=OBJECT_ID(N'dbo.SupplierFinancialPayments') AND i.name=N'UX_SupplierFinancialPayments_OriginalReversal';\nSELECT COUNT(*) FROM sys.key_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.SupplierFinancialPayments') AND name=N'UQ_SupplierFinancialPayments_OriginalReversal';\n'@;$r=$cmd.ExecuteReader();$s=0;do{while($r.Read()){$v=for($i=0;$i -lt $r.FieldCount;$i++){$r.GetValue($i)};Write-Output ('SET'+$s+'|'+($v -join '|'))};$s++}while($r.NextResult());$r.Close()}finally{$cn.Close()}",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES6O Supplier Financial Runtime Retry",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~SupplierFinancialRuntimeIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6o-es5\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }
