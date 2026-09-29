@@ -823,6 +823,14 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "ES6P Verify Supplier Financial Result Set Contract",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'\ndotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~SupplierFinancialRuntimeIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_obj\\es6p-es5\\ --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }
