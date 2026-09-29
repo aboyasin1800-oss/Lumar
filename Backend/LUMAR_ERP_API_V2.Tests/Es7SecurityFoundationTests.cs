@@ -3,6 +3,7 @@ using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Inventory;
 using LUMAR_ERP_API_V2.DTOs.Purchasing;
 using LUMAR_ERP_API_V2.DTOs.Suppliers;
+using Xunit;
 
 namespace LUMAR_ERP_API_V2.Tests;
 

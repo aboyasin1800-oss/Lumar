@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace LUMAR_ERP_API_V2.Repositories;
 
-public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections, ILogger<InventoryRepository>? logger = null) : IInventoryRepository
+public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections, ILogger<InventoryRepository>? logger = null) : IInventoryRepository, IGoodsReceiptTransactionRuntime
 {
     public Task<IReadOnlyList<InventoryItemDto>> GetItemsAsync(CancellationToken ct) => QueryAsync("SELECT InventoryItemID, ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice FROM dbo.InventoryItems ORDER BY ItemName, InventoryItemID", MapItem, null, ct);
     public async Task<InventoryItemDto?> GetItemByIdAsync(int id, CancellationToken ct) => (await QueryAsync("SELECT InventoryItemID, ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice FROM dbo.InventoryItems WHERE InventoryItemID = @id", MapItem, id, ct)).SingleOrDefault();
@@ -843,26 +843,14 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
 
     public async Task<GoodsReceiptRuntimeResult> CreateGoodsReceiptAsync(CreateGoodsReceiptDto request, CancellationToken ct)
     {
-        ValidateGoodsReceipt(request);
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(ct);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
         try
         {
-            var existing = await ReadExistingGoodsReceiptAsync(connection, transaction, request.SourceOperationId, ct);
-            if (existing is not null)
-            {
-                await transaction.CommitAsync(ct);
-                return existing with { IsExisting = true };
-            }
-
-            await ValidateGoodsReceiptHeaderAsync(connection, transaction, request, ct);
-            var receiptId = await InsertGoodsReceiptAsync(connection, transaction, request, ct);
-            foreach (var item in request.Items)
-                await PostGoodsReceiptItemAsync(connection, transaction, receiptId, request, item, ct);
-
+            var result = await CreateGoodsReceiptInTransactionAsync(connection, transaction, request, ct);
             await transaction.CommitAsync(ct);
-            return new GoodsReceiptRuntimeResult(receiptId, request.ReceiptNumber.Trim(), false);
+            return result;
         }
         catch
         {
@@ -871,40 +859,56 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         }
     }
 
+    public async Task<GoodsReceiptRuntimeResult> CreateGoodsReceiptInTransactionAsync(SqlConnection connection, SqlTransaction transaction, CreateGoodsReceiptDto request, CancellationToken ct)
+    {
+        ValidateGoodsReceipt(request);
+        var existing = await ReadExistingGoodsReceiptAsync(connection, transaction, request.SourceOperationId, ct);
+        if (existing is not null) return existing with { IsExisting = true };
+
+        await ValidateGoodsReceiptHeaderAsync(connection, transaction, request, ct);
+        var receiptId = await InsertGoodsReceiptAsync(connection, transaction, request, ct);
+        foreach (var item in request.Items)
+            await PostGoodsReceiptItemAsync(connection, transaction, receiptId, request, item, ct);
+
+        return new GoodsReceiptRuntimeResult(receiptId, request.ReceiptNumber.Trim(), false);
+    }
+
     public async Task<GoodsReceiptReversalResult> ReverseGoodsReceiptAsync(ReverseGoodsReceiptDto request, CancellationToken ct)
     {
-        if (request.GoodsReceiptId <= 0 || request.SourceOperationId == Guid.Empty || string.IsNullOrWhiteSpace(request.Reason) || string.IsNullOrWhiteSpace(request.ReversedBy))
-            throw new ArgumentException("A complete goods receipt reversal is required.");
-
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(ct);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
         try
         {
-            var existing = await ReadExistingGoodsReceiptReversalAsync(connection, transaction, request.SourceOperationId, ct);
-            if (existing is not null)
-            {
-                await transaction.CommitAsync(ct);
-                return existing with { IsExisting = true };
-            }
-
-            var items = await ReadPostedGoodsReceiptItemsAsync(connection, transaction, request.GoodsReceiptId, ct);
-            if (items.Count == 0)
-                throw new InvalidOperationException("The goods receipt is unavailable or is not posted.");
-
-            var reversalId = await InsertGoodsReceiptReversalAsync(connection, transaction, request, ct);
-            foreach (var item in items)
-                await ReverseGoodsReceiptItemAsync(connection, transaction, reversalId, request, item, ct);
-            await SetGoodsReceiptStatusAsync(connection, transaction, request.GoodsReceiptId, "Reversed", ct);
-
+            var result = await ReverseGoodsReceiptInTransactionAsync(connection, transaction, request, ct);
             await transaction.CommitAsync(ct);
-            return new GoodsReceiptReversalResult(reversalId, false);
+            return result;
         }
         catch
         {
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    public async Task<GoodsReceiptReversalResult> ReverseGoodsReceiptInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseGoodsReceiptDto request, CancellationToken ct)
+    {
+        if (request.GoodsReceiptId <= 0 || request.SourceOperationId == Guid.Empty || string.IsNullOrWhiteSpace(request.Reason) || string.IsNullOrWhiteSpace(request.ReversedBy))
+            throw new ArgumentException("A complete goods receipt reversal is required.");
+
+        var existing = await ReadExistingGoodsReceiptReversalAsync(connection, transaction, request.SourceOperationId, ct);
+        if (existing is not null) return existing with { IsExisting = true };
+
+        var items = await ReadPostedGoodsReceiptItemsAsync(connection, transaction, request.GoodsReceiptId, ct);
+        if (items.Count == 0)
+            throw new InvalidOperationException("The goods receipt is unavailable or is not posted.");
+
+        var reversalId = await InsertGoodsReceiptReversalAsync(connection, transaction, request, ct);
+        foreach (var item in items)
+            await ReverseGoodsReceiptItemAsync(connection, transaction, reversalId, request, item, ct);
+        await SetGoodsReceiptStatusAsync(connection, transaction, request.GoodsReceiptId, "Reversed", ct);
+
+        return new GoodsReceiptReversalResult(reversalId, false);
     }
 
     private static void ValidateGoodsReceipt(CreateGoodsReceiptDto request)

@@ -20,7 +20,7 @@ import 'printing_screen.dart';
 import 'pricing_screen.dart';
 import 'production_screen.dart';
 import 'ready_made_production_screen.dart';
-import 'supplier_purchasing_screen.dart';
+import 'supplier_purchasing_operations_screen.dart';
 import 'sales_screen.dart';
 import 'settings_screen.dart';
 import 'settings/user_guide_screen.dart';
@@ -54,7 +54,7 @@ Widget screenForIndex(
   if (index == 5) return ProductionScreen(themeState: themeState);
   if (index == 6) return PrintingScreen(auth: auth);
   if (index == 7) return const InventoryScreen();
-  if (index == 8) return const SupplierPurchasingScreen();
+  if (index == 8) return SupplierPurchasingOperationsScreen(auth: auth);
   if (index == 9) return const EmployeesScreen(initialTab: 0);
   if (index == 10) return const EmployeesScreen(initialTab: 3);
   if (index == 12) return const FinancialScreen();
@@ -118,84 +118,114 @@ const _titles = [
 
 const _moduleItems = <int, List<ModuleSectionItem>>{
   2: [
-    ModuleSectionItem('طلبات التفصيل', 'إدارة مبيعات وطلبات التفصيل.', Icons.receipt_long_outlined),
-    ModuleSectionItem('المبيعات الجاهزة', 'بيع المنتجات الجاهزة.', Icons.point_of_sale_outlined),
+    ModuleSectionItem('طلبات التفصيل', 'إدارة مبيعات وطلبات التفصيل.',
+        Icons.receipt_long_outlined),
+    ModuleSectionItem('المبيعات الجاهزة', 'بيع المنتجات الجاهزة.',
+        Icons.point_of_sale_outlined),
   ],
   3: [
-    ModuleSectionItem('قائمة الطلبات', 'متابعة جميع الطلبات.', Icons.list_alt_outlined),
-    ModuleSectionItem('تفاصيل الطلب', 'عرض تفاصيل الطلب والدفعات.', Icons.description_outlined),
-    ModuleSectionItem('تسليم الطلب', 'متابعة تسليم الطلبات.', Icons.local_shipping_outlined),
+    ModuleSectionItem(
+        'قائمة الطلبات', 'متابعة جميع الطلبات.', Icons.list_alt_outlined),
+    ModuleSectionItem('تفاصيل الطلب', 'عرض تفاصيل الطلب والدفعات.',
+        Icons.description_outlined),
+    ModuleSectionItem(
+        'تسليم الطلب', 'متابعة تسليم الطلبات.', Icons.local_shipping_outlined),
   ],
   5: [
-    ModuleSectionItem('مسح الإنتاج', 'مسح وتتبع مراحل الإنتاج.', Icons.qr_code_scanner_outlined),
-    ModuleSectionItem('تحليل تكلفة المنتج', 'تحليل تكاليف الإنتاج.', Icons.analytics_outlined),
-    ModuleSectionItem('تقارير التكاليف', 'تقارير تكاليف الإنتاج.', Icons.bar_chart_outlined),
+    ModuleSectionItem('مسح الإنتاج', 'مسح وتتبع مراحل الإنتاج.',
+        Icons.qr_code_scanner_outlined),
+    ModuleSectionItem('تحليل تكلفة المنتج', 'تحليل تكاليف الإنتاج.',
+        Icons.analytics_outlined),
+    ModuleSectionItem(
+        'تقارير التكاليف', 'تقارير تكاليف الإنتاج.', Icons.bar_chart_outlined),
   ],
   6: [
-    ModuleSectionItem('الطباعة', 'طباعة المستندات وبطاقات العمل.', Icons.print_outlined),
+    ModuleSectionItem(
+        'الطباعة', 'طباعة المستندات وبطاقات العمل.', Icons.print_outlined),
   ],
   7: [
-    ModuleSectionItem('المخزون', 'إدارة مواد وأصناف المخزون.', Icons.inventory_2_outlined),
-    ModuleSectionItem('مخزون الأقمشة', 'متابعة الأقمشة والكميات.', Icons.texture_outlined),
-    ModuleSectionItem('إدخال الأقمشة بالجملة', 'تسجيل إدخال الأقمشة.', Icons.add_box_outlined),
-  ],
-  8: [
-    ModuleSectionItem('إدارة الموردين', 'إدارة بيانات الموردين.', Icons.people_outline),
-    ModuleSectionItem('أوامر الشراء', 'متابعة أوامر الشراء.', Icons.shopping_cart_outlined),
-    ModuleSectionItem('فواتير الموردين', 'إنشاء وتسوية الفواتير.', Icons.receipt_outlined),
-    ModuleSectionItem('دفعات الموردين', 'إدارة دفعات الموردين.', Icons.payments_outlined),
-    ModuleSectionItem('استلام البضائع', 'تسجيل استلام المشتريات.', Icons.inventory_outlined),
+    ModuleSectionItem(
+        'المخزون', 'إدارة مواد وأصناف المخزون.', Icons.inventory_2_outlined),
+    ModuleSectionItem(
+        'مخزون الأقمشة', 'متابعة الأقمشة والكميات.', Icons.texture_outlined),
+    ModuleSectionItem('إدخال الأقمشة بالجملة', 'تسجيل إدخال الأقمشة.',
+        Icons.add_box_outlined),
   ],
   9: [
-    ModuleSectionItem('إدارة الموظفين', 'إدارة بيانات الموظفين.', Icons.badge_outlined),
-    ModuleSectionItem('الحضور', 'الحضور وتقارير الحضور.', Icons.calendar_month_outlined),
-    ModuleSectionItem('سلف الموظفين', 'متابعة سلف الموظفين.', Icons.account_balance_wallet_outlined),
+    ModuleSectionItem(
+        'إدارة الموظفين', 'إدارة بيانات الموظفين.', Icons.badge_outlined),
+    ModuleSectionItem(
+        'الحضور', 'الحضور وتقارير الحضور.', Icons.calendar_month_outlined),
+    ModuleSectionItem('سلف الموظفين', 'متابعة سلف الموظفين.',
+        Icons.account_balance_wallet_outlined),
   ],
   10: [
-    ModuleSectionItem('فترات الرواتب', 'متابعة الرواتب والفترات.', Icons.payments_outlined),
-    ModuleSectionItem('تفاصيل الراتب', 'عرض عناصر الراتب.', Icons.description_outlined),
-    ModuleSectionItem('أجور القطعة', 'إدارة أجور القطعة.', Icons.precision_manufacturing_outlined),
+    ModuleSectionItem(
+        'فترات الرواتب', 'متابعة الرواتب والفترات.', Icons.payments_outlined),
+    ModuleSectionItem(
+        'تفاصيل الراتب', 'عرض عناصر الراتب.', Icons.description_outlined),
+    ModuleSectionItem('أجور القطعة', 'إدارة أجور القطعة.',
+        Icons.precision_manufacturing_outlined),
   ],
   11: [
-    ModuleSectionItem('سلف الموظفين', 'واجهة سلف الموظفين.', Icons.account_balance_wallet_outlined),
-    ModuleSectionItem('سجل السلف', 'متابعة السلف والتسويات.', Icons.list_alt_outlined),
+    ModuleSectionItem('سلف الموظفين', 'واجهة سلف الموظفين.',
+        Icons.account_balance_wallet_outlined),
+    ModuleSectionItem(
+        'سجل السلف', 'متابعة السلف والتسويات.', Icons.list_alt_outlined),
   ],
   12: [
-    ModuleSectionItem('الحركات المالية', 'عرض الحركات المالية.', Icons.swap_horiz_outlined),
-    ModuleSectionItem('القوائم المالية', 'عرض القوائم والتقارير.', Icons.assessment_outlined),
-    ModuleSectionItem('الميزانية العمومية', 'عرض الميزانية العمومية.', Icons.account_balance_outlined),
-    ModuleSectionItem('التدفقات النقدية', 'عرض التدفقات النقدية.', Icons.water_outlined),
-    ModuleSectionItem('دليل الحسابات', 'إدارة دليل الحسابات.', Icons.account_tree_outlined),
-    ModuleSectionItem('قيود اليومية', 'عرض القيود المحاسبية.', Icons.book_outlined),
-    ModuleSectionItem('المصروفات التشغيلية', 'متابعة المصروفات التشغيلية.', Icons.money_off_outlined),
+    ModuleSectionItem(
+        'الحركات المالية', 'عرض الحركات المالية.', Icons.swap_horiz_outlined),
+    ModuleSectionItem(
+        'القوائم المالية', 'عرض القوائم والتقارير.', Icons.assessment_outlined),
+    ModuleSectionItem('الميزانية العمومية', 'عرض الميزانية العمومية.',
+        Icons.account_balance_outlined),
+    ModuleSectionItem(
+        'التدفقات النقدية', 'عرض التدفقات النقدية.', Icons.water_outlined),
+    ModuleSectionItem(
+        'دليل الحسابات', 'إدارة دليل الحسابات.', Icons.account_tree_outlined),
+    ModuleSectionItem(
+        'قيود اليومية', 'عرض القيود المحاسبية.', Icons.book_outlined),
+    ModuleSectionItem('المصروفات التشغيلية', 'متابعة المصروفات التشغيلية.',
+        Icons.money_off_outlined),
   ],
   13: [
-    ModuleSectionItem('حوكمة التسعير', 'إعداد قواعد التسعير.', Icons.sell_outlined),
+    ModuleSectionItem(
+        'حوكمة التسعير', 'إعداد قواعد التسعير.', Icons.sell_outlined),
   ],
   14: [
-    ModuleSectionItem('لوحة الولاء', 'متابعة الولاء والمكافآت.', Icons.workspace_premium_outlined),
-    ModuleSectionItem('مستويات كبار العملاء', 'إدارة مستويات العملاء.', Icons.star_outline),
+    ModuleSectionItem('لوحة الولاء', 'متابعة الولاء والمكافآت.',
+        Icons.workspace_premium_outlined),
+    ModuleSectionItem(
+        'مستويات كبار العملاء', 'إدارة مستويات العملاء.', Icons.star_outline),
   ],
   15: [
     ModuleSectionItem('الرسائل', 'إدارة رسائل العملاء.', Icons.forum_outlined),
   ],
   16: [
-    ModuleSectionItem('التقارير المتقدمة', 'واجهة التقارير المتقدمة.', Icons.analytics_outlined),
-    ModuleSectionItem('إحصاءات النظام', 'عرض إحصاءات النظام.', Icons.query_stats_outlined),
+    ModuleSectionItem('التقارير المتقدمة', 'واجهة التقارير المتقدمة.',
+        Icons.analytics_outlined),
+    ModuleSectionItem(
+        'إحصاءات النظام', 'عرض إحصاءات النظام.', Icons.query_stats_outlined),
   ],
   17: [
-    ModuleSectionItem('المستخدمون والأدوار', 'إدارة المستخدمين والأدوار.', Icons.admin_panel_settings_outlined),
+    ModuleSectionItem('المستخدمون والأدوار', 'إدارة المستخدمين والأدوار.',
+        Icons.admin_panel_settings_outlined),
     ModuleSectionItem('الصلاحيات', 'إدارة الصلاحيات.', Icons.security_outlined),
-    ModuleSectionItem('النسخ الاحتياطي', 'متابعة النسخ الاحتياطي.', Icons.backup_outlined),
+    ModuleSectionItem(
+        'النسخ الاحتياطي', 'متابعة النسخ الاحتياطي.', Icons.backup_outlined),
   ],
   20: [
-    ModuleSectionItem('مراقبة المصنع', 'متابعة الطلبات ذات المخاطر والتوقفات.', Icons.factory_outlined),
+    ModuleSectionItem('مراقبة المصنع', 'متابعة الطلبات ذات المخاطر والتوقفات.',
+        Icons.factory_outlined),
   ],
   21: [
-    ModuleSectionItem('شاشة التسليم', 'التسليم والتحصيل من شاشة مستقلة.', Icons.local_shipping_outlined),
+    ModuleSectionItem('شاشة التسليم', 'التسليم والتحصيل من شاشة مستقلة.',
+        Icons.local_shipping_outlined),
   ],
   22: [
-    ModuleSectionItem('LUMAR ERP', 'معاينة تصميم شعار المؤسسة.', Icons.auto_awesome_outlined),
+    ModuleSectionItem(
+        'LUMAR ERP', 'معاينة تصميم شعار المؤسسة.', Icons.auto_awesome_outlined),
   ],
 };
 
@@ -230,46 +260,231 @@ final workspaceRegistry = <WorkspaceRouteDefinition>[
     title: 'لوحة التحكم',
     icon: Icons.dashboard_outlined,
   ),
-  _indexedWorkspaceDefinition(index: 1, routeId: '/customers', title: 'العملاء', icon: Icons.people_outline),
-  _indexedWorkspaceDefinition(index: 2, routeId: '/sales', title: 'المبيعات', icon: Icons.point_of_sale_outlined),
-  _indexedWorkspaceDefinition(index: 3, routeId: '/orders', title: 'الطلبات', icon: Icons.receipt_long_outlined),
-  _indexedWorkspaceDefinition(index: 4, routeId: '/measurements', title: 'القياسات', icon: Icons.straighten_outlined),
-  _indexedWorkspaceDefinition(index: 5, routeId: '/production', title: 'الإنتاج', icon: Icons.precision_manufacturing_outlined),
-  _indexedWorkspaceDefinition(index: 6, routeId: '/printing', title: 'الطباعة', icon: Icons.print_outlined),
-  _indexedWorkspaceDefinition(index: 7, routeId: '/inventory', title: 'المخزون', icon: Icons.inventory_2_outlined),
-  _indexedWorkspaceDefinition(index: 8, routeId: '/purchasing', title: 'المشتريات', icon: Icons.shopping_cart_outlined),
-  _indexedWorkspaceDefinition(index: 9, routeId: '/employees', title: 'الموظفون', icon: Icons.badge_outlined),
-  _indexedWorkspaceDefinition(index: 10, routeId: '/payroll', title: 'الرواتب', icon: Icons.payments_outlined),
-  _indexedWorkspaceDefinition(index: 11, routeId: '/employee-draws', title: 'سلف الموظفين', icon: Icons.account_balance_wallet_outlined),
-  _indexedWorkspaceDefinition(index: 12, routeId: '/finance', title: 'المالية', icon: Icons.account_balance_outlined),
-  _indexedWorkspaceDefinition(index: 13, routeId: '/pricing', title: 'التسعير', icon: Icons.sell_outlined),
-  _indexedWorkspaceDefinition(index: 14, routeId: '/loyalty', title: 'الولاء', icon: Icons.workspace_premium_outlined),
-  _indexedWorkspaceDefinition(index: 15, routeId: '/messages', title: 'الرسائل', icon: Icons.forum_outlined),
-  _indexedWorkspaceDefinition(index: 16, routeId: '/reports', title: 'التقارير', icon: Icons.analytics_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable, performanceClass: WorkspacePerformanceClass.heavy),
-  _indexedWorkspaceDefinition(index: 17, routeId: '/administration', title: 'الإدارة', icon: Icons.admin_panel_settings_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 18, routeId: '/settings', title: 'الإعدادات', icon: Icons.settings_outlined),
-  _indexedWorkspaceDefinition(index: 19, routeId: '/ready-made-production', title: 'الإنتاج الجاهز من منتجاتنا', icon: Icons.checkroom_outlined),
-  _indexedWorkspaceDefinition(index: 20, routeId: '/factory-monitoring', title: 'مراقبة المصنع', icon: Icons.factory_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable, performanceClass: WorkspacePerformanceClass.heavy),
-  _indexedWorkspaceDefinition(index: 21, routeId: '/delivery-dashboard', title: 'شاشة التسليم', icon: Icons.local_shipping_outlined),
-  _indexedWorkspaceDefinition(index: 22, routeId: '/design-system-demo', title: 'اختبار نظام التصميم', icon: Icons.palette_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 23, routeId: '/lumar-erp', title: 'لومار ERP', icon: Icons.auto_awesome_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 24, routeId: WorkspaceRouteIds.referralDashboard, title: 'الإحالات', icon: Icons.group_add_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 25, routeId: WorkspaceRouteIds.referralTree, title: 'شجرة الإحالة', icon: Icons.account_tree_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 26, routeId: WorkspaceRouteIds.referralHistory, title: 'سجل الإحالات', icon: Icons.history_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 27, routeId: WorkspaceRouteIds.referralCodes, title: 'أكواد الإحالة', icon: Icons.qr_code_2_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 28, routeId: WorkspaceRouteIds.referralRewards, title: 'مكافآت الإحالات', icon: Icons.card_giftcard_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 29, routeId: WorkspaceRouteIds.referralAnalytics, title: 'تحليلات الإحالات', icon: Icons.analytics_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable, performanceClass: WorkspacePerformanceClass.heavy),
-  _indexedWorkspaceDefinition(index: 30, routeId: WorkspaceRouteIds.loyaltyDashboard, title: 'لوحة الولاء', icon: Icons.workspace_premium_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 31, routeId: WorkspaceRouteIds.loyaltyTransactions, title: 'حركات الولاء', icon: Icons.receipt_long_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 32, routeId: WorkspaceRouteIds.loyaltyRedemption, title: 'استبدال النقاط', icon: Icons.redeem_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 33, routeId: WorkspaceRouteIds.loyaltyRedemptionsHistory, title: 'سجل استبدالات النقاط', icon: Icons.history_edu_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 34, routeId: WorkspaceRouteIds.loyaltyRewards, title: 'مكافآت الولاء', icon: Icons.card_giftcard_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 35, routeId: WorkspaceRouteIds.loyaltyRules, title: 'قواعد الولاء', icon: Icons.rule_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 36, routeId: WorkspaceRouteIds.vipLevels, title: 'مستويات كبار العملاء', icon: Icons.stars_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 37, routeId: WorkspaceRouteIds.pointsSettings, title: 'إعدادات النقاط', icon: Icons.tune_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 38, routeId: WorkspaceRouteIds.piecePointSettings, title: 'نقاط المبيعات التفصيل', icon: Icons.checkroom_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 39, routeId: WorkspaceRouteIds.readyMadeProductPointSettings, title: 'نقاط المبيعات الجاهزة من منتجاتنا', icon: Icons.storefront_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
-  _indexedWorkspaceDefinition(index: 40, routeId: WorkspaceRouteIds.importedProductPointSettings, title: 'نقاط الأصناف المستوردة', icon: Icons.inventory_2_outlined, statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 1,
+      routeId: '/customers',
+      title: 'العملاء',
+      icon: Icons.people_outline),
+  _indexedWorkspaceDefinition(
+      index: 2,
+      routeId: '/sales',
+      title: 'المبيعات',
+      icon: Icons.point_of_sale_outlined),
+  _indexedWorkspaceDefinition(
+      index: 3,
+      routeId: '/orders',
+      title: 'الطلبات',
+      icon: Icons.receipt_long_outlined),
+  _indexedWorkspaceDefinition(
+      index: 4,
+      routeId: '/measurements',
+      title: 'القياسات',
+      icon: Icons.straighten_outlined),
+  _indexedWorkspaceDefinition(
+      index: 5,
+      routeId: '/production',
+      title: 'الإنتاج',
+      icon: Icons.precision_manufacturing_outlined),
+  _indexedWorkspaceDefinition(
+      index: 6,
+      routeId: '/printing',
+      title: 'الطباعة',
+      icon: Icons.print_outlined),
+  _indexedWorkspaceDefinition(
+      index: 7,
+      routeId: '/inventory',
+      title: 'المخزون',
+      icon: Icons.inventory_2_outlined),
+  _indexedWorkspaceDefinition(
+      index: 8,
+      routeId: '/purchasing',
+      title: 'المشتريات',
+      icon: Icons.shopping_cart_outlined),
+  _indexedWorkspaceDefinition(
+      index: 9,
+      routeId: '/employees',
+      title: 'الموظفون',
+      icon: Icons.badge_outlined),
+  _indexedWorkspaceDefinition(
+      index: 10,
+      routeId: '/payroll',
+      title: 'الرواتب',
+      icon: Icons.payments_outlined),
+  _indexedWorkspaceDefinition(
+      index: 11,
+      routeId: '/employee-draws',
+      title: 'سلف الموظفين',
+      icon: Icons.account_balance_wallet_outlined),
+  _indexedWorkspaceDefinition(
+      index: 12,
+      routeId: '/finance',
+      title: 'المالية',
+      icon: Icons.account_balance_outlined),
+  _indexedWorkspaceDefinition(
+      index: 13,
+      routeId: '/pricing',
+      title: 'التسعير',
+      icon: Icons.sell_outlined),
+  _indexedWorkspaceDefinition(
+      index: 14,
+      routeId: '/loyalty',
+      title: 'الولاء',
+      icon: Icons.workspace_premium_outlined),
+  _indexedWorkspaceDefinition(
+      index: 15,
+      routeId: '/messages',
+      title: 'الرسائل',
+      icon: Icons.forum_outlined),
+  _indexedWorkspaceDefinition(
+      index: 16,
+      routeId: '/reports',
+      title: 'التقارير',
+      icon: Icons.analytics_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable,
+      performanceClass: WorkspacePerformanceClass.heavy),
+  _indexedWorkspaceDefinition(
+      index: 17,
+      routeId: '/administration',
+      title: 'الإدارة',
+      icon: Icons.admin_panel_settings_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 18,
+      routeId: '/settings',
+      title: 'الإعدادات',
+      icon: Icons.settings_outlined),
+  _indexedWorkspaceDefinition(
+      index: 19,
+      routeId: '/ready-made-production',
+      title: 'الإنتاج الجاهز من منتجاتنا',
+      icon: Icons.checkroom_outlined),
+  _indexedWorkspaceDefinition(
+      index: 20,
+      routeId: '/factory-monitoring',
+      title: 'مراقبة المصنع',
+      icon: Icons.factory_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable,
+      performanceClass: WorkspacePerformanceClass.heavy),
+  _indexedWorkspaceDefinition(
+      index: 21,
+      routeId: '/delivery-dashboard',
+      title: 'شاشة التسليم',
+      icon: Icons.local_shipping_outlined),
+  _indexedWorkspaceDefinition(
+      index: 22,
+      routeId: '/design-system-demo',
+      title: 'اختبار نظام التصميم',
+      icon: Icons.palette_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 23,
+      routeId: '/lumar-erp',
+      title: 'لومار ERP',
+      icon: Icons.auto_awesome_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 24,
+      routeId: WorkspaceRouteIds.referralDashboard,
+      title: 'الإحالات',
+      icon: Icons.group_add_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 25,
+      routeId: WorkspaceRouteIds.referralTree,
+      title: 'شجرة الإحالة',
+      icon: Icons.account_tree_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 26,
+      routeId: WorkspaceRouteIds.referralHistory,
+      title: 'سجل الإحالات',
+      icon: Icons.history_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 27,
+      routeId: WorkspaceRouteIds.referralCodes,
+      title: 'أكواد الإحالة',
+      icon: Icons.qr_code_2_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 28,
+      routeId: WorkspaceRouteIds.referralRewards,
+      title: 'مكافآت الإحالات',
+      icon: Icons.card_giftcard_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 29,
+      routeId: WorkspaceRouteIds.referralAnalytics,
+      title: 'تحليلات الإحالات',
+      icon: Icons.analytics_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable,
+      performanceClass: WorkspacePerformanceClass.heavy),
+  _indexedWorkspaceDefinition(
+      index: 30,
+      routeId: WorkspaceRouteIds.loyaltyDashboard,
+      title: 'لوحة الولاء',
+      icon: Icons.workspace_premium_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 31,
+      routeId: WorkspaceRouteIds.loyaltyTransactions,
+      title: 'حركات الولاء',
+      icon: Icons.receipt_long_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 32,
+      routeId: WorkspaceRouteIds.loyaltyRedemption,
+      title: 'استبدال النقاط',
+      icon: Icons.redeem_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 33,
+      routeId: WorkspaceRouteIds.loyaltyRedemptionsHistory,
+      title: 'سجل استبدالات النقاط',
+      icon: Icons.history_edu_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 34,
+      routeId: WorkspaceRouteIds.loyaltyRewards,
+      title: 'مكافآت الولاء',
+      icon: Icons.card_giftcard_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 35,
+      routeId: WorkspaceRouteIds.loyaltyRules,
+      title: 'قواعد الولاء',
+      icon: Icons.rule_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 36,
+      routeId: WorkspaceRouteIds.vipLevels,
+      title: 'مستويات كبار العملاء',
+      icon: Icons.stars_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 37,
+      routeId: WorkspaceRouteIds.pointsSettings,
+      title: 'إعدادات النقاط',
+      icon: Icons.tune_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 38,
+      routeId: WorkspaceRouteIds.piecePointSettings,
+      title: 'نقاط المبيعات التفصيل',
+      icon: Icons.checkroom_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 39,
+      routeId: WorkspaceRouteIds.readyMadeProductPointSettings,
+      title: 'نقاط المبيعات الجاهزة من منتجاتنا',
+      icon: Icons.storefront_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 40,
+      routeId: WorkspaceRouteIds.importedProductPointSettings,
+      title: 'نقاط الأصناف المستوردة',
+      icon: Icons.inventory_2_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
 ];
 
 class DashboardScreen extends StatelessWidget {
