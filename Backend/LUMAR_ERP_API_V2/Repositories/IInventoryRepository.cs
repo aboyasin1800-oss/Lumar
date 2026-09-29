@@ -8,6 +8,8 @@ public interface IInventoryRepository
     Task<InventoryItemDto?> GetItemByIdAsync(int itemId, CancellationToken cancellationToken);
     Task<IReadOnlyList<InventoryTransactionDto>> GetTransactionsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<InventoryWarehouseSummaryDto>> GetWarehouseSummariesAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<InventoryWarehouseDto>> GetWarehousesAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<GoodsReceiptDifferenceDto>> GetGoodsReceiptDifferencesAsync(int goodsReceiptId, CancellationToken cancellationToken);
     Task<IReadOnlyList<FabricDto>> GetFabricsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken cancellationToken);
     Task<ReadyMadeProductDto?> GetReadyMadeByIdAsync(int readyMadeInventoryProductId, CancellationToken cancellationToken);

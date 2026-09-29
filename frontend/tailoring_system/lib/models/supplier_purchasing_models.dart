@@ -1,16 +1,80 @@
 class SupplierPurchasingSupplier {
   const SupplierPurchasingSupplier(
-      {required this.id, required this.name, required this.code, this.phone});
+      {required this.id,
+      required this.name,
+      required this.code,
+      this.phone,
+      this.email});
   factory SupplierPurchasingSupplier.fromJson(Map<String, dynamic> json) =>
       SupplierPurchasingSupplier(
           id: (json['supplierId'] as num).toInt(),
           name: (json['supplierName'] ?? '').toString(),
           code: (json['supplierCode'] ?? '').toString(),
-          phone: json['phone']?.toString());
+          phone: json['phone']?.toString(),
+          email: json['email']?.toString());
   final int id;
   final String name;
   final String code;
   final String? phone;
+  final String? email;
+}
+
+class SupplierPurchasingCashAccount {
+  const SupplierPurchasingCashAccount(
+      {required this.id,
+      required this.name,
+      required this.balance,
+      required this.isActive,
+      required this.currency});
+  factory SupplierPurchasingCashAccount.fromJson(Map<String, dynamic> json) =>
+      SupplierPurchasingCashAccount(
+          id: (json['cashAccountId'] as num).toInt(),
+          name: (json['accountName'] ?? '').toString(),
+          balance: ((json['derivedBalance'] ?? 0) as num).toDouble(),
+          isActive: json['isActive'] == true,
+          currency: (json['currencyCode'] ?? 'YER').toString());
+  final int id;
+  final String name;
+  final double balance;
+  final bool isActive;
+  final String currency;
+}
+
+class SupplierPurchasingInventoryItem {
+  const SupplierPurchasingInventoryItem(
+      {required this.id,
+      required this.code,
+      required this.name,
+      required this.category,
+      required this.unit,
+      required this.isActive});
+  factory SupplierPurchasingInventoryItem.fromJson(Map<String, dynamic> json) =>
+      SupplierPurchasingInventoryItem(
+          id: (json['inventoryItemId'] as num).toInt(),
+          code: (json['itemCode'] ?? '').toString(),
+          name: (json['itemName'] ?? '').toString(),
+          category: (json['category'] ?? '').toString(),
+          unit: (json['unit'] ?? '').toString(),
+          isActive: json['isActive'] == true);
+  final int id;
+  final String code;
+  final String name;
+  final String category;
+  final String unit;
+  final bool isActive;
+}
+
+class SupplierPurchasingWarehouse {
+  const SupplierPurchasingWarehouse(
+      {required this.id, required this.code, required this.name});
+  factory SupplierPurchasingWarehouse.fromJson(Map<String, dynamic> json) =>
+      SupplierPurchasingWarehouse(
+          id: (json['warehouseId'] as num).toInt(),
+          code: (json['warehouseCode'] ?? '').toString(),
+          name: (json['warehouseName'] ?? '').toString());
+  final int id;
+  final String code;
+  final String name;
 }
 
 class SupplierPurchasingInvoice {
@@ -78,6 +142,27 @@ class SupplierPurchasingPayment {
   final String? method;
   final String? reference;
   final String? notes;
+}
+
+class SupplierPurchasingAllocation {
+  const SupplierPurchasingAllocation(
+      {required this.id,
+      required this.paymentId,
+      required this.invoiceId,
+      required this.amount,
+      required this.date});
+  factory SupplierPurchasingAllocation.fromJson(Map<String, dynamic> json) =>
+      SupplierPurchasingAllocation(
+          id: (json['supplierPaymentAllocationId'] as num).toInt(),
+          paymentId: (json['supplierPaymentId'] as num).toInt(),
+          invoiceId: (json['supplierInvoiceId'] as num).toInt(),
+          amount: ((json['allocatedAmount'] ?? 0) as num).toDouble(),
+          date: DateTime.parse(json['allocationDate'] as String));
+  final int id;
+  final int paymentId;
+  final int invoiceId;
+  final double amount;
+  final DateTime date;
 }
 
 class SupplierPurchasingOrder {
@@ -148,7 +233,7 @@ class SupplierPurchasingReceiptItem {
 
 class SupplierPurchasingReceiptMatching {
   const SupplierPurchasingReceiptMatching(
-      {required this.receipt, required this.items});
+      {required this.receipt, required this.items, required this.differences});
   factory SupplierPurchasingReceiptMatching.fromJson(
           Map<String, dynamic> json) =>
       SupplierPurchasingReceiptMatching(
@@ -157,7 +242,36 @@ class SupplierPurchasingReceiptMatching {
           items: (json['items'] as List<dynamic>)
               .map((item) => SupplierPurchasingReceiptItem.fromJson(
                   Map<String, dynamic>.from(item as Map)))
+              .toList(),
+          differences: ((json['differences'] as List<dynamic>?) ?? const [])
+              .map((item) => SupplierPurchasingDifference.fromJson(
+                  Map<String, dynamic>.from(item as Map)))
               .toList());
   final SupplierPurchasingReceipt receipt;
   final List<SupplierPurchasingReceiptItem> items;
+  final List<SupplierPurchasingDifference> differences;
+}
+
+class SupplierPurchasingDifference {
+  const SupplierPurchasingDifference(
+      {required this.type,
+      required this.receiptItemId,
+      this.expectedQuantity,
+      this.actualQuantity,
+      this.expectedUnitCost,
+      this.actualUnitCost});
+  factory SupplierPurchasingDifference.fromJson(Map<String, dynamic> json) =>
+      SupplierPurchasingDifference(
+          type: (json['differenceType'] ?? '').toString(),
+          receiptItemId: (json['goodsReceiptItemId'] as num).toInt(),
+          expectedQuantity: (json['expectedQuantity'] as num?)?.toDouble(),
+          actualQuantity: (json['actualQuantity'] as num?)?.toDouble(),
+          expectedUnitCost: (json['expectedUnitCost'] as num?)?.toDouble(),
+          actualUnitCost: (json['actualUnitCost'] as num?)?.toDouble());
+  final String type;
+  final int receiptItemId;
+  final double? expectedQuantity;
+  final double? actualQuantity;
+  final double? expectedUnitCost;
+  final double? actualUnitCost;
 }

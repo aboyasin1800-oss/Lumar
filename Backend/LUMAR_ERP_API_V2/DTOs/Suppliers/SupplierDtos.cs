@@ -1,4 +1,27 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace LUMAR_ERP_API_V2.DTOs.Suppliers;
+
+public sealed record CreateSupplierRequestDto
+{
+	[Required, MaxLength(50)]
+	public required string SupplierCode { get; init; }
+
+	[Required, MaxLength(200)]
+	public required string SupplierName { get; init; }
+
+	[MaxLength(50)]
+	public string? Phone { get; init; }
+
+	[EmailAddress, MaxLength(200)]
+	public string? Email { get; init; }
+
+	[MaxLength(500)]
+	public string? Address { get; init; }
+
+	public required Guid SourceOperationId { get; init; }
+}
+
 public sealed record SupplierListDto(int SupplierId, string SupplierCode, string SupplierName, string? Phone, string? Email, bool IsActive);
 public sealed record SupplierDetailsDto(int SupplierId, string SupplierCode, string SupplierName, string? Phone, string? Email, string? Address, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
 public sealed record SupplierTransactionDto(int SupplierTransactionId, int SupplierId, string ReferenceNumber, string TransactionType, decimal Amount, string? Description, DateTime CreatedAt);

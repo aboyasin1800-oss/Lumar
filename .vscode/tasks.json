@@ -867,6 +867,79 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "ES7B3 Focused Flutter Analyze Corrected",
+			"type": "shell",
+			"command": "Set-Location frontend/tailoring_system; flutter analyze lib/models/supplier_purchasing_models.dart lib/repositories/supplier_purchasing_repository.dart lib/screens/supplier_purchasing_operations_screen.dart",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$dart-analyze"
+			],
+			"group": "test"
+		},
+		{
+			"label": "ES7B3 Supplier Creation Tests",
+			"type": "shell",
+			"command": "dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~SupplierCreationAuthorizationTests -p:BaseOutputPath=D:\\YASIN\\_validation_output\\es7b3-supplier-tests\\ --logger 'console;verbosity=minimal'",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "test"
+		},
+		{
+			"label": "ES7B3 Supplier Creation Integration",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter FullyQualifiedName~SupplierCreationIntegrationTests -p:BaseOutputPath=D:\\YASIN\\_validation_output\\es7b3-supplier-integration\\ --logger 'console;verbosity=minimal'",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "test"
+		},
+		{
+			"label": "ES7B3 Required Backend Regression Corrected",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter 'FullyQualifiedName~Es7SecurityFoundationTests|FullyQualifiedName~Es7OperationalApiAuthorizationTests|FullyQualifiedName~SupplierFinancialRuntimeIntegrationTests|FullyQualifiedName~GoodsReceiptRuntimeIntegrationTests' -p:BaseOutputPath=D:\\YASIN\\_validation_output\\es7b3-required-regression\\ --logger 'console;verbosity=minimal'",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "test"
+		},
+		{
+			"label": "ES7B3 Backend Isolated Build",
+			"type": "shell",
+			"command": "dotnet build Backend/LUMAR_ERP_API_V2/LUMAR_ERP_API_V2.csproj --no-restore -p:BaseOutputPath=D:\\YASIN\\_validation_output\\es7b3-backend-build\\ --verbosity:minimal",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ES7B3 Flutter Windows Build",
+			"type": "shell",
+			"command": "Set-Location frontend/tailoring_system; flutter build windows",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "ES7B3 Corrected ReadOnly Integrity Audit",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION;Integrated Security=True;TrustServerCertificate=True'; $sql=@'\nSET NOCOUNT ON;\nSELECT N'DATABASE' CheckName,DB_NAME() CheckValue\nUNION ALL SELECT N'MISSING_TARGET_TABLES',CONVERT(varchar(50),(SELECT COUNT(*) FROM (VALUES(OBJECT_ID(N'dbo.Suppliers',N'U')),(OBJECT_ID(N'dbo.SupplierFinancialInvoices',N'U')),(OBJECT_ID(N'dbo.SupplierFinancialPayments',N'U')),(OBJECT_ID(N'dbo.SupplierFinancialPaymentAllocations',N'U')),(OBJECT_ID(N'dbo.GoodsReceipts',N'U')),(OBJECT_ID(N'dbo.GoodsReceiptItems',N'U')),(OBJECT_ID(N'dbo.GoodsReceiptDifferences',N'U')),(OBJECT_ID(N'dbo.Warehouses',N'U'))) v(ObjectId) WHERE ObjectId IS NULL))\nUNION ALL SELECT N'ORPHAN_FINANCIAL_INVOICES',CONVERT(varchar(50),COUNT(*)) FROM dbo.SupplierFinancialInvoices f LEFT JOIN dbo.SupplierInvoices i ON i.SupplierInvoiceId=f.SupplierInvoiceId LEFT JOIN dbo.AccountingEvents e ON e.AccountingEventId=f.AccountingEventId WHERE i.SupplierInvoiceId IS NULL OR e.AccountingEventId IS NULL\nUNION ALL SELECT N'ORPHAN_FINANCIAL_PAYMENTS',CONVERT(varchar(50),COUNT(*)) FROM dbo.SupplierFinancialPayments f LEFT JOIN dbo.SupplierPayments p ON p.SupplierPaymentId=f.SupplierPaymentId LEFT JOIN dbo.AccountingEvents e ON e.AccountingEventId=f.AccountingEventId WHERE p.SupplierPaymentId IS NULL OR e.AccountingEventId IS NULL\nUNION ALL SELECT N'ORPHAN_FINANCIAL_ALLOCATIONS',CONVERT(varchar(50),COUNT(*)) FROM dbo.SupplierFinancialPaymentAllocations f LEFT JOIN dbo.SupplierPaymentAllocations a ON a.SupplierPaymentAllocationId=f.SupplierPaymentAllocationId LEFT JOIN dbo.AccountingEvents e ON e.AccountingEventId=f.AccountingEventId WHERE a.SupplierPaymentAllocationId IS NULL OR e.AccountingEventId IS NULL\nUNION ALL SELECT N'ORPHAN_RECEIPTS',CONVERT(varchar(50),COUNT(*)) FROM dbo.GoodsReceipts r LEFT JOIN dbo.Suppliers s ON s.SupplierId=r.SupplierId LEFT JOIN dbo.Warehouses w ON w.WarehouseId=r.WarehouseId WHERE s.SupplierId IS NULL OR w.WarehouseId IS NULL\nUNION ALL SELECT N'ORPHAN_RECEIPT_ITEMS',CONVERT(varchar(50),COUNT(*)) FROM dbo.GoodsReceiptItems i LEFT JOIN dbo.GoodsReceipts r ON r.GoodsReceiptId=i.GoodsReceiptId LEFT JOIN dbo.InventoryItems n ON n.InventoryItemID=i.InventoryItemId WHERE r.GoodsReceiptId IS NULL OR (i.InventoryItemId IS NOT NULL AND n.InventoryItemID IS NULL)\nUNION ALL SELECT N'ORPHAN_RECEIPT_DIFFERENCES',CONVERT(varchar(50),COUNT(*)) FROM dbo.GoodsReceiptDifferences d LEFT JOIN dbo.GoodsReceiptItems i ON i.GoodsReceiptItemId=d.GoodsReceiptItemId WHERE i.GoodsReceiptItemId IS NULL\nUNION ALL SELECT N'DUP_PAYMENT_REVERSALS',CONVERT(varchar(50),COUNT(*)) FROM (SELECT OriginalSupplierPaymentId FROM dbo.SupplierFinancialPayments WHERE OriginalSupplierPaymentId IS NOT NULL GROUP BY OriginalSupplierPaymentId HAVING COUNT(*)>1) d\nUNION ALL SELECT N'DUP_RECEIPT_REVERSALS',CONVERT(varchar(50),COUNT(*)) FROM (SELECT OriginalGoodsReceiptId FROM dbo.GoodsReceiptReversals GROUP BY OriginalGoodsReceiptId HAVING COUNT(*)>1) d\nUNION ALL SELECT N'UNBALANCED_JOURNALS',CONVERT(varchar(50),COUNT(*)) FROM (SELECT JournalEntryId FROM dbo.JournalEntryLines GROUP BY JournalEntryId HAVING COALESCE(SUM(DebitAmount),0)<>COALESCE(SUM(CreditAmount),0)) d\nUNION ALL SELECT N'ES7_SUPPLIER_TEST_RESIDUE',CONVERT(varchar(50),COUNT(*)) FROM dbo.Suppliers WHERE SupplierCode LIKE N'ES7-S-%';\n'@; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; $cmd.CommandTimeout=120; $r=$cmd.ExecuteReader(); while($r.Read()){Write-Output ($r.GetString(0)+'='+$r.GetValue(1))}; $r.Close() } finally {$cn.Close()}",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
 		}
 	]
 }

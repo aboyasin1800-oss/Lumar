@@ -12,7 +12,8 @@ namespace LUMAR_ERP_API_V2.Controllers;
 public sealed class GoodsReceiptOperationsController(
     IGoodsReceiptWorkflowCoordinator coordinator,
     IAuthenticatedUserContext userContext,
-    IPurchasingService purchasingService) : ControllerBase
+    IPurchasingService purchasingService,
+    IInventoryService inventoryService) : ControllerBase
 {
     [HttpPost("receipts")]
     public async Task<ActionResult<GoodsReceiptRuntimeResult>> CreateReceipt(CreateGoodsReceiptRequestDto request, CancellationToken cancellationToken)
@@ -42,7 +43,10 @@ public sealed class GoodsReceiptOperationsController(
         if (auth.Error is not null) return auth.Error;
         var receipt = await purchasingService.GetReceiptAsync(id, cancellationToken);
         if (receipt is null) return NotFound();
-        return Ok(new GoodsReceiptMatchingQueryDto(receipt, await purchasingService.GetReceiptItemsAsync(id, cancellationToken)));
+        return Ok(new GoodsReceiptMatchingQueryDto(
+            receipt,
+            await purchasingService.GetReceiptItemsAsync(id, cancellationToken),
+            await inventoryService.GetGoodsReceiptDifferencesAsync(id, cancellationToken)));
     }
 
     private async Task<(CurrentUserDto? User, ActionResult? Error)> AuthorizeAsync(string permission, CancellationToken cancellationToken)

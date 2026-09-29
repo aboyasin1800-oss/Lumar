@@ -10,6 +10,43 @@ class SupplierPurchasingRepository {
           .map((json) => SupplierPurchasingSupplier.fromJson(
               Map<String, dynamic>.from(json as Map)))
           .toList();
+  Future<SupplierPurchasingSupplier> createSupplier(
+          {required String code,
+          required String name,
+          String? phone,
+          String? email,
+          String? address}) async =>
+      SupplierPurchasingSupplier.fromJson(await _api.postObject('/suppliers', {
+        'supplierCode': code,
+        'supplierName': name,
+        'phone': phone,
+        'email': email,
+        'address': address,
+        'sourceOperationId': _operationId()
+      }));
+  Future<List<SupplierPurchasingCashAccount>> getCashAccounts() async =>
+      (await _api.getList('/finance/cash-accounts'))
+          .map((json) => SupplierPurchasingCashAccount.fromJson(
+              Map<String, dynamic>.from(json as Map)))
+          .where((account) => account.isActive)
+          .toList();
+  Future<List<SupplierPurchasingInventoryItem>> getInventoryItems() async =>
+      (await _api.getList('/inventory/items'))
+          .map((json) => SupplierPurchasingInventoryItem.fromJson(
+              Map<String, dynamic>.from(json as Map)))
+          .where((item) => item.isActive)
+          .toList();
+  Future<List<SupplierPurchasingWarehouse>> getWarehouses() async =>
+      (await _api.getList('/inventory/warehouses'))
+          .map((json) => SupplierPurchasingWarehouse.fromJson(
+              Map<String, dynamic>.from(json as Map)))
+          .toList();
+  Future<List<SupplierPurchasingAllocation>> getSupplierAllocations(
+          int supplierId) async =>
+      (await _api.getList('/suppliers/$supplierId/payment-allocations'))
+          .map((json) => SupplierPurchasingAllocation.fromJson(
+              Map<String, dynamic>.from(json as Map)))
+          .toList();
   Future<List<SupplierPurchasingInvoice>> getInvoices() async =>
       (await _api.getList('/purchasing/invoices'))
           .map((json) => SupplierPurchasingInvoice.fromJson(
@@ -40,13 +77,17 @@ class SupplierPurchasingRepository {
       required DateTime invoiceDate,
       required DateTime dueDate,
       required double amount,
-      int? purchaseOrderId}) async {
+      int? purchaseOrderId,
+      String currencyCode = 'YER',
+      String? notes}) async {
     await _api.postObject('/purchasing/operations/invoices', {
       'supplierId': supplierId,
       'invoiceNumber': invoiceNumber,
       'invoiceDate': _date(invoiceDate),
       'dueDate': _date(dueDate),
       'amount': amount,
+      'currencyCode': currencyCode,
+      'notes': notes,
       'sourceOperationId': _operationId(),
       'purchaseOrderId': purchaseOrderId
     });
@@ -60,7 +101,9 @@ class SupplierPurchasingRepository {
       required int paymentKind,
       required String paymentMethod,
       required String referenceNumber,
-      int? supplierInvoiceId}) async {
+      int? supplierInvoiceId,
+      String currencyCode = 'YER',
+      String? notes}) async {
     await _api.postObject('/purchasing/operations/payments', {
       'supplierId': supplierId,
       'supplierInvoiceId': supplierInvoiceId,
@@ -70,6 +113,8 @@ class SupplierPurchasingRepository {
       'paymentKind': paymentKind,
       'paymentMethod': paymentMethod,
       'referenceNumber': referenceNumber,
+      'currencyCode': currencyCode,
+      'notes': notes,
       'sourceOperationId': _operationId()
     });
   }
@@ -106,13 +151,16 @@ class SupplierPurchasingRepository {
       int? purchaseOrderId,
       required int warehouseId,
       required String receiptNumber,
-      required List<Map<String, dynamic>> items}) async {
+      required DateTime receiptDate,
+      required List<Map<String, dynamic>> items,
+      String? notes}) async {
     await _api.postObject('/inventory/operations/receipts', {
       'supplierId': supplierId,
       'purchaseOrderId': purchaseOrderId,
       'warehouseId': warehouseId,
       'receiptNumber': receiptNumber,
-      'receiptDate': DateTime.now().toUtc().toIso8601String(),
+      'receiptDate': receiptDate.toUtc().toIso8601String(),
+      'notes': notes,
       'sourceOperationId': _operationId(),
       'items': items
     });
