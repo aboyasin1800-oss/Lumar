@@ -2,7 +2,9 @@ using LUMAR_ERP_API_V2.FinancialFoundation;
 
 namespace LUMAR_ERP_API_V2.DTOs.Suppliers;
 
-public sealed record CreateSupplierInvoiceRequestDto(int SupplierId, string InvoiceNumber, DateOnly InvoiceDate, DateOnly DueDate, decimal Amount, string? Notes, Guid SourceOperationId, string CurrencyCode = "YER", int? PurchaseOrderId = null);
+public sealed record CreateSupplierInvoiceLineRequestDto(int InventoryItemId, decimal Quantity, decimal UnitCost, int? RollCount = null);
+
+public sealed record CreateSupplierInvoiceRequestDto(int SupplierId, string InvoiceNumber, DateOnly InvoiceDate, DateOnly DueDate, decimal Amount, string? Notes, Guid SourceOperationId, string CurrencyCode = "YER", int? PurchaseOrderId = null, IReadOnlyList<CreateSupplierInvoiceLineRequestDto>? Lines = null);
 
 public sealed record CreateSupplierPaymentRequestDto(int SupplierId, int? SupplierInvoiceId, decimal Amount, DateOnly PaymentDate, int CashAccountId, SupplierPaymentKind PaymentKind, string PaymentMethod, string ReferenceNumber, string? Notes, Guid SourceOperationId, string CurrencyCode = "YER");
 

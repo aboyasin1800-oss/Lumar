@@ -16,8 +16,10 @@ public sealed class SupplierFinancialOperationsController(
     [HttpPost("invoices")]
     public async Task<ActionResult<SupplierFinancialInvoiceResult>> CreateInvoice(CreateSupplierInvoiceRequestDto request, CancellationToken cancellationToken)
     {
-        if (request.SupplierId <= 0 || string.IsNullOrWhiteSpace(request.InvoiceNumber) || request.Amount <= 0 || request.SourceOperationId == Guid.Empty || request.InvoiceDate > request.DueDate)
+        if (request.SupplierId <= 0 || string.IsNullOrWhiteSpace(request.InvoiceNumber) || request.Amount <= 0 || request.SourceOperationId == Guid.Empty || request.InvoiceDate > request.DueDate || request.Lines is not { Count: > 0 } || request.Lines.Any(line => line.InventoryItemId <= 0 || line.Quantity <= 0 || line.UnitCost <= 0 || line.RollCount <= 0))
             return BadRequest("Supplier invoice data is incomplete.");
+        var linesTotal = request.Lines.Sum(line => decimal.Round(line.Quantity * line.UnitCost, 6, MidpointRounding.AwayFromZero));
+        if (linesTotal != request.Amount) return BadRequest("Supplier invoice amount must equal the lines total.");
         var auth = await AuthorizeAsync(Es7Permission.PurchasingInvoice, cancellationToken);
         if (auth.Error is not null) return auth.Error;
         return StatusCode(StatusCodes.Status201Created, await coordinator.CreateInvoiceAsync(request, auth.User!, CorrelationId, cancellationToken));

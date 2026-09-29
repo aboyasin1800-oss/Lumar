@@ -52,6 +52,12 @@ class SupplierPurchasingRepository {
           .map((json) => SupplierPurchasingInvoice.fromJson(
               Map<String, dynamic>.from(json as Map)))
           .toList();
+        Future<List<SupplierPurchasingInvoiceLine>> getInvoiceLines(
+            int invoiceId) async =>
+          (await _api.getList('/purchasing/invoices/$invoiceId/lines'))
+            .map((json) => SupplierPurchasingInvoiceLine.fromJson(
+              Map<String, dynamic>.from(json as Map)))
+            .toList();
   Future<List<SupplierPurchasingPayment>> getPayments() async =>
       (await _api.getList('/purchasing/payments'))
           .map((json) => SupplierPurchasingPayment.fromJson(
@@ -77,6 +83,7 @@ class SupplierPurchasingRepository {
       required DateTime invoiceDate,
       required DateTime dueDate,
       required double amount,
+      required List<Map<String, dynamic>> lines,
       int? purchaseOrderId,
       String currencyCode = 'YER',
       String? notes}) async {
@@ -89,7 +96,8 @@ class SupplierPurchasingRepository {
       'currencyCode': currencyCode,
       'notes': notes,
       'sourceOperationId': _operationId(),
-      'purchaseOrderId': purchaseOrderId
+      'purchaseOrderId': purchaseOrderId,
+      'lines': lines
     });
   }
 

@@ -48,7 +48,7 @@ public sealed class Es7OperationalApiAuthorizationTests
         Assert.False(coordinator.ReversalCalled);
     }
 
-    private static CreateSupplierInvoiceRequestDto InvoiceRequest() => new(7, "ES7-API-INV", new DateOnly(2026, 9, 29), new DateOnly(2026, 10, 1), 100m, null, Guid.NewGuid());
+    private static CreateSupplierInvoiceRequestDto InvoiceRequest() => new(7, "ES7-API-INV", new DateOnly(2026, 9, 29), new DateOnly(2026, 10, 1), 100m, null, Guid.NewGuid(), Lines: [new(11, 2m, 50m)]);
     private static CurrentUserDto User(string role) => new(7, "es7-user", "ES7 User", role, true, null);
 
     private sealed class FakeUserContext(CurrentUserDto? user) : IAuthenticatedUserContext

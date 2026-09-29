@@ -1,12 +1,81 @@
 using System.Data;
+using LUMAR_ERP_API_V2.Configuration;
+using LUMAR_ERP_API_V2.Data;
+using LUMAR_ERP_API_V2.DTOs.Auth;
+using LUMAR_ERP_API_V2.DTOs.Suppliers;
 using LUMAR_ERP_API_V2.FinancialFoundation;
+using LUMAR_ERP_API_V2.Repositories;
+using LUMAR_ERP_API_V2.Services;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace LUMAR_ERP_API_V2.Tests;
 
 public sealed class SupplierFinancialRuntimeIntegrationTests
 {
+    [Fact]
+    public async Task InvoiceWorkflow_CreatesReadsRetriesAndReversesMultipleLinesAtomically()
+    {
+        var fixture = await CreateCommittedFixtureAsync();
+        var itemIds = new List<int>();
+        try
+        {
+            await using (var connection = new SqlConnection(ConnectionString()))
+            {
+                await connection.OpenAsync();
+                await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.Serializable);
+                for (var index = 1; index <= 2; index++)
+                {
+                    await using var item = new SqlCommand("INSERT dbo.InventoryItems(ItemCode,ItemName,Category,Unit,CurrentQuantity,AvailableQuantity,ReservedQuantity,IsActive,CreatedAt,UpdatedAt) OUTPUT INSERTED.InventoryItemID VALUES(@code,@name,N'Foundation',N'Piece',0,0,0,1,SYSUTCDATETIME(),SYSUTCDATETIME());", connection, transaction);
+                    item.Parameters.AddWithValue("@code", $"ES7-I-{Guid.NewGuid():N}"[..18]);
+                    item.Parameters.AddWithValue("@name", $"ES7 invoice item {index}");
+                    itemIds.Add(Convert.ToInt32(await item.ExecuteScalarAsync()));
+                }
+                await transaction.CommitAsync();
+            }
+
+            var options = Options.Create(new DatabaseOptions { ConnectionString = ConnectionString() });
+            var coordinator = new SupplierFinancialWorkflowCoordinator(
+                new OperationalSqlConnectionFactory(options),
+                new SupplierFinancialRuntime(),
+                new Es7OperationalAudit(NullLogger<Es7OperationalAudit>.Instance));
+            var operation = Guid.NewGuid();
+            var request = new CreateSupplierInvoiceRequestDto(
+                fixture.SupplierId, $"ES7-LINES-{Guid.NewGuid():N}", new DateOnly(2026, 9, 30), new DateOnly(2026, 10, 30), 44m, null, operation,
+                Lines: [new(itemIds[0], 2m, 10m), new(itemIds[1], 2m, 12m)]);
+            var user = new CurrentUserDto(7, "es7-lines-test", "ES7 Lines Test", "System Administrator", true, null);
+
+            var created = await coordinator.CreateInvoiceAsync(request, user, "es7-lines-create", CancellationToken.None);
+            var retry = await coordinator.CreateInvoiceAsync(request, user, "es7-lines-retry", CancellationToken.None);
+            var repository = new SupplierInvoiceLineRepository(new ReadOnlySqlConnectionFactory(options));
+            var lines = (await repository.GetForInvoiceAsync(created.SupplierInvoiceId, CancellationToken.None))!;
+
+            Assert.True(retry.IsExisting);
+            Assert.Equal(created.SupplierInvoiceId, retry.SupplierInvoiceId);
+            Assert.Equal(2, lines.Count);
+            Assert.Equal(44m, lines.Sum(line => line.LineTotal));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => coordinator.CreateInvoiceAsync(
+                request with { Lines = [new(itemIds[0], 1m, 20m), new(itemIds[1], 2m, 12m)] }, user, "es7-lines-conflict", CancellationToken.None));
+
+            await coordinator.ReverseAsync(new ReverseSupplierFinancialRequestDto("Invoice", created.SupplierInvoiceId, Guid.NewGuid(), "Integration verification"), user, "es7-lines-reverse", CancellationToken.None);
+            Assert.All((await repository.GetForInvoiceAsync(created.SupplierInvoiceId, CancellationToken.None))!, line => Assert.Equal("Reversed", line.Status));
+        }
+        finally
+        {
+            await CleanupCommittedFixtureAsync(fixture);
+            if (itemIds.Count > 0)
+            {
+                await using var connection = new SqlConnection(ConnectionString());
+                await connection.OpenAsync();
+                await using var command = new SqlCommand("DELETE FROM dbo.InventoryItems WHERE InventoryItemID IN (SELECT value FROM OPENJSON(@ids));", connection);
+                command.Parameters.AddWithValue("@ids", System.Text.Json.JsonSerializer.Serialize(itemIds));
+                await command.ExecuteNonQueryAsync();
+            }
+        }
+    }
+
     [Fact]
     public async Task Allocations_ConcurrentIndependentTransactions_AllowOnlyOneAllocationForTheSamePaymentAndInvoice()
     {
@@ -242,6 +311,7 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
                 WHERE NOT EXISTS (SELECT 1 FROM @events existing WHERE existing.AccountingEventId=ae.AccountingEventId);
                 DELETE FROM dbo.SupplierFinancialPaymentAllocations WHERE SupplierPaymentAllocationId IN (SELECT a.SupplierPaymentAllocationId FROM dbo.SupplierPaymentAllocations a JOIN dbo.SupplierPayments p ON p.SupplierPaymentId=a.SupplierPaymentId WHERE p.SupplierId=@supplierId);
                 DELETE FROM dbo.SupplierFinancialPayments WHERE SupplierPaymentId IN (SELECT SupplierPaymentId FROM dbo.SupplierPayments WHERE SupplierId=@supplierId);
+                DELETE FROM dbo.SupplierInvoiceLines WHERE SupplierInvoiceId IN (SELECT SupplierInvoiceId FROM dbo.SupplierInvoices WHERE SupplierId=@supplierId);
                 DELETE FROM dbo.SupplierFinancialInvoices WHERE SupplierInvoiceId IN (SELECT SupplierInvoiceId FROM dbo.SupplierInvoices WHERE SupplierId=@supplierId);
                 DELETE cm FROM dbo.CashMovements cm JOIN @events e ON e.AccountingEventId=cm.AccountingEventId WHERE e.IsReversal=1;
                 DELETE cm FROM dbo.CashMovements cm JOIN @events e ON e.AccountingEventId=cm.AccountingEventId WHERE e.IsReversal=0;
@@ -254,6 +324,8 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
                 DELETE FROM dbo.SupplierLedgerEntries WHERE SupplierId=@supplierId;
                 DELETE FROM dbo.SupplierPayments WHERE SupplierId=@supplierId;
                 DELETE FROM dbo.SupplierInvoices WHERE SupplierId=@supplierId;
+                DELETE FROM dbo.PurchaseOrderItems WHERE PurchaseOrderId IN (SELECT PurchaseOrderId FROM dbo.PurchaseOrders WHERE SupplierId=@supplierId);
+                DELETE FROM dbo.PurchaseOrders WHERE SupplierId=@supplierId;
                 DELETE FROM dbo.Suppliers WHERE SupplierId=@supplierId;
                 """, connection, transaction))
             {

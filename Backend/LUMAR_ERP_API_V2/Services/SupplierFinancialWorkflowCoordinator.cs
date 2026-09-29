@@ -4,6 +4,8 @@ using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Suppliers;
 using LUMAR_ERP_API_V2.FinancialFoundation;
 using Microsoft.Data.SqlClient;
+using System.Data;
+using System.Security.Cryptography;
 
 namespace LUMAR_ERP_API_V2.Services;
 
@@ -30,6 +32,7 @@ public sealed class SupplierFinancialWorkflowCoordinator(
             var result = await runtime.CreateInvoiceAsync(connection, transaction, new SupplierFinancialInvoiceRequest(request.SupplierId, request.InvoiceNumber, request.InvoiceDate, request.DueDate, request.Amount, request.Notes, request.SourceOperationId, user.Username, request.CurrencyCode), cancellationToken);
             if (request.PurchaseOrderId.HasValue)
                 await EnsureInvoicePurchaseOrderAsync(connection, transaction, result.SupplierInvoiceId, request.SupplierId, request.PurchaseOrderId.Value, cancellationToken);
+            await EnsureInvoiceLinesAsync(connection, transaction, result.SupplierInvoiceId, request, user.Username, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             audit.Record(user, "SupplierInvoice.Create", request.SourceOperationId, result.SupplierInvoiceId, correlationId);
             return result;
@@ -118,5 +121,66 @@ public sealed class SupplierFinancialWorkflowCoordinator(
         var value = await verify.ExecuteScalarAsync(cancellationToken);
         if (value is not int existingPurchaseOrderId || existingPurchaseOrderId != purchaseOrderId)
             throw new InvalidOperationException("Supplier invoice purchase order link is invalid or conflicts with the existing invoice.");
+    }
+
+    private static async Task EnsureInvoiceLinesAsync(SqlConnection connection, SqlTransaction transaction, int invoiceId, CreateSupplierInvoiceRequestDto request, string createdBy, CancellationToken cancellationToken)
+    {
+        if (request.Lines is not { Count: > 0 }) throw new ArgumentException("Supplier invoice lines are required.");
+        var total = request.Lines.Sum(line => decimal.Round(line.Quantity * line.UnitCost, 6, MidpointRounding.AwayFromZero));
+        if (total != request.Amount) throw new InvalidOperationException("Supplier invoice amount must equal the lines total.");
+
+        for (var index = 0; index < request.Lines.Count; index++)
+        {
+            var line = request.Lines[index];
+            var operationId = DeriveLineOperationId(request.SourceOperationId, index);
+            await using var command = new SqlCommand(@"
+IF EXISTS (SELECT 1 FROM dbo.SupplierInvoiceLines WITH(UPDLOCK,HOLDLOCK) WHERE SourceOperationId=@operation)
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM dbo.SupplierInvoiceLines WHERE SourceOperationId=@operation AND SupplierInvoiceId=@invoiceId AND InventoryItemId=@itemId AND Quantity=@quantity AND UnitCost=@unitCost AND ((RollCount IS NULL AND @rollCount IS NULL) OR RollCount=@rollCount) AND Status=N'Posted')
+        THROW 52120,N'IDEMPOTENCY CONFLICT',1;
+END
+ELSE
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM dbo.InventoryItems WITH(UPDLOCK,HOLDLOCK) WHERE InventoryItemID=@itemId AND IsActive=1)
+        THROW 52121,N'Supplier invoice inventory item is unavailable.',1;
+    INSERT dbo.SupplierInvoiceLines(SupplierInvoiceId,InventoryItemId,Quantity,UnitCost,RollCount,SourceOperationId,Status,CreatedBy)
+    VALUES(@invoiceId,@itemId,@quantity,@unitCost,@rollCount,@operation,N'Posted',@createdBy);
+END", connection, transaction);
+            command.Parameters.AddWithValue("@invoiceId", invoiceId);
+            command.Parameters.AddWithValue("@itemId", line.InventoryItemId);
+            AddDecimal(command, "@quantity", line.Quantity);
+            AddDecimal(command, "@unitCost", line.UnitCost);
+            command.Parameters.AddWithValue("@rollCount", line.RollCount ?? (object)DBNull.Value);
+            command.Parameters.Add("@operation", SqlDbType.UniqueIdentifier).Value = operationId;
+            command.Parameters.AddWithValue("@createdBy", createdBy);
+            try
+            {
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+            catch (SqlException exception) when (exception.Number is 52120 or 52121)
+            {
+                throw new InvalidOperationException(exception.Message, exception);
+            }
+        }
+    }
+
+    private static Guid DeriveLineOperationId(Guid invoiceOperationId, int index)
+    {
+        Span<byte> input = stackalloc byte[20];
+        invoiceOperationId.TryWriteBytes(input);
+        BitConverter.TryWriteBytes(input[16..], index);
+        Span<byte> hash = stackalloc byte[32];
+        SHA256.HashData(input, hash);
+        hash[7] = (byte)((hash[7] & 0x0F) | 0x40);
+        hash[8] = (byte)((hash[8] & 0x3F) | 0x80);
+        return new Guid(hash[..16]);
+    }
+
+    private static void AddDecimal(SqlCommand command, string name, decimal value)
+    {
+        var parameter = command.Parameters.Add(name, SqlDbType.Decimal);
+        parameter.Precision = 18;
+        parameter.Scale = 6;
+        parameter.Value = value;
     }
 }

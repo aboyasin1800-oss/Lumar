@@ -956,7 +956,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
     private static async Task PostGoodsReceiptItemAsync(SqlConnection c, SqlTransaction t, int receiptId, CreateGoodsReceiptDto request, CreateGoodsReceiptItemDto line, CancellationToken ct)
     {
         var item = await ReadReceiptInventoryItemAsync(c, t, line.InventoryItemId, ct) ?? throw new InvalidOperationException("The inventory item is not an active foundation item.");
-        var invoice = await ValidateInvoiceLineAsync(c, t, request.SupplierId, line, ct);
+        var invoice = await ValidateInvoiceLineAsync(c, t, request.SupplierId, request.PurchaseOrderId, line, ct);
         var itemName = item.ItemName;
         var receiptItemId = await InsertGoodsReceiptItemAsync(c, t, receiptId, itemName, line, ct);
         await MatchPurchaseOrderAsync(c, t, request.PurchaseOrderId, receiptItemId, itemName, line, ct);
@@ -989,11 +989,12 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         return await r.ReadAsync(ct) ? new ReceiptInventoryItem(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetByte(3), r.GetInt16(4), r.IsDBNull(5) ? null : r.GetString(5), r.IsDBNull(6) ? null : r.GetString(6)) : null;
     }
 
-    private static async Task<InvoiceLineMatch?> ValidateInvoiceLineAsync(SqlConnection c, SqlTransaction t, int supplierId, CreateGoodsReceiptItemDto line, CancellationToken ct)
+    private static async Task<InvoiceLineMatch?> ValidateInvoiceLineAsync(SqlConnection c, SqlTransaction t, int supplierId, int? purchaseOrderId, CreateGoodsReceiptItemDto line, CancellationToken ct)
     {
         if (!line.SupplierInvoiceLineId.HasValue) return null;
-        await using var cmd = new SqlCommand(@"SELECT sil.SupplierInvoiceLineId,sil.Quantity,sil.UnitCost FROM dbo.SupplierInvoiceLines sil WITH(UPDLOCK,HOLDLOCK) JOIN dbo.SupplierInvoices si WITH(UPDLOCK,HOLDLOCK) ON si.SupplierInvoiceId=sil.SupplierInvoiceId WHERE sil.SupplierInvoiceLineId=@id AND sil.InventoryItemId=@itemId AND si.SupplierId=@supplier AND sil.Status=N'Posted'", c, t);
+        await using var cmd = new SqlCommand(@"SELECT sil.SupplierInvoiceLineId,sil.Quantity,sil.UnitCost FROM dbo.SupplierInvoiceLines sil WITH(UPDLOCK,HOLDLOCK) JOIN dbo.SupplierInvoices si WITH(UPDLOCK,HOLDLOCK) ON si.SupplierInvoiceId=sil.SupplierInvoiceId WHERE sil.SupplierInvoiceLineId=@id AND sil.InventoryItemId=@itemId AND si.SupplierId=@supplier AND ((si.PurchaseOrderId IS NULL AND @purchaseOrderId IS NULL) OR si.PurchaseOrderId=@purchaseOrderId) AND sil.Status=N'Posted'", c, t);
         cmd.Parameters.AddWithValue("@id", line.SupplierInvoiceLineId.Value); cmd.Parameters.AddWithValue("@itemId", line.InventoryItemId); cmd.Parameters.AddWithValue("@supplier", supplierId);
+        cmd.Parameters.AddWithValue("@purchaseOrderId", purchaseOrderId ?? (object)DBNull.Value);
         await using var r = await cmd.ExecuteReaderAsync(ct);
         if (!await r.ReadAsync(ct)) throw new InvalidOperationException("Supplier invoice line does not match the receipt supplier or inventory item.");
         return new InvoiceLineMatch(r.GetInt64(0), r.GetDecimal(1), r.GetDecimal(2));

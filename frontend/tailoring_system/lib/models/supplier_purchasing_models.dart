@@ -114,6 +114,42 @@ class SupplierPurchasingInvoice {
   double get outstanding => total - paid;
 }
 
+class SupplierPurchasingInvoiceLine {
+    const SupplierPurchasingInvoiceLine(
+            {required this.id,
+            required this.invoiceId,
+            required this.inventoryItemId,
+            required this.itemCode,
+            required this.itemName,
+            required this.quantity,
+            required this.unitCost,
+            required this.total,
+            required this.status,
+            this.rollCount});
+    factory SupplierPurchasingInvoiceLine.fromJson(Map<String, dynamic> json) =>
+            SupplierPurchasingInvoiceLine(
+                    id: (json['supplierInvoiceLineId'] as num).toInt(),
+                    invoiceId: (json['supplierInvoiceId'] as num).toInt(),
+                    inventoryItemId: (json['inventoryItemId'] as num).toInt(),
+                    itemCode: (json['itemCode'] ?? '').toString(),
+                    itemName: (json['itemName'] ?? '').toString(),
+                    quantity: ((json['quantity'] ?? 0) as num).toDouble(),
+                    unitCost: ((json['unitCost'] ?? 0) as num).toDouble(),
+                    total: ((json['lineTotal'] ?? 0) as num).toDouble(),
+                    rollCount: (json['rollCount'] as num?)?.toInt(),
+                    status: (json['status'] ?? '').toString());
+    final int id;
+    final int invoiceId;
+    final int inventoryItemId;
+    final String itemCode;
+    final String itemName;
+    final double quantity;
+    final double unitCost;
+    final double total;
+    final int? rollCount;
+    final String status;
+}
+
 class SupplierPurchasingPayment {
   const SupplierPurchasingPayment(
       {required this.id,

@@ -256,6 +256,7 @@ class _SupplierPurchasingOperationsScreenState
             child: _listOrEmpty(
               _invoices,
               (invoice) => ListTile(
+                onTap: () => _showInvoiceLines(invoice),
                 leading: const Icon(Icons.receipt_long_outlined),
                 title: Text(invoice.number),
                 subtitle: Text(
@@ -431,8 +432,8 @@ class _SupplierPurchasingOperationsScreenState
     }
     final formKey = GlobalKey<FormState>();
     final number = TextEditingController();
-    final amount = TextEditingController();
     final notes = TextEditingController();
+    final lines = <_InvoiceDraftLine>[_InvoiceDraftLine()];
     SupplierPurchasingSupplier? supplier;
     SupplierPurchasingOrder? order;
     DateTime invoiceDate = DateTime.now();
@@ -440,13 +441,29 @@ class _SupplierPurchasingOperationsScreenState
     String currency = 'YER';
     final currencies =
         <String>{'YER', ..._cashAccounts.map((e) => e.currency)}.toList();
+    double invoiceTotal() => double.parse(lines
+      .fold<double>(
+        0,
+        (total, line) =>
+          total +
+          (double.tryParse(line.quantity.text.trim()) ?? 0) *
+            (double.tryParse(line.cost.text.trim()) ?? 0))
+      .toStringAsFixed(6));
+    bool validLines() =>
+      lines.isNotEmpty &&
+      lines.every((line) =>
+        line.item != null &&
+        (double.tryParse(line.quantity.text.trim()) ?? 0) > 0 &&
+        (double.tryParse(line.cost.text.trim()) ?? 0) > 0 &&
+        (line.rollCount.text.trim().isEmpty ||
+          (int.tryParse(line.rollCount.text.trim()) ?? 0) > 0));
     final save = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('فاتورة مورد جديدة'),
           content: SizedBox(
-            width: 520,
+            width: 680,
             child: Form(
               key: formKey,
               child: SingleChildScrollView(
@@ -493,7 +510,31 @@ class _SupplierPurchasingOperationsScreenState
                     final value = await _pickDate(dueDate);
                     if (value != null) setDialogState(() => dueDate = value);
                   }),
-                  _field(amount, 'المبلغ', required: true, number: true),
+                  const Divider(),
+                  for (var index = 0; index < lines.length; index++)
+                    _invoiceLine(
+                        lines[index],
+                        index,
+                        lines.length == 1
+                            ? null
+                            : () => setDialogState(() {
+                                  lines[index].dispose();
+                                  lines.removeAt(index);
+                                }),
+                        () => setDialogState(() {})),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                        onPressed: () => setDialogState(
+                            () => lines.add(_InvoiceDraftLine())),
+                        icon: const Icon(Icons.add),
+                        label: const Text('إضافة بند')),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('إجمالي الفاتورة'),
+                    trailing: Text(invoiceTotal().toStringAsFixed(2)),
+                  ),
                   DropdownButtonFormField<String>(
                       initialValue: currency,
                       decoration: const InputDecoration(labelText: 'العملة'),
@@ -504,10 +545,9 @@ class _SupplierPurchasingOperationsScreenState
                       onChanged: (value) =>
                           setDialogState(() => currency = value ?? 'YER')),
                   _field(notes, 'الملاحظات', last: true, onSubmitted: () {
-                    final parsed = double.tryParse(amount.text.trim());
                     if (formKey.currentState!.validate() &&
-                        parsed != null &&
-                        parsed > 0 &&
+                        validLines() &&
+                        invoiceTotal() > 0 &&
                         !dueDate.isBefore(invoiceDate)) {
                       Navigator.pop(dialogContext, true);
                     }
@@ -522,16 +562,15 @@ class _SupplierPurchasingOperationsScreenState
                 child: const Text('إلغاء')),
             FilledButton(
                 onPressed: () {
-                  final parsed = double.tryParse(amount.text.trim());
-                  if (formKey.currentState!.validate() &&
-                      parsed != null &&
-                      parsed > 0 &&
-                      dueDate.isBefore(invoiceDate)) {
+                  if (dueDate.isBefore(invoiceDate)) {
                     _showMessage('تاريخ الاستحقاق لا يسبق تاريخ الفاتورة.');
                   } else if (formKey.currentState!.validate() &&
-                      parsed != null &&
-                      parsed > 0) {
+                      validLines() &&
+                      invoiceTotal() > 0) {
                     Navigator.pop(dialogContext, true);
+                  } else {
+                    _showMessage(
+                        'راجع بنود الفاتورة والكميات والتكاليف وعدد اللفات.');
                   }
                 },
                 child: const Text('حفظ الفاتورة'))
@@ -552,15 +591,65 @@ class _SupplierPurchasingOperationsScreenState
                 invoiceNumber: number.text.trim(),
                 invoiceDate: invoiceDate,
                 dueDate: dueDate,
-                amount: double.parse(amount.text.trim()),
+                amount: invoiceTotal(),
+                lines: lines
+                  .map((line) => {
+                      'inventoryItemId': line.item!.id,
+                      'quantity': double.parse(line.quantity.text.trim()),
+                      'unitCost': double.parse(line.cost.text.trim()),
+                      'rollCount': line.rollCount.text.trim().isEmpty
+                        ? null
+                        : int.parse(line.rollCount.text.trim())
+                    })
+                  .toList(),
                 purchaseOrderId: order?.id,
                 currencyCode: currency,
                 notes: _nullable(notes.text)),
             success: 'تم إنشاء فاتورة المورد.');
       }
     }
-    for (final controller in [number, amount, notes]) {
+    for (final controller in [number, notes]) {
       controller.dispose();
+    }
+    for (final line in lines) {
+      line.dispose();
+    }
+  }
+
+  Future<void> _showInvoiceLines(SupplierPurchasingInvoice invoice) async {
+    try {
+      final lines = await _repository.getInvoiceLines(invoice.id);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('بنود الفاتورة ${invoice.number}'),
+          content: SizedBox(
+            width: 560,
+            child: lines.isEmpty
+                ? const Center(child: Text('لا توجد بنود لهذه الفاتورة.'))
+                : ListView(
+                    shrinkWrap: true,
+                    children: lines
+                        .map((line) => ListTile(
+                              title:
+                                  Text('${line.itemName} (${line.itemCode})'),
+                              subtitle: Text(
+                                  'الكمية ${line.quantity}  •  تكلفة الوحدة ${line.unitCost}${line.rollCount == null ? '' : '  •  اللفات ${line.rollCount}'}'),
+                              trailing: Text(line.total.toStringAsFixed(2)),
+                            ))
+                        .toList(),
+                  ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('إغلاق'))
+          ],
+        ),
+      );
+    } catch (error) {
+      _showMessage(error.toString());
     }
   }
 
@@ -903,6 +992,8 @@ class _SupplierPurchasingOperationsScreenState
     SupplierPurchasingSupplier? supplier;
     SupplierPurchasingWarehouse? warehouse;
     SupplierPurchasingOrder? order;
+    SupplierPurchasingInvoice? invoice;
+    List<SupplierPurchasingInvoiceLine> invoiceLines = const [];
     DateTime receiptDate = DateTime.now();
     final save = await showDialog<bool>(
         context: context,
@@ -931,6 +1022,11 @@ class _SupplierPurchasingOperationsScreenState
                                       onChanged: (value) => setDialogState(() {
                                             supplier = value;
                                             order = null;
+                                            invoice = null;
+                                            invoiceLines = const [];
+                                            for (final line in lines) {
+                                              line.invoiceLine = null;
+                                            }
                                           }),
                                       validator: (value) => value == null
                                           ? 'اختر المورد.'
@@ -956,7 +1052,57 @@ class _SupplierPurchasingOperationsScreenState
                                                 child: Text(item.number)))
                                       ],
                                       onChanged: (value) =>
-                                          setDialogState(() => order = value)),
+                                          setDialogState(() {
+                                          order = value;
+                                          invoice = null;
+                                          invoiceLines = const [];
+                                          for (final line in lines) {
+                                            line.invoiceLine = null;
+                                          }
+                                          })),
+                                      const SizedBox(height: 10),
+                                      DropdownButtonFormField<
+                                          SupplierPurchasingInvoice?>(
+                                        key: ValueKey(
+                                          'receipt-invoice-${supplier?.id}-${order?.id}'),
+                                        initialValue: invoice,
+                                        decoration: const InputDecoration(
+                                          labelText:
+                                            'فاتورة المورد (اختيارية)'),
+                                        items: [
+                                        const DropdownMenuItem(
+                                          value: null,
+                                          child: Text(
+                                            'استلام دون ربط بفاتورة')),
+                                        ..._invoices
+                                          .where((item) =>
+                                            item.supplierId ==
+                                              supplier?.id &&
+                                            item.purchaseOrderId ==
+                                              order?.id &&
+                                            item.status != 'Reversed')
+                                          .map((item) => DropdownMenuItem(
+                                            value: item,
+                                            child: Text(item.number)))
+                                        ],
+                                        onChanged: (value) async {
+                                        setDialogState(() {
+                                          invoice = value;
+                                          invoiceLines = const [];
+                                          for (final line in lines) {
+                                          line.invoiceLine = null;
+                                          }
+                                        });
+                                        if (value == null) return;
+                                        final loaded = await _repository
+                                          .getInvoiceLines(value.id);
+                                        if (!dialogContext.mounted) return;
+                                        setDialogState(
+                                          () => invoiceLines = loaded
+                                            .where((line) =>
+                                              line.status == 'Posted')
+                                            .toList());
+                                        }),
                                   const SizedBox(height: 10),
                                   DropdownButtonFormField<
                                           SupplierPurchasingWarehouse>(
@@ -990,6 +1136,8 @@ class _SupplierPurchasingOperationsScreenState
                                     _receiptLine(
                                         lines[index],
                                         index,
+                                      invoiceLines,
+                                      () => setDialogState(() {}),
                                         () => setDialogState(() {
                                               lines[index].dispose();
                                               lines.removeAt(index);
@@ -1007,18 +1155,15 @@ class _SupplierPurchasingOperationsScreenState
                                         lines.isNotEmpty &&
                                         lines.every((line) =>
                                             line.item != null &&
+                                          (invoice == null ||
+                                            line.invoiceLine != null) &&
                                             (double.tryParse(
                                                         line.quantity.text) ??
                                                     0) >
                                                 0 &&
                                             (double.tryParse(line.cost.text) ??
                                                     0) >
-                                                0) &&
-                                        lines
-                                                .map((line) => line.item?.id)
-                                                .toSet()
-                                                .length ==
-                                            lines.length) {
+                                                    0)) {
                                       Navigator.pop(dialogContext, true);
                                     }
                                   }),
@@ -1033,18 +1178,15 @@ class _SupplierPurchasingOperationsScreenState
                                 lines.isEmpty ||
                                 lines.any((line) =>
                                     line.item == null ||
+                                  (invoice != null &&
+                                    line.invoiceLine == null) ||
                                     (double.tryParse(line.quantity.text) ??
                                             0) <=
                                         0 ||
                                     (double.tryParse(line.cost.text) ?? 0) <=
-                                        0) ||
-                                lines
-                                        .map((line) => line.item?.id)
-                                        .toSet()
-                                        .length !=
-                                    lines.length) {
+                                            0)) {
                               _showMessage(
-                                  'راجع البنود؛ يجب اختيار أصناف مختلفة وكميات وتكاليف صحيحة.');
+                                          'راجع البنود والربط بالفاتورة والكميات والتكاليف.');
                               return;
                             }
                             Navigator.pop(dialogContext, true);
@@ -1070,6 +1212,7 @@ class _SupplierPurchasingOperationsScreenState
                           'inventoryItemId': line.item!.id,
                           'quantity': double.parse(line.quantity.text),
                           'unitCost': double.parse(line.cost.text),
+                          'supplierInvoiceLineId': line.invoiceLine?.id,
                           'rollCode': _nullable(line.rollCode.text)
                         })
                     .toList()),
@@ -1216,7 +1359,86 @@ class _SupplierPurchasingOperationsScreenState
       );
 
   Widget _receiptLine(
-          _ReceiptDraftLine line, int index, VoidCallback onRemove) =>
+      _ReceiptDraftLine line,
+      int index,
+      List<SupplierPurchasingInvoiceLine> invoiceLines,
+      VoidCallback onChanged,
+      VoidCallback onRemove) =>
+      Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(children: [
+            Row(children: [
+              Expanded(child: Text('البند ${index + 1}')),
+              IconButton(
+                  onPressed: onRemove,
+                  tooltip: 'حذف البند',
+                  icon: const Icon(Icons.delete_outline))
+            ]),
+            if (invoiceLines.isNotEmpty)
+              DropdownButtonFormField<SupplierPurchasingInvoiceLine>(
+                initialValue: line.invoiceLine,
+                isExpanded: true,
+                decoration:
+                    const InputDecoration(labelText: 'بند فاتورة المورد'),
+                items: invoiceLines
+                    .map((invoiceLine) => DropdownMenuItem(
+                        value: invoiceLine,
+                        child: Text(
+                            '${invoiceLine.itemName} - ${invoiceLine.quantity} × ${invoiceLine.unitCost}')))
+                    .toList(),
+                onChanged: (value) {
+                  line.invoiceLine = value;
+                  if (value != null) {
+                    for (final item in _inventoryItems) {
+                      if (item.id == value.inventoryItemId) {
+                        line.item = item;
+                        break;
+                      }
+                    }
+                    line.quantity.text = value.quantity.toString();
+                    line.cost.text = value.unitCost.toString();
+                  }
+                  onChanged();
+                },
+                validator: (value) => value == null
+                    ? 'اختر بند الفاتورة المرتبط بالاستلام.'
+                    : null,
+              ),
+            DropdownButtonFormField<SupplierPurchasingInventoryItem>(
+              initialValue: line.item,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'الصنف'),
+              items: _inventoryItems
+                  .map((item) => DropdownMenuItem(
+                      value: item, child: Text('${item.name} (${item.code})')))
+                  .toList(),
+              onChanged: (value) {
+                line.item = value;
+                if (line.invoiceLine?.inventoryItemId != value?.id) {
+                  line.invoiceLine = null;
+                }
+                onChanged();
+              },
+              validator: (value) => value == null ? 'اختر الصنف.' : null,
+            ),
+            Row(children: [
+              Expanded(
+                  child: _field(line.quantity, 'الكمية',
+                      required: true, number: true)),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: _field(line.cost, 'تكلفة الوحدة',
+                      required: true, number: true)),
+            ]),
+            _field(line.rollCode, 'رمز اللفة (عند استلام القماش)'),
+          ]),
+        ),
+      );
+
+  Widget _invoiceLine(_InvoiceDraftLine line, int index,
+          VoidCallback? onRemove, VoidCallback onChanged) =>
       Card(
         margin: const EdgeInsets.only(bottom: 8),
         child: Padding(
@@ -1232,24 +1454,59 @@ class _SupplierPurchasingOperationsScreenState
             DropdownButtonFormField<SupplierPurchasingInventoryItem>(
               initialValue: line.item,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: 'الصنف'),
+              decoration: const InputDecoration(labelText: 'الصنف الرسمي'),
               items: _inventoryItems
                   .map((item) => DropdownMenuItem(
                       value: item, child: Text('${item.name} (${item.code})')))
                   .toList(),
-              onChanged: (value) => line.item = value,
+              onChanged: (value) {
+                line.item = value;
+                onChanged();
+              },
               validator: (value) => value == null ? 'اختر الصنف.' : null,
             ),
             Row(children: [
               Expanded(
-                  child: _field(line.quantity, 'الكمية',
-                      required: true, number: true)),
+                  child: TextFormField(
+                      controller: line.quantity,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(labelText: 'الكمية'),
+                      onChanged: (_) => onChanged(),
+                      validator: (value) =>
+                          (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
+                              ? 'أدخل كمية صحيحة.'
+                              : null)),
               const SizedBox(width: 10),
               Expanded(
-                  child: _field(line.cost, 'تكلفة الوحدة',
-                      required: true, number: true)),
+                  child: TextFormField(
+                      controller: line.cost,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.next,
+                      decoration:
+                          const InputDecoration(labelText: 'تكلفة الوحدة'),
+                      onChanged: (_) => onChanged(),
+                      validator: (value) =>
+                          (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
+                              ? 'أدخل تكلفة صحيحة.'
+                              : null)),
             ]),
-            _field(line.rollCode, 'رمز اللفة (عند استلام القماش)'),
+            TextFormField(
+              controller: line.rollCount,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+              decoration:
+                  const InputDecoration(labelText: 'عدد اللفات (اختياري)'),
+              validator: (value) {
+                final text = value?.trim() ?? '';
+                if (text.isEmpty) return null;
+                return (int.tryParse(text) ?? 0) <= 0
+                    ? 'أدخل عدد لفات صحيحًا.'
+                    : null;
+              },
+            ),
           ]),
         ),
       );
@@ -1279,6 +1536,7 @@ class _SupplierPurchasingOperationsScreenState
         'PurchaseOrderQuantityVariance' => 'فرق في الكمية',
         'PurchaseOrderCostVariance' => 'فرق في تكلفة الوحدة',
         'SupplierInvoiceLineMissing' => 'بند الفاتورة غير موجود',
+        'SupplierInvoiceVariance' => 'فرق كمية أو تكلفة مع فاتورة المورد',
         'SupplierInvoiceQuantityVariance' => 'فرق كمية مع الفاتورة',
         'SupplierInvoiceCostVariance' => 'فرق تكلفة مع الفاتورة',
         _ => 'فرق في المطابقة'
@@ -1382,6 +1640,7 @@ class _ErrorState extends StatelessWidget {
 
 class _ReceiptDraftLine {
   SupplierPurchasingInventoryItem? item;
+  SupplierPurchasingInvoiceLine? invoiceLine;
   final quantity = TextEditingController();
   final cost = TextEditingController();
   final rollCode = TextEditingController();
@@ -1390,5 +1649,18 @@ class _ReceiptDraftLine {
     quantity.dispose();
     cost.dispose();
     rollCode.dispose();
+  }
+}
+
+class _InvoiceDraftLine {
+  SupplierPurchasingInventoryItem? item;
+  final quantity = TextEditingController();
+  final cost = TextEditingController();
+  final rollCount = TextEditingController();
+
+  void dispose() {
+    quantity.dispose();
+    cost.dispose();
+    rollCount.dispose();
   }
 }

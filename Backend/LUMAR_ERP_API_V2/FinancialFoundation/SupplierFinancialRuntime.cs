@@ -108,7 +108,7 @@ public sealed class SupplierFinancialRuntime
         var original = await ReadInvoiceForReversalAsync(connection, transaction, supplierInvoiceId, cancellationToken);
         var reversal = await FoundationPostingGateway.ReverseAsync(connection, transaction, original.EventId, sourceOperationId, referenceNumber, reason, reversedBy, cancellationToken);
         await _ledgerWriter.PostAsync(connection, transaction, original.SupplierId, new LedgerEntryRequest("Reversal", original.Amount, -original.Amount, DateTime.UtcNow, original.InvoiceDate, "SupplierInvoice", supplierInvoiceId, sourceOperationId, referenceNumber, reversedBy, original.LedgerEntryId, reason, reversedBy, DateTime.UtcNow), cancellationToken);
-        await using var update = new SqlCommand("UPDATE dbo.SupplierFinancialInvoices SET Status=N'Reversed' WHERE SupplierInvoiceId=@invoiceId;", connection, transaction);
+        await using var update = new SqlCommand("UPDATE dbo.SupplierFinancialInvoices SET Status=N'Reversed' WHERE SupplierInvoiceId=@invoiceId; UPDATE dbo.SupplierInvoiceLines SET Status=N'Reversed' WHERE SupplierInvoiceId=@invoiceId AND Status=N'Posted';", connection, transaction);
         update.Parameters.AddWithValue("@invoiceId", supplierInvoiceId); await update.ExecuteNonQueryAsync(cancellationToken);
         return reversal.AccountingEventId;
     }
