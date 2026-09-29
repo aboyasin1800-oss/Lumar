@@ -25,6 +25,7 @@ class _SupplierPurchasingOperationsScreenState
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  final Set<int> _loadedTabs = <int>{};
   List<SupplierPurchasingSupplier> _suppliers = const [];
   List<SupplierPurchasingOrder> _orders = const [];
   List<SupplierPurchasingInvoice> _invoices = const [];
@@ -44,37 +45,51 @@ class _SupplierPurchasingOperationsScreenState
   void initState() {
     super.initState();
     _tabs = TabController(length: 5, vsync: this);
+    _tabs.addListener(_onTabChanged);
     _repository =
         SupplierPurchasingRepository(AuthenticatedApiClient(auth: widget.auth));
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _loadTab(0, force: true));
   }
 
   @override
   void dispose() {
+    _tabs.removeListener(_onTabChanged);
     _tabs.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
+    _loadedTabs.clear();
+    await _loadTab(_tabs.index, force: true);
+  }
+
+  void _onTabChanged() {
+    if (!_tabs.indexIsChanging) _loadTab(_tabs.index);
+  }
+
+  Future<void> _loadTab(int tab, {bool force = false}) async {
+    if (!force && _loadedTabs.contains(tab)) return;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final data = await Future.wait<dynamic>([
-        _repository.getSuppliers(),
-        _repository.getOrders(),
-        _repository.getInvoices(),
-        _repository.getPayments(),
-        _repository.getReceipts(),
-      ]);
+      final data = switch (tab) {
+        0 => await _repository.getSuppliers(),
+        1 => await _repository.getOrders(),
+        2 => await _repository.getInvoices(),
+        3 => await _repository.getPayments(),
+        _ => await _repository.getReceipts(),
+      };
       if (!mounted) return;
       setState(() {
-        _suppliers = data[0] as List<SupplierPurchasingSupplier>;
-        _orders = data[1] as List<SupplierPurchasingOrder>;
-        _invoices = data[2] as List<SupplierPurchasingInvoice>;
-        _payments = data[3] as List<SupplierPurchasingPayment>;
-        _receipts = data[4] as List<SupplierPurchasingReceipt>;
+        if (tab == 0) _suppliers = data as List<SupplierPurchasingSupplier>;
+        if (tab == 1) _orders = data as List<SupplierPurchasingOrder>;
+        if (tab == 2) _invoices = data as List<SupplierPurchasingInvoice>;
+        if (tab == 3) _payments = data as List<SupplierPurchasingPayment>;
+        if (tab == 4) _receipts = data as List<SupplierPurchasingReceipt>;
+        _loadedTabs.add(tab);
         _loading = false;
       });
     } catch (error) {

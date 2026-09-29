@@ -867,15 +867,6 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
-		},
-		{
-			"label": "ES7B3 Flutter Windows Build Temporary",
-			"type": "shell",
-			"command": "Set-Location frontend/tailoring_system; flutter build windows",
-			"args": [],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
 		}
 	]
 }
