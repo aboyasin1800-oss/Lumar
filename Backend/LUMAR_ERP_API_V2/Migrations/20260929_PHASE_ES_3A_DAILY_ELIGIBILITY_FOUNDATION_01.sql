@@ -1,0 +1,14 @@
+SET XACT_ABORT ON;
+IF DB_NAME()<>N'LUMAR_ERP_TEST' THROW 52000,N'ES-3A is restricted to LUMAR_ERP_TEST.',1;
+BEGIN TRY BEGIN TRANSACTION;
+IF OBJECT_ID(N'dbo.EmployeeDailyEligibility',N'U') IS NOT NULL OR OBJECT_ID(N'dbo.EmployeeStatusHistory',N'U') IS NOT NULL THROW 52001,N'ES-3A already exists.',1;
+ALTER TABLE dbo.LeaveRequests ADD PaymentClassification nvarchar(10) NULL;
+ALTER TABLE dbo.LeaveRequests ADD CONSTRAINT CK_LeaveRequests_PaymentClassification CHECK(PaymentClassification IN(N'Paid',N'Unpaid') OR PaymentClassification IS NULL);
+CREATE TABLE dbo.EmployeeStatusHistory(
+ EmployeeStatusHistoryId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,EmployeeId int NOT NULL,EffectiveDate date NOT NULL,Status nvarchar(20) NOT NULL,CreatedBy nvarchar(100) NOT NULL,CreatedAt datetime2(7) NOT NULL CONSTRAINT DF_EmployeeStatusHistory_CreatedAt DEFAULT SYSUTCDATETIME(),
+ CONSTRAINT FK_EmployeeStatusHistory_Employee FOREIGN KEY(EmployeeId) REFERENCES dbo.Employees(EmployeeID),CONSTRAINT UQ_EmployeeStatusHistory_Employee_Date UNIQUE(EmployeeId,EffectiveDate),CONSTRAINT CK_EmployeeStatusHistory_Status CHECK(Status IN(N'Active',N'Inactive',N'Terminated')));
+CREATE TABLE dbo.EmployeeDailyEligibility(
+ EmployeeDailyEligibilityId bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,EmployeeId int NOT NULL,EligibilityDate date NOT NULL,EligibilityStatus nvarchar(40) NOT NULL,LeaveRequestId int NULL,EmployeeAttendanceId int NULL,SourceOperationId uniqueidentifier NOT NULL,CreatedBy nvarchar(100) NOT NULL,CreatedAt datetime2(7) NOT NULL CONSTRAINT DF_EmployeeDailyEligibility_CreatedAt DEFAULT SYSUTCDATETIME(),
+ CONSTRAINT FK_EmployeeDailyEligibility_Employee FOREIGN KEY(EmployeeId) REFERENCES dbo.Employees(EmployeeID),CONSTRAINT FK_EmployeeDailyEligibility_Leave FOREIGN KEY(LeaveRequestId) REFERENCES dbo.LeaveRequests(LeaveRequestId),CONSTRAINT FK_EmployeeDailyEligibility_Attendance FOREIGN KEY(EmployeeAttendanceId) REFERENCES dbo.EmployeeAttendances(EmployeeAttendanceId),CONSTRAINT UQ_EmployeeDailyEligibility_Employee_Date UNIQUE(EmployeeId,EligibilityDate),CONSTRAINT UQ_EmployeeDailyEligibility_Operation UNIQUE(SourceOperationId),CONSTRAINT CK_EmployeeDailyEligibility_Status CHECK(EligibilityStatus IN(N'EligibleWorkedDay',N'EligiblePaidLeave',N'IneligibleUnpaidLeave',N'IneligibleAbsence',N'IneligibleBeforeStartDate',N'IneligibleInactiveEmployee',N'NotApplicablePieceWage')));
+CREATE INDEX IX_EmployeeStatusHistory_Employee_Date ON dbo.EmployeeStatusHistory(EmployeeId,EffectiveDate DESC);
+COMMIT TRANSACTION; END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;

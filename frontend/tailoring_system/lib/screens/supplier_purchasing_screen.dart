@@ -245,7 +245,7 @@ class _SupplierPurchasingScreenState extends State<SupplierPurchasingScreen>
       );
     }
 
-    if (_loadError != null || _suppliers.isEmpty) {
+    if (_loadError != null) {
       return Theme(
         data: _screenTheme,
         child: Scaffold(
@@ -1089,7 +1089,18 @@ class _SuppliersTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selected = suppliers.firstWhere((supplier) => supplier.id == selectedSupplierId);
+    final selected = suppliers.firstWhere(
+      (supplier) => supplier.id == selectedSupplierId,
+      orElse: () => const _SupplierRecord(
+        id: 0,
+        name: '-',
+        phone: '-',
+        code: '-',
+        location: '-',
+        notes: '-',
+      ),
+    );
+    final hasSelectedSupplier = selected.id > 0;
     final format = NumberFormat('#,##0.00');
     final dateFormat = DateFormat('dd/MM/yyyy');
     final screenDark = Theme.of(context).brightness == Brightness.dark;
@@ -1115,20 +1126,22 @@ class _SuppliersTab extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: ListView(
-                  children: suppliers.map((supplier) => ListTile(
-                        selected: supplier.id == selectedSupplierId,
-                        selectedTileColor: screenDark ? const Color(0xFF1C2F39) : const Color(0xFFEAF5F2),
-                        onTap: () => onSelect(supplier.id),
-                        leading: CircleAvatar(
-                          backgroundColor: UiPalette.primaryBlue.withOpacity(0.15),
-                          child: Text(supplier.name.substring(0, 1), style: const TextStyle(color: UiPalette.primaryBlue, fontWeight: FontWeight.bold)),
-                        ),
-                        title: Text(supplier.name),
-                        subtitle: Text('${supplier.phone} • ${supplier.code}'),
-                        trailing: Text(supplier.location),
-                      )).toList(),
-                ),
+                child: suppliers.isEmpty
+                    ? const Center(child: Text('لا يوجد موردون حاليًا'))
+                    : ListView(
+                        children: suppliers.map((supplier) => ListTile(
+                              selected: supplier.id == selectedSupplierId,
+                              selectedTileColor: screenDark ? const Color(0xFF1C2F39) : const Color(0xFFEAF5F2),
+                              onTap: () => onSelect(supplier.id),
+                              leading: CircleAvatar(
+                                backgroundColor: UiPalette.primaryBlue.withOpacity(0.15),
+                                child: Text(supplier.name.substring(0, 1), style: const TextStyle(color: UiPalette.primaryBlue, fontWeight: FontWeight.bold)),
+                              ),
+                              title: Text(supplier.name),
+                              subtitle: Text('${supplier.phone} • ${supplier.code}'),
+                              trailing: Text(supplier.location),
+                            )).toList(),
+                      ),
               ),
             ],
           ),
@@ -1142,23 +1155,29 @@ class _SuppliersTab extends StatelessWidget {
                 children: [
                   const Expanded(child: Text('تفاصيل المورد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
                   FilledButton.icon(
-                    onPressed: onAddInvoice,
+                    onPressed: hasSelectedSupplier ? onAddInvoice : null,
                     icon: const Icon(Icons.receipt_long_outlined),
                     label: const Text('إضافة فاتورة'),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  _SummaryBox(title: 'الاسم', value: selected.name),
-                  _SummaryBox(title: 'الهاتف', value: selected.phone),
-                  _SummaryBox(title: 'الكود', value: selected.code),
-                  _SummaryBox(title: 'الموقع', value: selected.location),
-                ],
-              ),
+              if (hasSelectedSupplier)
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    _SummaryBox(title: 'الاسم', value: selected.name),
+                    _SummaryBox(title: 'الهاتف', value: selected.phone),
+                    _SummaryBox(title: 'الكود', value: selected.code),
+                    _SummaryBox(title: 'الموقع', value: selected.location),
+                  ],
+                )
+              else
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Text('أضف المورد الأول لعرض التفاصيل والحسابات.'),
+                ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -1171,18 +1190,21 @@ class _SuppliersTab extends StatelessWidget {
               const SizedBox(height: 16),
               const Text('كشف حركة المورد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 8),
-              ...supplierTransactions.map((transaction) => Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      leading: Icon(
-                        transaction.type == 'فاتورة' ? Icons.receipt_long_outlined : Icons.payments_outlined,
-                        color: transaction.type == 'فاتورة' ? UiPalette.primaryBlue : Colors.orange,
+              if (supplierTransactions.isEmpty)
+                const Text('لا توجد حركات لهذا المورد حاليًا')
+              else
+                ...supplierTransactions.map((transaction) => Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: Icon(
+                          transaction.type == 'فاتورة' ? Icons.receipt_long_outlined : Icons.payments_outlined,
+                          color: transaction.type == 'فاتورة' ? UiPalette.primaryBlue : Colors.orange,
+                        ),
+                        title: Text('${transaction.type} • ${transaction.title}'),
+                        subtitle: Text('${dateFormat.format(transaction.date)} • ${transaction.details}'),
+                        trailing: Text('${format.format(transaction.amount)}', style: const TextStyle(fontWeight: FontWeight.bold)),
                       ),
-                      title: Text('${transaction.type} • ${transaction.title}'),
-                      subtitle: Text('${dateFormat.format(transaction.date)} • ${transaction.details}'),
-                      trailing: Text('${format.format(transaction.amount)}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  )),
+                    )),
             ],
           ),
         );
@@ -1242,7 +1264,7 @@ class _PurchasesTab extends StatelessWidget {
             children: [
               const Expanded(child: Text('فواتير المشتريات', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
               FilledButton.icon(
-                onPressed: onAddInvoice,
+                onPressed: suppliers.isEmpty ? null : onAddInvoice,
                 icon: const Icon(Icons.add),
                 label: const Text('إضافة فاتورة'),
               ),
@@ -1251,20 +1273,27 @@ class _PurchasesTab extends StatelessWidget {
           const SizedBox(height: 12),
           Expanded(
             child: ListView(
-              children: invoices.map((invoice) {
-                final supplier = suppliers.firstWhere((item) => item.id == invoice.supplierId);
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    title: Text('${supplier.name} • ${invoice.invoiceNumber}'),
-                    subtitle: Text('تاريخ: ${_parseDate(invoice.invoiceDate)} • القيمة: ${format.format(invoice.totalAmount)} • المدفوع: ${format.format(invoice.paidAmount)}'),
-                    trailing: FilledButton(
-                      onPressed: () => onViewInvoice(invoice),
-                      child: const Text('عرض الفاتورة'),
-                    ),
-                  ),
-                );
-              }).toList(),
+              children: invoices.isEmpty
+                  ? const [
+                      Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Center(child: Text('لا توجد فواتير مشتريات حاليًا')),
+                      ),
+                    ]
+                  : invoices.map((invoice) {
+                      final supplier = suppliers.firstWhere((item) => item.id == invoice.supplierId);
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: ListTile(
+                          title: Text('${supplier.name} • ${invoice.invoiceNumber}'),
+                          subtitle: Text('تاريخ: ${_parseDate(invoice.invoiceDate)} • القيمة: ${format.format(invoice.totalAmount)} • المدفوع: ${format.format(invoice.paidAmount)}'),
+                          trailing: FilledButton(
+                            onPressed: () => onViewInvoice(invoice),
+                            child: const Text('عرض الفاتورة'),
+                          ),
+                        ),
+                      );
+                    }).toList(),
             ),
           ),
         ],
@@ -1294,7 +1323,7 @@ class _PaymentsTab extends StatelessWidget {
             children: [
               const Expanded(child: Text('دفعات الموردين', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
               FilledButton.icon(
-                onPressed: onAddPayment,
+                onPressed: suppliers.isEmpty ? null : onAddPayment,
                 icon: const Icon(Icons.payments_outlined),
                 label: const Text('إنشاء دفعة جديدة'),
               ),
@@ -1303,17 +1332,24 @@ class _PaymentsTab extends StatelessWidget {
           const SizedBox(height: 12),
           Expanded(
             child: ListView(
-              children: payments.map((payment) {
-                final supplier = suppliers.firstWhere((item) => item.id == payment.supplierId);
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    title: Text('${supplier.name} • ${payment.amount}'),
-                    subtitle: Text('التاريخ: ${_parseDate(payment.date)} • رقم السند: ${payment.receiptNumber} • الطريقة: ${payment.method} • المتحصل: ${payment.collector}'),
-                    trailing: Text('${format.format(payment.finalBalance)}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                );
-              }).toList(),
+              children: payments.isEmpty
+                  ? const [
+                      Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Center(child: Text('لا توجد دفعات موردين حاليًا')),
+                      ),
+                    ]
+                  : payments.map((payment) {
+                      final supplier = suppliers.firstWhere((item) => item.id == payment.supplierId);
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: ListTile(
+                          title: Text('${supplier.name} • ${payment.amount}'),
+                          subtitle: Text('التاريخ: ${_parseDate(payment.date)} • رقم السند: ${payment.receiptNumber} • الطريقة: ${payment.method} • المتحصل: ${payment.collector}'),
+                          trailing: Text('${format.format(payment.finalBalance)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      );
+                    }).toList(),
             ),
           ),
         ],
@@ -1354,13 +1390,18 @@ class _SettlementTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           DropdownButtonFormField<int>(
-            value: selectedSupplierId,
+            value: suppliers.isEmpty ? null : selectedSupplierId,
             decoration: const InputDecoration(labelText: 'اختر المورد'),
             items: suppliers.map((supplier) => DropdownMenuItem(value: supplier.id, child: Text(supplier.name))).toList(),
-            onChanged: (value) {
+            onChanged: suppliers.isEmpty ? null : (value) {
               if (value != null) onSupplierChanged(value);
             },
           ),
+          if (suppliers.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Text('لا يمكن عرض التسوية قبل إضافة مورد.'),
+            ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
@@ -1378,19 +1419,26 @@ class _SettlementTab extends StatelessWidget {
           const SizedBox(height: 8),
           Expanded(
             child: ListView(
-              children: entries.map((entry) {
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    leading: Icon(
-                      entry.type == 'فاتورة' ? Icons.receipt_long_outlined : Icons.payments_outlined,
-                      color: entry.type == 'فاتورة' ? UiPalette.primaryBlue : Colors.orange,
-                    ),
-                    title: Text('${entry.type} • ${entry.reference}'),
-                    subtitle: Text('تاريخ: ${DateFormat('dd/MM/yyyy').format(entry.date)} • القيمة: ${format.format(entry.amount)} • الرصيد السابق: ${format.format(entry.previousBalance)} • الرصيد النهائي: ${format.format(entry.finalBalance)}'),
-                  ),
-                );
-              }).toList(),
+              children: entries.isEmpty
+                  ? const [
+                      Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Center(child: Text('لا توجد تسويات حاليًا')),
+                      ),
+                    ]
+                  : entries.map((entry) {
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        child: ListTile(
+                          leading: Icon(
+                            entry.type == 'فاتورة' ? Icons.receipt_long_outlined : Icons.payments_outlined,
+                            color: entry.type == 'فاتورة' ? UiPalette.primaryBlue : Colors.orange,
+                          ),
+                          title: Text('${entry.type} • ${entry.reference}'),
+                          subtitle: Text('تاريخ: ${DateFormat('dd/MM/yyyy').format(entry.date)} • القيمة: ${format.format(entry.amount)} • الرصيد السابق: ${format.format(entry.previousBalance)} • الرصيد النهائي: ${format.format(entry.finalBalance)}'),
+                        ),
+                      );
+                    }).toList(),
             ),
           ),
         ],

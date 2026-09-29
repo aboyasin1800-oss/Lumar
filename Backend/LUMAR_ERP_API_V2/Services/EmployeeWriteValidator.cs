@@ -12,14 +12,16 @@ public static class EmployeeWriteValidator
         if (string.IsNullOrWhiteSpace(request.FullName)) throw new ArgumentException("FullName is required.");
         if (request.DepartmentId <= 0) throw new ArgumentException("DepartmentId is required.");
         if (string.IsNullOrWhiteSpace(request.Status)) throw new ArgumentException("Status is required.");
-        if (request.BasicSalary <= 0m) throw new ArgumentException("BasicSalary must be greater than zero.");
+        var salaryType = NormalizeSalaryType(request.SalaryType);
+        ValidateSalary(request.BasicSalary, salaryType);
 
         return request with
         {
             EmployeeCode = request.EmployeeCode.Trim(),
             FullName = request.FullName.Trim(),
             PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim(),
-            Status = NormalizeStatus(request.Status)
+            Status = NormalizeStatus(request.Status),
+            SalaryType = salaryType
         };
     }
 
@@ -31,14 +33,16 @@ public static class EmployeeWriteValidator
         if (string.IsNullOrWhiteSpace(request.FullName)) throw new ArgumentException("FullName is required.");
         if (request.DepartmentId <= 0) throw new ArgumentException("DepartmentId is required.");
         if (string.IsNullOrWhiteSpace(request.Status)) throw new ArgumentException("Status is required.");
-        if (request.BasicSalary <= 0m) throw new ArgumentException("BasicSalary must be greater than zero.");
+        var salaryType = NormalizeSalaryType(request.SalaryType);
+        ValidateSalary(request.BasicSalary, salaryType);
 
         return request with
         {
             EmployeeCode = request.EmployeeCode.Trim(),
             FullName = request.FullName.Trim(),
             PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim(),
-            Status = NormalizeStatus(request.Status)
+            Status = NormalizeStatus(request.Status),
+            SalaryType = salaryType
         };
     }
 
@@ -55,6 +59,21 @@ public static class EmployeeWriteValidator
             "onleave" or "OnLeave" or "on_leave" or "On_Leave" => "OnLeave",
             _ => status.Trim(),
         };
+    }
+
+    private static string NormalizeSalaryType(string? salaryType) => salaryType?.Trim() switch
+    {
+        "BasicSalary" => "BasicSalary",
+        "PieceWage" => "PieceWage",
+        _ => throw new ArgumentException("SalaryType must be BasicSalary or PieceWage.")
+    };
+
+    private static void ValidateSalary(decimal basicSalary, string salaryType)
+    {
+        if (salaryType == "BasicSalary" && basicSalary <= 0m)
+            throw new ArgumentException("BasicSalary must be greater than zero for BasicSalary employees.");
+        if (salaryType == "PieceWage" && basicSalary != 0m)
+            throw new ArgumentException("BasicSalary must be zero for PieceWage employees.");
     }
 
     public static void EnsureUniqueCode(string? employeeCode, IEnumerable<string>? existingCodes, string? currentEmployeeCode = null)

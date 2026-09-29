@@ -24,9 +24,9 @@ public sealed class EmployeeRepository(ReadOnlySqlConnectionFactory connections,
                     throw new ArgumentException("EmployeeCode already exists.");
             }
 
-            const string sql = @"INSERT INTO dbo.Employees (EmployeeCode, EmployeeName, FullName, DepartmentId, PhoneNumber, BasicSalary, HireDate, Status, IsActive, CreatedAt, UpdatedAt)
+            const string sql = @"INSERT INTO dbo.Employees (EmployeeCode, EmployeeName, FullName, DepartmentId, PhoneNumber, BasicSalary, SalaryType, HireDate, Status, IsActive, CreatedAt, UpdatedAt)
 OUTPUT INSERTED.EmployeeID
-VALUES (@employeeCode, @employeeName, @fullName, @departmentId, @phoneNumber, @basicSalary, @hireDate, @status, @isActive, SYSDATETIME(), SYSDATETIME());";
+VALUES (@employeeCode, @employeeName, @fullName, @departmentId, @phoneNumber, @basicSalary, @salaryType, @hireDate, @status, @isActive, SYSDATETIME(), SYSDATETIME());";
 
             await using var command = new SqlCommand(sql, connection, (SqlTransaction)transaction);
             command.Parameters.AddWithValue("@employeeCode", normalized.EmployeeCode!.Trim());
@@ -35,6 +35,7 @@ VALUES (@employeeCode, @employeeName, @fullName, @departmentId, @phoneNumber, @b
             command.Parameters.AddWithValue("@departmentId", normalized.DepartmentId);
             command.Parameters.AddWithValue("@phoneNumber", string.IsNullOrWhiteSpace(normalized.PhoneNumber) ? (object)DBNull.Value : normalized.PhoneNumber.Trim());
             command.Parameters.AddWithValue("@basicSalary", normalized.BasicSalary);
+            command.Parameters.AddWithValue("@salaryType", normalized.SalaryType!);
             command.Parameters.AddWithValue("@hireDate", normalized.HireDate ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("@status", normalized.Status!);
             command.Parameters.AddWithValue("@isActive", normalized.Status!.Equals("Active", StringComparison.OrdinalIgnoreCase));
@@ -76,6 +77,7 @@ SET EmployeeCode = @employeeCode,
     DepartmentId = @departmentId,
     PhoneNumber = @phoneNumber,
     BasicSalary = @basicSalary,
+    SalaryType = @salaryType,
     HireDate = @hireDate,
     Status = @status,
     IsActive = @isActive,
@@ -90,6 +92,7 @@ WHERE EmployeeID = @id;";
             command.Parameters.AddWithValue("@departmentId", normalized.DepartmentId);
             command.Parameters.AddWithValue("@phoneNumber", string.IsNullOrWhiteSpace(normalized.PhoneNumber) ? (object)DBNull.Value : normalized.PhoneNumber.Trim());
             command.Parameters.AddWithValue("@basicSalary", normalized.BasicSalary);
+            command.Parameters.AddWithValue("@salaryType", normalized.SalaryType!);
             command.Parameters.AddWithValue("@hireDate", normalized.HireDate ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("@status", normalized.Status!);
             command.Parameters.AddWithValue("@isActive", normalized.IsActive);
