@@ -16,7 +16,8 @@ public sealed class Es7OperationalTestModeController(
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<OperationalTestGrantDto>> Activate(CancellationToken cancellationToken)
     {
-        if (!testMode.Enabled) return Forbid();
+        if (!testMode.Enabled)
+            return StatusCode(StatusCodes.Status403Forbidden, "وضع التنفيذ والاختبار غير متاح.");
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
         if (user is null) return Unauthorized();
         return Ok(testMode.Activate(user, BearerToken));

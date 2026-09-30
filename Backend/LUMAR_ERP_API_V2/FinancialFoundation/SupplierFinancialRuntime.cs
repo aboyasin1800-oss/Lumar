@@ -66,8 +66,12 @@ public sealed class SupplierFinancialRuntime
 
         decimal allocated = 0m;
         if (request.SupplierInvoiceId.HasValue)
-            allocated = (await AllocateAsync(connection, transaction, paymentId, request.SupplierInvoiceId.Value, request.Amount,
-                request.PaymentDate, request.SourceOperationId, request.ReferenceNumber, request.CreatedBy, cancellationToken)).Amount;
+        {
+            allocated = request.PaymentKind == SupplierPaymentKind.Immediate
+                ? await RecordImmediatePaymentAllocationAsync(connection, transaction, paymentId, request.SupplierInvoiceId.Value, request.Amount, request.PaymentDate, cancellationToken)
+                : (await AllocateAsync(connection, transaction, paymentId, request.SupplierInvoiceId.Value, request.Amount,
+                    request.PaymentDate, request.SourceOperationId, request.ReferenceNumber, request.CreatedBy, cancellationToken)).Amount;
+        }
         var balance = await GetSupplierBalanceAsync(connection, transaction, request.SupplierId, cancellationToken);
         return new SupplierFinancialPaymentResult(paymentId, posting.AccountingEventId, allocated, balance, false);
     }
@@ -97,6 +101,20 @@ public sealed class SupplierFinancialRuntime
         update.Parameters.AddWithValue("@amount", amount); update.Parameters.AddWithValue("@invoiceId", supplierInvoiceId);
         await update.ExecuteNonQueryAsync(cancellationToken);
         return new SupplierFinancialAllocationResult(allocationId, posting.AccountingEventId, amount, false);
+    }
+
+    private static async Task<decimal> RecordImmediatePaymentAllocationAsync(SqlConnection connection, SqlTransaction transaction, int paymentId, int invoiceId, decimal amount, DateOnly allocationDate, CancellationToken cancellationToken)
+    {
+        var supplierId = await ReadPaymentSupplierAsync(connection, transaction, paymentId, cancellationToken);
+        await ValidateInvoiceForAllocationAsync(connection, transaction, supplierId, invoiceId, amount, cancellationToken);
+        var available = await GetAvailablePaymentAmountAsync(connection, transaction, paymentId, cancellationToken);
+        if (amount > available) throw new InvalidOperationException("Supplier payment allocation exceeds the available payment amount.");
+        await InsertAllocationAsync(connection, transaction, paymentId, invoiceId, amount, allocationDate, cancellationToken);
+        await using var update = new SqlCommand("UPDATE dbo.SupplierInvoices SET AmountPaid=AmountPaid+@amount WHERE SupplierInvoiceId=@invoiceId;", connection, transaction);
+        update.Parameters.AddWithValue("@amount", amount);
+        update.Parameters.AddWithValue("@invoiceId", invoiceId);
+        await update.ExecuteNonQueryAsync(cancellationToken);
+        return amount;
     }
 
     public async Task<long> ReverseInvoiceAsync(SqlConnection connection, SqlTransaction transaction, int supplierInvoiceId, Guid sourceOperationId, string referenceNumber, string reason, string reversedBy, CancellationToken cancellationToken)
