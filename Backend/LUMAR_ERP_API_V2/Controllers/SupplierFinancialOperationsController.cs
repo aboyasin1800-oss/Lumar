@@ -17,7 +17,7 @@ public sealed class SupplierFinancialOperationsController(
     [HttpPost("invoices")]
     public async Task<ActionResult<SupplierFinancialInvoiceResult>> CreateInvoice(CreateSupplierInvoiceRequestDto request, CancellationToken cancellationToken)
     {
-        if (request.SupplierId <= 0 || string.IsNullOrWhiteSpace(request.InvoiceNumber) || request.Amount <= 0 || request.SourceOperationId == Guid.Empty || request.InvoiceDate > request.DueDate || request.Lines is not { Count: > 0 } || request.Lines.Any(line => line.InventoryItemId <= 0 || line.Quantity <= 0 || line.UnitCost <= 0 || line.RollCount <= 0))
+        if (request.SupplierId <= 0 || string.IsNullOrWhiteSpace(request.InvoiceNumber) || request.Amount <= 0 || request.SourceOperationId == Guid.Empty || request.InvoiceDate > request.DueDate || request.Lines is not { Count: > 0 } || request.Lines.Any(line => (line.InventoryItemId is null && string.IsNullOrWhiteSpace(line.ItemDescription)) || line.Quantity <= 0 || line.UnitCost <= 0 || line.RollCount <= 0 || !IsSupportedInvoiceItemType(line.ItemType)))
             return BadRequest("Supplier invoice data is incomplete.");
         var linesTotal = request.Lines.Sum(line => decimal.Round(line.Quantity * line.UnitCost, 6, MidpointRounding.AwayFromZero));
         if (linesTotal != request.Amount) return BadRequest("Supplier invoice amount must equal the lines total.");
@@ -64,4 +64,6 @@ public sealed class SupplierFinancialOperationsController(
     }
 
     private string CorrelationId => ControllerContext.HttpContext?.TraceIdentifier ?? "unbound";
+
+    private static bool IsSupportedInvoiceItemType(string? value) => value?.Trim() is "Fabric" or "UsedTool" or "ImportedProduct" or "Legacy";
 }

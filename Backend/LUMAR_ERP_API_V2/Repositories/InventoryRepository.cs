@@ -992,12 +992,22 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
     private static async Task<InvoiceLineMatch?> ValidateInvoiceLineAsync(SqlConnection c, SqlTransaction t, int supplierId, int? purchaseOrderId, CreateGoodsReceiptItemDto line, CancellationToken ct)
     {
         if (!line.SupplierInvoiceLineId.HasValue) return null;
-        await using var cmd = new SqlCommand(@"SELECT sil.SupplierInvoiceLineId,sil.Quantity,sil.UnitCost FROM dbo.SupplierInvoiceLines sil WITH(UPDLOCK,HOLDLOCK) JOIN dbo.SupplierInvoices si WITH(UPDLOCK,HOLDLOCK) ON si.SupplierInvoiceId=sil.SupplierInvoiceId WHERE sil.SupplierInvoiceLineId=@id AND sil.InventoryItemId=@itemId AND si.SupplierId=@supplier AND ((si.PurchaseOrderId IS NULL AND @purchaseOrderId IS NULL) OR si.PurchaseOrderId=@purchaseOrderId) AND sil.Status=N'Posted'", c, t);
+        await using var cmd = new SqlCommand(@"SELECT sil.SupplierInvoiceLineId,sil.Quantity,sil.UnitCost,sil.InventoryItemId FROM dbo.SupplierInvoiceLines sil WITH(UPDLOCK,HOLDLOCK) JOIN dbo.SupplierInvoices si WITH(UPDLOCK,HOLDLOCK) ON si.SupplierInvoiceId=sil.SupplierInvoiceId WHERE sil.SupplierInvoiceLineId=@id AND (sil.InventoryItemId IS NULL OR sil.InventoryItemId=@itemId) AND si.SupplierId=@supplier AND ((si.PurchaseOrderId IS NULL AND @purchaseOrderId IS NULL) OR si.PurchaseOrderId=@purchaseOrderId) AND sil.Status=N'Posted'", c, t);
         cmd.Parameters.AddWithValue("@id", line.SupplierInvoiceLineId.Value); cmd.Parameters.AddWithValue("@itemId", line.InventoryItemId); cmd.Parameters.AddWithValue("@supplier", supplierId);
         cmd.Parameters.AddWithValue("@purchaseOrderId", purchaseOrderId ?? (object)DBNull.Value);
         await using var r = await cmd.ExecuteReaderAsync(ct);
         if (!await r.ReadAsync(ct)) throw new InvalidOperationException("Supplier invoice line does not match the receipt supplier or inventory item.");
-        return new InvoiceLineMatch(r.GetInt64(0), r.GetDecimal(1), r.GetDecimal(2));
+        var match = new InvoiceLineMatch(r.GetInt64(0), r.GetDecimal(1), r.GetDecimal(2), r.IsDBNull(3));
+        await r.CloseAsync();
+        if (match.NeedsInventoryLink)
+        {
+            await using var link = new SqlCommand("UPDATE dbo.SupplierInvoiceLines SET InventoryItemId=@itemId WHERE SupplierInvoiceLineId=@lineId AND InventoryItemId IS NULL", c, t);
+            link.Parameters.AddWithValue("@itemId", line.InventoryItemId);
+            link.Parameters.AddWithValue("@lineId", line.SupplierInvoiceLineId.Value);
+            if (await link.ExecuteNonQueryAsync(ct) != 1)
+                throw new InvalidOperationException("Supplier invoice line was linked to another inventory item.");
+        }
+        return match;
     }
 
     private static async Task<int> InsertGoodsReceiptItemAsync(SqlConnection c, SqlTransaction t, int receiptId, string itemName, CreateGoodsReceiptItemDto line, CancellationToken ct)
@@ -1888,7 +1898,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
 
     private sealed record GoodsReceiptSource(decimal Quantity, decimal UnitCost, string ReceiptNumber, string ItemName);
     private sealed record ReceiptInventoryItem(int InventoryItemId, string ItemName, string ItemCode, byte InventoryClassId, short UnitId, string? FabricTypeCode, string? ColorValue);
-    private sealed record InvoiceLineMatch(long SupplierInvoiceLineId, decimal Quantity, decimal UnitCost);
+    private sealed record InvoiceLineMatch(long SupplierInvoiceLineId, decimal Quantity, decimal UnitCost, bool NeedsInventoryLink);
     private sealed record PostedGoodsReceiptItem(int GoodsReceiptItemId, int InventoryItemId, decimal Quantity, decimal UnitCost, int WarehouseId, byte InventoryClassId, short UnitId, long InventoryReceiptLineId, int InventoryTransactionId, long AccountingEventId, long? FabricRollId);
     private sealed record FoundationItemState(int InventoryItemId, bool HasFoundation, byte? InventoryClassId, short? UnitId, decimal OriginalQuantity, decimal AvailableQuantity, decimal ConsumedQuantity, decimal OperationalValue);
     private sealed record FabricRollState(long FabricRollId, int InventoryItemId, string ItemCode, decimal AvailableQuantity, short UnitId, decimal OfficialUnitCost);

@@ -77,6 +77,37 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
     }
 
     [Fact]
+    public async Task InvoiceWorkflow_AcceptsRawLineWithoutInventoryItemUntilReceiptLinking()
+    {
+        var fixture = await CreateCommittedFixtureAsync();
+        try
+        {
+            var options = Options.Create(new DatabaseOptions { ConnectionString = ConnectionString() });
+            var coordinator = new SupplierFinancialWorkflowCoordinator(
+                new OperationalSqlConnectionFactory(options),
+                new SupplierFinancialRuntime(),
+                new Es7OperationalAudit(NullLogger<Es7OperationalAudit>.Instance));
+            var request = new CreateSupplierInvoiceRequestDto(
+                fixture.SupplierId, $"ES7-RAW-{Guid.NewGuid():N}", new DateOnly(2026, 9, 30), new DateOnly(2026, 10, 30), 45m, null, Guid.NewGuid(),
+                Lines: [new(null, 3m, 15m, ItemDescription: "قماش هندي", ItemType: "Fabric", SupplierItemCode: "SUP-FAB-01")]);
+            var user = new CurrentUserDto(7, "es7-raw-line-test", "ES7 Raw Line Test", "System Administrator", true, null);
+
+            var created = await coordinator.CreateInvoiceAsync(request, user, "es7-raw-line-create", CancellationToken.None);
+            var repository = new SupplierInvoiceLineRepository(new ReadOnlySqlConnectionFactory(options));
+            var line = Assert.Single((await repository.GetForInvoiceAsync(created.SupplierInvoiceId, CancellationToken.None))!);
+
+            Assert.Null(line.InventoryItemId);
+            Assert.Equal("قماش هندي", line.ItemName);
+            Assert.Equal("Fabric", line.ItemType);
+            Assert.Equal("SUP-FAB-01", line.SupplierItemCode);
+        }
+        finally
+        {
+            await CleanupCommittedFixtureAsync(fixture);
+        }
+    }
+
+    [Fact]
     public async Task Allocations_ConcurrentIndependentTransactions_AllowOnlyOneAllocationForTheSamePaymentAndInvoice()
     {
         var fixture = await CreateCommittedFixtureAsync();

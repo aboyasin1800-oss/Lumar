@@ -46,6 +46,7 @@ class SupplierPurchasingInventoryItem {
       required this.code,
       required this.name,
       required this.category,
+    this.fabricCategory,
       required this.unit,
       required this.isActive});
   factory SupplierPurchasingInventoryItem.fromJson(Map<String, dynamic> json) =>
@@ -54,12 +55,14 @@ class SupplierPurchasingInventoryItem {
           code: (json['itemCode'] ?? '').toString(),
           name: (json['itemName'] ?? '').toString(),
           category: (json['category'] ?? '').toString(),
+          fabricCategory: json['fabricCategory']?.toString(),
           unit: (json['unit'] ?? '').toString(),
           isActive: json['isActive'] == true);
   final int id;
   final String code;
   final String name;
   final String category;
+    final String? fabricCategory;
   final String unit;
   final bool isActive;
 }
@@ -118,9 +121,11 @@ class SupplierPurchasingInvoiceLine {
     const SupplierPurchasingInvoiceLine(
             {required this.id,
             required this.invoiceId,
-            required this.inventoryItemId,
+            this.inventoryItemId,
             required this.itemCode,
             required this.itemName,
+            required this.itemType,
+            this.supplierItemCode,
             required this.quantity,
             required this.unitCost,
             required this.total,
@@ -130,9 +135,11 @@ class SupplierPurchasingInvoiceLine {
             SupplierPurchasingInvoiceLine(
                     id: (json['supplierInvoiceLineId'] as num).toInt(),
                     invoiceId: (json['supplierInvoiceId'] as num).toInt(),
-                    inventoryItemId: (json['inventoryItemId'] as num).toInt(),
-                    itemCode: (json['itemCode'] ?? '').toString(),
+                    inventoryItemId: (json['inventoryItemId'] as num?)?.toInt(),
+                    itemCode: json['itemCode']?.toString(),
                     itemName: (json['itemName'] ?? '').toString(),
+                    itemType: (json['itemType'] ?? 'Legacy').toString(),
+                    supplierItemCode: json['supplierItemCode']?.toString(),
                     quantity: ((json['quantity'] ?? 0) as num).toDouble(),
                     unitCost: ((json['unitCost'] ?? 0) as num).toDouble(),
                     total: ((json['lineTotal'] ?? 0) as num).toDouble(),
@@ -140,9 +147,11 @@ class SupplierPurchasingInvoiceLine {
                     status: (json['status'] ?? '').toString());
     final int id;
     final int invoiceId;
-    final int inventoryItemId;
-    final String itemCode;
+    final int? inventoryItemId;
+    final String? itemCode;
     final String itemName;
+    final String itemType;
+    final String? supplierItemCode;
     final double quantity;
     final double unitCost;
     final double total;

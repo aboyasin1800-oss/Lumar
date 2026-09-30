@@ -136,18 +136,21 @@ public sealed class SupplierFinancialWorkflowCoordinator(
             await using var command = new SqlCommand(@"
 IF EXISTS (SELECT 1 FROM dbo.SupplierInvoiceLines WITH(UPDLOCK,HOLDLOCK) WHERE SourceOperationId=@operation)
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM dbo.SupplierInvoiceLines WHERE SourceOperationId=@operation AND SupplierInvoiceId=@invoiceId AND InventoryItemId=@itemId AND Quantity=@quantity AND UnitCost=@unitCost AND ((RollCount IS NULL AND @rollCount IS NULL) OR RollCount=@rollCount) AND Status=N'Posted')
+    IF NOT EXISTS (SELECT 1 FROM dbo.SupplierInvoiceLines WHERE SourceOperationId=@operation AND SupplierInvoiceId=@invoiceId AND ((InventoryItemId=@itemId) OR (InventoryItemId IS NULL AND @itemId IS NULL)) AND ItemDescription=@description AND ItemType=@itemType AND ((SupplierItemCode IS NULL AND @supplierItemCode IS NULL) OR SupplierItemCode=@supplierItemCode) AND Quantity=@quantity AND UnitCost=@unitCost AND ((RollCount IS NULL AND @rollCount IS NULL) OR RollCount=@rollCount) AND Status=N'Posted')
         THROW 52120,N'IDEMPOTENCY CONFLICT',1;
 END
 ELSE
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM dbo.InventoryItems WITH(UPDLOCK,HOLDLOCK) WHERE InventoryItemID=@itemId AND IsActive=1)
+    IF @itemId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.InventoryItems WITH(UPDLOCK,HOLDLOCK) WHERE InventoryItemID=@itemId AND IsActive=1)
         THROW 52121,N'Supplier invoice inventory item is unavailable.',1;
-    INSERT dbo.SupplierInvoiceLines(SupplierInvoiceId,InventoryItemId,Quantity,UnitCost,RollCount,SourceOperationId,Status,CreatedBy)
-    VALUES(@invoiceId,@itemId,@quantity,@unitCost,@rollCount,@operation,N'Posted',@createdBy);
+    INSERT dbo.SupplierInvoiceLines(SupplierInvoiceId,InventoryItemId,ItemDescription,ItemType,SupplierItemCode,Quantity,UnitCost,RollCount,SourceOperationId,Status,CreatedBy)
+    VALUES(@invoiceId,@itemId,@description,@itemType,@supplierItemCode,@quantity,@unitCost,@rollCount,@operation,N'Posted',@createdBy);
 END", connection, transaction);
             command.Parameters.AddWithValue("@invoiceId", invoiceId);
-            command.Parameters.AddWithValue("@itemId", line.InventoryItemId);
+            command.Parameters.AddWithValue("@itemId", line.InventoryItemId ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@description", (line.ItemDescription ?? string.Empty).Trim());
+            command.Parameters.AddWithValue("@itemType", line.ItemType.Trim());
+            command.Parameters.AddWithValue("@supplierItemCode", string.IsNullOrWhiteSpace(line.SupplierItemCode) ? DBNull.Value : line.SupplierItemCode.Trim());
             AddDecimal(command, "@quantity", line.Quantity);
             AddDecimal(command, "@unitCost", line.UnitCost);
             command.Parameters.AddWithValue("@rollCount", line.RollCount ?? (object)DBNull.Value);

@@ -21,13 +21,13 @@ public sealed class SupplierInvoiceLineRepository(ReadOnlySqlConnectionFactory c
             if (Convert.ToInt32(await invoice.ExecuteScalarAsync(cancellationToken)) == 0) return null;
         }
 
-        const string sql = "SELECT l.SupplierInvoiceLineId,l.SupplierInvoiceId,l.InventoryItemId,item.ItemCode,item.ItemName,l.Quantity,l.UnitCost,l.Quantity*l.UnitCost,l.RollCount,l.Status FROM dbo.SupplierInvoiceLines l INNER JOIN dbo.InventoryItems item ON item.InventoryItemID=l.InventoryItemId WHERE l.SupplierInvoiceId=@invoiceId ORDER BY l.SupplierInvoiceLineId";
+        const string sql = "SELECT l.SupplierInvoiceLineId,l.SupplierInvoiceId,l.InventoryItemId,item.ItemCode,COALESCE(l.ItemDescription,item.ItemName,N'غير محدد'),COALESCE(l.ItemType,N'Legacy'),l.SupplierItemCode,l.Quantity,l.UnitCost,l.Quantity*l.UnitCost,l.RollCount,l.Status FROM dbo.SupplierInvoiceLines l LEFT JOIN dbo.InventoryItems item ON item.InventoryItemID=l.InventoryItemId WHERE l.SupplierInvoiceId=@invoiceId ORDER BY l.SupplierInvoiceLineId";
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@invoiceId", invoiceId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var lines = new List<PurchasingInvoiceLineDto>();
         while (await reader.ReadAsync(cancellationToken))
-            lines.Add(new PurchasingInvoiceLineDto(reader.GetInt64(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetString(3), reader.GetString(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.IsDBNull(8) ? null : reader.GetInt32(8), reader.GetString(9)));
+            lines.Add(new PurchasingInvoiceLineDto(reader.GetInt64(0), reader.GetInt32(1), reader.IsDBNull(2) ? null : reader.GetInt32(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6), reader.GetDecimal(7), reader.GetDecimal(8), reader.GetDecimal(9), reader.IsDBNull(10) ? null : reader.GetInt32(10), reader.GetString(11)));
         return lines;
     }
 }

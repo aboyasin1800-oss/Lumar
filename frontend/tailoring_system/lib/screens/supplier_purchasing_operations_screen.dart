@@ -472,6 +472,7 @@ class _SupplierPurchasingOperationsScreenState
     final lines = <_InvoiceDraftLine>[_InvoiceDraftLine()];
     SupplierPurchasingSupplier? supplier;
     SupplierPurchasingOrder? order;
+    var invoiceType = 'fabric';
     DateTime invoiceDate = DateTime.now();
     DateTime dueDate = DateTime.now();
     String currency = 'YER';
@@ -488,7 +489,7 @@ class _SupplierPurchasingOperationsScreenState
     bool validLines() =>
       lines.isNotEmpty &&
       lines.every((line) =>
-        line.item != null &&
+        line.description.text.trim().isNotEmpty &&
         (double.tryParse(line.quantity.text.trim()) ?? 0) > 0 &&
         (double.tryParse(line.cost.text.trim()) ?? 0) > 0 &&
         (line.rollCount.text.trim().isEmpty ||
@@ -535,6 +536,23 @@ class _SupplierPurchasingOperationsScreenState
                     ],
                     onChanged: (value) => setDialogState(() => order = value),
                   ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: invoiceType,
+                    decoration: const InputDecoration(labelText: 'نوع الفاتورة'),
+                    items: const [
+                      DropdownMenuItem(value: 'fabric', child: Text('أقمشة')),
+                      DropdownMenuItem(value: 'tools', child: Text('أدوات مستخدمة')),
+                      DropdownMenuItem(value: 'imported', child: Text('منتجات مستوردة')),
+                    ],
+                    onChanged: (value) => setDialogState(() {
+                      invoiceType = value ?? 'fabric';
+                      for (final line in lines) {
+                        line.description.clear();
+                        line.supplierItemCode.clear();
+                      }
+                    }),
+                  ),
                   _field(number, 'رقم الفاتورة', required: true),
                   _dateRow('تاريخ الفاتورة', invoiceDate, () async {
                     final value = await _pickDate(invoiceDate);
@@ -551,6 +569,7 @@ class _SupplierPurchasingOperationsScreenState
                     _invoiceLine(
                         lines[index],
                         index,
+                        invoiceType,
                         lines.length == 1
                             ? null
                             : () => setDialogState(() {
@@ -630,7 +649,14 @@ class _SupplierPurchasingOperationsScreenState
                 amount: invoiceTotal(),
                 lines: lines
                   .map((line) => {
-                      'inventoryItemId': line.item!.id,
+                    'inventoryItemId': null,
+                    'itemDescription': line.description.text.trim(),
+                    'itemType': invoiceType == 'fabric'
+                      ? 'Fabric'
+                      : invoiceType == 'tools'
+                        ? 'UsedTool'
+                        : 'ImportedProduct',
+                    'supplierItemCode': _nullable(line.supplierItemCode.text),
                       'quantity': double.parse(line.quantity.text.trim()),
                       'unitCost': double.parse(line.cost.text.trim()),
                       'rollCount': line.rollCount.text.trim().isEmpty
@@ -668,10 +694,11 @@ class _SupplierPurchasingOperationsScreenState
                     shrinkWrap: true,
                     children: lines
                         .map((line) => ListTile(
-                              title:
-                                  Text('${line.itemName} (${line.itemCode})'),
+                                title: Text(line.itemCode == null
+                                  ? line.itemName
+                                  : '${line.itemName} (${line.itemCode})'),
                               subtitle: Text(
-                                  'الكمية ${line.quantity}  •  تكلفة الوحدة ${line.unitCost}${line.rollCount == null ? '' : '  •  اللفات ${line.rollCount}'}'),
+                                  '${_invoiceTypeLabel(line.itemType)}  •  الكمية ${line.quantity}  •  تكلفة الوحدة ${line.unitCost}${line.supplierItemCode == null ? '' : '  •  كود المورد ${line.supplierItemCode}'}${line.rollCount == null ? '' : '  •  اللفات ${line.rollCount}'}'),
                               trailing: Text(line.total.toStringAsFixed(2)),
                             ))
                         .toList(),
@@ -1097,48 +1124,65 @@ class _SupplierPurchasingOperationsScreenState
                                           }
                                           })),
                                       const SizedBox(height: 10),
-                                      DropdownButtonFormField<
-                                          SupplierPurchasingInvoice?>(
+                                      Autocomplete<SupplierPurchasingInvoice>(
                                         key: ValueKey(
-                                          'receipt-invoice-${supplier?.id}-${order?.id}'),
-                                        initialValue: invoice,
-                                        decoration: const InputDecoration(
-                                          labelText:
-                                            'فاتورة المورد (اختيارية)'),
-                                        items: [
-                                        const DropdownMenuItem(
-                                          value: null,
-                                          child: Text(
-                                            'استلام دون ربط بفاتورة')),
-                                        ..._invoices
-                                          .where((item) =>
-                                            item.supplierId ==
-                                              supplier?.id &&
-                                            item.purchaseOrderId ==
-                                              order?.id &&
-                                            item.status != 'Reversed')
-                                          .map((item) => DropdownMenuItem(
-                                            value: item,
-                                            child: Text(item.number)))
-                                        ],
-                                        onChanged: (value) async {
-                                        setDialogState(() {
-                                          invoice = value;
-                                          invoiceLines = const [];
-                                          for (final line in lines) {
-                                          line.invoiceLine = null;
-                                          }
-                                        });
-                                        if (value == null) return;
-                                        final loaded = await _repository
-                                          .getInvoiceLines(value.id);
-                                        if (!dialogContext.mounted) return;
-                                        setDialogState(
-                                          () => invoiceLines = loaded
-                                            .where((line) =>
-                                              line.status == 'Posted')
-                                            .toList());
-                                        }),
+                                            'receipt-invoice-${supplier?.id}-${order?.id}-${invoice?.id ?? 0}'),
+                                        initialValue: TextEditingValue(
+                                            text: invoice?.number ?? ''),
+                                        displayStringForOption: (item) =>
+                                            '${item.number} - ${_supplierName(item.supplierId)}',
+                                        optionsBuilder: (value) {
+                                          final query = value.text.trim().toLowerCase();
+                                          return _invoices.where((item) =>
+                                              item.supplierId == supplier?.id &&
+                                              item.purchaseOrderId == order?.id &&
+                                              item.status != 'Reversed' &&
+                                              (query.isEmpty ||
+                                                  item.number.toLowerCase().contains(query)));
+                                        },
+                                        onSelected: (value) async {
+                                          setDialogState(() {
+                                            invoice = value;
+                                            invoiceLines = const [];
+                                            for (final line in lines) {
+                                              line.invoiceLine = null;
+                                            }
+                                          });
+                                          final loaded = await _repository
+                                              .getInvoiceLines(value.id);
+                                          if (!dialogContext.mounted) return;
+                                          setDialogState(() => invoiceLines = loaded
+                                              .where((line) => line.status == 'Posted')
+                                              .toList());
+                                        },
+                                        fieldViewBuilder:
+                                            (context, controller, focusNode, onSubmitted) =>
+                                                TextFormField(
+                                          controller: controller,
+                                          focusNode: focusNode,
+                                          textInputAction: TextInputAction.next,
+                                          decoration: const InputDecoration(
+                                              labelText: 'رقم فاتورة المورد (اختياري)',
+                                              hintText: 'اكتب رقم الفاتورة للبحث'),
+                                          onFieldSubmitted: (_) => onSubmitted(),
+                                        ),
+                                      ),
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: TextButton.icon(
+                                          onPressed: invoice == null
+                                              ? null
+                                              : () => setDialogState(() {
+                                                    invoice = null;
+                                                    invoiceLines = const [];
+                                                    for (final line in lines) {
+                                                      line.invoiceLine = null;
+                                                    }
+                                                  }),
+                                          icon: const Icon(Icons.link_off),
+                                          label: const Text('استلام دون ربط بفاتورة'),
+                                        ),
+                                      ),
                                   const SizedBox(height: 10),
                                   DropdownButtonFormField<
                                           SupplierPurchasingWarehouse>(
@@ -1426,6 +1470,7 @@ class _SupplierPurchasingOperationsScreenState
                     .toList(),
                 onChanged: (value) {
                   line.invoiceLine = value;
+                  line.item = null;
                   if (value != null) {
                     for (final item in _inventoryItems) {
                       if (item.id == value.inventoryItemId) {
@@ -1474,8 +1519,8 @@ class _SupplierPurchasingOperationsScreenState
       );
 
   Widget _invoiceLine(_InvoiceDraftLine line, int index,
-          VoidCallback? onRemove, VoidCallback onChanged) =>
-      Card(
+          String invoiceType, VoidCallback? onRemove, VoidCallback onChanged) {
+    return Card(
         margin: const EdgeInsets.only(bottom: 8),
         child: Padding(
           padding: const EdgeInsets.all(10),
@@ -1487,19 +1532,21 @@ class _SupplierPurchasingOperationsScreenState
                   tooltip: 'حذف البند',
                   icon: const Icon(Icons.delete_outline))
             ]),
-            DropdownButtonFormField<SupplierPurchasingInventoryItem>(
-              initialValue: line.item,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'الصنف الرسمي'),
-              items: _inventoryItems
-                  .map((item) => DropdownMenuItem(
-                      value: item, child: Text('${item.name} (${item.code})')))
-                  .toList(),
-              onChanged: (value) {
-                line.item = value;
-                onChanged();
-              },
-              validator: (value) => value == null ? 'اختر الصنف.' : null,
+            TextFormField(
+              controller: line.description,
+              textInputAction: TextInputAction.next,
+              decoration: InputDecoration(labelText: _invoiceItemLabel(invoiceType)),
+              onChanged: (_) => onChanged(),
+              validator: (value) => value?.trim().isEmpty ?? true
+                  ? 'أدخل وصف بند الفاتورة.'
+                  : null,
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: line.supplierItemCode,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'كود المورد (اختياري)'),
+              onChanged: (_) => onChanged(),
             ),
             Row(children: [
               Expanded(
@@ -1545,7 +1592,21 @@ class _SupplierPurchasingOperationsScreenState
             ),
           ]),
         ),
-      );
+    );
+  }
+
+  String _invoiceItemLabel(String invoiceType) => switch (invoiceType) {
+        'fabric' => 'نوع القماش',
+        'tools' || 'imported' => 'اسم المنتج',
+        _ => 'البند'
+      };
+
+  String _invoiceTypeLabel(String value) => switch (value) {
+        'Fabric' => 'أقمشة',
+        'UsedTool' => 'أدوات مستخدمة',
+        'ImportedProduct' => 'منتجات مستوردة',
+        _ => 'بند قديم مرتبط بالمخزون'
+      };
 
   Future<DateTime?> _pickDate(DateTime initial) => showDatePicker(
       context: context,
@@ -1689,12 +1750,15 @@ class _ReceiptDraftLine {
 }
 
 class _InvoiceDraftLine {
-  SupplierPurchasingInventoryItem? item;
+  final description = TextEditingController();
+  final supplierItemCode = TextEditingController();
   final quantity = TextEditingController();
   final cost = TextEditingController();
   final rollCount = TextEditingController();
 
   void dispose() {
+    description.dispose();
+    supplierItemCode.dispose();
     quantity.dispose();
     cost.dispose();
     rollCount.dispose();
