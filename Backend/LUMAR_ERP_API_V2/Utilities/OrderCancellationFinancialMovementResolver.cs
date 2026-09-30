@@ -22,6 +22,11 @@ public static class OrderCancellationFinancialMovementResolver
         return string.Equals(orderStatus, "Cancelled", StringComparison.OrdinalIgnoreCase);
     }
 
+    public static bool ShouldCreateRevenueReversalOnCancellation(bool revenueRecognized, bool revenueReversalCreated)
+    {
+        return revenueRecognized && !revenueReversalCreated;
+    }
+
     public static decimal ResolveRefundAmount(decimal paidAmount)
     {
         return Math.Max(0m, paidAmount);

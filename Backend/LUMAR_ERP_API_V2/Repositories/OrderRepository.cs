@@ -664,26 +664,29 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             }
 
             var refundRequested = OrderCancellationFinancialMovementResolver.ShouldCreateRefund(snapshot.PaidAmount, !string.IsNullOrWhiteSpace(snapshot.CancellationReason) && string.Equals(snapshot.OrderStatus, "Cancelled", StringComparison.OrdinalIgnoreCase));
-            var reversalRequested = OrderCancellationFinancialMovementResolver.ShouldCreateRevenueReversal(snapshot.RevenueRecognized, snapshot.RevenueReversalCreated, snapshot.OrderStatus);
+            var reversalRequested = OrderCancellationFinancialMovementResolver.ShouldCreateRevenueReversalOnCancellation(snapshot.RevenueRecognized, snapshot.RevenueReversalCreated);
+            var refundComponents = refundRequested
+                ? await ReadCancellationRefundComponentsAsync(connection, transaction, orderId, cancellationToken)
+                : [];
+            if (refundRequested && (refundComponents.Count == 0 || refundComponents.Sum(component => component.Amount) != snapshot.PaidAmount))
+                throw new InvalidOperationException("توجد مطابقة غير صحيحة بين مدفوعات الطلب وإجمالي المدفوع قبل الإلغاء.");
             var now = DateTime.UtcNow;
-
-            if (refundRequested || reversalRequested)
-                throw new InvalidOperationException("هذه العملية غير متاحة حتى اكتمال عقد الربط المحاسبي.");
 
             if (await CanReverseTailoringFabricAsync(connection, transaction, orderId, cancellationToken))
             {
                 await ReverseTailoringFabricAsync(connection, transaction, orderId, snapshot.OrderNumber, now, cancellationToken);
             }
 
-            if (refundRequested)
+            foreach (var refundComponent in refundComponents)
             {
-                var refundReference = $"{snapshot.OrderNumber}:OrderCancellationRefund";
-                var refundAmount = OrderCancellationFinancialMovementResolver.ResolveRefundAmount(snapshot.PaidAmount);
-                const string refundSql = "INSERT INTO dbo.FinancialTransactions (ReferenceNumber,TransactionType,Amount,Description,CreatedAt) SELECT @reference,@transactionType,@amount,@description,@createdAt WHERE NOT EXISTS (SELECT 1 FROM dbo.FinancialTransactions WITH (UPDLOCK,HOLDLOCK) WHERE ReferenceNumber = @reference AND TransactionType = N'OrderCancellationRefund')";
+                var refundType = refundComponent.TransactionType;
+                var refundReference = $"{snapshot.OrderNumber}:{refundType}";
+                var refundAmount = OrderCancellationFinancialMovementResolver.ResolveRefundAmount(refundComponent.Amount);
+                const string refundSql = "INSERT INTO dbo.FinancialTransactions (ReferenceNumber,TransactionType,Amount,Description,CreatedAt) SELECT @reference,@transactionType,@amount,@description,@createdAt WHERE NOT EXISTS (SELECT 1 FROM dbo.FinancialTransactions WITH (UPDLOCK,HOLDLOCK) WHERE ReferenceNumber = @reference AND TransactionType = @transactionType)";
                 await using (var financial = new SqlCommand(refundSql, connection, transaction))
                 {
                     financial.Parameters.AddWithValue("@reference", refundReference);
-                    financial.Parameters.AddWithValue("@transactionType", "OrderCancellationRefund");
+                    financial.Parameters.AddWithValue("@transactionType", refundType);
                     financial.Parameters.AddWithValue("@amount", refundAmount);
                     financial.Parameters.AddWithValue("@description", "Refund issued on order cancellation");
                     financial.Parameters.AddWithValue("@createdAt", now);
@@ -694,10 +697,13 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                     connection,
                     transaction,
                     refundReference,
-                    "OrderCancellationRefund",
+                    refundType,
                     refundAmount,
                     "Refund issued on order cancellation",
-                    cancellationToken);
+                    cancellationToken,
+                    "OrderCancellation",
+                    orderId,
+                    Guid.NewGuid());
 
                 const string paymentInsertSql = "INSERT INTO dbo.Payments (OrderID,PaymentDate,Amount,PaymentMethod,ReferenceNo,CreatedDate,PaymentKind) SELECT @orderId,@date,@amount,@method,@reference,@date,N'Refund' WHERE NOT EXISTS (SELECT 1 FROM dbo.Payments WITH (UPDLOCK,HOLDLOCK) WHERE OrderID = @orderId AND ReferenceNo = @reference AND PaymentKind = N'Refund')";
                 await using (var payment = new SqlCommand(paymentInsertSql, connection, transaction))
@@ -724,8 +730,8 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             if (reversalRequested)
             {
                 var reversalReference = $"{snapshot.OrderNumber}:RevenueReversal";
-                var reversalAmount = Math.Max(0m, snapshot.TotalAmount - 0m);
-                const string reversalSql = "INSERT INTO dbo.FinancialTransactions (ReferenceNumber,TransactionType,Amount,Description,CreatedAt) SELECT @reference,@transactionType,@amount,@description,@createdAt WHERE NOT EXISTS (SELECT 1 FROM dbo.FinancialTransactions WITH (UPDLOCK,HOLDLOCK) WHERE ReferenceNumber = @reference AND TransactionType = N'RevenueReversal')";
+                var reversalAmount = Math.Max(0m, snapshot.TotalAmount - snapshot.DiscountAmount);
+                    const string reversalSql = "INSERT INTO dbo.FinancialTransactions (ReferenceNumber,TransactionType,Amount,Description,CreatedAt) SELECT @reference,@transactionType,@amount,@description,@createdAt WHERE NOT EXISTS (SELECT 1 FROM dbo.FinancialTransactions WITH (UPDLOCK,HOLDLOCK) WHERE ReferenceNumber = @reference AND TransactionType = N'RevenueReversal')";
                 await using (var financial = new SqlCommand(reversalSql, connection, transaction))
                 {
                     financial.Parameters.AddWithValue("@reference", reversalReference);
@@ -743,7 +749,10 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                     "RevenueReversal",
                     reversalAmount,
                     "Revenue reversed on order cancellation",
-                    cancellationToken);
+                    cancellationToken,
+                    "OrderCancellation",
+                    orderId,
+                    Guid.NewGuid());
             }
 
             const string updateSql = "UPDATE dbo.Orders SET OrderStatus = N'Cancelled', CancellationReason = @reason, CancelledAt = @cancelledAt, CancelledBy = @cancelledBy, UpdatedDate = @updatedAt, RevenueReversalCreated = CASE WHEN RevenueReversalCreated = 1 THEN 1 ELSE @reversalFlag END, RevenueReversalCreatedAt = CASE WHEN RevenueReversalCreatedAt IS NOT NULL THEN RevenueReversalCreatedAt ELSE @reversalCreatedAt END WHERE OrderID = @orderId";
@@ -936,7 +945,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
 
     private static async Task<OrderCancellationSnapshot?> ReadCancellationSnapshotAsync(SqlConnection connection, SqlTransaction transaction, int orderId, CancellationToken cancellationToken)
     {
-        const string selectSql = "SELECT OrderNumber, TotalAmount, PaidAmount, RevenueRecognized, RevenueReversalCreated, OrderStatus, CancellationReason FROM dbo.Orders WITH (UPDLOCK,HOLDLOCK) WHERE OrderID = @orderId";
+        const string selectSql = "SELECT OrderNumber, TotalAmount, DiscountAmount, PaidAmount, RevenueRecognized, RevenueReversalCreated, OrderStatus, CancellationReason FROM dbo.Orders WITH (UPDLOCK,HOLDLOCK) WHERE OrderID = @orderId";
         await using var selectCommand = new SqlCommand(selectSql, connection, transaction);
         selectCommand.Parameters.AddWithValue("@orderId", orderId);
         await using var reader = await selectCommand.ExecuteReaderAsync(cancellationToken);
@@ -949,15 +958,29 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             reader.GetString(0),
             reader.GetDecimal(1),
             reader.GetDecimal(2),
-            reader.GetBoolean(3),
+            reader.GetDecimal(3),
             reader.GetBoolean(4),
-            reader.GetString(5),
-            reader.IsDBNull(6) ? null : reader.GetString(6));
+            reader.GetBoolean(5),
+            reader.GetString(6),
+            reader.IsDBNull(7) ? null : reader.GetString(7));
+    }
+
+    private static async Task<IReadOnlyList<OrderCancellationRefundComponent>> ReadCancellationRefundComponentsAsync(SqlConnection connection, SqlTransaction transaction, int orderId, CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT CASE WHEN ISNULL(PaymentKind, N'DebtCollection') = N'Advance' THEN N'CustomerAdvanceRefund' ELSE N'CustomerPaymentRefund' END, SUM(Amount) FROM dbo.Payments WITH (UPDLOCK,HOLDLOCK) WHERE OrderID = @orderId AND ISNULL(PaymentKind, N'DebtCollection') <> N'Refund' GROUP BY CASE WHEN ISNULL(PaymentKind, N'DebtCollection') = N'Advance' THEN N'CustomerAdvanceRefund' ELSE N'CustomerPaymentRefund' END";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@orderId", orderId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var components = new List<OrderCancellationRefundComponent>();
+        while (await reader.ReadAsync(cancellationToken))
+            components.Add(new OrderCancellationRefundComponent(reader.GetString(0), reader.GetDecimal(1)));
+        return components;
     }
 
     private sealed record OrderFabricLine(string FabricCode, decimal RequiredInches, int? InventoryItemId, decimal InchPrice);
     private sealed record OrderFabricStock(string FabricCode, int InventoryItemId, decimal InchPrice);
-    private sealed record OrderCancellationSnapshot(string OrderNumber, decimal TotalAmount, decimal PaidAmount, bool RevenueRecognized, bool RevenueReversalCreated, string OrderStatus, string? CancellationReason);
+    private sealed record OrderCancellationSnapshot(string OrderNumber, decimal TotalAmount, decimal DiscountAmount, decimal PaidAmount, bool RevenueRecognized, bool RevenueReversalCreated, string OrderStatus, string? CancellationReason);
+    private sealed record OrderCancellationRefundComponent(string TransactionType, decimal Amount);
 
     private static async Task<bool> CanReverseTailoringFabricAsync(SqlConnection connection, SqlTransaction transaction, int orderId, CancellationToken cancellationToken)
     {

@@ -49,7 +49,10 @@ public static class FinancialTransactionJournalPoster
     {
         "CustomerAdvance",
         "CustomerPayment",
+        "CustomerAdvanceRefund",
+        "CustomerPaymentRefund",
         "RevenueRecognized",
+        "RevenueReversal",
         "WipToFinishedGoods",
         "ReadyMadeCost"
     };
@@ -61,7 +64,10 @@ public static class FinancialTransactionJournalPoster
         string transactionType,
         decimal amount,
         string? description,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? sourceType = null,
+        long? sourceId = null,
+        Guid? sourceOperationId = null)
     {
         if (connection is null)
         {
@@ -83,7 +89,7 @@ public static class FinancialTransactionJournalPoster
 
         var blockedStatus = transactionType switch
         {
-            "OrderCancellationRefund" or "RevenueReversal" or "CostReversal" => FinancialPostingStatus.FlowBlockedForTrackB,
+            "OrderCancellationRefund" or "CostReversal" => FinancialPostingStatus.FlowBlockedForTrackB,
             "CustomerBalanceWaiver" or "DeliveryCost" => FinancialPostingStatus.FlowBlockedByMissingAccountingContract,
             _ => (FinancialPostingStatus?)null
         };
@@ -120,7 +126,15 @@ public static class FinancialTransactionJournalPoster
             : description.Trim();
 
         var entryDate = DateTime.UtcNow;
-        var journalEntryId = await InsertJournalEntryAsync(connection, transaction, referenceNumber, entryDescription, entryDate, cancellationToken);
+        var accountingEventId = await InsertAccountingEventAsync(
+            connection,
+            transaction,
+            amount,
+            sourceType,
+            sourceId,
+            sourceOperationId,
+            cancellationToken);
+        var journalEntryId = await InsertJournalEntryAsync(connection, transaction, referenceNumber, entryDescription, entryDate, accountingEventId, cancellationToken);
 
         foreach (var line in lines)
         {
@@ -130,6 +144,24 @@ public static class FinancialTransactionJournalPoster
         return await VerifyJournalAsync(connection, transaction, journalEntryId, amount, cancellationToken)
             ? new FinancialPostingResult(FinancialPostingStatus.PostingCreated, journalEntryId)
             : new FinancialPostingResult(FinancialPostingStatus.PostingVerificationFailed, journalEntryId);
+    }
+
+    private static async Task<long> InsertAccountingEventAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        decimal amount,
+        string? sourceType,
+        long? sourceId,
+        Guid? sourceOperationId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = "INSERT INTO dbo.AccountingEvents (AccountingEventType,PostingAmount,SourceType,SourceId,SourceOperationId,Status) OUTPUT INSERTED.AccountingEventId VALUES (34,@amount,@sourceType,@sourceId,@sourceOperationId,N'Posted')";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@amount", amount);
+        command.Parameters.AddWithValue("@sourceType", string.IsNullOrWhiteSpace(sourceType) ? "LegacyFinancialJournal" : sourceType.Trim());
+        command.Parameters.AddWithValue("@sourceId", sourceId ?? 0L);
+        command.Parameters.AddWithValue("@sourceOperationId", sourceOperationId ?? Guid.NewGuid());
+        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
     }
 
     private static async Task<bool> HasSingleMatchingFinancialTransactionAsync(SqlConnection connection, SqlTransaction transaction, string referenceNumber, string transactionType, decimal amount, CancellationToken cancellationToken)
@@ -167,7 +199,10 @@ public static class FinancialTransactionJournalPoster
         {
             "CustomerAdvance" => new[] { "1000", "1160" },
             "CustomerPayment" => new[] { "1000", "1200" },
+            "CustomerAdvanceRefund" => new[] { "1160", "1000" },
+            "CustomerPaymentRefund" => new[] { "1200", "1000" },
             "RevenueRecognized" => new[] { "1200", "4200" },
+            "RevenueReversal" => new[] { "4200", "1200" },
             "WipToFinishedGoods" => new[] { "1110", "1130" },
             "ReadyMadeCost" => new[] { "5200", "1110" },
             _ => []
@@ -226,14 +261,15 @@ public static class FinancialTransactionJournalPoster
         return ValidateJournalLines(lines, amount) is null;
     }
 
-    private static async Task<int> InsertJournalEntryAsync(SqlConnection connection, SqlTransaction transaction, string referenceNumber, string description, DateTime entryDate, CancellationToken cancellationToken)
+    private static async Task<int> InsertJournalEntryAsync(SqlConnection connection, SqlTransaction transaction, string referenceNumber, string description, DateTime entryDate, long accountingEventId, CancellationToken cancellationToken)
     {
-        const string sql = "INSERT INTO dbo.JournalEntries (ReferenceNumber, Description, EntryDate, CreatedAt) OUTPUT INSERTED.JournalEntryId VALUES (@referenceNumber, @description, @entryDate, @createdAt)";
+        const string sql = "UPDATE dbo.FinancialTransactions SET AccountingEventId=@accountingEventId WHERE ReferenceNumber=@referenceNumber AND AccountingEventId IS NULL; INSERT INTO dbo.JournalEntries (ReferenceNumber, Description, EntryDate, CreatedAt, AccountingEventId) OUTPUT INSERTED.JournalEntryId VALUES (@referenceNumber, @description, @entryDate, @createdAt, @accountingEventId)";
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@referenceNumber", referenceNumber);
         command.Parameters.AddWithValue("@description", description ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@entryDate", entryDate);
         command.Parameters.AddWithValue("@createdAt", DateTime.UtcNow);
+        command.Parameters.AddWithValue("@accountingEventId", accountingEventId);
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return result is int id ? id : throw new InvalidOperationException("Journal entry was not created.");
     }
@@ -258,6 +294,16 @@ public static class FinancialTransactionJournalPoster
                 new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1000", cancellationToken), amount, 0m, "Cash received from customer"),
                 new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1200", cancellationToken), 0m, amount, "Accounts receivable reduced")
             },
+            "CustomerAdvanceRefund" => new[]
+            {
+                new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1160", cancellationToken), amount, 0m, "Customer advance refunded"),
+                new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1000", cancellationToken), 0m, amount, "Cash refund issued")
+            },
+            "CustomerPaymentRefund" => new[]
+            {
+                new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1200", cancellationToken), amount, 0m, "Customer payment refunded"),
+                new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1000", cancellationToken), 0m, amount, "Cash refund issued")
+            },
             "CustomerBalanceWaiver" => new[]
             {
                 new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "4200", cancellationToken), amount, 0m, "Customer balance donated"),
@@ -267,11 +313,6 @@ public static class FinancialTransactionJournalPoster
             {
                 new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1200", cancellationToken), amount, 0m, "Revenue recognized"),
                 new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "4200", cancellationToken), 0m, amount, "Sales revenue recognized")
-            },
-            "OrderCancellationRefund" => new[]
-            {
-                new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1160", cancellationToken), amount, 0m, "Customer advance refunded"),
-                new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1000", cancellationToken), 0m, amount, "Cash refund issued")
             },
             "RevenueReversal" => new[]
             {
