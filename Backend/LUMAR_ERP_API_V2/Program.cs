@@ -14,6 +14,8 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options => options.CustomSchemaIds(type => type.FullName!));
 builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection(DatabaseOptions.SectionName));
+builder.Services.Configure<Es7OperationalTestModeOptions>(builder.Configuration.GetSection(Es7OperationalTestModeOptions.SectionName));
+builder.Services.AddSingleton<Es7OperationalTestMode>();
 builder.Services.AddSingleton<ReadOnlySqlConnectionFactory>();
 builder.Services.AddSingleton<OperationalSqlConnectionFactory>();
 builder.Services.AddScoped<IProductionProductTypeIdentityResolver, ProductionProductTypeIdentityResolver>();

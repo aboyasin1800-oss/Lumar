@@ -3,8 +3,10 @@ using LUMAR_ERP_API_V2.Controllers;
 using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Suppliers;
 using LUMAR_ERP_API_V2.Services;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace LUMAR_ERP_API_V2.Tests;
@@ -45,6 +47,26 @@ public sealed class SupplierCreationAuthorizationTests
 
         var created = Assert.IsType<CreatedAtActionResult>(result.Result);
         Assert.Equal(41, ((SupplierDetailsDto)created.Value!).SupplierId);
+        Assert.True(service.CreateCalled);
+    }
+
+    [Fact]
+    public async Task Ordinary_role_can_create_supplier_with_test_grant()
+    {
+        var service = new FakeSupplierService();
+        var user = User("Admin");
+        var testMode = new Es7OperationalTestMode(Options.Create(new Es7OperationalTestModeOptions { Enabled = true, GrantMinutes = 30 }));
+        var grant = testMode.Activate(user, "session-a");
+        var controller = new SuppliersController(service, new FakeUserContext(user), new Es7OperationalAudit(NullLogger<Es7OperationalAudit>.Instance), testMode)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+        controller.Request.Headers.Authorization = "Bearer session-a";
+        controller.Request.Headers[Es7OperationalTestMode.GrantHeaderName] = grant.GrantToken;
+
+        var result = await controller.Create(Request(), CancellationToken.None);
+
+        Assert.IsType<CreatedAtActionResult>(result.Result);
         Assert.True(service.CreateCalled);
     }
 

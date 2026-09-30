@@ -15,6 +15,21 @@ class AuthenticatedApiClient {
   final AuthState auth;
   final http.Client _client;
   final String _baseUrl;
+  String? _es7OperationalGrant;
+  DateTime? _es7OperationalGrantExpiresAt;
+
+  Future<DateTime> activateEs7OperationalTestMode() async {
+    final response = await _send('POST', '/purchasing/operations/test-mode/activate', body: const <String, dynamic>{});
+    final result = _decodeObject(response, '/purchasing/operations/test-mode/activate');
+    final grant = result['grantToken'] as String?;
+    final expiresAt = DateTime.tryParse(result['expiresAtUtc']?.toString() ?? '');
+    if (grant == null || grant.trim().isEmpty || expiresAt == null) {
+      throw const ApiClientException('/purchasing/operations/test-mode/activate', 0, 'استجابة تفعيل وضع التنفيذ غير صحيحة.');
+    }
+    _es7OperationalGrant = grant;
+    _es7OperationalGrantExpiresAt = expiresAt.toUtc();
+    return _es7OperationalGrantExpiresAt!;
+  }
 
   Future<Map<String, dynamic>> getObject(String path) async {
     final response = await _send('GET', path);
@@ -51,6 +66,9 @@ class AuthenticatedApiClient {
     if (token != null && token.trim().isNotEmpty) {
       headers['Authorization'] = 'Bearer ${token.trim()}';
     }
+    if (_hasActiveEs7OperationalGrant) {
+      headers['X-ES7-Operational-Grant'] = _es7OperationalGrant!;
+    }
     if (body != null) headers['Content-Type'] = 'application/json';
     final request = http.Request(method, Uri.parse('$_baseUrl$path'))
       ..headers.addAll(headers)
@@ -66,6 +84,16 @@ class AuthenticatedApiClient {
       throw ApiClientException(
           path, 0, 'تعذر الاتصال بالخادم: ${error.message}');
     }
+  }
+
+  bool get _hasActiveEs7OperationalGrant {
+    final expiresAt = _es7OperationalGrantExpiresAt;
+    if (_es7OperationalGrant == null || expiresAt == null || !expiresAt.isAfter(DateTime.now().toUtc())) {
+      _es7OperationalGrant = null;
+      _es7OperationalGrantExpiresAt = null;
+      return false;
+    }
+    return true;
   }
 
   Map<String, dynamic> _decodeObject(http.Response response, String path) {

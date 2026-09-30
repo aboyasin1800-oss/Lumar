@@ -871,7 +871,7 @@
 		{
 			"label": "ES7B3 Focused Flutter Analyze Corrected",
 			"type": "shell",
-			"command": "Set-Location frontend/tailoring_system; flutter analyze lib/models/supplier_purchasing_models.dart lib/repositories/supplier_purchasing_repository.dart lib/screens/supplier_purchasing_operations_screen.dart",
+			"command": "Set-Location frontend/tailoring_system; flutter analyze lib/core/authenticated_api_client.dart lib/models/supplier_purchasing_models.dart lib/repositories/supplier_purchasing_repository.dart lib/screens/supplier_purchasing_operations_screen.dart",
 			"args": [],
 			"isBackground": false,
 			"problemMatcher": [

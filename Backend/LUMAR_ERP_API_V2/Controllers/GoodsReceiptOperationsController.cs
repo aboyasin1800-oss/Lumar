@@ -13,7 +13,8 @@ public sealed class GoodsReceiptOperationsController(
     IGoodsReceiptWorkflowCoordinator coordinator,
     IAuthenticatedUserContext userContext,
     IPurchasingService purchasingService,
-    IInventoryService inventoryService) : ControllerBase
+    IInventoryService inventoryService,
+    Es7OperationalTestMode? testMode = null) : ControllerBase
 {
     [HttpPost("receipts")]
     public async Task<ActionResult<GoodsReceiptRuntimeResult>> CreateReceipt(CreateGoodsReceiptRequestDto request, CancellationToken cancellationToken)
@@ -53,7 +54,7 @@ public sealed class GoodsReceiptOperationsController(
     {
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
         if (user is null) return (null, Unauthorized());
-        return Es7PermissionPolicy.HasPermission(user, permission) ? (user, null) : (null, Forbid());
+        return Es7OperationalAuthorization.HasPermission(user, permission, testMode, ControllerContext.HttpContext?.Request) ? (user, null) : (null, Forbid());
     }
 
     private string CorrelationId => ControllerContext.HttpContext?.TraceIdentifier ?? "unbound";

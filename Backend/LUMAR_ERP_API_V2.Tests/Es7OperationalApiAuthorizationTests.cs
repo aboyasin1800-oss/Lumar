@@ -6,6 +6,7 @@ using LUMAR_ERP_API_V2.FinancialFoundation;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace LUMAR_ERP_API_V2.Tests;
@@ -48,8 +49,39 @@ public sealed class Es7OperationalApiAuthorizationTests
         Assert.False(coordinator.ReversalCalled);
     }
 
+    [Fact]
+    public async Task Ordinary_role_can_execute_with_test_grant_bound_to_current_session()
+    {
+        var user = User("Purchasing Manager");
+        var testMode = TestMode();
+        var grant = testMode.Activate(user, "session-a");
+        var coordinator = new FakeSupplierFinancialCoordinator();
+        var controller = new SupplierFinancialOperationsController(coordinator, new FakeUserContext(user), testMode)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+        controller.Request.Headers.Authorization = "Bearer session-a";
+        controller.Request.Headers[Es7OperationalTestMode.GrantHeaderName] = grant.GrantToken;
+
+        var result = await controller.CreateInvoice(InvoiceRequest(), CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status201Created, ((ObjectResult)result.Result!).StatusCode);
+        Assert.True(coordinator.InvoiceCalled);
+    }
+
+    [Fact]
+    public void Test_grant_cannot_be_reused_with_another_session()
+    {
+        var user = User("Purchasing Manager");
+        var testMode = TestMode();
+        var grant = testMode.Activate(user, "session-a");
+
+        Assert.False(testMode.HasActiveGrant(user, "session-b", grant.GrantToken));
+    }
+
     private static CreateSupplierInvoiceRequestDto InvoiceRequest() => new(7, "ES7-API-INV", new DateOnly(2026, 9, 29), new DateOnly(2026, 10, 1), 100m, null, Guid.NewGuid(), Lines: [new(11, 2m, 50m)]);
     private static CurrentUserDto User(string role) => new(7, "es7-user", "ES7 User", role, true, null);
+    private static Es7OperationalTestMode TestMode() => new(Options.Create(new Es7OperationalTestModeOptions { Enabled = true, GrantMinutes = 30 }));
 
     private sealed class FakeUserContext(CurrentUserDto? user) : IAuthenticatedUserContext
     {

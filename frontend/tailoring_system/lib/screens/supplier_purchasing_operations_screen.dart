@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -20,10 +22,13 @@ class _SupplierPurchasingOperationsScreenState
     extends State<SupplierPurchasingOperationsScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
+  late final AuthenticatedApiClient _api;
   late final SupplierPurchasingRepository _repository;
   final _date = DateFormat('dd/MM/yyyy');
   bool _loading = true;
   bool _busy = false;
+  bool _testModeActive = false;
+  Timer? _testModeTimer;
   String? _error;
   final Set<int> _loadedTabs = <int>{};
   List<SupplierPurchasingSupplier> _suppliers = const [];
@@ -42,17 +47,19 @@ class _SupplierPurchasingOperationsScreenState
   bool get _isAdministrator => _normalizedRole == 'system administrator';
   bool get _isFinancialManager =>
       _normalizedRole == 'authorized financial manager';
-  bool get _canFinancial => _isAdministrator || _isFinancialManager;
-  bool get _canReceive => _isAdministrator;
-  bool get _canReverse => _isAdministrator || _isFinancialManager;
+  bool get _canFinancial => _testModeActive || _isAdministrator || _isFinancialManager;
+  bool get _canReceive => _testModeActive || _isAdministrator;
+  bool get _canReverse => _testModeActive || _isAdministrator || _isFinancialManager;
+  bool get _canManageSuppliers => _testModeActive || _isAdministrator;
+  bool get _canMatch => _testModeActive || _isAdministrator || _isFinancialManager;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 5, vsync: this);
     _tabs.addListener(_onTabChanged);
-    _repository =
-        SupplierPurchasingRepository(AuthenticatedApiClient(auth: widget.auth));
+    _api = AuthenticatedApiClient(auth: widget.auth);
+    _repository = SupplierPurchasingRepository(_api);
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _loadTab(0, force: true));
   }
@@ -60,8 +67,32 @@ class _SupplierPurchasingOperationsScreenState
   @override
   void dispose() {
     _tabs.removeListener(_onTabChanged);
+    _testModeTimer?.cancel();
     _tabs.dispose();
     super.dispose();
+  }
+
+  Future<void> _activateTestMode() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final expiresAt = await _api.activateEs7OperationalTestMode();
+      if (!mounted) return;
+      _testModeTimer?.cancel();
+      setState(() => _testModeActive = true);
+      final remaining = expiresAt.difference(DateTime.now().toUtc());
+      _testModeTimer = Timer(remaining.isNegative ? Duration.zero : remaining, () {
+        if (mounted) setState(() => _testModeActive = false);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم تفعيل وضع التنفيذ والاختبار مؤقتًا.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _load() async {
@@ -155,6 +186,10 @@ class _SupplierPurchasingOperationsScreenState
       appBar: AppBar(
         title: const Text('الموردون والمشتريات'),
         actions: [
+          TextButton.icon(
+              onPressed: _busy || _testModeActive ? null : _activateTestMode,
+              icon: Icon(_testModeActive ? Icons.lock_open : Icons.lock_outline),
+              label: Text(_testModeActive ? 'وضع التنفيذ مفعل' : 'تفعيل وضع التنفيذ')),
           IconButton(
               onPressed: _loading ? null : _load,
               tooltip: 'تحديث البيانات',
@@ -207,7 +242,7 @@ class _SupplierPurchasingOperationsScreenState
               onChanged: (value) => setState(() => _supplierQuery = value),
             ),
           ),
-          if (_isAdministrator) ...[
+          if (_canManageSuppliers) ...[
             const SizedBox(width: 12),
             FilledButton.icon(
                 onPressed: _busy ? null : _createSupplier,
@@ -332,7 +367,8 @@ class _SupplierPurchasingOperationsScreenState
                 subtitle: Text(
                     '${_supplierName(receipt.supplierId)}  •  ${receipt.purchaseOrderId == null ? 'استلام مباشر' : 'مرتبط بأمر شراء'}'),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                  IconButton(
+                  if (_canMatch)
+                    IconButton(
                       onPressed: _busy ? null : () => _showMatching(receipt.id),
                       tooltip: 'عرض المطابقة',
                       icon: const Icon(Icons.compare_arrows)),

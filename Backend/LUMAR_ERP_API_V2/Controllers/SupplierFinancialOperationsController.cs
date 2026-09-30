@@ -11,7 +11,8 @@ namespace LUMAR_ERP_API_V2.Controllers;
 [Route("purchasing/operations")]
 public sealed class SupplierFinancialOperationsController(
     ISupplierFinancialWorkflowCoordinator coordinator,
-    IAuthenticatedUserContext userContext) : ControllerBase
+    IAuthenticatedUserContext userContext,
+    Es7OperationalTestMode? testMode = null) : ControllerBase
 {
     [HttpPost("invoices")]
     public async Task<ActionResult<SupplierFinancialInvoiceResult>> CreateInvoice(CreateSupplierInvoiceRequestDto request, CancellationToken cancellationToken)
@@ -59,7 +60,7 @@ public sealed class SupplierFinancialOperationsController(
     {
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
         if (user is null) return (null, Unauthorized());
-        return Es7PermissionPolicy.HasPermission(user, permission) ? (user, null) : (null, Forbid());
+        return Es7OperationalAuthorization.HasPermission(user, permission, testMode, ControllerContext.HttpContext?.Request) ? (user, null) : (null, Forbid());
     }
 
     private string CorrelationId => ControllerContext.HttpContext?.TraceIdentifier ?? "unbound";
