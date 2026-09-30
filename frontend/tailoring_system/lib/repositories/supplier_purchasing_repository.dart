@@ -157,7 +157,7 @@ class SupplierPurchasingRepository {
   Future<void> createReceipt(
       {required int supplierId,
       int? purchaseOrderId,
-      required int warehouseId,
+      int? warehouseId,
       required String receiptNumber,
       required DateTime receiptDate,
       required List<Map<String, dynamic>> items,

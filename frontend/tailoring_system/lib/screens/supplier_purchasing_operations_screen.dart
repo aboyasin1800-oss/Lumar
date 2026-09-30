@@ -37,8 +37,6 @@ class _SupplierPurchasingOperationsScreenState
   List<SupplierPurchasingPayment> _payments = const [];
   List<SupplierPurchasingReceipt> _receipts = const [];
   List<SupplierPurchasingCashAccount> _cashAccounts = const [];
-  List<SupplierPurchasingInventoryItem> _inventoryItems = const [];
-  List<SupplierPurchasingWarehouse> _warehouses = const [];
   String _supplierQuery = '';
 
   AuthUser? get _user => widget.auth.user;
@@ -145,8 +143,6 @@ class _SupplierPurchasingOperationsScreenState
       _repository.getPayments(),
       _repository.getReceipts(),
       _repository.getCashAccounts(),
-      _repository.getInventoryItems(),
-      _repository.getWarehouses(),
     ]);
     if (!mounted) return;
     setState(() {
@@ -156,8 +152,6 @@ class _SupplierPurchasingOperationsScreenState
       _payments = values[3] as List<SupplierPurchasingPayment>;
       _receipts = values[4] as List<SupplierPurchasingReceipt>;
       _cashAccounts = values[5] as List<SupplierPurchasingCashAccount>;
-      _inventoryItems = values[6] as List<SupplierPurchasingInventoryItem>;
-      _warehouses = values[7] as List<SupplierPurchasingWarehouse>;
       _loadedTabs.addAll([0, 1, 2, 3, 4]);
     });
   }
@@ -1041,19 +1035,12 @@ class _SupplierPurchasingOperationsScreenState
 
   Future<void> _createReceipt() async {
     await _loadOperationalReferences();
-    if (!mounted ||
-        _suppliers.isEmpty ||
-        _warehouses.isEmpty ||
-        _inventoryItems.isEmpty) {
-      return _showMessage(
-          'بيانات الموردين أو المستودعات أو الأصناف غير متاحة.');
-    }
+    if (!mounted) return;
     final formKey = GlobalKey<FormState>();
     final number = TextEditingController();
     final notes = TextEditingController();
     final lines = <_ReceiptDraftLine>[_ReceiptDraftLine()];
     SupplierPurchasingSupplier? supplier;
-    SupplierPurchasingWarehouse? warehouse;
     SupplierPurchasingOrder? order;
     SupplierPurchasingInvoice? invoice;
     List<SupplierPurchasingInvoiceLine> invoiceLines = const [];
@@ -1071,6 +1058,21 @@ class _SupplierPurchasingOperationsScreenState
                                 child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                    if (_suppliers.isEmpty)
+                                    Container(
+                                      width: double.infinity,
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      padding: const EdgeInsets.all(10),
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainerHighest,
+                                      child: Text(
+                                        'تنبيه: لا يمكن حفظ الاستلام قبل توفر ${[
+                                          if (_suppliers.isEmpty) 'الموردين',
+                                        ].join(' و')}.',
+                                        textAlign: TextAlign.right,
+                                      ),
+                                    ),
                                   DropdownButtonFormField<
                                           SupplierPurchasingSupplier>(
                                       initialValue: supplier,
@@ -1183,23 +1185,6 @@ class _SupplierPurchasingOperationsScreenState
                                           label: const Text('استلام دون ربط بفاتورة'),
                                         ),
                                       ),
-                                  const SizedBox(height: 10),
-                                  DropdownButtonFormField<
-                                          SupplierPurchasingWarehouse>(
-                                      initialValue: warehouse,
-                                      decoration: const InputDecoration(
-                                          labelText: 'المستودع'),
-                                      items: _warehouses
-                                          .map((item) => DropdownMenuItem(
-                                              value: item,
-                                              child: Text(
-                                                  '${item.name} (${item.code})')))
-                                          .toList(),
-                                      onChanged: (value) => setDialogState(
-                                          () => warehouse = value),
-                                      validator: (value) => value == null
-                                          ? 'اختر المستودع.'
-                                          : null),
                                   _field(number, 'رقم الاستلام',
                                       required: true),
                                   _dateRow('تاريخ الاستلام', receiptDate,
@@ -1234,7 +1219,7 @@ class _SupplierPurchasingOperationsScreenState
                                     if (formKey.currentState!.validate() &&
                                         lines.isNotEmpty &&
                                         lines.every((line) =>
-                                            line.item != null &&
+                                            line.description.text.trim().isNotEmpty &&
                                           (invoice == null ||
                                             line.invoiceLine != null) &&
                                             (double.tryParse(
@@ -1257,7 +1242,7 @@ class _SupplierPurchasingOperationsScreenState
                             if (!formKey.currentState!.validate() ||
                                 lines.isEmpty ||
                                 lines.any((line) =>
-                                    line.item == null ||
+                                    line.description.text.trim().isEmpty ||
                                   (invoice != null &&
                                     line.invoiceLine == null) ||
                                     (double.tryParse(line.quantity.text) ??
@@ -1273,7 +1258,7 @@ class _SupplierPurchasingOperationsScreenState
                           },
                           child: const Text('حفظ الاستلام'))
                     ])));
-    if (save == true && supplier != null && warehouse != null) {
+    if (save == true && supplier != null) {
       final duplicate = _receipts.any((item) =>
           item.number.trim().toLowerCase() == number.text.trim().toLowerCase());
       if (duplicate) {
@@ -1283,20 +1268,22 @@ class _SupplierPurchasingOperationsScreenState
             () => _repository.createReceipt(
                 supplierId: supplier!.id,
                 purchaseOrderId: order?.id,
-                warehouseId: warehouse!.id,
+                warehouseId: null,
                 receiptNumber: number.text.trim(),
                 receiptDate: receiptDate,
                 notes: _nullable(notes.text),
                 items: lines
                     .map((line) => {
-                          'inventoryItemId': line.item!.id,
+                          'inventoryItemId': null,
+                          'itemDescription': line.description.text.trim(),
+                          'itemType': line.itemType,
                           'quantity': double.parse(line.quantity.text),
                           'unitCost': double.parse(line.cost.text),
                           'supplierInvoiceLineId': line.invoiceLine?.id,
                           'rollCode': _nullable(line.rollCode.text)
                         })
                     .toList()),
-            success: 'تم تسجيل الاستلام وتحديث المخزون.');
+            success: 'تم تأكيد الاستلام وتسجيل فروقات المقارنة.');
       }
     }
     number.dispose();
@@ -1470,14 +1457,8 @@ class _SupplierPurchasingOperationsScreenState
                     .toList(),
                 onChanged: (value) {
                   line.invoiceLine = value;
-                  line.item = null;
                   if (value != null) {
-                    for (final item in _inventoryItems) {
-                      if (item.id == value.inventoryItemId) {
-                        line.item = item;
-                        break;
-                      }
-                    }
+                    line.description.text = value.itemName;
                     line.quantity.text = value.quantity.toString();
                     line.cost.text = value.unitCost.toString();
                   }
@@ -1487,22 +1468,15 @@ class _SupplierPurchasingOperationsScreenState
                     ? 'اختر بند الفاتورة المرتبط بالاستلام.'
                     : null,
               ),
-            DropdownButtonFormField<SupplierPurchasingInventoryItem>(
-              initialValue: line.item,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'الصنف'),
-              items: _inventoryItems
-                  .map((item) => DropdownMenuItem(
-                      value: item, child: Text('${item.name} (${item.code})')))
-                  .toList(),
-              onChanged: (value) {
-                line.item = value;
-                if (line.invoiceLine?.inventoryItemId != value?.id) {
-                  line.invoiceLine = null;
-                }
-                onChanged();
-              },
-              validator: (value) => value == null ? 'اختر الصنف.' : null,
+            TextFormField(
+              controller: line.description,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                  labelText: 'وصف البضاعة المستلمة'),
+              onChanged: (_) => onChanged(),
+              validator: (value) => value?.trim().isEmpty ?? true
+                  ? 'أدخل وصف البضاعة.'
+                  : null,
             ),
             Row(children: [
               Expanded(
@@ -1736,13 +1710,16 @@ class _ErrorState extends StatelessWidget {
 }
 
 class _ReceiptDraftLine {
-  SupplierPurchasingInventoryItem? item;
   SupplierPurchasingInvoiceLine? invoiceLine;
+  final description = TextEditingController();
   final quantity = TextEditingController();
   final cost = TextEditingController();
   final rollCode = TextEditingController();
 
+  String? get itemType => invoiceLine?.itemType;
+
   void dispose() {
+    description.dispose();
     quantity.dispose();
     cost.dispose();
     rollCode.dispose();

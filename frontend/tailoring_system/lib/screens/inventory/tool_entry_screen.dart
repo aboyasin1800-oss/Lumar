@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/ui_palette.dart';
+import '../../models/pending_receipt_storage.dart';
 
 class ToolEntryScreen extends StatefulWidget {
-  const ToolEntryScreen({super.key});
+  const ToolEntryScreen({super.key, this.pendingReceipt});
+
+  final PendingReceiptStorage? pendingReceipt;
 
   @override
   State<ToolEntryScreen> createState() => _ToolEntryScreenState();
@@ -40,6 +43,7 @@ class _ToolEntryScreenState extends State<ToolEntryScreen> {
     _quantityController.addListener(_syncTotal);
     _unitPriceController.addListener(_syncTotal);
     _loadExistingItems();
+    _applyPendingReceipt();
   }
 
   @override
@@ -56,6 +60,20 @@ class _ToolEntryScreenState extends State<ToolEntryScreen> {
     _totalController.dispose();
     super.dispose();
   }
+
+  void _applyPendingReceipt() {
+    final pending = widget.pendingReceipt;
+    if (pending == null || pending.itemType != 'UsedTool') return;
+    _nameController.text = pending.itemDescription;
+    _typeController.text = pending.itemDescription;
+    _unitController.text = pending.unit;
+    _quantityController.text = pending.remainingQuantity.toStringAsFixed(3);
+    _unitPriceController.text = pending.unitCost.toStringAsFixed(2);
+    _supplierController.text = pending.supplierId.toString();
+    _invoiceController.text = pending.receiptNumber;
+  }
+
+  String _operationId() => '${DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(16).padLeft(32, '0').substring(0, 8)}-0000-4000-8000-${DateTime.now().microsecondsSinceEpoch.toRadixString(16).padLeft(12, '0').substring(0, 12)}';
 
   Future<void> _loadExistingItems() async {
     try {
@@ -128,6 +146,10 @@ class _ToolEntryScreenState extends State<ToolEntryScreen> {
       'invoiceNumber': _invoiceController.text.trim(),
       'notes': _notesController.text.trim(),
       'renewExisting': _renewExisting,
+      if (widget.pendingReceipt != null && widget.pendingReceipt!.itemType == 'UsedTool')
+        'goodsReceiptItemId': widget.pendingReceipt!.goodsReceiptItemId,
+      if (widget.pendingReceipt != null && widget.pendingReceipt!.itemType == 'UsedTool')
+        'storageOperationId': _operationId(),
     };
 
     setState(() => _isSaving = true);

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../core/app_navigation.dart';
 import '../core/ui_palette.dart';
+import '../models/pending_receipt_storage.dart';
 import 'inventory/bulk_fabric_entry_screen.dart';
 import 'inventory/imported_product_entry_screen.dart';
 import 'inventory/tool_entry_screen.dart';
@@ -27,6 +28,7 @@ class _InventoryScreenState extends State<InventoryScreen>
   late final TabController _tabs;
   late final TextEditingController _fabricSearchController;
   InventoryData? _data;
+  List<PendingReceiptStorage> _pendingReceipts = const [];
   bool _loading = true;
 
   @override
@@ -57,6 +59,18 @@ class _InventoryScreenState extends State<InventoryScreen>
         http.get(Uri.parse('$_baseUrl/inventory/transactions')),
         http.get(Uri.parse('$_baseUrl/inventory/summary')),
       ]);
+
+      List<PendingReceiptStorage> pendingReceipts = const [];
+      try {
+        final pendingResponse = await http.get(Uri.parse('$_baseUrl/inventory/pending-receipt-storage'));
+        if (pendingResponse.statusCode >= 200 && pendingResponse.statusCode < 300) {
+          final pendingJson = jsonDecode(pendingResponse.body) as List;
+          pendingReceipts = pendingJson
+              .cast<Map<String, dynamic>>()
+              .map(PendingReceiptStorage.fromJson)
+              .toList();
+        }
+      } catch (_) {}
 
       if (responses.any((response) => response.statusCode < 200 || response.statusCode >= 300)) {
         throw Exception();
@@ -133,6 +147,7 @@ class _InventoryScreenState extends State<InventoryScreen>
           tools: tools,
           summaries: summaries,
         );
+        _pendingReceipts = pendingReceipts;
         _loading = false;
       });
     } catch (_) {
@@ -444,9 +459,9 @@ class _InventoryScreenState extends State<InventoryScreen>
     );
   }
 
-  Future<void> _addToTab(String tabName) async {
+  Future<void> _addToTab(String tabName, [PendingReceiptStorage? pending]) async {
     if (tabName == 'fabric') {
-      final result = await AppNavigation.push<bool>(context, (_) => const BulkFabricEntryScreen());
+      final result = await AppNavigation.push<bool>(context, (_) => BulkFabricEntryScreen(pendingReceipt: pending));
       if (result == true) {
         _load();
       }
@@ -454,7 +469,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     }
 
     if (tabName == 'imported') {
-      final result = await AppNavigation.push<bool>(context, (_) => const ImportedProductEntryScreen());
+      final result = await AppNavigation.push<bool>(context, (_) => ImportedProductEntryScreen(pendingReceipt: pending));
       if (result == true) {
         _load();
       }
@@ -462,7 +477,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     }
 
     if (tabName == 'tools') {
-      final result = await AppNavigation.push<bool>(context, (_) => const ToolEntryScreen());
+      final result = await AppNavigation.push<bool>(context, (_) => ToolEntryScreen(pendingReceipt: pending));
       if (result == true) {
         _load();
       }
@@ -527,6 +542,45 @@ class _InventoryScreenState extends State<InventoryScreen>
           ],
         ),
         const SizedBox(height: 12),
+        if (_pendingReceipts.isNotEmpty) ...[
+          Card(
+            color: UiPalette.surfaceCard,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('تنبيه: بضائع مستلمة ولم تُخزّن بعد', style: TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 170),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: _pendingReceipts.length,
+                      separatorBuilder: (_, __) => const Divider(height: 8),
+                      itemBuilder: (context, index) {
+                        final pending = _pendingReceipts[index];
+                        final tab = pending.itemType == 'Fabric' ? 'fabric' : pending.itemType == 'ImportedProduct' ? 'imported' : 'tools';
+                        return ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('${pending.itemDescription} • ${pending.remainingQuantity} ${pending.unit}'),
+                          subtitle: Text('المورد: ${pending.supplierName} • الفاتورة: ${pending.receiptNumber}'),
+                          trailing: FilledButton.icon(
+                            onPressed: () => _addToTab(tab, pending),
+                            icon: const Icon(Icons.input_outlined),
+                            label: Text('تخزين ${pending.arabicItemType}'),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         Container(
           height: 52,
           decoration: BoxDecoration(

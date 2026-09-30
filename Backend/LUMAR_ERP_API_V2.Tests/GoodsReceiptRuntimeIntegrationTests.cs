@@ -28,8 +28,8 @@ public sealed class GoodsReceiptRuntimeIntegrationTests
             };
             var result = await repository.CreateGoodsReceiptAsync(request, CancellationToken.None);
             Assert.False(result.IsExisting);
-            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceipts WHERE GoodsReceiptId=@id AND ReceiptStatus=N'Posted'", result.GoodsReceiptId));
-            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryTransactions WHERE ReferenceNumber LIKE @value AND WarehouseId=(SELECT WarehouseId FROM dbo.GoodsReceipts WHERE ReceiptNumber=REPLACE(REPLACE(@value,N'GoodsReceipt:',N''),N':%',N''))", $"GoodsReceipt:{receiptNumber}:%"));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceipts WHERE GoodsReceiptId=@id AND ReceiptStatus=N'Confirmed'", result.GoodsReceiptId));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryTransactions WHERE ReferenceNumber LIKE @value", $"GoodsReceipt:{receiptNumber}:%"));
             Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceiptDifferences d JOIN dbo.GoodsReceiptItems i ON i.GoodsReceiptItemId=d.GoodsReceiptItemId WHERE i.GoodsReceiptId=@id", result.GoodsReceiptId));
 
             var retry = await repository.CreateGoodsReceiptAsync(request, CancellationToken.None);
@@ -40,7 +40,7 @@ public sealed class GoodsReceiptRuntimeIntegrationTests
             var reversal = await repository.ReverseGoodsReceiptAsync(new ReverseGoodsReceiptDto { GoodsReceiptId = result.GoodsReceiptId, SourceOperationId = Guid.NewGuid(), Reason = "Integration test", ReversedBy = "ES6-Test" }, CancellationToken.None);
             Assert.False(reversal.IsExisting);
             Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceipts WHERE GoodsReceiptId=@id AND ReceiptStatus=N'Reversed'", result.GoodsReceiptId));
-            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceiptReversalLines WHERE GoodsReceiptReversalId=@id", reversal.GoodsReceiptReversalId));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceiptReversalLines WHERE GoodsReceiptReversalId=@id", reversal.GoodsReceiptReversalId));
             Assert.Equal(1m, await DecimalAsync(connectionString, "SELECT CurrentQuantity FROM dbo.InventoryItems WHERE InventoryItemID=@id", seed.InventoryItemId));
 
             var direct = await repository.CreateGoodsReceiptAsync(new CreateGoodsReceiptDto
@@ -75,7 +75,7 @@ public sealed class GoodsReceiptRuntimeIntegrationTests
     }
 
     [Fact]
-    public async Task ReceiptRuntime_ConcurrentSameOperationCreatesOneReceiptAndOneInventoryPosting()
+    public async Task ReceiptRuntime_ConcurrentSameOperationCreatesOneConfirmation()
     {
         var connectionString = GetConnectionString();
         var seed = await SeedAsync(connectionString);
@@ -96,7 +96,7 @@ public sealed class GoodsReceiptRuntimeIntegrationTests
 
             Assert.All(results, result => Assert.Equal(results[0].GoodsReceiptId, result.GoodsReceiptId));
             Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceipts WHERE SourceOperationId=@operation", operation));
-            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryTransactions WHERE ReferenceNumber LIKE @value", $"GoodsReceipt:{receiptNumber}:%"));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryTransactions WHERE ReferenceNumber LIKE @value", $"GoodsReceipt:{receiptNumber}:%"));
         }
         finally { await CleanupAsync(connectionString, seed); }
     }
@@ -110,14 +110,14 @@ public sealed class GoodsReceiptRuntimeIntegrationTests
         var receiptNumber = $"ES6-ROLLBACK-{seed.Suffix}";
         try
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => CreateRepository(connectionString).CreateGoodsReceiptAsync(new CreateGoodsReceiptDto
+            await Assert.ThrowsAsync<ArgumentException>(() => CreateRepository(connectionString).CreateGoodsReceiptAsync(new CreateGoodsReceiptDto
             {
                 SupplierId = seed.SupplierId, PurchaseOrderId = seed.PurchaseOrderId, WarehouseId = seed.WarehouseId,
                 ReceiptNumber = receiptNumber, CreatedBy = "ES6-Test", SourceOperationId = operation,
                 Items =
                 [
                     new CreateGoodsReceiptItemDto { InventoryItemId = seed.InventoryItemId, Quantity = 4m, UnitCost = 12m, SupplierInvoiceLineId = seed.InvoiceLineId },
-                    new CreateGoodsReceiptItemDto { InventoryItemId = int.MaxValue, Quantity = 1m, UnitCost = 1m }
+                    new CreateGoodsReceiptItemDto { Quantity = 1m, UnitCost = 1m }
                 ]
             }, CancellationToken.None));
 
@@ -145,7 +145,7 @@ public sealed class GoodsReceiptRuntimeIntegrationTests
             await CreatePartialAsync("B");
 
             Assert.Equal(2, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceiptItems WHERE SupplierInvoiceLineId=@id", seed.InvoiceLineId));
-            Assert.Equal(2, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryTransactions WHERE ReferenceNumber LIKE @value", $"GoodsReceipt:ES6-PARTIAL-%-{seed.Suffix}:Item:%"));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryTransactions WHERE ReferenceNumber LIKE @value", $"GoodsReceipt:ES6-PARTIAL-%-{seed.Suffix}:Item:%"));
         }
         finally { await CleanupAsync(connectionString, seed); }
     }

@@ -3,6 +3,7 @@ using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Suppliers;
 using LUMAR_ERP_API_V2.FinancialFoundation;
 using LUMAR_ERP_API_V2.Services;
+using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LUMAR_ERP_API_V2.Controllers;
@@ -33,7 +34,14 @@ public sealed class SupplierFinancialOperationsController(
             return BadRequest("Supplier payment data is incomplete.");
         var auth = await AuthorizeAsync(Es7Permission.FinanceSupplierPay, cancellationToken);
         if (auth.Error is not null) return auth.Error;
-        return StatusCode(StatusCodes.Status201Created, await coordinator.CreatePaymentAsync(request, auth.User!, CorrelationId, cancellationToken));
+        try
+        {
+            return StatusCode(StatusCodes.Status201Created, await coordinator.CreatePaymentAsync(request, auth.User!, CorrelationId, cancellationToken));
+        }
+        catch (SqlException exception) when (exception.Number == 51923)
+        {
+            return UnprocessableEntity();
+        }
     }
 
     [HttpPost("allocations")]

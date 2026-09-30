@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 import '../../core/ui_palette.dart';
+import '../../models/pending_receipt_storage.dart';
 
 class _FabricBatchUtils {
   static String normalizeCode(String value) => value.trim().toUpperCase();
@@ -109,9 +111,11 @@ class BulkFabricEntryScreen extends StatefulWidget {
   const BulkFabricEntryScreen({
     super.key,
     this.palette = FabricEntryScreenPalette.defaults,
+    this.pendingReceipt,
   });
 
   final FabricEntryScreenPalette palette;
+  final PendingReceiptStorage? pendingReceipt;
 
   @override
   State<BulkFabricEntryScreen> createState() => _BulkFabricEntryScreenState();
@@ -249,6 +253,7 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
     _loadSuppliers();
     _loadInventoryItems();
     _updateRollsFromCount();
+    _applyPendingReceipt();
   }
 
   @override
@@ -266,6 +271,23 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
       roll.dispose();
     }
     super.dispose();
+  }
+
+  void _applyPendingReceipt() {
+    final pending = widget.pendingReceipt;
+    if (pending == null || pending.itemType != 'Fabric') return;
+    _selectedSupplierId = pending.supplierId;
+    _invoiceNumberController.text = pending.receiptNumber;
+    _fabricTypeController.text = pending.itemDescription;
+    _yardPriceController.text = pending.unitCost.toStringAsFixed(2);
+    _rollCountController.text = '1';
+    _updateRollsFromCount();
+    if (_rolls.isNotEmpty) {
+      _rolls.first.quantityYardsController.text = pending.remainingQuantity.toStringAsFixed(3);
+      _rolls.first.yardPriceController.text = pending.unitCost.toStringAsFixed(2);
+      _rolls.first.fabricTypeController.text = pending.itemDescription;
+      _rolls.first.updateCalculations();
+    }
   }
 
   Future<void> _loadSuppliers() async {
@@ -497,6 +519,12 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
 
   double get _totalBatchCost => _FabricBatchUtils.batchTotalCost(_rolls);
 
+  String _operationId() {
+    final random = Random.secure();
+    final hex = List.generate(32, (_) => random.nextInt(16).toRadixString(16)).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-4${hex.substring(13, 16)}-8${hex.substring(17, 20)}-${hex.substring(20)}';
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -615,6 +643,10 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
           'fabricWidth': double.tryParse(roll.fabricWidthController.text.trim().replaceAll(',', '.')) ?? 58,
           'quantityYards': double.tryParse(roll.quantityYardsController.text.trim().replaceAll(',', '.')) ?? 0,
           'yardPrice': double.tryParse(roll.yardPriceController.text.trim().replaceAll(',', '.')) ?? 0,
+            if (widget.pendingReceipt != null && widget.pendingReceipt!.itemType == 'Fabric')
+              'goodsReceiptItemId': widget.pendingReceipt!.goodsReceiptItemId,
+            if (widget.pendingReceipt != null && widget.pendingReceipt!.itemType == 'Fabric')
+              'storageOperationId': _operationId(),
         };
       }).toList(),
     };

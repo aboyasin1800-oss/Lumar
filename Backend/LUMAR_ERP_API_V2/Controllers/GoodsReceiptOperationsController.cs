@@ -19,7 +19,7 @@ public sealed class GoodsReceiptOperationsController(
     [HttpPost("receipts")]
     public async Task<ActionResult<GoodsReceiptRuntimeResult>> CreateReceipt(CreateGoodsReceiptRequestDto request, CancellationToken cancellationToken)
     {
-        if (request.SupplierId <= 0 || request.WarehouseId <= 0 || string.IsNullOrWhiteSpace(request.ReceiptNumber) || request.SourceOperationId == Guid.Empty || request.Items.Count == 0)
+        if (request.SupplierId <= 0 || string.IsNullOrWhiteSpace(request.ReceiptNumber) || request.SourceOperationId == Guid.Empty || request.Items.Count == 0)
             return BadRequest("Goods receipt data is incomplete.");
         var auth = await AuthorizeAsync(Es7Permission.InventoryReceive, cancellationToken);
         if (auth.Error is not null) return auth.Error;

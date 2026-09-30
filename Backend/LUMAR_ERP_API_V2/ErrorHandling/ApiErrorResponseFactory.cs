@@ -25,6 +25,8 @@ public static class ApiErrorResponseFactory
 
     private static (string ErrorCode, string Message) CreateOperationError(string requestPath)
     {
+        if (requestPath.Contains("/purchasing/operations/payments", StringComparison.OrdinalIgnoreCase))
+            return ("PAY-002", "الحساب النقدي المختار غير متاح لهذه الدفعة. تحقق من العملة أو صلاحية الصرف واختر حسابًا نقديًا آخر.");
         if (requestPath.Contains("/delivery/confirm", StringComparison.OrdinalIgnoreCase))
             return ("DLV-001", "تعذر إكمال تسليم الطلب. لم يتم تنفيذ تحصيل جديد.");
         if (requestPath.Contains("/delivery/revenue-recognize", StringComparison.OrdinalIgnoreCase))

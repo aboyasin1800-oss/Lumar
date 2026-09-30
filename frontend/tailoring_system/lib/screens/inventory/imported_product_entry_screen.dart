@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/ui_palette.dart';
+import '../../models/pending_receipt_storage.dart';
 
 class ImportedProductEntryScreen extends StatefulWidget {
-  const ImportedProductEntryScreen({super.key});
+  const ImportedProductEntryScreen({super.key, this.pendingReceipt});
+
+  final PendingReceiptStorage? pendingReceipt;
 
   @override
   State<ImportedProductEntryScreen> createState() => _ImportedProductEntryScreenState();
@@ -39,6 +42,7 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
     _purchasePriceController.addListener(_syncTotal);
     _loadSuppliers();
     _loadExistingProducts();
+    _applyPendingReceipt();
   }
 
   @override
@@ -55,6 +59,19 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
     _totalController.dispose();
     super.dispose();
   }
+
+  void _applyPendingReceipt() {
+    final pending = widget.pendingReceipt;
+    if (pending == null || pending.itemType != 'ImportedProduct') return;
+    _productNameController.text = pending.itemDescription;
+    _productTypeController.text = pending.itemDescription;
+    _productCodeController.text = pending.itemDescription;
+    _quantityController.text = pending.remainingQuantity.toStringAsFixed(3);
+    _purchasePriceController.text = pending.unitCost.toStringAsFixed(2);
+    _supplierController.text = pending.supplierId.toString();
+  }
+
+  String _operationId() => '${DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(16).padLeft(32, '0').substring(0, 8)}-0000-4000-8000-${DateTime.now().microsecondsSinceEpoch.toRadixString(16).padLeft(12, '0').substring(0, 12)}';
 
   void _syncTotal() {
     final quantity = double.tryParse(_quantityController.text.trim().replaceAll(',', '.')) ?? 0;
@@ -156,6 +173,10 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
       'notes': _notesController.text.trim(),
       'category': 'Imported',
       'renewExisting': _renewExisting,
+      if (widget.pendingReceipt != null && widget.pendingReceipt!.itemType == 'ImportedProduct')
+        'goodsReceiptItemId': widget.pendingReceipt!.goodsReceiptItemId,
+      if (widget.pendingReceipt != null && widget.pendingReceipt!.itemType == 'ImportedProduct')
+        'storageOperationId': _operationId(),
     };
 
     setState(() => _isSaving = true);

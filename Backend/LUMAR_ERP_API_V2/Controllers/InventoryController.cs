@@ -28,6 +28,9 @@ public sealed class InventoryController(IInventoryService service) : ControllerB
     [HttpGet("warehouses")]
     public Task<IReadOnlyList<InventoryWarehouseDto>> GetWarehouses(CancellationToken ct) => service.GetWarehousesAsync(ct);
 
+    [HttpGet("pending-receipt-storage")]
+    public Task<IReadOnlyList<PendingGoodsReceiptStorageDto>> GetPendingReceiptStorage(CancellationToken ct) => service.GetPendingGoodsReceiptStorageAsync(ct);
+
     [HttpGet("fabrics")]
     public Task<IReadOnlyList<FabricDto>> GetFabrics(CancellationToken ct) => service.GetFabricsAsync(ct);
 

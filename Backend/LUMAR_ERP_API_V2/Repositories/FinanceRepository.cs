@@ -163,7 +163,8 @@ public sealed class FinanceRepository(ReadOnlySqlConnectionFactory connections) 
         var equity = explicitEquity != 0m ? explicitEquity : assets - liabilities;
         var accountsReceivable = Account("1200");
         var accountsPayable = Account("2100");
-        var inventoryValue = Account("1100") + Account("1110") + Account("1130");
+        var inventoryValue = new[] { "1100", "1101", "1102", "1103", "1110", "1130" }
+            .Sum(Account);
 
         const string financialSql = @"
             SELECT TransactionType, COALESCE(SUM(Amount), 0)
