@@ -1,14 +1,20 @@
 using LUMAR_ERP_API_V2.Configuration;
+using LUMAR_ERP_API_V2.Controllers;
 using LUMAR_ERP_API_V2.Data;
+using LUMAR_ERP_API_V2.DTOs.Consumption;
 using LUMAR_ERP_API_V2.DTOs.Inventory;
+using LUMAR_ERP_API_V2.DTOs.Orders;
 using LUMAR_ERP_API_V2.Repositories;
+using LUMAR_ERP_API_V2.Services;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace LUMAR_ERP_API_V2.Tests;
 
-public sealed class FabricConsumablesFoundationIntegrationTests
+public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelper output)
 {
     [Fact]
     public async Task OfficialFabricBatch_CreatesPurchaseReceiptFoundationAndBalancedEntry()
@@ -281,6 +287,581 @@ public sealed class FabricConsumablesFoundationIntegrationTests
         }
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task FabricCodeConsumption_UsesOfficialStockAndPostsOnce(short unitId)
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        try
+        {
+            var receipt = await CreateRepository(connectionString).ReceiveFabricInventoryAsync(
+                new ReceiveFabricInventoryDto
+                {
+                    GoodsReceiptItemId = seed.FabricReceiptItemId,
+                    ItemCode = seed.FabricItemCode,
+                    FabricTypeCode = "CODE-TEST",
+                    RollCode = seed.FabricRollCode,
+                    UnitId = unitId,
+                    OpposingLedgerAccountCode = "1000",
+                    SourceOperationId = seed.FabricReceiptOperationId
+                }, CancellationToken.None);
+            Assert.NotNull(receipt);
+            var request = new ConsumeFabricCodeInventoryDto
+            {
+                FabricCode = seed.FabricItemCode,
+                OrderItemId = seed.OrderItemId,
+                PieceId = seed.PieceId,
+                QuantityInches = 1.25m * (unitId == 1 ? 36m : 1m),
+                SourceOperationId = seed.FabricConsumptionOperationId
+            };
+
+            InventoryFoundationPostingResultDto consumption;
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                await using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+                consumption = await InventoryRepository.ConsumeFabricCodeInventoryAsync(connection, transaction, request, CancellationToken.None);
+                var replayed = await InventoryRepository.ConsumeFabricCodeInventoryAsync(connection, transaction, request, CancellationToken.None);
+                Assert.False(consumption.IsExisting);
+                Assert.True(replayed.IsExisting);
+                Assert.Equal(consumption.SourceRecordId, replayed.SourceRecordId);
+                Assert.Equal(consumption.AccountingEventId, replayed.AccountingEventId);
+                await transaction.CommitAsync();
+            }
+
+            Assert.Equal(1.25m, consumption.Quantity);
+            Assert.Equal(31.875m, consumption.OperationalAmount);
+            Assert.Equal(31.88m, consumption.PostingAmount);
+            Assert.Equal(4.75m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(1.25m, await ReadDecimalAsync(connectionString, "SELECT ConsumedQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(121.125m, await ReadDecimalAsync(connectionString, "SELECT OperationalValue FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(4.75m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItems WHERE InventoryItemID=@id", receipt.InventoryItemId));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricConsumptionSources WHERE SourceOperationId=@operation AND FabricRollId IS NULL", seed.FabricConsumptionOperationId));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryTransactions WHERE SourceOperationId=@operation AND OperationalCostImpact=-31.875", seed.FabricConsumptionOperationId));
+            Assert.Equal(8, await ReadEventTypeAsync(connectionString, consumption.AccountingEventId));
+            Assert.Equal(0m, await ReadJournalDifferenceAsync(connectionString, consumption.AccountingEventId));
+            Assert.Equal(2, await CountAsync(connectionString, @"
+                SELECT COUNT(*) FROM dbo.JournalEntryLines line
+                JOIN dbo.JournalEntries entry ON entry.JournalEntryId=line.JournalEntryId
+                JOIN dbo.LedgerAccounts account ON account.LedgerAccountId=line.LedgerAccountId
+                WHERE entry.AccountingEventId=@id
+                  AND ((account.AccountCode=N'1130' AND line.DebitAmount=31.88 AND line.CreditAmount=0)
+                    OR (account.AccountCode=N'1101' AND line.CreditAmount=31.88 AND line.DebitAmount=0))", consumption.AccountingEventId));
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
+    public async Task FabricCodeConsumption_CallerRollbackRestoresStockAndRemovesPosting()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        try
+        {
+            var receipt = await CreateRepository(connectionString).ReceiveFabricInventoryAsync(
+                new ReceiveFabricInventoryDto
+                {
+                    GoodsReceiptItemId = seed.FabricReceiptItemId,
+                    ItemCode = seed.FabricItemCode,
+                    FabricTypeCode = "CODE-ROLLBACK",
+                    RollCode = seed.FabricRollCode,
+                    UnitId = 1,
+                    OpposingLedgerAccountCode = "1000",
+                    SourceOperationId = seed.FabricReceiptOperationId
+                }, CancellationToken.None);
+            Assert.NotNull(receipt);
+            InventoryFoundationPostingResultDto consumption;
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                await using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+                consumption = await InventoryRepository.ConsumeFabricCodeInventoryAsync(connection, transaction,
+                    new ConsumeFabricCodeInventoryDto
+                    {
+                        FabricCode = seed.FabricItemCode,
+                        OrderItemId = seed.OrderItemId,
+                        PieceId = seed.PieceId,
+                        QuantityInches = 36m,
+                        SourceOperationId = seed.FabricConsumptionOperationId
+                    }, CancellationToken.None);
+                await transaction.RollbackAsync();
+            }
+
+            Assert.Equal(6m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(153m, await ReadDecimalAsync(connectionString, "SELECT OperationalValue FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(6m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItems WHERE InventoryItemID=@id", receipt.InventoryItemId));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricConsumptionSources WHERE SourceOperationId=@operation", seed.FabricConsumptionOperationId));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryTransactions WHERE SourceOperationId=@operation", seed.FabricConsumptionOperationId));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.AccountingEvents WHERE AccountingEventId=@id", consumption.AccountingEventId));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.JournalEntries WHERE AccountingEventId=@id", consumption.AccountingEventId));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE AccountingEventId=@id", consumption.AccountingEventId));
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Theory]
+    [InlineData(36, 2)]
+    [InlineData(108, 2)]
+    [InlineData(24, 9)]
+    public async Task TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(decimal inchesPerPiece, int quantity)
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        var reference = $"FAB-ORDER-{Guid.NewGuid():N}";
+        try
+        {
+            var receipt = await ReceiveOrderFabricAsync(connectionString, seed);
+            var request = await CreateFabricOrderRequestAsync(connectionString, seed, reference, inchesPerPiece, quantity);
+            var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+            var repository = new OrderRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options), new MeasurementConsumptionRules());
+            var created = await repository.CreateAsync(request, CancellationToken.None);
+            Assert.NotNull(created);
+            var replayed = await repository.CreateAsync(request, CancellationToken.None);
+            Assert.NotNull(replayed);
+            Assert.Equal(created.OrderId, replayed.OrderId);
+            var storedItem = Assert.Single(await repository.GetItemsAsync(created.OrderId, CancellationToken.None));
+            using var snapshot = System.Text.Json.JsonDocument.Parse(storedItem.MeasurementSnapshot!);
+            Assert.Equal(inchesPerPiece, decimal.Parse(snapshot.RootElement.GetProperty("_consumption").GetString()!, System.Globalization.CultureInfo.InvariantCulture));
+            Assert.Equal("Inch", snapshot.RootElement.GetProperty("_consumptionUnit").GetString());
+            var expectedQuantity = inchesPerPiece * quantity / 36m;
+            var expectedCost = expectedQuantity * 25.5m;
+            Assert.Equal(6m - expectedQuantity, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(expectedQuantity, await ReadDecimalAsync(connectionString, "SELECT ConsumedQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(153m - expectedCost, await ReadDecimalAsync(connectionString, "SELECT OperationalValue FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(6m - expectedQuantity, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItems WHERE InventoryItemID=@id", receipt.InventoryItemId));
+            Assert.Equal(quantity, await CountAsync(connectionString, @"
+                SELECT COUNT(*) FROM dbo.FabricConsumptionSources source
+                JOIN dbo.OrderItems item ON item.OrderItemID=source.OrderItemId
+                JOIN dbo.Pieces piece ON piece.OrderItemID=item.OrderItemID
+                JOIN dbo.AccountingEvents event ON event.AccountingEventId=source.AccountingEventId
+                JOIN dbo.InventoryTransactions movement ON movement.TransactionID=source.InventoryTransactionId
+                WHERE item.OrderID=@id AND source.FabricRollId IS NULL
+                  AND event.AccountingEventType=8 AND event.Status=N'Posted'
+                  AND movement.AccountingEventId=event.AccountingEventId", created.OrderId));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricConsumptionSources source JOIN dbo.OrderItems item ON item.OrderItemID=source.OrderItemId WHERE item.OrderID=@id AND source.PieceId IS NULL", created.OrderId));
+            Assert.Equal(inchesPerPiece * quantity, await ReadDecimalAsync(connectionString, "SELECT SUM(fabric.ConsumedQuantity) FROM dbo.OrderItemFabrics fabric JOIN dbo.OrderItems item ON item.OrderItemID=fabric.OrderItemID WHERE item.OrderID=@id", created.OrderId));
+            Assert.Equal(expectedCost, await ReadDecimalAsync(connectionString, "SELECT SUM(fabric.TotalCost) FROM dbo.OrderItemFabrics fabric JOIN dbo.OrderItems item ON item.OrderItemID=fabric.OrderItemID WHERE item.OrderID=@id", created.OrderId));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.TailoringCostPostings WHERE OrderId=@id", created.OrderId));
+            output.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
+            {
+                FabricCode = seed.FabricItemCode,
+                receipt.InventoryItemId,
+                created.OrderId,
+                RequiredInches = inchesPerPiece * quantity,
+                BeforeQuantity = 6m,
+                AfterQuantity = 6m - expectedQuantity,
+                BeforeValue = 153m,
+                AfterValue = 153m - expectedCost,
+                RetryOrderId = replayed.OrderId
+            }));
+            await WriteOrderEvidenceAsync(connectionString, created.OrderId);
+        }
+        finally
+        {
+            await CleanupFabricOrderAsync(connectionString, reference);
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
+    public async Task TailoringFabric_InsufficientStockRejectsBeforeCreatingOrder()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        var reference = $"FAB-ORDER-SHORT-{Guid.NewGuid():N}";
+        try
+        {
+            var receipt = await ReceiveOrderFabricAsync(connectionString, seed);
+            var request = await CreateFabricOrderRequestAsync(connectionString, seed, reference, 109m, 2);
+            var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+            var repository = new OrderRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options), new MeasurementConsumptionRules());
+            var exception = await Assert.ThrowsAsync<ArgumentException>(() => repository.CreateAsync(request, CancellationToken.None));
+            Assert.Contains(seed.FabricItemCode, exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("216", exception.Message);
+            Assert.Contains("218", exception.Message);
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.Orders WHERE SaleReference=@name", reference));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricConsumptionSources WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryTransactions WHERE InventoryItemID=@id AND TransactionType=N'FabricInventoryConsumed'", receipt.InventoryItemId));
+            Assert.Equal(6m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(153m, await ReadDecimalAsync(connectionString, "SELECT OperationalValue FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+        }
+        finally
+        {
+            await CleanupFabricOrderAsync(connectionString, reference);
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Theory]
+    [InlineData(108, true)]
+    [InlineData(109, false)]
+    public async Task TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems(decimal inchesPerPiece, bool shouldSucceed)
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        var reference = $"FAB-ORDER-GROUP-{Guid.NewGuid():N}";
+        try
+        {
+            var receipt = await ReceiveOrderFabricAsync(connectionString, seed);
+            var template = await CreateFabricOrderRequestAsync(connectionString, seed, reference, inchesPerPiece, 1);
+            var request = new CreateOrderDto { CustomerId = seed.CustomerId, RequestReference = reference, Items = [template.Items[0], template.Items[0]] };
+            var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+            var repository = new OrderRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options), new MeasurementConsumptionRules());
+            if (shouldSucceed)
+            {
+                var order = await repository.CreateAsync(request, CancellationToken.None);
+                Assert.NotNull(order);
+                Assert.Equal(2, (await repository.GetItemsAsync(order.OrderId, CancellationToken.None)).Count);
+                Assert.Equal(0m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            }
+            else
+            {
+                await Assert.ThrowsAsync<ArgumentException>(() => repository.CreateAsync(request, CancellationToken.None));
+                Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.Orders WHERE SaleReference=@name", reference));
+                Assert.Equal(6m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            }
+        }
+        finally
+        {
+            await CleanupFabricOrderAsync(connectionString, reference);
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Theory]
+    [InlineData(36, true)]
+    [InlineData(217, false)]
+    public async Task TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically(decimal secondInches, bool shouldSucceed)
+    {
+        var connectionString = GetConnectionString();
+        var firstSeed = await SeedAsync(connectionString);
+        var secondSeed = await SeedAsync(connectionString);
+        var reference = $"FAB-ORDER-CODES-{Guid.NewGuid():N}";
+        try
+        {
+            var firstReceipt = await ReceiveOrderFabricAsync(connectionString, firstSeed);
+            var secondReceipt = await ReceiveOrderFabricAsync(connectionString, secondSeed);
+            var firstTemplate = await CreateFabricOrderRequestAsync(connectionString, firstSeed, reference, 36m, 1);
+            var secondTemplate = await CreateFabricOrderRequestAsync(connectionString, secondSeed, reference, secondInches, 1);
+            var request = new CreateOrderDto { CustomerId = firstSeed.CustomerId, RequestReference = reference, Items = [firstTemplate.Items[0], secondTemplate.Items[0]] };
+            var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+            var repository = new OrderRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options), new MeasurementConsumptionRules());
+            if (shouldSucceed)
+            {
+                var order = await repository.CreateAsync(request, CancellationToken.None);
+                Assert.NotNull(order);
+                Assert.Equal(2, await CountAsync(connectionString, "SELECT COUNT(DISTINCT source.InventoryItemId) FROM dbo.FabricConsumptionSources source JOIN dbo.OrderItems item ON item.OrderItemID=source.OrderItemId WHERE item.OrderID=@id", order.OrderId));
+            }
+            else
+            {
+                var exception = await Assert.ThrowsAsync<ArgumentException>(() => repository.CreateAsync(request, CancellationToken.None));
+                Assert.Contains(secondSeed.FabricItemCode, exception.Message, StringComparison.OrdinalIgnoreCase);
+                Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.Orders WHERE SaleReference=@name", reference));
+            }
+
+            foreach (var receipt in new[] { firstReceipt, secondReceipt })
+            {
+                Assert.Equal(shouldSucceed ? 5m : 6m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+                Assert.Equal(shouldSucceed ? 127.5m : 153m, await ReadDecimalAsync(connectionString, "SELECT OperationalValue FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            }
+        }
+        finally
+        {
+            await CleanupFabricOrderAsync(connectionString, reference);
+            await CleanupAsync(connectionString, firstSeed);
+            await CleanupAsync(connectionString, secondSeed);
+        }
+    }
+
+    [Fact]
+    public async Task TailoringFabric_ConcurrentOrdersCannotExceedSameCodeAvailability()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        var firstReference = $"FAB-ORDER-RACE-A-{Guid.NewGuid():N}";
+        var secondReference = $"FAB-ORDER-RACE-B-{Guid.NewGuid():N}";
+        try
+        {
+            var receipt = await ReceiveOrderFabricAsync(connectionString, seed);
+            var firstRequest = await CreateFabricOrderRequestAsync(connectionString, seed, firstReference, 144m, 1);
+            var secondRequest = await CreateFabricOrderRequestAsync(connectionString, seed, secondReference, 144m, 1);
+            var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+            var repository = new OrderRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options), new MeasurementConsumptionRules());
+            var start = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            async Task<Exception?> SaveAsync(CreateOrderDto request)
+            {
+                await start.Task;
+                return await Record.ExceptionAsync(() => repository.CreateAsync(request, CancellationToken.None));
+            }
+
+            var saves = new[] { SaveAsync(firstRequest), SaveAsync(secondRequest) };
+            start.SetResult(true);
+            var outcomes = await Task.WhenAll(saves);
+            Assert.Single(outcomes, outcome => outcome is null);
+            Assert.IsType<ArgumentException>(Assert.Single(outcomes, outcome => outcome is not null));
+            Assert.Equal(2m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(51m, await ReadDecimalAsync(connectionString, "SELECT OperationalValue FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricConsumptionSources WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.Orders WHERE SaleReference=@name", firstReference)
+                + await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.Orders WHERE SaleReference=@name", secondReference));
+        }
+        finally
+        {
+            await CleanupFabricOrderAsync(connectionString, firstReference);
+            await CleanupFabricOrderAsync(connectionString, secondReference);
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
+    public async Task TailoringFabric_FailureAfterFirstPostingRollsBackEntireOrder()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        var reference = $"FAB-ORDER-ROLLBACK-{Guid.NewGuid():N}";
+        try
+        {
+            var receipt = await ReceiveOrderFabricAsync(connectionString, seed);
+            var first = await CreateFabricOrderRequestAsync(connectionString, seed, reference, 36m, 1);
+            var second = await CreateFabricOrderRequestAsync(connectionString, seed, reference, 0.001m, 1);
+            var request = new CreateOrderDto { CustomerId = seed.CustomerId, RequestReference = reference, Items = [first.Items[0], second.Items[0]] };
+            var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+            var repository = new OrderRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options), new MeasurementConsumptionRules());
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.CreateAsync(request, CancellationToken.None));
+            Assert.Contains("الدقة المحاسبية", exception.Message);
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.Orders WHERE SaleReference=@name", reference));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricConsumptionSources WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryTransactions WHERE InventoryItemID=@id AND TransactionType=N'FabricInventoryConsumed'", receipt.InventoryItemId));
+            Assert.Equal(6m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItems WHERE InventoryItemID=@id", receipt.InventoryItemId));
+            Assert.Equal(6m, await ReadDecimalAsync(connectionString, "SELECT AvailableQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+            Assert.Equal(153m, await ReadDecimalAsync(connectionString, "SELECT OperationalValue FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", receipt.InventoryItemId));
+        }
+        finally
+        {
+            await CleanupFabricOrderAsync(connectionString, reference);
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    private async Task WriteOrderEvidenceAsync(string connectionString, int orderId)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(@"
+            SELECT item.FabricCode,source.InventoryItemId,source.OrderItemId,source.PieceId,
+                   source.FabricConsumptionSourceId,source.SourceOperationId,source.ConsumedQuantity,
+                   source.UnitId,source.OfficialUnitCost,source.OperationalAmount,source.PostingAmount,
+                   source.InventoryTransactionId,source.AccountingEventId,financial.FinancialTransactionId,
+                   entry.JournalEntryId,account.AccountCode,line.DebitAmount,line.CreditAmount
+            FROM dbo.FabricConsumptionSources source
+            JOIN dbo.OrderItems item ON item.OrderItemID=source.OrderItemId
+            JOIN dbo.FinancialTransactions financial ON financial.AccountingEventId=source.AccountingEventId
+            JOIN dbo.JournalEntries entry ON entry.AccountingEventId=source.AccountingEventId
+            JOIN dbo.JournalEntryLines line ON line.JournalEntryId=entry.JournalEntryId
+            JOIN dbo.LedgerAccounts account ON account.LedgerAccountId=line.LedgerAccountId
+            WHERE item.OrderID=@orderId ORDER BY source.FabricConsumptionSourceId,account.AccountCode", connection);
+        command.Parameters.AddWithValue("@orderId", orderId);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var evidence = new Dictionary<string, object?>();
+            for (var columnIndex = 0; columnIndex < reader.FieldCount; columnIndex++)
+                evidence[reader.GetName(columnIndex)] = reader.IsDBNull(columnIndex) ? null : reader.GetValue(columnIndex);
+            output.WriteLine(System.Text.Json.JsonSerializer.Serialize(evidence));
+        }
+    }
+
+    [Fact]
+    public async Task TailoringFabric_ShortageReturnsJsonMessageForFlutter()
+    {
+        var reference = $"FAB-ORDER-API-{Guid.NewGuid():N}";
+        await WithFabricOrderAsync(reference, async (repository, template) =>
+        {
+            var item = Assert.Single(template.Items);
+            var controller = new OrdersController(new OrderService(repository, null!, null!));
+            var response = await controller.CreateOrder(new CreateOrderDto
+            {
+                CustomerId = template.CustomerId,
+                RequestReference = reference,
+                Items = [new CreateOrderItemDto
+                {
+                    PieceType = item.PieceType, ProductTypeId = item.ProductTypeId,
+                    FabricCode = item.FabricCode, Quantity = 7,
+                    MeasurementSnapshot = item.MeasurementSnapshot
+                }]
+            }, CancellationToken.None);
+            var rejection = Assert.IsType<BadRequestObjectResult>(response.Result);
+            Assert.Equal(400, rejection.StatusCode);
+            var payload = System.Text.Json.JsonSerializer.SerializeToElement(rejection.Value);
+            var message = payload.GetProperty("message").GetString();
+            Assert.NotNull(message);
+            Assert.Contains(item.FabricCode!, message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("المتاح: 216", message);
+            Assert.Contains("المطلوب: 252", message);
+            Assert.Equal(0, await CountAsync(GetConnectionString(), "SELECT COUNT(*) FROM dbo.Orders WHERE SaleReference=@name", reference));
+        });
+    }
+
+    [Fact]
+    public async Task TailoringFabric_OmittingNestedFabricDoesNotBypassConsumption()
+    {
+        var reference = $"FAB-ORDER-NESTED-{Guid.NewGuid():N}";
+        await WithFabricOrderAsync(reference, async (repository, template) =>
+        {
+            var item = Assert.Single(template.Items);
+            var created = await repository.CreateAsync(new CreateOrderDto
+            {
+                CustomerId = template.CustomerId,
+                RequestReference = reference,
+                Items = [new CreateOrderItemDto
+                {
+                    PieceType = item.PieceType, ProductTypeId = item.ProductTypeId,
+                    FabricCode = item.FabricCode, Quantity = item.Quantity,
+                    MeasurementSnapshot = item.MeasurementSnapshot
+                }]
+            }, CancellationToken.None);
+            Assert.NotNull(created);
+            Assert.Equal(1, await CountAsync(GetConnectionString(), "SELECT COUNT(*) FROM dbo.FabricConsumptionSources source JOIN dbo.OrderItems item ON item.OrderItemID=source.OrderItemId WHERE item.OrderID=@id", created.OrderId));
+        });
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder(bool missingCode)
+    {
+        var reference = $"FAB-ORDER-IDENTITY-{Guid.NewGuid():N}";
+        await WithFabricOrderAsync(reference, async (repository, template) =>
+        {
+            var item = Assert.Single(template.Items);
+            await Assert.ThrowsAsync<ArgumentException>(() => repository.CreateAsync(new CreateOrderDto
+            {
+                CustomerId = template.CustomerId,
+                RequestReference = reference,
+                Items = [new CreateOrderItemDto
+                {
+                    PieceType = item.PieceType, ProductTypeId = item.ProductTypeId,
+                    FabricCode = missingCode ? null : item.FabricCode, Quantity = item.Quantity,
+                    MeasurementSnapshot = item.MeasurementSnapshot,
+                    Fabric = new CreateOrderFabricDto { FabricCode = missingCode ? item.FabricCode : "DIFFERENT-CODE" }
+                }]
+            }, CancellationToken.None));
+            Assert.Equal(0, await CountAsync(GetConnectionString(), "SELECT COUNT(*) FROM dbo.Orders WHERE SaleReference=@name", reference));
+        });
+    }
+
+    internal static async Task WithFabricOrderAsync(string reference, Func<OrderRepository, CreateOrderDto, Task> action)
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        try
+        {
+            await ReceiveOrderFabricAsync(connectionString, seed);
+            var request = await CreateFabricOrderRequestAsync(connectionString, seed, reference, 36m, 1);
+            var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+            var repository = new OrderRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options), new MeasurementConsumptionRules());
+            await action(repository, request);
+        }
+        finally
+        {
+            await CleanupFabricOrderAsync(connectionString, reference);
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    private static async Task<InventoryFoundationPostingResultDto> ReceiveOrderFabricAsync(string connectionString, TestSeed seed) =>
+        await CreateRepository(connectionString).ReceiveFabricInventoryAsync(new ReceiveFabricInventoryDto
+        {
+            GoodsReceiptItemId = seed.FabricReceiptItemId,
+            ItemCode = seed.FabricItemCode,
+            FabricTypeCode = "ORDER-CODE-TEST",
+            RollCode = seed.FabricRollCode,
+            UnitId = 1,
+            OpposingLedgerAccountCode = "1000",
+            SourceOperationId = seed.FabricReceiptOperationId
+        }, CancellationToken.None) ?? throw new InvalidOperationException("The test fabric receipt was not created.");
+
+    private static async Task<CreateOrderDto> CreateFabricOrderRequestAsync(string connectionString, TestSeed seed, string reference, decimal inchesPerPiece, int quantity)
+    {
+        var productTypeId = await ReadIntAsync(connectionString, "SELECT TOP(1) ProductTypeId FROM dbo.PricingProductTypes WHERE IsActive=1 ORDER BY ProductTypeId", 0);
+        return new CreateOrderDto
+        {
+            CustomerId = seed.CustomerId,
+            RequestReference = reference,
+            TotalAmount = 1000m,
+            Items = [new CreateOrderItemDto
+            {
+                PieceType = "Fabric order test",
+                ProductTypeId = productTypeId,
+                FabricCode = seed.FabricItemCode,
+                Quantity = quantity,
+                Consumption = 9999m,
+                ConsumptionUnit = "Inch",
+                MeasurementSnapshot = System.Text.Json.JsonSerializer.Serialize(new { Length = inchesPerPiece }),
+                Fabric = new CreateOrderFabricDto { FabricCode = seed.FabricItemCode, Quantity = 9999m, Unit = "Inch", UnitCost = 9999m }
+            }]
+        };
+    }
+
+    private static async Task CleanupFabricOrderAsync(string connectionString, string reference)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var transaction = connection.BeginTransaction();
+        await using var command = new SqlCommand(@"
+            DECLARE @orders TABLE(OrderId int PRIMARY KEY);
+            INSERT @orders SELECT OrderID FROM dbo.Orders WHERE SaleReference=@reference;
+            DECLARE @sources TABLE(SourceId bigint PRIMARY KEY,EventId bigint,TransactionId int);
+            INSERT @sources SELECT source.FabricConsumptionSourceId,source.AccountingEventId,source.InventoryTransactionId
+                FROM dbo.FabricConsumptionSources source JOIN dbo.OrderItems item ON item.OrderItemID=source.OrderItemId
+                WHERE item.OrderID IN(SELECT OrderId FROM @orders);
+            DECLARE @events TABLE(EventId bigint PRIMARY KEY);
+            INSERT @events SELECT EventId FROM @sources WHERE EventId IS NOT NULL
+                UNION SELECT AccountingEventId FROM dbo.AccountingEvents
+                WHERE OrderId IN(SELECT OrderId FROM @orders)
+                   OR PaymentId IN(SELECT PaymentID FROM dbo.Payments WHERE OrderID IN(SELECT OrderId FROM @orders));
+            UPDATE dbo.FabricConsumptionSources SET AccountingEventId=NULL,InventoryTransactionId=NULL WHERE FabricConsumptionSourceId IN(SELECT SourceId FROM @sources);
+            UPDATE dbo.InventoryTransactions SET AccountingEventId=NULL WHERE TransactionID IN(SELECT TransactionId FROM @sources);
+            DELETE FROM dbo.CashMovements WHERE AccountingEventId IN(SELECT EventId FROM @events);
+            DELETE FROM dbo.JournalEntryLines WHERE JournalEntryId IN(SELECT JournalEntryId FROM dbo.JournalEntries WHERE AccountingEventId IN(SELECT EventId FROM @events));
+            DELETE FROM dbo.JournalEntries WHERE AccountingEventId IN(SELECT EventId FROM @events);
+            DELETE FROM dbo.FinancialTransactions WHERE AccountingEventId IN(SELECT EventId FROM @events);
+            DELETE FROM dbo.AccountingEvents WHERE AccountingEventId IN(SELECT EventId FROM @events);
+            DELETE ledger FROM dbo.CustomerLedgerEntries ledger JOIN dbo.Orders orders ON ledger.ReferenceNumber=orders.OrderNumber+N':Advance' WHERE orders.OrderID IN(SELECT OrderId FROM @orders);
+            DELETE FROM dbo.Payments WHERE OrderID IN(SELECT OrderId FROM @orders);
+            DELETE FROM dbo.InventoryTransactions WHERE TransactionID IN(SELECT TransactionId FROM @sources);
+            DELETE FROM dbo.FabricConsumptionSources WHERE FabricConsumptionSourceId IN(SELECT SourceId FROM @sources);
+            DELETE FROM dbo.OrderItemFabrics WHERE OrderItemID IN(SELECT OrderItemID FROM dbo.OrderItems WHERE OrderID IN(SELECT OrderId FROM @orders));
+            DELETE FROM dbo.Pieces WHERE OrderItemID IN(SELECT OrderItemID FROM dbo.OrderItems WHERE OrderID IN(SELECT OrderId FROM @orders));
+            DELETE FROM dbo.OrderItems WHERE OrderID IN(SELECT OrderId FROM @orders);
+            DELETE FROM dbo.Orders WHERE OrderID IN(SELECT OrderId FROM @orders);", connection, transaction);
+        command.Parameters.AddWithValue("@reference", reference);
+        await command.ExecuteNonQueryAsync();
+        await transaction.CommitAsync();
+    }
+
+    private sealed class MeasurementConsumptionRules : IConsumptionRulesRepository
+    {
+        public Task<EvaluateConsumptionResponseDto?> EvaluateAsync(EvaluateConsumptionRequestDto request, CancellationToken cancellationToken) =>
+            Task.FromResult<EvaluateConsumptionResponseDto?>(new(request.Measurements["Length"], "Inch", 1, null, ["Length"]));
+        public Task<ConsumptionRulesDashboardDto> GetDashboardAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ConsumptionRulesIntegrityReportDto> GetIntegrityReportAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ConsumptionRuleDto>> SaveProductRulesBatchAsync(SaveProductRulesBatchDto request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ConsumptionRuleDto?> CreateAsync(CreateConsumptionRuleDto request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ConsumptionRuleDto?> UpdateAsync(int consumptionRuleId, UpdateConsumptionRuleDto request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<MeasurementTypeWriteResultDto?> CreateMeasurementTypeAsync(CreateMeasurementTypeDto request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<MeasurementTypeWriteResultDto?> UpdateMeasurementTypeAsync(int productTypeId, UpdateMeasurementTypeDto request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<bool> DeleteMeasurementTypeAsync(int productTypeId, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
     private static InventoryRepository CreateRepository(string connectionString)
     {
         var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
@@ -293,6 +874,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests
             ?? "Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True";
         var builder = new SqlConnectionStringBuilder(connectionString);
         if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_FOUNDATION_GAP_TEST", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_CUSTOMERS_ONLY_VALIDATION", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Fabric foundation tests are restricted to the approved test databases.");

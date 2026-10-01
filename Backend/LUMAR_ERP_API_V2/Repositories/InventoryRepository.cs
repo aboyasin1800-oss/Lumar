@@ -1208,6 +1208,11 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
     private static Guid DeriveOperationId(Guid root, int itemId)
     { var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{root:N}:{itemId}")); return new Guid(bytes[..16]); }
 
+    internal static Guid CreateFabricConsumptionOperationId(int orderItemId, bool isReadyMade) =>
+        DeriveOperationId(isReadyMade
+            ? new Guid("315fb2c9-a94e-4056-a667-b5b746966f3e")
+            : new Guid("6081b54c-d20c-40b2-97e0-860a9c2b1986"), orderItemId);
+
     private async Task<InventoryFoundationPostingResultDto?> ReceiveFoundationInventoryAsync(
         int goodsReceiptItemId,
         byte inventoryClassId,
@@ -1371,6 +1376,142 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         }
     }
 
+    public static async Task<InventoryFoundationPostingResultDto> ConsumeFabricCodeInventoryAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        ConsumeFabricCodeInventoryDto request,
+        CancellationToken ct)
+    {
+        if (transaction.Connection != connection)
+            throw new ArgumentException("يجب صرف القماش داخل معاملة حفظ المصدر نفسه.");
+        if (request.SourceOperationId == Guid.Empty || string.IsNullOrWhiteSpace(request.FabricCode) || request.QuantityInches <= 0m)
+            throw new ArgumentException("كود القماش والكمية ومعرف عملية الصرف مطلوبة.");
+
+        var tailoringSource = request.OrderItemId is > 0
+            && request.ReadyMadeProductionOrderItemId is null
+            && request.ReadyMadeProductionOrderPieceInstanceId is null;
+        var readyMadeSource = request.ReadyMadeProductionOrderItemId is > 0
+            && request.OrderItemId is null && request.PieceId is null;
+        if (!tailoringSource && !readyMadeSource)
+            throw new ArgumentException("يجب ربط صرف القماش ببند تفصيل أو بند إنتاج جاهز واحد.");
+
+        var fabricCode = request.FabricCode.Trim().ToUpperInvariant();
+        const string existingSql = @"
+            SELECT s.FabricConsumptionSourceId,s.InventoryItemId,i.ItemCode,s.ConsumedQuantity,
+                   s.OperationalAmount,s.PostingAmount,s.AccountingEventId,s.InventoryTransactionId,
+                   s.UnitId,s.OrderItemId,s.PieceId,s.ReadyMadeProductionOrderItemId,
+                   s.ReadyMadeProductionOrderPieceInstanceId,s.FabricRollId
+            FROM dbo.FabricConsumptionSources s WITH (UPDLOCK,HOLDLOCK)
+            INNER JOIN dbo.InventoryItems i ON i.InventoryItemID=s.InventoryItemId
+            WHERE s.SourceOperationId=@operationId";
+        await using (var existingCommand = new SqlCommand(existingSql, connection, transaction))
+        {
+            existingCommand.Parameters.AddWithValue("@operationId", request.SourceOperationId);
+            await using var existingReader = await existingCommand.ExecuteReaderAsync(ct);
+            if (await existingReader.ReadAsync(ct))
+            {
+                var expectedQuantity = Math.Round(request.QuantityInches / (existingReader.GetInt16(8) == 1 ? 36m : 1m), 6, MidpointRounding.AwayFromZero);
+                if (!string.Equals(existingReader.GetString(2), fabricCode, StringComparison.OrdinalIgnoreCase)
+                    || existingReader.GetDecimal(3) != expectedQuantity
+                    || existingReader.NullableInt32("OrderItemId") != request.OrderItemId
+                    || existingReader.NullableInt32("PieceId") != request.PieceId
+                    || existingReader.NullableInt32("ReadyMadeProductionOrderItemId") != request.ReadyMadeProductionOrderItemId
+                    || existingReader.NullableInt32("ReadyMadeProductionOrderPieceInstanceId") != request.ReadyMadeProductionOrderPieceInstanceId
+                    || !existingReader.IsDBNull(13))
+                    throw new InvalidOperationException("معرف العملية مستخدم لصرف قماش ببيانات مختلفة.");
+                if (existingReader.IsDBNull(6) || existingReader.IsDBNull(7))
+                    throw new InvalidOperationException("روابط حركة صرف القماش السابقة غير مكتملة.");
+                return new InventoryFoundationPostingResultDto(
+                    existingReader.GetInt64(0), existingReader.GetInt32(1), existingReader.GetString(2),
+                    existingReader.GetDecimal(3), existingReader.GetDecimal(4), existingReader.GetDecimal(5),
+                    existingReader.GetInt64(6), existingReader.GetInt32(7), true);
+            }
+        }
+
+        var sourceSql = tailoringSource
+            ? @"SELECT 1 FROM dbo.OrderItems WITH (UPDLOCK,HOLDLOCK)
+                WHERE OrderItemID=@itemId AND FabricCode=@fabricCode
+                  AND (@pieceId IS NULL OR EXISTS
+                      (SELECT 1 FROM dbo.Pieces WHERE PieceID=@pieceId AND OrderItemID=@itemId))"
+            : @"SELECT 1 FROM dbo.ReadyMadeProductionOrderItems WITH (UPDLOCK,HOLDLOCK)
+                WHERE ReadyMadeProductionOrderItemId=@itemId AND FabricCode=@fabricCode
+                  AND (@pieceId IS NULL OR EXISTS
+                      (SELECT 1 FROM dbo.ReadyMadeProductionOrderPieceInstances
+                       WHERE ReadyMadeProductionOrderPieceInstanceId=@pieceId AND ReadyMadeProductionOrderItemId=@itemId))";
+        await using (var sourceCommand = new SqlCommand(sourceSql, connection, transaction))
+        {
+            sourceCommand.Parameters.AddWithValue("@itemId", request.OrderItemId ?? request.ReadyMadeProductionOrderItemId!.Value);
+            sourceCommand.Parameters.Add("@pieceId", System.Data.SqlDbType.Int).Value = (object?)(request.PieceId ?? request.ReadyMadeProductionOrderPieceInstanceId) ?? DBNull.Value;
+            sourceCommand.Parameters.AddWithValue("@fabricCode", fabricCode);
+            if (await sourceCommand.ExecuteScalarAsync(ct) is null)
+                throw new InvalidOperationException("كود القماش أو القطعة لا يطابق بند الصرف الرسمي.");
+        }
+
+        const string stockSql = @"
+            SELECT i.InventoryItemID,f.UnitId,f.AvailableQuantity,f.OfficialUnitCost
+            FROM dbo.InventoryItems i WITH (UPDLOCK,HOLDLOCK)
+            INNER JOIN dbo.InventoryItemFoundation f WITH (UPDLOCK,HOLDLOCK)
+                ON f.InventoryItemId=i.InventoryItemID AND f.InventoryClassId=1
+            WHERE i.ItemCode=@fabricCode AND i.IsActive=1";
+        await using var stockCommand = new SqlCommand(stockSql, connection, transaction);
+        stockCommand.Parameters.AddWithValue("@fabricCode", fabricCode);
+        await using var stockReader = await stockCommand.ExecuteReaderAsync(ct);
+        if (!await stockReader.ReadAsync(ct))
+            throw new ArgumentException($"كود القماش {fabricCode} غير مرتبط بمخزون قماش رسمي فعال.");
+        var inventoryItemId = stockReader.GetInt32(0);
+        var unitId = stockReader.GetInt16(1);
+        var availableQuantity = stockReader.GetDecimal(2);
+        var unitCost = stockReader.GetDecimal(3);
+        await stockReader.DisposeAsync();
+        if (unitId is not (1 or 2))
+            throw new InvalidOperationException("وحدة مخزون القماش ليست ياردة أو بوصة معتمدة.");
+        var unitFactor = unitId == 1 ? 36m : 1m;
+        if (request.QuantityInches > availableQuantity * unitFactor)
+            throw new ArgumentException($"الكمية المتاحة للقماش {fabricCode} غير كافية. المتاح: {availableQuantity * unitFactor:0.######} بوصة، المطلوب: {request.QuantityInches:0.######} بوصة.");
+        var quantity = Math.Round(request.QuantityInches / unitFactor, 6, MidpointRounding.AwayFromZero);
+        var operationalAmount = Math.Round(quantity * unitCost, 6, MidpointRounding.AwayFromZero);
+        var postingAmount = Math.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+        if (quantity <= 0m || postingAmount <= 0m)
+            throw new InvalidOperationException("كمية أو قيمة صرف القماش أقل من الدقة المحاسبية المعتمدة.");
+
+        var now = DateTime.UtcNow;
+        const string insertSql = @"
+            INSERT dbo.FabricConsumptionSources
+                (SourceOperationId,InventoryItemId,OrderItemId,PieceId,
+                 ReadyMadeProductionOrderItemId,ReadyMadeProductionOrderPieceInstanceId,
+                 ConsumedQuantity,UnitId,OfficialUnitCost,OperationalAmount,PostingAmount,ConfirmedByUserId,ConfirmedAt)
+            OUTPUT INSERTED.FabricConsumptionSourceId
+            VALUES (@operationId,@inventoryItemId,@orderItemId,@pieceId,@readyItemId,@readyPieceId,
+                    @quantity,@unitId,@unitCost,@operationalAmount,@postingAmount,@userId,@now)";
+        await using var insertCommand = new SqlCommand(insertSql, connection, transaction);
+        insertCommand.Parameters.AddWithValue("@operationId", request.SourceOperationId);
+        insertCommand.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
+        AddNullable(insertCommand, "@orderItemId", request.OrderItemId);
+        AddNullable(insertCommand, "@pieceId", request.PieceId);
+        AddNullable(insertCommand, "@readyItemId", request.ReadyMadeProductionOrderItemId);
+        AddNullable(insertCommand, "@readyPieceId", request.ReadyMadeProductionOrderPieceInstanceId);
+        AddDecimal(insertCommand, "@quantity", quantity);
+        insertCommand.Parameters.AddWithValue("@unitId", unitId);
+        AddDecimal(insertCommand, "@unitCost", unitCost);
+        AddDecimal(insertCommand, "@operationalAmount", operationalAmount);
+        AddDecimal(insertCommand, "@postingAmount", postingAmount, 2);
+        AddNullable(insertCommand, "@userId", request.ConfirmedByUserId);
+        insertCommand.Parameters.AddWithValue("@now", now);
+        var sourceId = Convert.ToInt64(await insertCommand.ExecuteScalarAsync(ct));
+
+        await UpdateFabricInventoryAsync(connection, transaction, inventoryItemId, null, quantity, operationalAmount, now, ct);
+        var reference = $"FabricConsumption:{sourceId}";
+        var transactionId = await InsertFoundationInventoryTransactionAsync(
+            connection, transaction, inventoryItemId, "FabricInventoryConsumed", quantity,
+            reference, -operationalAmount, unitCost, request.SourceOperationId, now, ct);
+        var accountingEvent = await AccountingEventPostingGateway.PostFabricConsumptionAsync(
+            connection, transaction, sourceId, postingAmount, reference, $"صرف القماش {fabricCode}", ct);
+        await LinkFabricConsumptionArtifactsAsync(connection, transaction, sourceId, transactionId, accountingEvent.AccountingEventId, ct);
+        return new InventoryFoundationPostingResultDto(
+            sourceId, inventoryItemId, fabricCode, quantity, operationalAmount, postingAmount,
+            accountingEvent.AccountingEventId, transactionId, false);
+    }
+
     public async Task<InventoryFoundationPostingResultDto?> ConsumeFabricInventoryAsync(ConsumeFabricInventoryDto request, CancellationToken ct)
     {
         if (request.SourceOperationId == Guid.Empty)
@@ -1411,10 +1552,11 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                 now,
                 ct);
 
-            await UpdateFabricRollAndFoundationAsync(
+            await UpdateFabricInventoryAsync(
                 connection,
                 transaction,
-                roll,
+                roll.InventoryItemId,
+                roll.FabricRollId,
                 request.Quantity,
                 operationalAmount,
                 now,
@@ -1833,13 +1975,16 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         return Convert.ToInt64(await command.ExecuteScalarAsync(ct));
     }
 
-    private static async Task UpdateFabricRollAndFoundationAsync(SqlConnection connection, SqlTransaction transaction, FabricRollState roll, decimal quantity, decimal operationalAmount, DateTime now, CancellationToken ct)
+    private static async Task UpdateFabricInventoryAsync(SqlConnection connection, SqlTransaction transaction, int inventoryItemId, long? fabricRollId, decimal quantity, decimal operationalAmount, DateTime now, CancellationToken ct)
     {
         const string sql = @"
-            UPDATE dbo.FabricRolls
-            SET AvailableQuantity=AvailableQuantity-@quantity, ConsumedQuantity=ConsumedQuantity+@quantity, UpdatedAt=@now
-            WHERE FabricRollId=@rollId AND AvailableQuantity>=@quantity;
-            IF @@ROWCOUNT <> 1 THROW 51440, N'Fabric roll availability changed before consumption.', 1;
+            IF @rollId IS NOT NULL
+            BEGIN
+                UPDATE dbo.FabricRolls
+                SET AvailableQuantity=AvailableQuantity-@quantity, ConsumedQuantity=ConsumedQuantity+@quantity, UpdatedAt=@now
+                WHERE FabricRollId=@rollId AND AvailableQuantity>=@quantity;
+                IF @@ROWCOUNT <> 1 THROW 51440, N'Fabric roll availability changed before consumption.', 1;
+            END;
             UPDATE dbo.InventoryItems
             SET CurrentQuantity=CurrentQuantity-@quantity, AvailableQuantity=AvailableQuantity-@quantity, UpdatedAt=@now
             WHERE InventoryItemID=@itemId AND AvailableQuantity>=@quantity;
@@ -1852,8 +1997,8 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         AddDecimal(command, "@quantity", quantity);
         AddDecimal(command, "@operationalAmount", operationalAmount);
         command.Parameters.AddWithValue("@now", now);
-        command.Parameters.AddWithValue("@rollId", roll.FabricRollId);
-        command.Parameters.AddWithValue("@itemId", roll.InventoryItemId);
+        command.Parameters.Add("@rollId", System.Data.SqlDbType.BigInt).Value = (object?)fabricRollId ?? DBNull.Value;
+        command.Parameters.AddWithValue("@itemId", inventoryItemId);
         await command.ExecuteNonQueryAsync(ct);
     }
 

@@ -2,6 +2,7 @@ using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Orders;
 using LUMAR_ERP_API_V2.Repositories;
+using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -15,17 +16,11 @@ public sealed class FinancialPostingCallerIntegrationTests
     {
         var suffix = Guid.NewGuid().ToString("N");
         var requestReference = $"TRKA-ADV-{suffix}";
-        var repository = CreateOrderRepository();
-        var customerId = await ReadActiveCustomerIdAsync();
-        var productTypeId = await ReadActiveProductTypeIdAsync();
-        int? orderId = null;
-        string? orderNumber = null;
-
-        try
+        await FabricConsumablesFoundationIntegrationTests.WithFabricOrderAsync(requestReference, async (repository, template) =>
         {
             var request = new CreateOrderDto
             {
-                CustomerId = customerId,
+                CustomerId = template.CustomerId,
                 TotalAmount = 100m,
                 AdvancePayment = 25m,
                 UrgencyStatus = "Normal",
@@ -33,24 +28,18 @@ public sealed class FinancialPostingCallerIntegrationTests
                 PaymentMethod = "Cash",
                 CashAccountId = 1,
                 RequestReference = requestReference,
-                Items = [new CreateOrderItemDto { PieceType = "قطعة اختبار", Quantity = 1, ProductTypeId = productTypeId }]
+                Items = template.Items
             };
 
             var created = await repository.CreateAsync(request, CancellationToken.None);
             Assert.NotNull(created);
-            orderId = created!.OrderId;
-            orderNumber = created.OrderNumber;
             await AssertPostingAsync($"{created.OrderNumber}:Advance", "CustomerAdvance", 25m, "1000", "1160");
 
             var replayed = await repository.CreateAsync(request, CancellationToken.None);
             Assert.NotNull(replayed);
             Assert.Equal(created.OrderId, replayed!.OrderId);
             Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber = @reference AND TransactionType = N'CustomerAdvance'", $"{created.OrderNumber}:Advance"));
-        }
-        finally
-        {
-            if (orderId is not null && orderNumber is not null) await DeleteOrderGraphAsync(orderId.Value, orderNumber);
-        }
+        });
     }
 
     [Fact]
@@ -58,15 +47,11 @@ public sealed class FinancialPostingCallerIntegrationTests
     {
         var requestReference = $"TRKA-ADV-ROLLBACK-{Guid.NewGuid():N}";
         var oversizedPaymentMethod = new string('X', 51);
-        var repository = CreateOrderRepository();
-        var customerId = await ReadActiveCustomerIdAsync();
-        var productTypeId = await ReadActiveProductTypeIdAsync();
-
-        try
+        await FabricConsumablesFoundationIntegrationTests.WithFabricOrderAsync(requestReference, async (repository, template) =>
         {
             var request = new CreateOrderDto
             {
-                CustomerId = customerId,
+            CustomerId = template.CustomerId,
                 TotalAmount = 100m,
                 AdvancePayment = 25m,
                 UrgencyStatus = "Normal",
@@ -74,17 +59,13 @@ public sealed class FinancialPostingCallerIntegrationTests
                 PaymentMethod = oversizedPaymentMethod,
                 CashAccountId = 1,
                 RequestReference = requestReference,
-                Items = [new CreateOrderItemDto { PieceType = "قطعة اختبار", Quantity = 1, ProductTypeId = productTypeId }]
+                Items = template.Items
             };
 
             await Assert.ThrowsAsync<SqlException>(() => repository.CreateAsync(request, CancellationToken.None));
             Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.Orders WHERE SaleReference = @reference", requestReference));
             Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM dbo.Payments WHERE PaymentMethod = @reference", oversizedPaymentMethod));
-        }
-        finally
-        {
-            await DeleteOrdersBySaleReferenceAsync(requestReference);
-        }
+        });
     }
 
     [Fact]
@@ -140,6 +121,7 @@ public sealed class FinancialPostingCallerIntegrationTests
             var transferred = await repository.ExecuteDecisionAsync(success.PieceId, CancellationToken.None);
             Assert.NotNull(transferred);
             await AssertPostingAsync(success.TrackingCode, "WipToFinishedGoods", 50m, "1110", "1130");
+            Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.AccountingEvents ae INNER JOIN dbo.FinancialTransactions ft ON ft.AccountingEventId=ae.AccountingEventId WHERE ft.ReferenceNumber=@reference AND ae.Status=N'Posted'", success.TrackingCode));
             var replayed = await repository.ExecuteDecisionAsync(success.PieceId, CancellationToken.None);
             Assert.NotNull(replayed);
             Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber = @reference", success.TrackingCode));
@@ -147,6 +129,67 @@ public sealed class FinancialPostingCallerIntegrationTests
         finally
         {
             await DeleteWipGraphAsync(success);
+        }
+    }
+
+    [Theory]
+    [InlineData("Legacy")]
+    [InlineData("Posted")]
+    [InlineData("Reversed")]
+    public async Task WipToFinishedGoods_ReplayPreservesStoredEventStatus(string existingStatus)
+    {
+        var repository = CreateCancelledPieceRepository();
+        var fixture = await InsertWipFixtureAsync();
+
+        try
+        {
+            await repository.SaveDecisionAsync(fixture.PieceId, "ContinueToReadyInventory", "اختبار", "اختبار", CancellationToken.None);
+            Assert.NotNull(await repository.ExecuteDecisionAsync(fixture.PieceId, CancellationToken.None));
+
+            await using var connection = new SqlConnection(GetConnectionString());
+            await connection.OpenAsync();
+            await using var transaction = connection.BeginTransaction();
+            try
+            {
+                await using var statusCommand = new SqlCommand(@"
+                    UPDATE dbo.AccountingEvents
+                    SET Status=@status
+                    OUTPUT INSERTED.AccountingEventId, INSERTED.ReadyMadeInventoryProductId
+                    WHERE AccountingEventType=5
+                      AND ReadyMadeInventoryProductId IN
+                          (SELECT ReadyMadeInventoryProductId FROM dbo.ReadyMadeInventoryProducts WHERE TrackingCode=@tracking);", connection, transaction);
+                statusCommand.Parameters.AddWithValue("@status", existingStatus);
+                statusCommand.Parameters.AddWithValue("@tracking", fixture.TrackingCode);
+                await using var reader = await statusCommand.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                var eventId = reader.GetInt64(0);
+                var productId = reader.GetInt32(1);
+                Assert.False(await reader.ReadAsync());
+                await reader.DisposeAsync();
+
+                var replayed = await AccountingEventPostingGateway.PostAsync(
+                    connection, transaction, AccountingEventType.WipToFinishedGoods,
+                    50m, null, null, null, productId, fixture.TrackingCode,
+                    "WIP posting replay", CancellationToken.None);
+
+                Assert.True(replayed.IsExisting);
+                Assert.Equal(eventId, replayed.AccountingEventId);
+                await using var verifyCommand = new SqlCommand(
+                    "SELECT Status FROM dbo.AccountingEvents WHERE AccountingEventId=@eventId", connection, transaction);
+                verifyCommand.Parameters.AddWithValue("@eventId", eventId);
+                Assert.Equal(existingStatus, Convert.ToString(await verifyCommand.ExecuteScalarAsync()));
+            }
+            finally
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+            }
+
+            Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.FinancialTransactions WHERE ReferenceNumber=@reference", fixture.TrackingCode));
+            Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.JournalEntries WHERE ReferenceNumber=@reference", fixture.TrackingCode));
+        }
+        finally
+        {
+            await DeleteWipGraphAsync(fixture);
         }
     }
 

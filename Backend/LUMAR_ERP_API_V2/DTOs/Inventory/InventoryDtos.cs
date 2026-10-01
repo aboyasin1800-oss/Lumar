@@ -200,6 +200,32 @@ public sealed class ConsumeFabricInventoryDto
     public Guid SourceOperationId { get; init; }
 }
 
+public sealed class ConsumeFabricCodeInventoryDto
+{
+    [Required, StringLength(100)]
+    public string FabricCode { get; init; } = string.Empty;
+
+    [Range(1, int.MaxValue)]
+    public int? OrderItemId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? PieceId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? ReadyMadeProductionOrderItemId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? ReadyMadeProductionOrderPieceInstanceId { get; init; }
+
+    [Range(typeof(decimal), "0.000001", "36000000000")]
+    public decimal QuantityInches { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? ConfirmedByUserId { get; init; }
+
+    public Guid SourceOperationId { get; init; }
+}
+
 public sealed class ConsumeConsumableInventoryDto
 {
     [Range(1, int.MaxValue)]

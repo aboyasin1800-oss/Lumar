@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Consumption;
+using LUMAR_ERP_API_V2.DTOs.Inventory;
 using LUMAR_ERP_API_V2.DTOs.Pricing;
 using LUMAR_ERP_API_V2.DTOs.Production;
 using LUMAR_ERP_API_V2.Services;
@@ -923,10 +924,109 @@ public sealed class ProductionRepository(
             return false;
         }
 
+        await EnsureTailoringCostPostingAsync(connection, transaction, orderId, ct);
+
         const string updateSql = "UPDATE dbo.Orders SET OrderStatus = N'ReadyForDelivery' WHERE OrderID = @orderId AND OrderStatus <> N'Cancelled'";
         await using var updateCommand = new SqlCommand(updateSql, connection, transaction);
         updateCommand.Parameters.AddWithValue("@orderId", orderId);
         return await updateCommand.ExecuteNonQueryAsync(ct) > 0;
+    }
+
+    private static async Task EnsureTailoringCostPostingAsync(SqlConnection connection, SqlTransaction transaction, int orderId, CancellationToken ct)
+    {
+        const string sourceSql = @"
+            SELECT COALESCE(SUM(s.PostingAmount), 0), COALESCE(SUM(s.OperationalAmount), 0), COUNT_BIG(*)
+            FROM dbo.FabricConsumptionSources s WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.OrderItems oi WITH (UPDLOCK, HOLDLOCK) ON oi.OrderItemID=s.OrderItemId
+            WHERE oi.OrderID=@orderId AND s.OrderItemId IS NOT NULL AND s.AccountingEventId IS NOT NULL;";
+        await using var sourceCommand = new SqlCommand(sourceSql, connection, transaction);
+        sourceCommand.Parameters.AddWithValue("@orderId", orderId);
+        await using var sourceReader = await sourceCommand.ExecuteReaderAsync(ct);
+        if (!await sourceReader.ReadAsync(ct))
+            throw new InvalidOperationException("تعذر قراءة تكلفة قماش الطلب قبل الجاهزية.");
+        var postingAmount = sourceReader.GetDecimal(0);
+        var sourceCount = sourceReader.GetInt64(2);
+        await sourceReader.DisposeAsync();
+        if (sourceCount <= 0 || postingAmount <= 0m)
+            throw new InvalidOperationException("لا توجد تكلفة قماش مصروفة ومثبتة لهذا الطلب.");
+
+        var sourceOperationId = CreateTailoringCostOperationId(orderId);
+        const string existingSql = @"
+            SELECT TailoringCostPostingId, PostingAmount, AccountingEventId
+            FROM dbo.TailoringCostPostings WITH (UPDLOCK, HOLDLOCK)
+            WHERE OrderId=@orderId OR SourceOperationId=@sourceOperationId;";
+        await using var existingCommand = new SqlCommand(existingSql, connection, transaction);
+        existingCommand.Parameters.AddWithValue("@orderId", orderId);
+        existingCommand.Parameters.AddWithValue("@sourceOperationId", sourceOperationId);
+        await using var existingReader = await existingCommand.ExecuteReaderAsync(ct);
+        if (await existingReader.ReadAsync(ct))
+        {
+            if (existingReader.GetDecimal(1) != postingAmount || existingReader.IsDBNull(2))
+                throw new InvalidOperationException("ترحيل تكلفة التفصيل السابق غير مكتمل أو مختلف القيمة.");
+            return;
+        }
+        await existingReader.DisposeAsync();
+
+        const string insertSql = @"
+            INSERT dbo.TailoringCostPostings
+                (OrderId,FabricOperationalAmount,PostingAmount,SourceOperationId)
+            OUTPUT INSERTED.TailoringCostPostingId
+            VALUES (@orderId,@operationalAmount,@postingAmount,@sourceOperationId);";
+        await using var insertCommand = new SqlCommand(insertSql, connection, transaction);
+        insertCommand.Parameters.AddWithValue("@orderId", orderId);
+        AddDecimal(insertCommand, "@operationalAmount", postingAmount);
+        AddDecimal(insertCommand, "@postingAmount", postingAmount, 2);
+        insertCommand.Parameters.AddWithValue("@sourceOperationId", sourceOperationId);
+        var postingId = Convert.ToInt64(await insertCommand.ExecuteScalarAsync(ct));
+        var orderReference = $"Order:{orderId}:TailoringCost";
+        const string financialSql = @"
+            INSERT dbo.FinancialTransactions(ReferenceNumber,TransactionType,Amount,Description,CreatedAt)
+            VALUES(@reference,N'TailoringCost',@amount,@description,SYSUTCDATETIME());";
+        await using (var financialCommand = new SqlCommand(financialSql, connection, transaction))
+        {
+            financialCommand.Parameters.AddWithValue("@reference", orderReference);
+            AddDecimal(financialCommand, "@amount", postingAmount, 2);
+            financialCommand.Parameters.AddWithValue("@description", $"Tailoring cost of sales for order {orderId}");
+            await financialCommand.ExecuteNonQueryAsync(ct);
+        }
+
+        var posting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+            connection,
+            transaction,
+            orderReference,
+            "TailoringCost",
+            postingAmount,
+            $"Tailoring cost of sales for order {orderId}",
+            ct,
+            "TailoringCostPosting",
+            postingId,
+            sourceOperationId);
+        posting.ThrowIfFailure();
+
+        const string linkSql = @"
+            UPDATE p SET AccountingEventId=j.AccountingEventId
+            FROM dbo.TailoringCostPostings p
+            INNER JOIN dbo.JournalEntries j ON j.JournalEntryId=@journalEntryId
+            WHERE p.TailoringCostPostingId=@postingId;";
+        await using var linkCommand = new SqlCommand(linkSql, connection, transaction);
+        linkCommand.Parameters.AddWithValue("@journalEntryId", posting.JournalEntryId!.Value);
+        linkCommand.Parameters.AddWithValue("@postingId", postingId);
+        if (await linkCommand.ExecuteNonQueryAsync(ct) != 1)
+            throw new InvalidOperationException("تعذر ربط قيد تكلفة التفصيل بمصدره.");
+    }
+
+    private static Guid CreateTailoringCostOperationId(int orderId)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"tailoring-cost:{orderId}"));
+        return new Guid(bytes[..16]);
+    }
+
+    private static void AddDecimal(SqlCommand command, string name, decimal value, byte scale = 6)
+    {
+        var parameter = command.Parameters.Add(name, System.Data.SqlDbType.Decimal);
+        parameter.Precision = 18;
+        parameter.Scale = scale;
+        parameter.Value = value;
     }
 
     private static bool NeedsScanner(string? requestedStage)
@@ -1428,6 +1528,7 @@ public sealed class ProductionRepository(
             var createdStatus = orderReader.GetString(6);
             var createdAt = orderReader.GetDateTime(7);
             await orderReader.CloseAsync();
+            var createdItems = new List<(int ItemId, ReadyMadePricingLine Line)>();
 
             for (var itemIndex = 0; itemIndex < order.Items.Count; itemIndex++)
             {
@@ -1460,6 +1561,7 @@ public sealed class ProductionRepository(
                 AddNullable(itemCommand, "@measurementSnapshot", MergePricingSnapshot(item.MeasurementSnapshot, pricingLine.Pricing));
                 itemCommand.Parameters.AddWithValue("@createdAt", now);
                 var itemId = (int)(await itemCommand.ExecuteScalarAsync(ct))!;
+                createdItems.Add((itemId, pricingLine));
 
                 for (var pieceNumber = 1; pieceNumber <= item.Quantity; pieceNumber++)
                 {
@@ -1477,15 +1579,18 @@ public sealed class ProductionRepository(
                 }
             }
 
-            foreach (var requirement in fabricRequirements)
+            foreach (var createdItem in createdItems)
             {
-                await DeductReadyMadeFabricAsync(
+                await InventoryRepository.ConsumeFabricCodeInventoryAsync(
                     connection,
                     transaction,
-                    orderNumber,
-                    requirement,
-                    lockedFabricStocks[requirement.FabricCode],
-                    now,
+                    new ConsumeFabricCodeInventoryDto
+                    {
+                        FabricCode = createdItem.Line.FabricCode,
+                        ReadyMadeProductionOrderItemId = createdItem.ItemId,
+                        QuantityInches = createdItem.Line.RequiredInches,
+                        SourceOperationId = InventoryRepository.CreateFabricConsumptionOperationId(createdItem.ItemId, true)
+                    },
                     ct);
             }
 

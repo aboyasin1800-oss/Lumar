@@ -362,7 +362,9 @@ class _PricingCard extends StatelessWidget {
           Wrap(spacing: 20, runSpacing: 10, children: [
             _Value(label: 'الخياطة', value: item.sewingCost),
             _Value(label: 'الأدوات', value: item.consumablesCost),
-            _Value(label: 'الكي والتغليف', value: item.ironingAndPackagingCost),
+            _Value(
+              label: 'تكاليف الأدوات المستخدمة',
+              value: item.ironingAndPackagingCost),
             _Value(label: 'التشغيل الثابت', value: item.fixedOperatingCost),
             _Value(
                 label: 'الإجمالي التشغيلي',

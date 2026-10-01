@@ -36,7 +36,7 @@ public sealed class OrdersController(IOrderService service) : ControllerBase
         }
         catch (ArgumentException exception)
         {
-            return BadRequest(exception.Message);
+            return BadRequest(new { message = exception.Message });
         }
     }
 

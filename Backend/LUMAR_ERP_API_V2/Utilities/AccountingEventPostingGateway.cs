@@ -301,11 +301,32 @@ public static class AccountingEventPostingGateway
         if (!await reader.ReadAsync(cancellationToken))
             throw new InvalidOperationException("تعذر إنشاء الحدث المحاسبي الرسمي.");
 
-        return new AccountingEventPostingResult(
+        var result = new AccountingEventPostingResult(
             reader.GetInt64(0),
             reader.GetInt32(1),
             reader.GetInt32(2),
             reader.GetBoolean(3));
+        await reader.DisposeAsync();
+
+        if (!result.IsExisting && accountingEventType is (AccountingEventType.WipToFinishedGoods
+            or AccountingEventType.FabricInventoryConsumed
+            or AccountingEventType.ReadyMadeSaleCost
+            or AccountingEventType.ImportedReadyMadeSaleCost))
+        {
+            const string statusSql = @"
+                UPDATE dbo.AccountingEvents
+                SET Status = N'Posted'
+                WHERE AccountingEventId = @accountingEventId
+                  AND AccountingEventType = @accountingEventType
+                  AND Status IN (N'Legacy', N'Posted');";
+            await using var statusCommand = new SqlCommand(statusSql, connection, transaction);
+            statusCommand.Parameters.AddWithValue("@accountingEventId", result.AccountingEventId);
+            statusCommand.Parameters.Add("@accountingEventType", SqlDbType.TinyInt).Value = (byte)accountingEventType;
+            if (await statusCommand.ExecuteNonQueryAsync(cancellationToken) != 1)
+                throw new InvalidOperationException("تعذر تثبيت حالة الحدث المحاسبي القابل للعكس.");
+        }
+
+        return result;
     }
 
     private static void AddNullableInt(SqlCommand command, string name, int? value) =>

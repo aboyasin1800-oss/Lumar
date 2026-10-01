@@ -147,15 +147,28 @@ public sealed class ReadyMadeProductionPhaseOneIntegrationTests
             SELECT TOP (1) ReadyMadeInventoryProductId, ActualCost, SuggestedSellingPrice, Status
             FROM dbo.ReadyMadeInventoryProducts
             WHERE ReadyMadeProductionOrderPieceInstanceId = @pieceId;
-            SELECT COUNT(*) FROM dbo.InventoryTransactions
-            WHERE ReferenceNumber = @reference AND TransactionType = N'Consumption';", connection);
+                        SELECT COUNT(*)
+                        FROM dbo.FabricConsumptionSources source
+                        INNER JOIN dbo.ReadyMadeProductionOrderItems item ON item.ReadyMadeProductionOrderItemId=source.ReadyMadeProductionOrderItemId
+                        WHERE item.ReadyMadeProductionOrderId=@orderId
+                            AND source.AccountingEventId IS NOT NULL
+                            AND source.InventoryTransactionId IS NOT NULL;
+                        SELECT COUNT(*)
+                        FROM dbo.AccountingEvents event
+                        INNER JOIN dbo.FabricConsumptionSources source ON source.AccountingEventId=event.AccountingEventId
+                        WHERE event.AccountingEventType=8 AND event.SourceType IS NULL
+                            AND source.ReadyMadeProductionOrderItemId IN
+                                    (SELECT ReadyMadeProductionOrderItemId FROM dbo.ReadyMadeProductionOrderItems WHERE ReadyMadeProductionOrderId=@orderId);", connection);
         priceCommand.Parameters.AddWithValue("@pieceId", piece.ReadyMadeProductionOrderPieceInstanceId);
-        priceCommand.Parameters.AddWithValue("@reference", $"{created.ProductionOrderNumber}:Fabric:{fabricCode}");
+                priceCommand.Parameters.AddWithValue("@orderId", created.ReadyMadeProductionOrderId);
         await using var priceReader = await priceCommand.ExecuteReaderAsync();
         Assert.True(await priceReader.ReadAsync());
         Assert.True(priceReader.GetDecimal(1) > 0m);
         Assert.True(priceReader.GetDecimal(2) > 0m);
         Assert.Equal("AvailableForSale", priceReader.GetString(3));
+        Assert.True(await priceReader.NextResultAsync());
+        Assert.True(await priceReader.ReadAsync());
+        Assert.Equal(1, priceReader.GetInt32(0));
         Assert.True(await priceReader.NextResultAsync());
         Assert.True(await priceReader.ReadAsync());
         Assert.Equal(1, priceReader.GetInt32(0));
@@ -173,10 +186,19 @@ public sealed class ReadyMadeProductionPhaseOneIntegrationTests
             const string inventoryItemSql = @"
                 INSERT INTO dbo.InventoryItems
                     (ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, FabricCategory, FabricWidth, FabricWidthUnit, InchPrice, YardPrice)
+                OUTPUT INSERTED.InventoryItemID
                 VALUES (@code, N'قماش اختبار التسعير', N'Fabric', N'Yard', 100, 100, 0, 1, SYSUTCDATETIME(), N'Fabric', 36, N'Inch', 10, 360);";
             await using var inventoryItem = new SqlCommand(inventoryItemSql, connection, transaction);
             inventoryItem.Parameters.AddWithValue("@code", code);
-            await inventoryItem.ExecuteNonQueryAsync();
+            var inventoryItemId = Convert.ToInt32(await inventoryItem.ExecuteScalarAsync());
+
+            const string foundationSql = @"
+                INSERT dbo.InventoryItemFoundation
+                    (InventoryItemId,InventoryClassId,UnitId,CurrencyCode,OriginalQuantity,AvailableQuantity,ConsumedQuantity,OfficialUnitCost,OperationalValue,CreatedAt,UpdatedAt)
+                VALUES (@itemId,1,1,N'YER',100,100,0,360,36000,SYSUTCDATETIME(),SYSUTCDATETIME());";
+            await using var foundation = new SqlCommand(foundationSql, connection, transaction);
+            foundation.Parameters.AddWithValue("@itemId", inventoryItemId);
+            await foundation.ExecuteNonQueryAsync();
 
             const string fabricInventorySql = @"
                 INSERT INTO dbo.Fabrics_Inventory

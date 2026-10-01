@@ -54,7 +54,8 @@ public static class FinancialTransactionJournalPoster
         "RevenueRecognized",
         "RevenueReversal",
         "WipToFinishedGoods",
-        "ReadyMadeCost"
+        "ReadyMadeCost",
+        "TailoringCost"
     };
 
     public static async Task<FinancialPostingResult> TryCreateJournalEntryAsync(
@@ -205,6 +206,7 @@ public static class FinancialTransactionJournalPoster
             "RevenueReversal" => new[] { "4200", "1200" },
             "WipToFinishedGoods" => new[] { "1110", "1130" },
             "ReadyMadeCost" => new[] { "5200", "1110" },
+            "TailoringCost" => new[] { "5200", "1130" },
             _ => []
         };
 
@@ -333,6 +335,11 @@ public static class FinancialTransactionJournalPoster
             {
                 new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "5200", cancellationToken), amount, 0m, "Cost of sales for ready-made item"),
                 new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1110", cancellationToken), 0m, amount, "Reduce finished goods inventory")
+            },
+            "TailoringCost" => new[]
+            {
+                new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "5200", cancellationToken), amount, 0m, "Cost of sales for tailoring order"),
+                new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1130", cancellationToken), 0m, amount, "Release tailoring work in progress")
             },
             "PayrollPayment" => new[]
             {

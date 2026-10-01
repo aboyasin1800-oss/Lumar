@@ -293,7 +293,7 @@ class _CostWorkspaceState extends State<_CostWorkspace> {
                       _disabledField('أجور القص', 'لا يوجد مصدر رسمي حالياً'),
                       _disabledField('الكهرباء', 'لا يوجد مصدر مباشر للقطعة'),
                       _field('consumablesCost', 'التكاليف التشغيلية الصغيرة'),
-                      _field('ironingAndPackagingCost', 'الكي والتغليف'),
+                      _field('ironingAndPackagingCost', 'تكاليف الأدوات المستخدمة'),
                       _field(
                           'fixedOperatingCost', 'التشغيل الثابت الخاص بالقطعة'),
                     ]),
