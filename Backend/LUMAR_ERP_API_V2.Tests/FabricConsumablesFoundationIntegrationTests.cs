@@ -109,6 +109,11 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
             Assert.Equal(6m, fabricReceipt.Quantity);
             Assert.Equal(153m, fabricReceipt.OperationalAmount);
             Assert.Equal(153m, fabricReceipt.PostingAmount);
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceiptItemStorageAllocations WHERE GoodsReceiptItemId=@item AND StorageOperationId=@operation AND InventoryReceiptPostingId=@posting AND InventoryTransactionId=@transaction",
+                ("@item", seed.FabricReceiptItemId),
+                ("@operation", seed.FabricReceiptOperationId),
+                ("@posting", fabricReceipt.SourceRecordId),
+                ("@transaction", fabricReceipt.InventoryTransactionId)));
             Assert.Equal(7, await ReadEventTypeAsync(connectionString, fabricReceipt.AccountingEventId));
             Assert.Equal(0m, await ReadJournalDifferenceAsync(connectionString, fabricReceipt.AccountingEventId));
             var fabricRollId = await ReadLongAsync(connectionString, "SELECT FabricRollId FROM dbo.InventoryReceiptLines WHERE InventoryReceiptPostingId=@id", fabricReceipt.SourceRecordId);
@@ -153,6 +158,11 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                 },
                 CancellationToken.None);
             Assert.NotNull(consumableReceipt);
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceiptItemStorageAllocations WHERE GoodsReceiptItemId=@item AND StorageOperationId=@operation AND InventoryReceiptPostingId=@posting AND InventoryTransactionId=@transaction",
+                ("@item", seed.ConsumableReceiptItemId),
+                ("@operation", seed.ConsumableReceiptOperationId),
+                ("@posting", consumableReceipt.SourceRecordId),
+                ("@transaction", consumableReceipt.InventoryTransactionId)));
             Assert.Equal(9, await ReadEventTypeAsync(connectionString, consumableReceipt.AccountingEventId));
             Assert.Equal(36m, consumableReceipt.PostingAmount);
             Assert.Equal(0m, await ReadJournalDifferenceAsync(connectionString, consumableReceipt.AccountingEventId));
@@ -241,6 +251,148 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
         }
         finally
         {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
+    public async Task FoundationReceipt_ReplayedWithSameRollCode_DoesNotCreateDuplicateFabricRoll()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        try
+        {
+            var first = await repository.ReceiveFabricInventoryAsync(new ReceiveFabricInventoryDto
+            {
+                GoodsReceiptItemId = seed.FabricReceiptItemId,
+                ItemCode = seed.FabricItemCode,
+                FabricTypeCode = "REPLAY-ROLL",
+                RollCode = "REPLAY-ROLL-001",
+                UnitId = 1,
+                OpposingLedgerAccountCode = "1000",
+                SourceOperationId = seed.FabricReceiptOperationId
+            }, CancellationToken.None);
+            Assert.NotNull(first);
+            Assert.False(first!.IsExisting);
+
+            var replay = await repository.ReceiveFabricInventoryAsync(new ReceiveFabricInventoryDto
+            {
+                GoodsReceiptItemId = seed.FabricReceiptItemId,
+                ItemCode = seed.FabricItemCode,
+                FabricTypeCode = "REPLAY-ROLL",
+                RollCode = "REPLAY-ROLL-001",
+                UnitId = 1,
+                OpposingLedgerAccountCode = "1000",
+                SourceOperationId = seed.FabricReceiptOperationId
+            }, CancellationToken.None);
+
+            Assert.NotNull(replay);
+            Assert.True(replay!.IsExisting);
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryReceiptPostings WHERE GoodsReceiptItemId=@item", ("@item", seed.FabricReceiptItemId)));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricRolls WHERE RollCode=@roll", ("@roll", "REPLAY-ROLL-001")));
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
+    public async Task FoundationReceipt_PartialPostingWithoutStorage_IsCompletedSafely()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+        var partialOperationId = Guid.NewGuid();
+
+        try
+        {
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                await using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+                var inventoryItemIdValue = await InsertScalarAsync(connection, transaction, @"
+                    SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode=@code", ("@code", seed.FabricItemCode));
+                var inventoryItemId = inventoryItemIdValue;
+                if (inventoryItemId == 0)
+                {
+                    inventoryItemId = await InsertScalarAsync(connection, transaction, @"
+                        INSERT INTO dbo.InventoryItems (ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt)
+                        OUTPUT INSERTED.InventoryItemID
+                        VALUES (@code, @name, N'Foundation', N'Yard', 6, 6, 0, 1, SYSUTCDATETIME(), SYSUTCDATETIME());",
+                        ("@code", seed.FabricItemCode), ("@name", "Partial fabric repair seed"));
+                    await InsertScalarAsync(connection, transaction, @"
+                        INSERT INTO dbo.InventoryItemFoundation (InventoryItemId, InventoryClassId, UnitId, CurrencyCode, OriginalQuantity, AvailableQuantity, ConsumedQuantity, OperationalValue, OfficialUnitCost, CreatedAt, UpdatedAt)
+                        VALUES (@inventoryItemId, 1, 1, N'YER', 6, 6, 0, 153, 25.5, SYSUTCDATETIME(), SYSUTCDATETIME());",
+                        ("@inventoryItemId", inventoryItemId));
+                }
+
+                var postingId = await InsertScalarAsync(connection, transaction, @"
+                    INSERT INTO dbo.InventoryReceiptPostings (GoodsReceiptItemId, InventoryClassId, AccountingBasisCode, OpposingLedgerAccountId, SourceOperationId, OperationalAmount, PostingAmount)
+                    OUTPUT INSERTED.InventoryReceiptPostingId
+                    VALUES (@goodsReceiptItemId, 1, 1, (SELECT TOP(1) LedgerAccountId FROM dbo.LedgerAccounts WHERE AccountCode=N'1000' AND IsActive=1), @sourceOperationId, 153.000000, 153.00);",
+                    ("@goodsReceiptItemId", seed.FabricReceiptItemId), ("@sourceOperationId", partialOperationId));
+
+                var transactionId = await InsertScalarAsync(connection, transaction, @"
+                    INSERT INTO dbo.InventoryTransactions (InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt, TotalCostImpact, UnitCost, SourceOperationId, OperationalCostImpact)
+                    OUTPUT INSERTED.TransactionID
+                    VALUES (@inventoryItemId, N'FabricInventoryReceived', 6.000000, @reference, N'Partial repair seed', SYSUTCDATETIME(), 153.000000, 25.500000, @sourceOperationId, 153.000000);",
+                    ("@inventoryItemId", inventoryItemId), ("@reference", $"PartialRepairSeed:{seed.FabricReceiptItemId}"), ("@sourceOperationId", partialOperationId));
+
+                await InsertScalarAsync(connection, transaction, @"
+                    INSERT INTO dbo.InventoryReceiptLines (InventoryReceiptPostingId, InventoryItemId, ReceivedQuantity, OfficialUnitCost, UnitId, InventoryTransactionId)
+                    VALUES (@postingId, @inventoryItemId, 6.000000, 25.500000, 1, @transactionId);",
+                    ("@postingId", postingId), ("@inventoryItemId", inventoryItemId), ("@transactionId", transactionId));
+
+                var eventId = await InsertScalarAsync(connection, transaction, @"
+                    INSERT INTO dbo.AccountingEvents (AccountingEventType, PostingAmount, Status, InventoryReceiptPostingId, SourceType, SourceId, SourceOperationId, CreatedAt)
+                    OUTPUT INSERTED.AccountingEventId
+                    VALUES (7, 153.00, N'Posted', @postingId, N'Legacy', @sourceId, @sourceOperationId, SYSUTCDATETIME());",
+                    ("@postingId", postingId), ("@sourceId", seed.FabricReceiptItemId), ("@sourceOperationId", partialOperationId));
+
+                await InsertScalarAsync(connection, transaction, @"
+                    UPDATE dbo.InventoryReceiptPostings SET AccountingEventId=@eventId WHERE InventoryReceiptPostingId=@postingId;
+                    UPDATE dbo.InventoryReceiptLines SET AccountingEventId=@eventId WHERE InventoryReceiptPostingId=@postingId;
+                    UPDATE dbo.InventoryTransactions SET AccountingEventId=@eventId WHERE SourceOperationId=@sourceOperationId;",
+                    ("@eventId", eventId), ("@postingId", postingId), ("@sourceOperationId", partialOperationId));
+
+                await transaction.CommitAsync();
+            }
+
+            var result = await repository.ReceiveFabricInventoryAsync(new ReceiveFabricInventoryDto
+            {
+                GoodsReceiptItemId = seed.FabricReceiptItemId,
+                ItemCode = seed.FabricItemCode,
+                FabricTypeCode = "REPAIR-PARTIAL",
+                RollCode = $"ROLL-PARTIAL-{Guid.NewGuid():N}",
+                UnitId = 1,
+                OpposingLedgerAccountCode = "1000",
+                SourceOperationId = partialOperationId
+            }, CancellationToken.None);
+
+            Assert.NotNull(result);
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceiptItemStorageAllocations WHERE GoodsReceiptItemId=@item AND StorageOperationId=@operation AND InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE GoodsReceiptItemId=@item)",
+                ("@item", seed.FabricReceiptItemId), ("@operation", partialOperationId)));
+            Assert.Equal(6m, await ReadDecimalAsync(connectionString, "SELECT SUM(StoredQuantity) FROM dbo.GoodsReceiptItemStorageAllocations WHERE GoodsReceiptItemId=@id", seed.FabricReceiptItemId));
+        }
+        finally
+        {
+            await using var cleanupConnection = new SqlConnection(connectionString);
+            await cleanupConnection.OpenAsync();
+            await using var cleanupCommand = new SqlCommand(@"
+                DELETE FROM dbo.GoodsReceiptItemStorageAllocations WHERE StorageOperationId=@operation;
+                UPDATE dbo.InventoryReceiptLines SET AccountingEventId=NULL, InventoryTransactionId=NULL WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE SourceOperationId=@operation);
+                UPDATE dbo.InventoryTransactions SET AccountingEventId=NULL WHERE SourceOperationId=@operation;
+                UPDATE dbo.InventoryReceiptPostings SET AccountingEventId=NULL WHERE SourceOperationId=@operation;
+                DELETE FROM dbo.AccountingEvents WHERE SourceOperationId=@operation;
+                DELETE FROM dbo.InventoryTransactions WHERE SourceOperationId=@operation;
+                DELETE FROM dbo.InventoryReceiptLines WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE SourceOperationId=@operation);
+                DELETE FROM dbo.InventoryReceiptPostings WHERE SourceOperationId=@operation;",
+                cleanupConnection);
+            cleanupCommand.Parameters.AddWithValue("@operation", partialOperationId);
+            await cleanupCommand.ExecuteNonQueryAsync();
             await CleanupAsync(connectionString, seed);
         }
     }
@@ -987,21 +1139,26 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
             WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation))
                OR FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM dbo.FabricConsumptionSources WHERE SourceOperationId=@fabricConsumptionOperation)
                OR ProductionMaterialConsumptionId IN (SELECT ProductionMaterialConsumptionId FROM dbo.ProductionMaterialConsumptions WHERE SourceOperationId=@consumableConsumptionOperation);
-            UPDATE dbo.InventoryTransactions SET AccountingEventId=NULL WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation,@fabricConsumptionOperation,@consumableConsumptionOperation);
-            UPDATE dbo.InventoryReceiptPostings SET AccountingEventId=NULL WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation);
-            UPDATE dbo.InventoryReceiptLines SET AccountingEventId=NULL,InventoryTransactionId=NULL,FabricRollId=NULL WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation));
+            UPDATE dbo.InventoryTransactions SET AccountingEventId=NULL WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation,@fabricConsumptionOperation,@consumableConsumptionOperation)
+                OR TransactionID IN (SELECT InventoryTransactionId FROM dbo.InventoryReceiptLines WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE GoodsReceiptItemId IN (@fabricReceiptItemId,@consumableReceiptItemId)));
+            UPDATE dbo.InventoryReceiptPostings SET AccountingEventId=NULL WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation)
+                OR GoodsReceiptItemId IN (@fabricReceiptItemId,@consumableReceiptItemId);
+            UPDATE dbo.InventoryReceiptLines SET AccountingEventId=NULL,InventoryTransactionId=NULL,FabricRollId=NULL WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation))
+                OR InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE GoodsReceiptItemId IN (@fabricReceiptItemId,@consumableReceiptItemId));
             UPDATE dbo.FabricConsumptionSources SET AccountingEventId=NULL,InventoryTransactionId=NULL WHERE SourceOperationId=@fabricConsumptionOperation;
             UPDATE dbo.ProductionMaterialConsumptions SET AccountingEventId=NULL,InventoryTransactionId=NULL WHERE SourceOperationId=@consumableConsumptionOperation;
             DELETE FROM dbo.JournalEntryLines WHERE JournalEntryId IN (SELECT JournalEntryId FROM dbo.JournalEntries WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds));
             DELETE FROM dbo.JournalEntries WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
             DELETE FROM dbo.FinancialTransactions WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
             DELETE FROM dbo.AccountingEvents WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
-            DELETE FROM dbo.InventoryTransactions WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation,@fabricConsumptionOperation,@consumableConsumptionOperation);
+            DELETE FROM dbo.InventoryTransactions WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation,@fabricConsumptionOperation,@consumableConsumptionOperation)
+                OR TransactionID IN (SELECT InventoryTransactionId FROM dbo.InventoryReceiptLines WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE GoodsReceiptItemId IN (@fabricReceiptItemId,@consumableReceiptItemId)));
             DELETE FROM dbo.FabricConsumptionSources WHERE SourceOperationId=@fabricConsumptionOperation;
             DELETE FROM dbo.ProductionMaterialConsumptions WHERE SourceOperationId=@consumableConsumptionOperation;
-            DELETE FROM dbo.FabricRolls WHERE InventoryReceiptLineId IN (SELECT InventoryReceiptLineId FROM dbo.InventoryReceiptLines WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation)));
-            DELETE FROM dbo.InventoryReceiptLines WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation));
-            DELETE FROM dbo.InventoryReceiptPostings WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation);
+            DELETE FROM dbo.GoodsReceiptItemStorageAllocations WHERE GoodsReceiptItemId IN (@fabricReceiptItemId,@consumableReceiptItemId);
+            DELETE FROM dbo.FabricRolls WHERE InventoryReceiptLineId IN (SELECT InventoryReceiptLineId FROM dbo.InventoryReceiptLines WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation)) OR InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE GoodsReceiptItemId IN (@fabricReceiptItemId,@consumableReceiptItemId)));
+            DELETE FROM dbo.InventoryReceiptLines WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation)) OR InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM dbo.InventoryReceiptPostings WHERE GoodsReceiptItemId IN (@fabricReceiptItemId,@consumableReceiptItemId));
+            DELETE FROM dbo.InventoryReceiptPostings WHERE SourceOperationId IN (@fabricReceiptOperation,@consumableReceiptOperation) OR GoodsReceiptItemId IN (@fabricReceiptItemId,@consumableReceiptItemId);
             DELETE FROM dbo.InventoryItemFoundation WHERE InventoryItemId IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode IN (@fabricCode,@consumableCode));
             DELETE FROM dbo.InventoryItems WHERE ItemCode IN (@fabricCode,@consumableCode);
             DELETE FROM dbo.Pieces WHERE PieceID=@pieceId;
@@ -1092,6 +1249,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
             DELETE FROM dbo.FinancialTransactions WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
             DELETE FROM dbo.AccountingEvents WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
             DELETE FROM dbo.InventoryTransactions WHERE TransactionID IN (SELECT TransactionId FROM @transactionIds);
+            DELETE FROM dbo.GoodsReceiptItemStorageAllocations WHERE GoodsReceiptItemId IN (SELECT GoodsReceiptItemId FROM dbo.GoodsReceiptItems WHERE GoodsReceiptId=@receiptId);
             DELETE FROM dbo.FabricRolls WHERE InventoryReceiptLineId IN (SELECT InventoryReceiptLineId FROM @lineIds);
             DELETE FROM dbo.InventoryReceiptLines WHERE InventoryReceiptLineId IN (SELECT InventoryReceiptLineId FROM @lineIds);
             DELETE FROM dbo.InventoryReceiptPostings WHERE InventoryReceiptPostingId IN (SELECT InventoryReceiptPostingId FROM @postingIds);
@@ -1156,6 +1314,18 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
         if (sql.Contains("@id", StringComparison.Ordinal)) command.Parameters.AddWithValue("@id", value ?? DBNull.Value);
         if (sql.Contains("@name", StringComparison.Ordinal)) command.Parameters.AddWithValue("@name", value ?? DBNull.Value);
         if (sql.Contains("@operation", StringComparison.Ordinal)) command.Parameters.AddWithValue("@operation", value ?? DBNull.Value);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountAsync(string connectionString, string sql, params (string Name, object? Value)[] parameters)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(sql, connection);
+        foreach (var parameter in parameters)
+        {
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+        }
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 

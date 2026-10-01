@@ -45,11 +45,14 @@ class _SupplierPurchasingOperationsScreenState
   bool get _isAdministrator => _normalizedRole == 'system administrator';
   bool get _isFinancialManager =>
       _normalizedRole == 'authorized financial manager';
-  bool get _canFinancial => _testModeActive || _isAdministrator || _isFinancialManager;
+  bool get _canFinancial =>
+      _testModeActive || _isAdministrator || _isFinancialManager;
   bool get _canReceive => _testModeActive || _isAdministrator;
-  bool get _canReverse => _testModeActive || _isAdministrator || _isFinancialManager;
+  bool get _canReverse =>
+      _testModeActive || _isAdministrator || _isFinancialManager;
   bool get _canManageSuppliers => _testModeActive || _isAdministrator;
-  bool get _canMatch => _testModeActive || _isAdministrator || _isFinancialManager;
+  bool get _canMatch =>
+      _testModeActive || _isAdministrator || _isFinancialManager;
 
   @override
   void initState() {
@@ -79,7 +82,8 @@ class _SupplierPurchasingOperationsScreenState
       _testModeTimer?.cancel();
       setState(() => _testModeActive = true);
       final remaining = expiresAt.difference(DateTime.now().toUtc());
-      _testModeTimer = Timer(remaining.isNegative ? Duration.zero : remaining, () {
+      _testModeTimer =
+          Timer(remaining.isNegative ? Duration.zero : remaining, () {
         if (mounted) setState(() => _testModeActive = false);
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -87,7 +91,8 @@ class _SupplierPurchasingOperationsScreenState
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.toString())));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -182,8 +187,10 @@ class _SupplierPurchasingOperationsScreenState
         actions: [
           TextButton.icon(
               onPressed: _busy || _testModeActive ? null : _activateTestMode,
-              icon: Icon(_testModeActive ? Icons.lock_open : Icons.lock_outline),
-              label: Text(_testModeActive ? 'وضع التنفيذ مفعل' : 'تفعيل وضع التنفيذ')),
+              icon:
+                  Icon(_testModeActive ? Icons.lock_open : Icons.lock_outline),
+              label: Text(
+                  _testModeActive ? 'وضع التنفيذ مفعل' : 'تفعيل وضع التنفيذ')),
           IconButton(
               onPressed: _loading ? null : _load,
               tooltip: 'تحديث البيانات',
@@ -285,7 +292,7 @@ class _SupplierPurchasingOperationsScreenState
             child: _listOrEmpty(
               _invoices,
               (invoice) => ListTile(
-                onTap: () => _showInvoiceLines(invoice),
+                onTap: () => _showInvoiceDetails(invoice),
                 leading: const Icon(Icons.receipt_long_outlined),
                 title: Text(invoice.number),
                 subtitle: Text(
@@ -356,6 +363,7 @@ class _SupplierPurchasingOperationsScreenState
             child: _listOrEmpty(
               _receipts,
               (receipt) => ListTile(
+                onTap: () => _showReceiptDetails(receipt),
                 leading: const Icon(Icons.inventory_2_outlined),
                 title: Text(receipt.number),
                 subtitle: Text(
@@ -363,9 +371,10 @@ class _SupplierPurchasingOperationsScreenState
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                   if (_canMatch)
                     IconButton(
-                      onPressed: _busy ? null : () => _showMatching(receipt.id),
-                      tooltip: 'عرض المطابقة',
-                      icon: const Icon(Icons.compare_arrows)),
+                        onPressed:
+                            _busy ? null : () => _showMatching(receipt.id),
+                        tooltip: 'عرض المطابقة',
+                        icon: const Icon(Icons.compare_arrows)),
                   if (_canReverse)
                     IconButton(
                         onPressed:
@@ -473,21 +482,21 @@ class _SupplierPurchasingOperationsScreenState
     final currencies =
         <String>{'YER', ..._cashAccounts.map((e) => e.currency)}.toList();
     double invoiceTotal() => double.parse(lines
-      .fold<double>(
-        0,
-        (total, line) =>
-          total +
-          (double.tryParse(line.quantity.text.trim()) ?? 0) *
-            (double.tryParse(line.cost.text.trim()) ?? 0))
-      .toStringAsFixed(6));
+        .fold<double>(
+            0,
+            (total, line) =>
+                total +
+                (double.tryParse(line.quantity.text.trim()) ?? 0) *
+                    (double.tryParse(line.cost.text.trim()) ?? 0))
+        .toStringAsFixed(6));
     bool validLines() =>
-      lines.isNotEmpty &&
-      lines.every((line) =>
-        line.description.text.trim().isNotEmpty &&
-        (double.tryParse(line.quantity.text.trim()) ?? 0) > 0 &&
-        (double.tryParse(line.cost.text.trim()) ?? 0) > 0 &&
-        (line.rollCount.text.trim().isEmpty ||
-          (int.tryParse(line.rollCount.text.trim()) ?? 0) > 0));
+        lines.isNotEmpty &&
+        lines.every((line) =>
+            line.description.text.trim().isNotEmpty &&
+            (double.tryParse(line.quantity.text.trim()) ?? 0) > 0 &&
+            (double.tryParse(line.cost.text.trim()) ?? 0) > 0 &&
+            (line.rollCount.text.trim().isEmpty ||
+                (int.tryParse(line.rollCount.text.trim()) ?? 0) > 0));
     final save = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -533,11 +542,14 @@ class _SupplierPurchasingOperationsScreenState
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
                     initialValue: invoiceType,
-                    decoration: const InputDecoration(labelText: 'نوع الفاتورة'),
+                    decoration:
+                        const InputDecoration(labelText: 'نوع الفاتورة'),
                     items: const [
                       DropdownMenuItem(value: 'fabric', child: Text('أقمشة')),
-                      DropdownMenuItem(value: 'tools', child: Text('أدوات مستخدمة')),
-                      DropdownMenuItem(value: 'imported', child: Text('منتجات مستوردة')),
+                      DropdownMenuItem(
+                          value: 'tools', child: Text('أدوات مستخدمة')),
+                      DropdownMenuItem(
+                          value: 'imported', child: Text('منتجات مستوردة')),
                     ],
                     onChanged: (value) => setDialogState(() {
                       invoiceType = value ?? 'fabric';
@@ -642,22 +654,23 @@ class _SupplierPurchasingOperationsScreenState
                 dueDate: dueDate,
                 amount: invoiceTotal(),
                 lines: lines
-                  .map((line) => {
-                    'inventoryItemId': null,
-                    'itemDescription': line.description.text.trim(),
-                    'itemType': invoiceType == 'fabric'
-                      ? 'Fabric'
-                      : invoiceType == 'tools'
-                        ? 'UsedTool'
-                        : 'ImportedProduct',
-                    'supplierItemCode': _nullable(line.supplierItemCode.text),
-                      'quantity': double.parse(line.quantity.text.trim()),
-                      'unitCost': double.parse(line.cost.text.trim()),
-                      'rollCount': line.rollCount.text.trim().isEmpty
-                        ? null
-                        : int.parse(line.rollCount.text.trim())
-                    })
-                  .toList(),
+                    .map((line) => {
+                          'inventoryItemId': null,
+                          'itemDescription': line.description.text.trim(),
+                          'itemType': invoiceType == 'fabric'
+                              ? 'Fabric'
+                              : invoiceType == 'tools'
+                                  ? 'UsedTool'
+                                  : 'ImportedProduct',
+                          'supplierItemCode':
+                              _nullable(line.supplierItemCode.text),
+                          'quantity': double.parse(line.quantity.text.trim()),
+                          'unitCost': double.parse(line.cost.text.trim()),
+                          'rollCount': line.rollCount.text.trim().isEmpty
+                              ? null
+                              : int.parse(line.rollCount.text.trim())
+                        })
+                    .toList(),
                 purchaseOrderId: order?.id,
                 currencyCode: currency,
                 notes: _nullable(notes.text)),
@@ -672,42 +685,341 @@ class _SupplierPurchasingOperationsScreenState
     }
   }
 
-  Future<void> _showInvoiceLines(SupplierPurchasingInvoice invoice) async {
+  Future<void> _showInvoiceDetails(SupplierPurchasingInvoice invoice) async {
     try {
+      final supplier = _supplierRecord(invoice.supplierId);
       final lines = await _repository.getInvoiceLines(invoice.id);
       if (!mounted) return;
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: Text('بنود الفاتورة ${invoice.number}'),
+          contentPadding: const EdgeInsets.all(18),
+          title: Row(
+            children: [
+              const Icon(Icons.receipt_long_outlined),
+              const SizedBox(width: 8),
+              Expanded(child: Text('فاتورة مورد')),
+            ],
+          ),
           content: SizedBox(
-            width: 560,
-            child: lines.isEmpty
-                ? const Center(child: Text('لا توجد بنود لهذه الفاتورة.'))
-                : ListView(
-                    shrinkWrap: true,
-                    children: lines
-                        .map((line) => ListTile(
-                                title: Text(line.itemCode == null
-                                  ? line.itemName
-                                  : '${line.itemName} (${line.itemCode})'),
-                              subtitle: Text(
-                                  '${_invoiceTypeLabel(line.itemType)}  •  الكمية ${line.quantity}  •  تكلفة الوحدة ${line.unitCost}${line.supplierItemCode == null ? '' : '  •  كود المورد ${line.supplierItemCode}'}${line.rollCount == null ? '' : '  •  اللفات ${line.rollCount}'}'),
-                              trailing: Text(line.total.toStringAsFixed(2)),
-                            ))
-                        .toList(),
+            width: 680,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
+                      border: Border.all(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.8),
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _detailRow('رقم الفاتورة', invoice.number),
+                        _detailRow('المورد', supplier?.name ?? 'غير متاح'),
+                        _detailRow('رقم الهاتف', supplier?.phone ?? 'غير متاح'),
+                        _detailRow('رمز المورد', supplier?.code ?? 'غير متاح'),
+                        _detailRow(
+                            'تاريخ الفاتورة', _date.format(invoice.date)),
+                        _detailRow(
+                            'تاريخ الاستحقاق', _date.format(invoice.dueDate)),
+                        _detailRow('الحالة', _status(invoice.status)),
+                      ],
+                    ),
                   ),
+                  const SizedBox(height: 14),
+                  const Align(
+                    alignment: Alignment.centerRight,
+                    child: Text('بنود الفاتورة',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 8),
+                  if (lines.isEmpty)
+                    const Center(child: Text('لا توجد بنود لهذه الفاتورة.'))
+                  else ...[
+                    for (final line in lines)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    line.itemCode == null
+                                        ? line.itemName
+                                        : '${line.itemName} (${line.itemCode})',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                Text(line.total.toStringAsFixed(2),
+                                    textAlign: TextAlign.left),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${_invoiceTypeLabel(line.itemType)}  •  الكمية ${line.quantity}  •  سعر الوحدة ${line.unitCost.toStringAsFixed(2)}${line.rollCount == null ? '' : '  •  اللفات ${line.rollCount}'}',
+                            ),
+                            if (line.supplierItemCode != null &&
+                                line.supplierItemCode!.trim().isNotEmpty)
+                              Text('كود المورد: ${line.supplierItemCode}'),
+                          ],
+                        ),
+                      ),
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 8),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('الإجمالي',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text(invoice.total.toStringAsFixed(2)),
+                        ],
+                      ),
+                    ),
+                    if (invoice.notes != null &&
+                        invoice.notes!.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Text('الملاحظات: ${invoice.notes!}'),
+                      ),
+                  ],
+                ],
+              ),
+            ),
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('إغلاق'))
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إغلاق'),
+            ),
           ],
         ),
       );
     } catch (error) {
       _showMessage(error.toString());
     }
+  }
+
+  Future<void> _showReceiptDetails(SupplierPurchasingReceipt receipt) async {
+    try {
+      final supplier = _supplierRecord(receipt.supplierId);
+      final linkedInvoice = _linkedInvoiceForReceipt(receipt);
+      final matching = await _repository.getReceiptMatching(receipt.id);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          contentPadding: const EdgeInsets.all(18),
+          title: Row(
+            children: [
+              const Icon(Icons.inventory_2_outlined),
+              const SizedBox(width: 8),
+              Expanded(child: Text('تفاصيل الاستلام')),
+            ],
+          ),
+          content: SizedBox(
+            width: 680,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
+                      border: Border.all(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.8),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _detailRow('رقم الاستلام', receipt.number),
+                        _detailRow('المورد', supplier?.name ?? 'غير متاح'),
+                        _detailRow('رقم الهاتف', supplier?.phone ?? 'غير متاح'),
+                        _detailRow('رمز المورد', supplier?.code ?? 'غير متاح'),
+                        _detailRow('رقم الفاتورة',
+                            linkedInvoice?.number ?? 'غير مرتبط'),
+                        _detailRow(
+                            'تاريخ الفاتورة',
+                            linkedInvoice == null
+                                ? 'غير متاح'
+                                : _date.format(linkedInvoice.date)),
+                        _detailRow(
+                            'تاريخ الاستلام', _date.format(receipt.date)),
+                        if (receipt.purchaseOrderId != null)
+                          _detailRow('أمر الشراء',
+                              _purchaseOrderNumber(receipt.purchaseOrderId!)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Align(
+                    alignment: Alignment.centerRight,
+                    child: Text('البنود المستلمة',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 8),
+                  if (matching.items.isEmpty)
+                    const Center(child: Text('لا توجد بنود في هذا الاستلام.'))
+                  else ...[
+                    for (final item in matching.items)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                    child: Text(item.itemName,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold))),
+                                Text((item.quantity * item.unitCost)
+                                    .toStringAsFixed(2)),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                                'الكمية ${item.quantity}  •  تكلفة الوحدة ${item.unitCost.toStringAsFixed(2)}'),
+                          ],
+                        ),
+                      ),
+                    if (matching.differences.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const Align(
+                        alignment: Alignment.centerRight,
+                        child: Text('فروقات المطابقة',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                      const SizedBox(height: 6),
+                      for (final difference in matching.differences)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .error
+                                  .withValues(alpha: 0.5),
+                            ),
+                          ),
+                          child: Text(
+                              '${_differenceType(difference.type)}  •  ${_differenceDetails(difference)}'),
+                        ),
+                    ],
+                    if (receipt.notes != null &&
+                        receipt.notes!.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Text('الملاحظات: ${receipt.notes!}'),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إغلاق'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      _showMessage(error.toString());
+    }
+  }
+
+  Widget _detailRow(String label, String value) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 120,
+              child: Text('$label:',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            Expanded(child: Text(value)),
+          ],
+        ),
+      );
+
+  SupplierPurchasingSupplier? _supplierRecord(int supplierId) {
+    for (final supplier in _suppliers) {
+      if (supplier.id == supplierId) return supplier;
+    }
+    return null;
+  }
+
+  SupplierPurchasingInvoice? _linkedInvoiceForReceipt(
+      SupplierPurchasingReceipt receipt) {
+    if (receipt.purchaseOrderId == null) {
+      return null;
+    }
+    for (final invoice in _invoices) {
+      if (invoice.supplierId == receipt.supplierId &&
+          invoice.purchaseOrderId == receipt.purchaseOrderId) {
+        return invoice;
+      }
+    }
+    return null;
+  }
+
+  String _purchaseOrderNumber(int purchaseOrderId) {
+    for (final order in _orders) {
+      if (order.id == purchaseOrderId) return order.number;
+    }
+    return 'غير متاح';
   }
 
   Future<void> _createPayment() async {
@@ -1058,7 +1370,7 @@ class _SupplierPurchasingOperationsScreenState
                                 child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                    if (_suppliers.isEmpty)
+                                  if (_suppliers.isEmpty)
                                     Container(
                                       width: double.infinity,
                                       margin: const EdgeInsets.only(bottom: 12),
@@ -1116,75 +1428,80 @@ class _SupplierPurchasingOperationsScreenState
                                                 value: item,
                                                 child: Text(item.number)))
                                       ],
-                                      onChanged: (value) =>
-                                          setDialogState(() {
-                                          order = value;
-                                          invoice = null;
-                                          invoiceLines = const [];
-                                          for (final line in lines) {
-                                            line.invoiceLine = null;
-                                          }
-                                          })),
-                                      const SizedBox(height: 10),
-                                      Autocomplete<SupplierPurchasingInvoice>(
-                                        key: ValueKey(
-                                            'receipt-invoice-${supplier?.id}-${order?.id}-${invoice?.id ?? 0}'),
-                                        initialValue: TextEditingValue(
-                                            text: invoice?.number ?? ''),
-                                        displayStringForOption: (item) =>
-                                            '${item.number} - ${_supplierName(item.supplierId)}',
-                                        optionsBuilder: (value) {
-                                          final query = value.text.trim().toLowerCase();
-                                          return _invoices.where((item) =>
-                                              item.supplierId == supplier?.id &&
-                                              item.purchaseOrderId == order?.id &&
-                                              item.status != 'Reversed' &&
-                                              (query.isEmpty ||
-                                                  item.number.toLowerCase().contains(query)));
-                                        },
-                                        onSelected: (value) async {
-                                          setDialogState(() {
-                                            invoice = value;
+                                      onChanged: (value) => setDialogState(() {
+                                            order = value;
+                                            invoice = null;
                                             invoiceLines = const [];
                                             for (final line in lines) {
                                               line.invoiceLine = null;
                                             }
-                                          });
-                                          final loaded = await _repository
-                                              .getInvoiceLines(value.id);
-                                          if (!dialogContext.mounted) return;
-                                          setDialogState(() => invoiceLines = loaded
-                                              .where((line) => line.status == 'Posted')
-                                              .toList());
-                                        },
-                                        fieldViewBuilder:
-                                            (context, controller, focusNode, onSubmitted) =>
-                                                TextFormField(
-                                          controller: controller,
-                                          focusNode: focusNode,
-                                          textInputAction: TextInputAction.next,
-                                          decoration: const InputDecoration(
-                                              labelText: 'رقم فاتورة المورد (اختياري)',
-                                              hintText: 'اكتب رقم الفاتورة للبحث'),
-                                          onFieldSubmitted: (_) => onSubmitted(),
-                                        ),
-                                      ),
-                                      Align(
-                                        alignment: Alignment.centerRight,
-                                        child: TextButton.icon(
-                                          onPressed: invoice == null
-                                              ? null
-                                              : () => setDialogState(() {
-                                                    invoice = null;
-                                                    invoiceLines = const [];
-                                                    for (final line in lines) {
-                                                      line.invoiceLine = null;
-                                                    }
-                                                  }),
-                                          icon: const Icon(Icons.link_off),
-                                          label: const Text('استلام دون ربط بفاتورة'),
-                                        ),
-                                      ),
+                                          })),
+                                  const SizedBox(height: 10),
+                                  Autocomplete<SupplierPurchasingInvoice>(
+                                    key: ValueKey(
+                                        'receipt-invoice-${supplier?.id}-${order?.id}-${invoice?.id ?? 0}'),
+                                    initialValue: TextEditingValue(
+                                        text: invoice?.number ?? ''),
+                                    displayStringForOption: (item) =>
+                                        '${item.number} - ${_supplierName(item.supplierId)}',
+                                    optionsBuilder: (value) {
+                                      final query =
+                                          value.text.trim().toLowerCase();
+                                      return _invoices.where((item) =>
+                                          item.supplierId == supplier?.id &&
+                                          item.purchaseOrderId == order?.id &&
+                                          item.status != 'Reversed' &&
+                                          (query.isEmpty ||
+                                              item.number
+                                                  .toLowerCase()
+                                                  .contains(query)));
+                                    },
+                                    onSelected: (value) async {
+                                      setDialogState(() {
+                                        invoice = value;
+                                        invoiceLines = const [];
+                                        for (final line in lines) {
+                                          line.invoiceLine = null;
+                                        }
+                                      });
+                                      final loaded = await _repository
+                                          .getInvoiceLines(value.id);
+                                      if (!dialogContext.mounted) return;
+                                      setDialogState(() => invoiceLines = loaded
+                                          .where(
+                                              (line) => line.status == 'Posted')
+                                          .toList());
+                                    },
+                                    fieldViewBuilder: (context, controller,
+                                            focusNode, onSubmitted) =>
+                                        TextFormField(
+                                      controller: controller,
+                                      focusNode: focusNode,
+                                      textInputAction: TextInputAction.next,
+                                      decoration: const InputDecoration(
+                                          labelText:
+                                              'رقم فاتورة المورد (اختياري)',
+                                          hintText: 'اكتب رقم الفاتورة للبحث'),
+                                      onFieldSubmitted: (_) => onSubmitted(),
+                                    ),
+                                  ),
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: TextButton.icon(
+                                      onPressed: invoice == null
+                                          ? null
+                                          : () => setDialogState(() {
+                                                invoice = null;
+                                                invoiceLines = const [];
+                                                for (final line in lines) {
+                                                  line.invoiceLine = null;
+                                                }
+                                              }),
+                                      icon: const Icon(Icons.link_off),
+                                      label:
+                                          const Text('استلام دون ربط بفاتورة'),
+                                    ),
+                                  ),
                                   _field(number, 'رقم الاستلام',
                                       required: true),
                                   _dateRow('تاريخ الاستلام', receiptDate,
@@ -1201,8 +1518,8 @@ class _SupplierPurchasingOperationsScreenState
                                     _receiptLine(
                                         lines[index],
                                         index,
-                                      invoiceLines,
-                                      () => setDialogState(() {}),
+                                        invoiceLines,
+                                        () => setDialogState(() {}),
                                         () => setDialogState(() {
                                               lines[index].dispose();
                                               lines.removeAt(index);
@@ -1219,16 +1536,18 @@ class _SupplierPurchasingOperationsScreenState
                                     if (formKey.currentState!.validate() &&
                                         lines.isNotEmpty &&
                                         lines.every((line) =>
-                                            line.description.text.trim().isNotEmpty &&
-                                          (invoice == null ||
-                                            line.invoiceLine != null) &&
+                                            line.description.text
+                                                .trim()
+                                                .isNotEmpty &&
+                                            (invoice == null ||
+                                                line.invoiceLine != null) &&
                                             (double.tryParse(
                                                         line.quantity.text) ??
                                                     0) >
                                                 0 &&
                                             (double.tryParse(line.cost.text) ??
                                                     0) >
-                                                    0)) {
+                                                0)) {
                                       Navigator.pop(dialogContext, true);
                                     }
                                   }),
@@ -1243,15 +1562,15 @@ class _SupplierPurchasingOperationsScreenState
                                 lines.isEmpty ||
                                 lines.any((line) =>
                                     line.description.text.trim().isEmpty ||
-                                  (invoice != null &&
-                                    line.invoiceLine == null) ||
+                                    (invoice != null &&
+                                        line.invoiceLine == null) ||
                                     (double.tryParse(line.quantity.text) ??
                                             0) <=
                                         0 ||
                                     (double.tryParse(line.cost.text) ?? 0) <=
-                                            0)) {
+                                        0)) {
                               _showMessage(
-                                          'راجع البنود والربط بالفاتورة والكميات والتكاليف.');
+                                  'راجع البنود والربط بالفاتورة والكميات والتكاليف.');
                               return;
                             }
                             Navigator.pop(dialogContext, true);
@@ -1426,11 +1745,11 @@ class _SupplierPurchasingOperationsScreenState
       );
 
   Widget _receiptLine(
-      _ReceiptDraftLine line,
-      int index,
-      List<SupplierPurchasingInvoiceLine> invoiceLines,
-      VoidCallback onChanged,
-      VoidCallback onRemove) =>
+          _ReceiptDraftLine line,
+          int index,
+          List<SupplierPurchasingInvoiceLine> invoiceLines,
+          VoidCallback onChanged,
+          VoidCallback onRemove) =>
       Card(
         margin: const EdgeInsets.only(bottom: 8),
         child: Padding(
@@ -1471,12 +1790,11 @@ class _SupplierPurchasingOperationsScreenState
             TextFormField(
               controller: line.description,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                  labelText: 'وصف البضاعة المستلمة'),
+              decoration:
+                  const InputDecoration(labelText: 'وصف البضاعة المستلمة'),
               onChanged: (_) => onChanged(),
-              validator: (value) => value?.trim().isEmpty ?? true
-                  ? 'أدخل وصف البضاعة.'
-                  : null,
+              validator: (value) =>
+                  value?.trim().isEmpty ?? true ? 'أدخل وصف البضاعة.' : null,
             ),
             Row(children: [
               Expanded(
@@ -1492,80 +1810,81 @@ class _SupplierPurchasingOperationsScreenState
         ),
       );
 
-  Widget _invoiceLine(_InvoiceDraftLine line, int index,
-          String invoiceType, VoidCallback? onRemove, VoidCallback onChanged) {
+  Widget _invoiceLine(_InvoiceDraftLine line, int index, String invoiceType,
+      VoidCallback? onRemove, VoidCallback onChanged) {
     return Card(
-        margin: const EdgeInsets.only(bottom: 8),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(children: [
-            Row(children: [
-              Expanded(child: Text('البند ${index + 1}')),
-              IconButton(
-                  onPressed: onRemove,
-                  tooltip: 'حذف البند',
-                  icon: const Icon(Icons.delete_outline))
-            ]),
-            TextFormField(
-              controller: line.description,
-              textInputAction: TextInputAction.next,
-              decoration: InputDecoration(labelText: _invoiceItemLabel(invoiceType)),
-              onChanged: (_) => onChanged(),
-              validator: (value) => value?.trim().isEmpty ?? true
-                  ? 'أدخل وصف بند الفاتورة.'
-                  : null,
-            ),
-            const SizedBox(height: 10),
-            TextFormField(
-              controller: line.supplierItemCode,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(labelText: 'كود المورد (اختياري)'),
-              onChanged: (_) => onChanged(),
-            ),
-            Row(children: [
-              Expanded(
-                  child: TextFormField(
-                      controller: line.quantity,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(labelText: 'الكمية'),
-                      onChanged: (_) => onChanged(),
-                      validator: (value) =>
-                          (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
-                              ? 'أدخل كمية صحيحة.'
-                              : null)),
-              const SizedBox(width: 10),
-              Expanded(
-                  child: TextFormField(
-                      controller: line.cost,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      textInputAction: TextInputAction.next,
-                      decoration:
-                          const InputDecoration(labelText: 'تكلفة الوحدة'),
-                      onChanged: (_) => onChanged(),
-                      validator: (value) =>
-                          (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
-                              ? 'أدخل تكلفة صحيحة.'
-                              : null)),
-            ]),
-            TextFormField(
-              controller: line.rollCount,
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.next,
-              decoration:
-                  const InputDecoration(labelText: 'عدد اللفات (اختياري)'),
-              validator: (value) {
-                final text = value?.trim() ?? '';
-                if (text.isEmpty) return null;
-                return (int.tryParse(text) ?? 0) <= 0
-                    ? 'أدخل عدد لفات صحيحًا.'
-                    : null;
-              },
-            ),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(children: [
+          Row(children: [
+            Expanded(child: Text('البند ${index + 1}')),
+            IconButton(
+                onPressed: onRemove,
+                tooltip: 'حذف البند',
+                icon: const Icon(Icons.delete_outline))
           ]),
-        ),
+          TextFormField(
+            controller: line.description,
+            textInputAction: TextInputAction.next,
+            decoration:
+                InputDecoration(labelText: _invoiceItemLabel(invoiceType)),
+            onChanged: (_) => onChanged(),
+            validator: (value) =>
+                value?.trim().isEmpty ?? true ? 'أدخل وصف بند الفاتورة.' : null,
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: line.supplierItemCode,
+            textInputAction: TextInputAction.next,
+            decoration:
+                const InputDecoration(labelText: 'كود المورد (اختياري)'),
+            onChanged: (_) => onChanged(),
+          ),
+          Row(children: [
+            Expanded(
+                child: TextFormField(
+                    controller: line.quantity,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(labelText: 'الكمية'),
+                    onChanged: (_) => onChanged(),
+                    validator: (value) =>
+                        (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
+                            ? 'أدخل كمية صحيحة.'
+                            : null)),
+            const SizedBox(width: 10),
+            Expanded(
+                child: TextFormField(
+                    controller: line.cost,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    textInputAction: TextInputAction.next,
+                    decoration:
+                        const InputDecoration(labelText: 'تكلفة الوحدة'),
+                    onChanged: (_) => onChanged(),
+                    validator: (value) =>
+                        (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
+                            ? 'أدخل تكلفة صحيحة.'
+                            : null)),
+          ]),
+          TextFormField(
+            controller: line.rollCount,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+            decoration:
+                const InputDecoration(labelText: 'عدد اللفات (اختياري)'),
+            validator: (value) {
+              final text = value?.trim() ?? '';
+              if (text.isEmpty) return null;
+              return (int.tryParse(text) ?? 0) <= 0
+                  ? 'أدخل عدد لفات صحيحًا.'
+                  : null;
+            },
+          ),
+        ]),
+      ),
     );
   }
 
