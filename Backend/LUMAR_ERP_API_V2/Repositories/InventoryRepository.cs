@@ -858,8 +858,12 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
     }
 
 
-    public Task<InventoryFoundationPostingResultDto?> ReceiveFabricInventoryAsync(ReceiveFabricInventoryDto request, CancellationToken ct) =>
-        ReceiveFoundationInventoryAsync(
+    public async Task<InventoryFoundationPostingResultDto?> ReceiveFabricInventoryAsync(ReceiveFabricInventoryDto request, CancellationToken ct)
+    {
+        if (request.Rolls is { Count: > 0 })
+            return await ReceiveFabricInventoryBatchAsync(request, ct);
+
+        return await ReceiveFoundationInventoryAsync(
             request.GoodsReceiptItemId,
             1,
             request.UnitId,
@@ -870,6 +874,202 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             request.RollCode,
             request.ColorValue,
             ct);
+    }
+
+    private async Task<InventoryFoundationPostingResultDto?> ReceiveFabricInventoryBatchAsync(ReceiveFabricInventoryDto request, CancellationToken ct)
+    {
+        if (request.SourceOperationId == Guid.Empty)
+            throw new ArgumentException("SourceOperationId is required for idempotent inventory posting.");
+
+        var rolls = request.Rolls!
+            .Select((roll, index) => new
+            {
+                FabricCode = roll.FabricCode.Trim(),
+                RollCode = string.IsNullOrWhiteSpace(roll.RollCode) ? $"{roll.FabricCode.Trim()}-{index + 1}" : roll.RollCode.Trim(),
+                ColorValue = string.IsNullOrWhiteSpace(roll.ColorValue) ? request.ColorValue : roll.ColorValue.Trim(),
+                Quantity = roll.Quantity,
+            })
+            .ToList();
+
+        if (rolls.Count == 0)
+            throw new ArgumentException("A multi-roll fabric batch requires at least one roll.");
+        if (rolls.Any(roll => string.IsNullOrWhiteSpace(roll.FabricCode) || roll.Quantity <= 0m))
+            throw new ArgumentException("Each roll in the batch requires a fabric code and a positive quantity.");
+
+        var distinctRollCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var roll in rolls)
+        {
+            if (!distinctRollCodes.Add(roll.RollCode))
+                throw new InvalidOperationException($"Duplicate roll code '{roll.RollCode}' is not allowed within the same storage batch.");
+        }
+
+        var totalQuantity = rolls.Sum(roll => roll.Quantity);
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+
+        try
+        {
+            var receipt = await ReadGoodsReceiptSourceAsync(connection, transaction, request.GoodsReceiptItemId, ct)
+                ?? throw new InvalidOperationException("Goods receipt item was not found.");
+            if (totalQuantity > receipt.Quantity)
+                throw new InvalidOperationException($"The requested storage quantity ({totalQuantity}) exceeds the original receipt quantity ({receipt.Quantity}).");
+
+            var existing = await TryReadExistingReceiptAsync(connection, transaction, request.GoodsReceiptItemId, 1, request.UnitId, rolls[0].FabricCode, request.SourceOperationId, ct);
+            if (existing is not null)
+            {
+                await transaction.CommitAsync(ct);
+                return existing with { IsExisting = true };
+            }
+
+            var totalOperationalAmount = decimal.Round(totalQuantity * receipt.UnitCost, 6, MidpointRounding.AwayFromZero);
+            var totalPostingAmount = decimal.Round(totalOperationalAmount, 2, MidpointRounding.AwayFromZero);
+            var opposingLedgerAccountId = await ReadOpposingLedgerAccountIdAsync(connection, transaction, request.OpposingLedgerAccountCode, ct);
+            var postingId = await InsertInventoryReceiptPostingAsync(
+                connection,
+                transaction,
+                request.GoodsReceiptItemId,
+                1,
+                opposingLedgerAccountId,
+                request.SourceOperationId,
+                totalOperationalAmount,
+                totalPostingAmount,
+                ct);
+
+            var lineEntries = new List<(long LineId, int TransactionId, int InventoryItemId, string RollCode)>();
+            var firstItemId = 0;
+            var firstTransactionId = 0;
+
+            for (var index = 0; index < rolls.Count; index++)
+            {
+                var roll = rolls[index];
+                var itemCode = roll.FabricCode.Trim();
+                var existingItem = await ReadFoundationItemAsync(connection, transaction, itemCode, ct);
+                if (existingItem is not null && !existingItem.HasFoundation)
+                    throw new InvalidOperationException("Legacy inventory items cannot be used by the foundation posting path.");
+                if (existingItem is not null && (existingItem.InventoryClassId != 1 || existingItem.UnitId != request.UnitId))
+                    throw new InvalidOperationException("The inventory item class or unit does not match the fabric receipt.");
+
+                var itemId = existingItem?.InventoryItemId ?? await InsertFoundationInventoryItemAsync(
+                    connection,
+                    transaction,
+                    itemCode,
+                    receipt.ItemName,
+                    1,
+                    await ReadUnitCodeAsync(connection, transaction, request.UnitId, 1, ct),
+                    request.UnitId,
+                    roll.Quantity,
+                    decimal.Round(roll.Quantity * receipt.UnitCost, 6, MidpointRounding.AwayFromZero),
+                    request.FabricTypeCode,
+                    roll.ColorValue,
+                    DateTime.UtcNow,
+                    ct);
+
+                if (existingItem is not null)
+                    await UpdateFoundationInventoryItemAsync(connection, transaction, itemId, roll.Quantity, decimal.Round(roll.Quantity * receipt.UnitCost, 6, MidpointRounding.AwayFromZero), DateTime.UtcNow, ct);
+
+                await ApplyFabricPresentationAsync(
+                    connection,
+                    transaction,
+                    itemId,
+                    request.FabricTypeCode,
+                    string.IsNullOrWhiteSpace(request.CatalogNumber) ? null : request.CatalogNumber.Trim(),
+                    roll.ColorValue,
+                    request.FabricWidth,
+                    ct);
+
+                var lineId = await InsertInventoryReceiptLineAsync(
+                    connection,
+                    transaction,
+                    postingId,
+                    itemId,
+                    roll.Quantity,
+                    receipt.UnitCost,
+                    request.UnitId,
+                    ct);
+
+                var fabricRollId = await InsertFabricRollAsync(
+                    connection,
+                    transaction,
+                    itemId,
+                    roll.RollCode,
+                    request.FabricTypeCode.Trim(),
+                    roll.ColorValue,
+                    roll.Quantity,
+                    receipt.UnitCost,
+                    request.UnitId,
+                    lineId,
+                    DateTime.UtcNow,
+                    ct);
+                await SetReceiptLineRollAsync(connection, transaction, lineId, fabricRollId, ct);
+
+                var reference = $"GoodsReceipt:{receipt.ReceiptNumber}:Item:{request.GoodsReceiptItemId}:Roll:{roll.RollCode}";
+                var transactionId = await InsertFoundationInventoryTransactionAsync(
+                    connection,
+                    transaction,
+                    itemId,
+                    "FabricInventoryReceived",
+                    roll.Quantity,
+                    reference,
+                    decimal.Round(roll.Quantity * receipt.UnitCost, 6, MidpointRounding.AwayFromZero),
+                    receipt.UnitCost,
+                    request.SourceOperationId,
+                    DateTime.UtcNow,
+                    ct);
+
+                lineEntries.Add((lineId, transactionId, itemId, roll.RollCode));
+                if (index == 0)
+                {
+                    firstItemId = itemId;
+                    firstTransactionId = transactionId;
+                }
+            }
+
+            var accountingEvent = await AccountingEventPostingGateway.PostInventoryReceiptAsync(
+                connection,
+                transaction,
+                AccountingEventType.FabricInventoryReceived,
+                postingId,
+                totalPostingAmount,
+                $"GoodsReceipt:{receipt.ReceiptNumber}:Item:{request.GoodsReceiptItemId}",
+                $"Inventory receipt {receipt.ReceiptNumber} item {request.GoodsReceiptItemId} multi-roll storage",
+                ct);
+
+            foreach (var (lineId, transactionId, _, _) in lineEntries)
+                await LinkInventoryReceiptArtifactsAsync(connection, transaction, lineId, transactionId, accountingEvent.AccountingEventId, ct);
+
+            await InsertStorageAllocationAsync(
+                connection,
+                transaction,
+                request.GoodsReceiptItemId,
+                "Fabric",
+                totalQuantity,
+                request.SourceOperationId,
+                firstItemId,
+                firstTransactionId,
+                accountingEvent.AccountingEventId,
+                postingId,
+                null,
+                ct);
+
+            await transaction.CommitAsync(ct);
+            return new InventoryFoundationPostingResultDto(
+                postingId,
+                firstItemId,
+                rolls[0].FabricCode,
+                totalQuantity,
+                totalOperationalAmount,
+                totalPostingAmount,
+                accountingEvent.AccountingEventId,
+                firstTransactionId,
+                false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
 
     public Task<InventoryFoundationPostingResultDto?> ReceiveConsumableInventoryAsync(ReceiveConsumableInventoryDto request, CancellationToken ct) =>
         ReceiveFoundationInventoryAsync(
@@ -2424,6 +2624,56 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             ValidateFabricBatch(batch);
             invoiceNumber = batch.InvoiceNumber?.Trim() ?? string.Empty;
             fabricCode = batch.Rolls[0].FabricCode?.Trim() ?? string.Empty;
+
+            var storageLinkedRolls = batch.Rolls
+                .Where(roll => roll.GoodsReceiptItemId.HasValue || roll.StorageOperationId.HasValue)
+                .ToList();
+
+            if (storageLinkedRolls.Count > 0)
+            {
+                if (storageLinkedRolls.Count != batch.Rolls.Count)
+                    throw new ArgumentException("Storage-linked fabric batches cannot be mixed with new official purchase batches.");
+
+                var now = DateTime.UtcNow;
+                decimal totalYards = 0m;
+                decimal totalCost = 0m;
+
+                foreach (var roll in storageLinkedRolls)
+                {
+                    if (!roll.GoodsReceiptItemId.HasValue || !roll.StorageOperationId.HasValue)
+                        throw new ArgumentException("Each storage-linked fabric roll must contain both GoodsReceiptItemId and StorageOperationId.");
+
+                    if (roll.GoodsReceiptItemId.Value <= 0 || roll.StorageOperationId.Value == Guid.Empty)
+                        throw new ArgumentException("Storage-linked fabric rolls require a valid GoodsReceiptItemId and StorageOperationId.");
+
+                    var receipt = await ReadGoodsReceiptSourceAsync(connection, transaction, roll.GoodsReceiptItemId.Value, ct)
+                        ?? throw new InvalidOperationException($"Goods receipt item {roll.GoodsReceiptItemId.Value} was not found.");
+                    if (roll.QuantityYards > receipt.Quantity)
+                        throw new InvalidOperationException($"The storage request for GoodsReceiptItem {roll.GoodsReceiptItemId.Value} exceeds the original received quantity.");
+
+                    await PostOfficialFabricBatchRollAsync(
+                        connection,
+                        transaction,
+                        roll.GoodsReceiptItemId.Value,
+                        roll.FabricCode.Trim(),
+                        roll.FabricType.Trim(),
+                        string.IsNullOrWhiteSpace(roll.CatalogNumber) ? null : roll.CatalogNumber.Trim(),
+                        string.IsNullOrWhiteSpace(roll.FabricColor) ? null : roll.FabricColor.Trim(),
+                        roll.FabricWidth,
+                        roll.GoodsReceiptItemId.Value,
+                        roll.StorageOperationId.Value,
+                        now,
+                        ct);
+
+                    totalYards += roll.QuantityYards;
+                    totalCost = decimal.Round(totalCost + (roll.QuantityYards * roll.YardPrice), 2, MidpointRounding.AwayFromZero);
+                }
+
+                await transaction.CommitAsync(ct);
+                logger?.LogInformation("Storage-linked fabric batch completed without creating a new purchase order. SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; TotalRolls={TotalRolls}; TotalYards={TotalYards}", batch.SupplierId, invoiceNumber, storageLinkedRolls.Count, totalYards);
+                return new FabricBatchResultDto(storageLinkedRolls.Count, totalYards, totalCost, $"STORAGE-{invoiceNumber}", now);
+            }
+
             step = "ReadExistingOfficialBatch";
             var existing = await TryReadOfficialFabricBatchAsync(connection, transaction, batch.SupplierId, invoiceNumber, ct);
             if (existing is not null)
@@ -2436,15 +2686,15 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             step = "ValidateSupplier";
             if (!await SupplierExistsAsync(connection, transaction, batch.SupplierId, ct)) return null;
 
-            var now = DateTime.UtcNow;
-            var totalCost = decimal.Round(batch.Rolls.Sum(roll => roll.QuantityYards * roll.YardPrice), 2, MidpointRounding.AwayFromZero);
+            var officialNow = DateTime.UtcNow;
+            var officialTotalCost = decimal.Round(batch.Rolls.Sum(roll => roll.QuantityYards * roll.YardPrice), 2, MidpointRounding.AwayFromZero);
             step = "InsertPurchaseOrder";
-            var purchaseOrderId = await InsertFabricPurchaseOrderAsync(connection, transaction, batch.SupplierId, invoiceNumber, totalCost, now, ct);
+            var purchaseOrderId = await InsertFabricPurchaseOrderAsync(connection, transaction, batch.SupplierId, invoiceNumber, officialTotalCost, officialNow, ct);
             logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; PurchaseOrderId={PurchaseOrderId}", step, batch.SupplierId, invoiceNumber, purchaseOrderId);
             step = "InsertGoodsReceipt";
-            var goodsReceiptId = await InsertFabricGoodsReceiptAsync(connection, transaction, batch.SupplierId, purchaseOrderId, invoiceNumber, batch.Notes, now, ct);
+            var goodsReceiptId = await InsertFabricGoodsReceiptAsync(connection, transaction, batch.SupplierId, purchaseOrderId, invoiceNumber, batch.Notes, officialNow, ct);
             logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; GoodsReceiptId={GoodsReceiptId}", step, batch.SupplierId, invoiceNumber, goodsReceiptId);
-            decimal totalYards = 0m;
+            decimal officialTotalYards = 0m;
 
             foreach (var roll in batch.Rolls)
             {
@@ -2469,16 +2719,16 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                     roll.FabricWidth,
                     roll.GoodsReceiptItemId,
                     roll.StorageOperationId,
-                    now,
+                    officialNow,
                     ct);
                 logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}", step, batch.SupplierId, invoiceNumber, code);
-                totalYards += roll.QuantityYards;
+                officialTotalYards += roll.QuantityYards;
             }
 
             step = "CommitTransaction";
             await transaction.CommitAsync(ct);
             logger?.LogInformation("Official fabric batch transaction committed. SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}", batch.SupplierId, invoiceNumber, fabricCode);
-            return new FabricBatchResultDto(batch.Rolls.Count, totalYards, totalCost, $"FAB-{invoiceNumber}", now);
+            return new FabricBatchResultDto(batch.Rolls.Count, officialTotalYards, officialTotalCost, $"FAB-{invoiceNumber}", officialNow);
         }
         catch (Exception exception)
         {
@@ -2504,6 +2754,9 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         var codes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var roll in batch.Rolls)
         {
+            var hasStorageLink = roll.GoodsReceiptItemId.HasValue || roll.StorageOperationId.HasValue;
+            if (hasStorageLink && (!roll.GoodsReceiptItemId.HasValue || !roll.StorageOperationId.HasValue))
+                throw new ArgumentException("Storage-linked fabric rolls must include both GoodsReceiptItemId and StorageOperationId.");
             if (string.IsNullOrWhiteSpace(roll.FabricCode) || string.IsNullOrWhiteSpace(roll.FabricType))
                 throw new ArgumentException("Fabric code and type are required for every roll.");
             if (roll.QuantityYards <= 0m || roll.YardPrice <= 0m || roll.FabricWidth <= 0m)

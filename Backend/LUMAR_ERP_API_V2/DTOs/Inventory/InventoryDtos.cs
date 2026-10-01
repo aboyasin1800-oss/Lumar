@@ -142,6 +142,9 @@ public sealed class ReceiveFabricInventoryDto
     [Range(1, int.MaxValue)]
     public int GoodsReceiptItemId { get; init; }
 
+    [StringLength(100)]
+    public string? CatalogNumber { get; init; }
+
     [Required, StringLength(100)]
     public string ItemCode { get; init; } = string.Empty;
 
@@ -154,6 +157,9 @@ public sealed class ReceiveFabricInventoryDto
     [StringLength(100)]
     public string? ColorValue { get; init; }
 
+    [Range(typeof(decimal), "0.01", "100000")]
+    public decimal FabricWidth { get; init; }
+
     [Range(1, 2)]
     public short UnitId { get; init; } = 1;
 
@@ -161,6 +167,24 @@ public sealed class ReceiveFabricInventoryDto
     public string OpposingLedgerAccountCode { get; init; } = string.Empty;
 
     public Guid SourceOperationId { get; init; }
+
+    [MinLength(1)]
+    public IReadOnlyList<ReceiveFabricInventoryRollDto>? Rolls { get; init; }
+}
+
+public sealed class ReceiveFabricInventoryRollDto
+{
+    [Required, StringLength(100)]
+    public string FabricCode { get; init; } = string.Empty;
+
+    [StringLength(100)]
+    public string? RollCode { get; init; }
+
+    [StringLength(100)]
+    public string? ColorValue { get; init; }
+
+    [Range(typeof(decimal), "0.000001", "1000000")]
+    public decimal Quantity { get; init; }
 }
 
 public sealed class ReceiveConsumableInventoryDto

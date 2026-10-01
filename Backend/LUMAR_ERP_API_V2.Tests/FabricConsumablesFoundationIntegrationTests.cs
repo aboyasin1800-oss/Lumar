@@ -83,6 +83,53 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
     }
 
     [Fact]
+    public async Task StorageLinkedFabricBatch_DoesNotCreatePurchaseOrderOrGoodsReceipt()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        var beforePurchaseOrders = await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.PurchaseOrders");
+        var beforeGoodsReceipts = await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceipts");
+        var beforeStorageAllocations = await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceiptItemStorageAllocations WHERE GoodsReceiptItemId=@item", ("@item", seed.FabricReceiptItemId));
+
+        try
+        {
+            var result = await repository.ReceiveFabricBatchAsync(new CreateFabricBatchDto
+            {
+                SupplierId = seed.SupplierId,
+                InvoiceNumber = "STORAGE-LINK-TEST",
+                Rolls =
+                [
+                    new CreateFabricRollDto
+                    {
+                        FabricCode = seed.FabricItemCode,
+                        FabricType = "Storage linked fabric",
+                        FabricColor = "White",
+                        FabricWidth = 58m,
+                        QuantityYards = 6m,
+                        YardPrice = 25.5m,
+                        GoodsReceiptItemId = seed.FabricReceiptItemId,
+                        StorageOperationId = Guid.NewGuid()
+                    }
+                ]
+            }, CancellationToken.None);
+
+            Assert.NotNull(result);
+            Assert.Equal(1, result!.TotalRolls);
+            Assert.Equal(6m, result.TotalYards);
+            Assert.Equal(153m, result.TotalCost);
+            Assert.Equal(beforePurchaseOrders, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.PurchaseOrders"));
+            Assert.Equal(beforeGoodsReceipts, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceipts"));
+            Assert.Equal(beforeStorageAllocations + 1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceiptItemStorageAllocations WHERE GoodsReceiptItemId=@item", ("@item", seed.FabricReceiptItemId)));
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
     public async Task FoundationReceiptAndConsumption_AreBalancedPreciseAndIdempotent()
     {
         var connectionString = GetConnectionString();
@@ -292,6 +339,49 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
             Assert.True(replay!.IsExisting);
             Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryReceiptPostings WHERE GoodsReceiptItemId=@item", ("@item", seed.FabricReceiptItemId)));
             Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricRolls WHERE RollCode=@roll", ("@roll", "REPLAY-ROLL-001")));
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
+    public async Task FoundationReceipt_MultiRollBatch_StoresEachRollWithoutDuplication()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+        var operationId = Guid.NewGuid();
+
+        try
+        {
+            var request = new ReceiveFabricInventoryDto
+            {
+                GoodsReceiptItemId = seed.FabricReceiptItemId,
+                CatalogNumber = "CAT-STORE-MULTI",
+                ItemCode = seed.FabricItemCode,
+                FabricTypeCode = "MULTI-ROLL-FAB",
+                FabricWidth = 58m,
+                UnitId = 1,
+                OpposingLedgerAccountCode = "1000",
+                SourceOperationId = operationId,
+                Rolls =
+                [
+                    new ReceiveFabricInventoryRollDto { FabricCode = "MR-001", RollCode = "MR-ROLL-001", ColorValue = "Navy", Quantity = 25m },
+                    new ReceiveFabricInventoryRollDto { FabricCode = "MR-002", RollCode = "MR-ROLL-002", ColorValue = "Black", Quantity = 25m },
+                    new ReceiveFabricInventoryRollDto { FabricCode = "MR-003", RollCode = "MR-ROLL-003", ColorValue = "Beige", Quantity = 25m }
+                ]
+            };
+
+            var result = await repository.ReceiveFabricInventoryAsync(request, CancellationToken.None);
+            Assert.NotNull(result);
+            Assert.False(result!.IsExisting);
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryReceiptPostings WHERE GoodsReceiptItemId=@item AND SourceOperationId=@operation", ("@item", seed.FabricReceiptItemId), ("@operation", operationId)));
+            Assert.Equal(3, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricRolls WHERE RollCode IN (@r1,@r2,@r3)", ("@r1", "MR-ROLL-001"), ("@r2", "MR-ROLL-002"), ("@r3", "MR-ROLL-003")));
+            Assert.Equal(75m, await ReadDecimalAsync(connectionString, "SELECT SUM(ReceivedQuantity) FROM dbo.InventoryReceiptLines WHERE InventoryReceiptPostingId=@id", result.SourceRecordId));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceiptItemStorageAllocations WHERE GoodsReceiptItemId=@item AND StorageOperationId=@operation", ("@item", seed.FabricReceiptItemId), ("@operation", operationId)));
+            Assert.Equal(75m, await ReadDecimalAsync(connectionString, "SELECT SUM(StoredQuantity) FROM dbo.GoodsReceiptItemStorageAllocations WHERE GoodsReceiptItemId=@item", seed.FabricReceiptItemId));
         }
         finally
         {

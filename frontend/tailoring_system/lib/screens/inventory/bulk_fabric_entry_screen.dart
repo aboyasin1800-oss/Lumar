@@ -745,35 +745,62 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
     setState(() => _isSaving = true);
 
     final batchCatalogNumber = _catalogNumberController.text.trim();
-    final payload = {
-      'supplierId': _selectedSupplierId,
-      'invoiceNumber': invoice,
-      'purchaseDate': _selectedDate.toIso8601String(),
-      'notes': _notesController.text.trim(),
-      'rolls': _rolls.map((roll) {
-        return {
-          'fabricCode': _mode == _FabricEntryMode.renewExisting && _selectedExistingFabric != null
-              ? _selectedExistingFabric!.code
-              : roll.fabricCodeController.text.trim(),
-          'catalogNumber': batchCatalogNumber.isNotEmpty ? batchCatalogNumber : roll.catalogNumberController.text.trim(),
-          'fabricType': _mode == _FabricEntryMode.renewExisting && _selectedExistingFabric != null
-              ? _selectedExistingFabric!.name
-              : roll.fabricTypeController.text.trim(),
-          'fabricColor': roll.fabricColorController.text.trim(),
-          'fabricWidth': double.tryParse(roll.fabricWidthController.text.trim().replaceAll(',', '.')) ?? 58,
-          'quantityYards': double.tryParse(roll.quantityYardsController.text.trim().replaceAll(',', '.')) ?? 0,
-          'yardPrice': double.tryParse(roll.yardPriceController.text.trim().replaceAll(',', '.')) ?? 0,
-            if (widget.pendingReceipt != null && widget.pendingReceipt!.itemType == 'Fabric')
-              'goodsReceiptItemId': widget.pendingReceipt!.goodsReceiptItemId,
-            if (widget.pendingReceipt != null && widget.pendingReceipt!.itemType == 'Fabric')
-              'storageOperationId': _operationId(),
-        };
-      }).toList(),
-    };
+    final pendingReceipt = widget.pendingReceipt;
+    final isPendingStorage = pendingReceipt != null && pendingReceipt.itemType == 'Fabric';
+
+    final payload = isPendingStorage
+        ? {
+            'goodsReceiptItemId': pendingReceipt.goodsReceiptItemId,
+            'catalogNumber': batchCatalogNumber.isNotEmpty ? batchCatalogNumber : (_rolls.firstOrNull?.catalogNumberController.text.trim() ?? ''),
+            'itemCode': (_rolls.firstOrNull?.fabricCodeController.text.trim() ?? _fabricTypeController.text.trim()).isNotEmpty
+                ? (_rolls.firstOrNull?.fabricCodeController.text.trim() ?? _fabricTypeController.text.trim())
+                : _selectedExistingFabric?.code ?? '',
+            'fabricTypeCode': (_rolls.firstOrNull?.fabricTypeController.text.trim() ?? _fabricTypeController.text.trim()).isNotEmpty
+                ? (_rolls.firstOrNull?.fabricTypeController.text.trim() ?? _fabricTypeController.text.trim())
+                : _selectedExistingFabric?.name ?? '',
+            'fabricWidth': (double.tryParse((_rolls.firstOrNull?.fabricWidthController.text.trim() ?? '').replaceAll(',', '.')) ?? 58.0),
+            'colorValue': _rolls.firstOrNull?.fabricColorController.text.trim() ?? '',
+            'unitId': 1,
+            'opposingLedgerAccountCode': '1000',
+            'sourceOperationId': _operationId(),
+            'rolls': _rolls.map((roll) {
+              return {
+                'fabricCode': _mode == _FabricEntryMode.renewExisting && _selectedExistingFabric != null
+                    ? _selectedExistingFabric!.code
+                    : roll.fabricCodeController.text.trim(),
+                'rollCode': roll.fabricCodeController.text.trim(),
+                'colorValue': roll.fabricColorController.text.trim(),
+                'quantity': double.tryParse(roll.quantityYardsController.text.trim().replaceAll(',', '.')) ?? 0,
+              };
+            }).toList(),
+          }
+        : {
+            'supplierId': _selectedSupplierId,
+            'invoiceNumber': invoice,
+            'purchaseDate': _selectedDate.toIso8601String(),
+            'notes': _notesController.text.trim(),
+            'rolls': _rolls.map((roll) {
+              return {
+                'fabricCode': _mode == _FabricEntryMode.renewExisting && _selectedExistingFabric != null
+                    ? _selectedExistingFabric!.code
+                    : roll.fabricCodeController.text.trim(),
+                'catalogNumber': batchCatalogNumber.isNotEmpty ? batchCatalogNumber : roll.catalogNumberController.text.trim(),
+                'fabricType': _mode == _FabricEntryMode.renewExisting && _selectedExistingFabric != null
+                    ? _selectedExistingFabric!.name
+                    : roll.fabricTypeController.text.trim(),
+                'fabricColor': roll.fabricColorController.text.trim(),
+                'fabricWidth': double.tryParse(roll.fabricWidthController.text.trim().replaceAll(',', '.')) ?? 58,
+                'quantityYards': double.tryParse(roll.quantityYardsController.text.trim().replaceAll(',', '.')) ?? 0,
+                'yardPrice': double.tryParse(roll.yardPriceController.text.trim().replaceAll(',', '.')) ?? 0,
+              };
+            }).toList(),
+          };
+
+    final endpoint = isPendingStorage ? '$_baseUrl/inventory/foundation/fabric-receipts' : '$_baseUrl/inventory/fabric-batches';
 
     try {
       final response = await http.post(
-        Uri.parse('$_baseUrl/inventory/fabric-batches'),
+        Uri.parse(endpoint),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
       );
@@ -783,7 +810,9 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: Theme.of(context).colorScheme.primary,
-            content: Text('تم استلام دفعة الأقمشة بنجاح وإضافتها للمخزون (${_rolls.length} رولات).'),
+            content: Text(isPendingStorage
+                ? 'تم تخزين بند الاستلام في المخزون بنجاح.'
+                : 'تم استلام دفعة الأقمشة بنجاح وإضافتها للمخزون (${_rolls.length} رولات).'),
           ),
         );
         Navigator.of(context).pop(true);
