@@ -51,6 +51,30 @@ class PendingReceiptStorage {
     );
   }
 
+  static List<PendingReceiptStorage> normalizePendingReceipts(Iterable<PendingReceiptStorage> rows) {
+    final byItemId = <int, PendingReceiptStorage>{};
+
+    for (final row in rows) {
+      if (row.goodsReceiptItemId <= 0 || row.remainingQuantity <= 0) {
+        continue;
+      }
+
+      final existing = byItemId[row.goodsReceiptItemId];
+      if (existing == null || row.receiptDate.isAfter(existing.receiptDate) || row.remainingQuantity > existing.remainingQuantity) {
+        byItemId[row.goodsReceiptItemId] = row;
+      }
+    }
+
+    final normalized = byItemId.values.toList()
+      ..sort((a, b) {
+        final dateCompare = a.receiptDate.compareTo(b.receiptDate);
+        if (dateCompare != 0) return dateCompare;
+        return a.goodsReceiptItemId.compareTo(b.goodsReceiptItemId);
+      });
+
+    return normalized;
+  }
+
   String get arabicItemType => switch (itemType) {
         'Fabric' => 'قماش',
         'ImportedProduct' => 'منتج مستورد',

@@ -578,10 +578,11 @@ class DashboardScreen extends StatelessWidget {
     final isLightMode = Theme.of(context).brightness == Brightness.light;
     final cardColor = isLightMode ? _lightCardBackground : _darkCardBackground;
     final cardBorder = isLightMode ? _lightCardBorder : _darkCardBorder;
-    final cardTextColor = isLightMode ? _lightCardText : _darkCardText;
+    final cardTextColor = isLightMode ? const Color.fromARGB(255, 248, 249, 250) : _darkCardText;
     final cardShadows = _dashboardShadows(isLightMode);
 
     return GridView.builder(
+      padding: const EdgeInsets.all(6),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 164,
         mainAxisExtent: 164,

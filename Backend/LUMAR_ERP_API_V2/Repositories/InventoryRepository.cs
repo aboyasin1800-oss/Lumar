@@ -2163,6 +2163,17 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         parameter.Value = value;
     }
 
+    internal static bool IsStorageItemTypeCompatible(string? sourceType, string itemType)
+    {
+        if (string.IsNullOrWhiteSpace(itemType))
+            return true;
+
+        if (string.IsNullOrWhiteSpace(sourceType))
+            return true;
+
+        return string.Equals(sourceType.Trim(), itemType.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
     private static async Task InsertStorageAllocationAsync(SqlConnection connection, SqlTransaction transaction, int? goodsReceiptItemId, string itemType, decimal quantity, Guid? storageOperationId, int inventoryItemId, int inventoryTransactionId, long? accountingEventId, long? inventoryReceiptPostingId, long? importedReceiptId, CancellationToken ct)
     {
         if (!goodsReceiptItemId.HasValue) return;
@@ -2184,7 +2195,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         var lineStatus = reader.GetString(3);
         await reader.CloseAsync();
         if (receiptStatus != "Confirmed" || lineStatus != "Confirmed") throw new InvalidOperationException("لا يمكن تخزين استلام غير مؤكد أو معكوس.");
-        if (sourceType != itemType) throw new InvalidOperationException("نوع التخزين لا يطابق نوع سطر الاستلام.");
+        if (!IsStorageItemTypeCompatible(sourceType, itemType)) throw new InvalidOperationException("نوع التخزين لا يطابق نوع سطر الاستلام.");
 
         await using var duplicate = new SqlCommand("SELECT COUNT_BIG(1) FROM dbo.GoodsReceiptItemStorageAllocations WITH(UPDLOCK,HOLDLOCK) WHERE StorageOperationId=@operation", connection, transaction);
         duplicate.Parameters.Add("@operation", System.Data.SqlDbType.UniqueIdentifier).Value = storageOperationId.Value;
@@ -2401,15 +2412,16 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
     private static async Task<int> InsertFabricGoodsReceiptItemAsync(SqlConnection connection, SqlTransaction transaction, int goodsReceiptId, string fabricType, decimal quantity, decimal unitCost, decimal lineTotal, CancellationToken ct)
     {
         const string sql = @"
-            INSERT INTO dbo.GoodsReceiptItems (GoodsReceiptId,ItemName,ReceivedQuantity,UnitCost,LineTotal)
+            INSERT INTO dbo.GoodsReceiptItems (GoodsReceiptId,ItemName,ReceivedQuantity,UnitCost,LineTotal,ItemType)
             OUTPUT INSERTED.GoodsReceiptItemId
-            VALUES (@receiptId,@name,@quantity,@unitCost,@lineTotal);";
+            VALUES (@receiptId,@name,@quantity,@unitCost,@lineTotal,@itemType);";
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@receiptId", goodsReceiptId);
         command.Parameters.AddWithValue("@name", fabricType);
         AddDecimal(command, "@quantity", quantity);
         AddDecimal(command, "@unitCost", unitCost);
         AddDecimal(command, "@lineTotal", lineTotal);
+        command.Parameters.AddWithValue("@itemType", "Fabric");
         return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
     }
 

@@ -45,26 +45,61 @@ class AppNavigationRegion extends StatelessWidget {
 	const AppNavigationRegion({
 		required this.child,
 		this.onBackMouseButton,
+		this.onCloseWorkspaceTask,
+		this.showWorkspaceCloseButton = false,
 		super.key,
 	});
 
 	final Widget child;
 	final VoidCallback? onBackMouseButton;
+	final Future<void> Function(BuildContext context)? onCloseWorkspaceTask;
+	final bool showWorkspaceCloseButton;
 
 	@override
-	Widget build(BuildContext context) => Listener(
-		behavior: HitTestBehavior.translucent,
-		onPointerDown: (event) {
-			if (event.kind == PointerDeviceKind.mouse &&
-				event.buttons & kBackMouseButton != 0) {
-				if (!AppNavigation.popIfPossible()) {
-					onBackMouseButton?.call();
-				}
-				return;
-			}
-			AppNavigation.handlePointerDown(event);
-		},
-		child: child,
+	Widget build(BuildContext context) => Stack(
+		children: [
+			Listener(
+				behavior: HitTestBehavior.translucent,
+				onPointerDown: (event) {
+					if (event.kind == PointerDeviceKind.mouse &&
+						event.buttons & kBackMouseButton != 0) {
+						if (!AppNavigation.popIfPossible()) {
+							onBackMouseButton?.call();
+						}
+						return;
+					}
+					AppNavigation.handlePointerDown(event);
+				},
+				child: child,
+			),
+			if (showWorkspaceCloseButton && onCloseWorkspaceTask != null)
+				Positioned(
+					right:1,
+					top: 1,
+					child: Material(
+						color: Theme.of(context).colorScheme.errorContainer,
+						borderRadius: BorderRadius.circular(6),
+						child: Semantics(
+							label: 'إغلاق الشاشة',
+							child: IconButton(
+								padding: EdgeInsets.zero,
+								constraints: const BoxConstraints(
+									minWidth: 37,
+									maxWidth: 37,
+									minHeight: 26,
+									maxHeight: 26,
+								),
+								onPressed: () => onCloseWorkspaceTask!(context),
+								icon: Icon(
+									Icons.close_rounded,
+									size: 18,
+									color: Theme.of(context).colorScheme.error,
+								),
+							),
+						),
+					),
+				),
+		],
 	);
 }
 

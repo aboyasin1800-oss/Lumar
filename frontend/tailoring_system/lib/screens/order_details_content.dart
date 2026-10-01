@@ -847,7 +847,7 @@ class _PieceCardState extends State<_PieceCard> {
                           padding: const EdgeInsets.only(left: 6),
                           child: InkWell(
                             onTap: buttonEnabled
-                                ? () => _advanceStage(stage, item!.pieceType)
+                                ? () => _advanceStage(stage, item.pieceType)
                                 : null,
                             child: Container(
                               padding: const EdgeInsets.symmetric(

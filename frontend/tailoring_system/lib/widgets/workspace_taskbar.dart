@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../core/ui_palette.dart';
 import '../services/workspace_controller.dart';
 import '../services/workspace_registry.dart';
+import 'workspace_task_close_button.dart';
 
 enum WorkspaceModuleType {
   dashboard,
@@ -313,34 +314,11 @@ class _TaskbarItem extends StatelessWidget {
 
   Future<void> _closeTask(BuildContext context, [WorkspaceTask? target]) async {
     final taskToClose = target ?? task;
-    if (!taskToClose.isDirty) {
-      controller.close(taskToClose.definition.routeId);
-      return;
-    }
-
-    controller.beginClose(taskToClose.definition.routeId);
-    final shouldClose = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('تغييرات غير محفوظة'),
-        content: const Text('توجد تغييرات غير محفوظة. هل تريد إغلاق الشاشة؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('العودة إلى الشاشة'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('إغلاق دون حفظ'),
-          ),
-        ],
-      ),
+    await WorkspaceTaskCloseButton.close(
+      context,
+      controller,
+      taskToClose.definition.routeId,
     );
-    if (shouldClose == true) {
-      controller.closeAfterConfirmation(taskToClose.definition.routeId);
-    } else {
-      controller.cancelClose(taskToClose.definition.routeId);
-    }
   }
 }
 

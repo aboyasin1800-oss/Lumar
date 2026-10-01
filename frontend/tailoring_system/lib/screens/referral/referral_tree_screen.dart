@@ -842,7 +842,7 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
           border: Border.all(color: Colors.amber, width: 3),
           boxShadow: [
             BoxShadow(
-              color: Colors.amber.withOpacity(0.4),
+              color: Colors.amber.withValues(alpha: 0.4),
               blurRadius: 10,
             ),
           ],

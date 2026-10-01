@@ -65,10 +65,11 @@ class _InventoryScreenState extends State<InventoryScreen>
         final pendingResponse = await http.get(Uri.parse('$_baseUrl/inventory/pending-receipt-storage'));
         if (pendingResponse.statusCode >= 200 && pendingResponse.statusCode < 300) {
           final pendingJson = jsonDecode(pendingResponse.body) as List;
-          pendingReceipts = pendingJson
-              .cast<Map<String, dynamic>>()
-              .map(PendingReceiptStorage.fromJson)
-              .toList();
+          pendingReceipts = PendingReceiptStorage.normalizePendingReceipts(
+            pendingJson
+                .cast<Map<String, dynamic>>()
+                .map(PendingReceiptStorage.fromJson),
+          );
         }
       } catch (_) {}
 

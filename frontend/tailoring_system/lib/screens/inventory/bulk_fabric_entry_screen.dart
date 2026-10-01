@@ -8,54 +8,94 @@ import 'package:intl/intl.dart';
 import '../../core/ui_palette.dart';
 import '../../models/pending_receipt_storage.dart';
 
-class _FabricBatchUtils {
-  static String normalizeCode(String value) => value.trim().toUpperCase();
+class FabricCodeUtils {
+  static String _normalizeCode(String value) => value.trim().toUpperCase();
 
   static String nextFabricCode(
     List<String> existingCodes, {
     String prefix = 'FA',
     int width = 4,
   }) {
-    final cleaned = existingCodes
-        .map(normalizeCode)
-        .where((element) => element.isNotEmpty && element.startsWith(prefix))
-        .toList();
+    final normalizedPrefix = _normalizeCode(prefix);
+    final resolvedPrefix = normalizedPrefix.isEmpty ? 'FA' : normalizedPrefix;
 
     int maxNumber = 0;
-    for (final code in cleaned) {
-      final numeric = code.substring(prefix.length);
+    for (final code in existingCodes.map(_normalizeCode)) {
+      if (code.isEmpty || !code.startsWith(resolvedPrefix)) {
+        continue;
+      }
+
+      final numeric = code.substring(resolvedPrefix.length);
+      if (!RegExp(r'^\d+$').hasMatch(numeric)) {
+        continue;
+      }
+
       final parsed = int.tryParse(numeric);
       if (parsed != null && parsed > maxNumber) {
         maxNumber = parsed;
       }
     }
 
-    return '$prefix${(maxNumber + 1).toString().padLeft(width, '0')}';
+    return '$resolvedPrefix${(maxNumber + 1).toString().padLeft(width, '0')}';
   }
 
   static String nextCatalogNumber(
     List<String> existingCatalogs, {
+    String prefix = 'CAT',
     int width = 4,
-    String fallbackPrefix = 'CAT',
   }) {
-    final pattern = RegExp(r'^([A-Za-z]+)(\d+)$');
-    int maxNumber = 0;
-    var numericWidth = width;
-    var prefix = fallbackPrefix;
-    for (final catalog in existingCatalogs.map((value) => value.trim())) {
-      final match = pattern.firstMatch(catalog);
-      if (match == null) continue;
+    final normalizedPrefix = _normalizeCode(prefix);
+    final resolvedPrefix = normalizedPrefix.isEmpty ? 'CAT' : normalizedPrefix;
 
-      final parsed = int.tryParse(match.group(2)!);
+    int maxNumber = 0;
+    for (final code in existingCatalogs.map(_normalizeCode)) {
+      if (code.isEmpty || !code.startsWith(resolvedPrefix)) {
+        continue;
+      }
+
+      final numeric = code.substring(resolvedPrefix.length);
+      if (!RegExp(r'^\d+$').hasMatch(numeric)) {
+        continue;
+      }
+
+      final parsed = int.tryParse(numeric);
       if (parsed != null && parsed > maxNumber) {
         maxNumber = parsed;
-        prefix = match.group(1)!.toUpperCase();
-        numericWidth = match.group(2)!.length > width ? match.group(2)!.length : width;
       }
     }
 
-    return '$prefix${(maxNumber + 1).toString().padLeft(numericWidth, '0')}';
+    return '$resolvedPrefix${(maxNumber + 1).toString().padLeft(width, '0')}';
   }
+
+  static String formatYardPriceDisplay(num value) {
+    final numeric = value.toDouble();
+    if (numeric.isNaN || numeric.isInfinite) {
+      return '0';
+    }
+
+    final text = numeric.toStringAsFixed(2);
+    if (text.endsWith('.00')) {
+      return text.substring(0, text.length - 3);
+    }
+    if (text.endsWith('0')) {
+      return text.substring(0, text.length - 1);
+    }
+    return text;
+  }
+}
+
+class _FabricBatchUtils {
+  static String nextFabricCode(
+    List<String> existingCodes, {
+    String prefix = 'FA',
+    int width = 4,
+  }) => FabricCodeUtils.nextFabricCode(existingCodes, prefix: prefix, width: width);
+
+  static String nextCatalogNumber(
+    List<String> existingCatalogs, {
+    String prefix = 'CAT',
+    int width = 4,
+  }) => FabricCodeUtils.nextCatalogNumber(existingCatalogs, prefix: prefix, width: width);
 
   static double inchPriceFromYardPrice(double yardPrice) => yardPrice > 0 ? yardPrice / 36.0 : 0.0;
 
@@ -98,12 +138,12 @@ class FabricEntryScreenPalette {
     screenBackground: UiPalette.screenBackground,
     surfaceCard: Color.fromARGB(255, 18, 31, 41),
     surfaceSoft: Color.fromARGB(255, 18, 31, 41),
-    primary: Color.fromARGB(255, 29, 46, 66),
+    primary: UiPalette.primary,
     primaryStrong: UiPalette.primaryDark,
-    accent: UiPalette.purpleAccent,
+    accent: UiPalette.primary,
     textMain: UiPalette.textMain,
     textSoft: UiPalette.textSoft,
-    border: Color.fromARGB(255, 3, 115, 243),
+    border: UiPalette.primaryBorder,
   );
 }
 
@@ -185,6 +225,9 @@ class _RollEntryItem {
 
     inchPriceController.text = inchPrice > 0 ? inchPrice.toStringAsFixed(3) : '0.000';
     totalRollCostController.text = totalCost > 0 ? totalCost.toStringAsFixed(2) : '0.00';
+    if (yardPrice > 0) {
+      yardPriceController.text = FabricCodeUtils.formatYardPriceDisplay(yardPrice);
+    }
   }
 
   void dispose() {
@@ -223,6 +266,9 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
   final _inchPriceController = TextEditingController();
   final _rollCountController = TextEditingController();
 
+  String _fabricCodePrefix = 'FA';
+  String _catalogNumberPrefix = 'CAT';
+
   DateTime _selectedDate = DateTime.now();
   int? _selectedSupplierId;
   List<_SupplierItem> _suppliers = [];
@@ -250,6 +296,7 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
   @override
   void initState() {
     super.initState();
+    _loadCodePrefixes();
     _loadSuppliers();
     _loadInventoryItems();
     _updateRollsFromCount();
@@ -279,12 +326,12 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
     _selectedSupplierId = pending.supplierId;
     _invoiceNumberController.text = pending.receiptNumber;
     _fabricTypeController.text = pending.itemDescription;
-    _yardPriceController.text = pending.unitCost.toStringAsFixed(2);
+    _yardPriceController.text = FabricCodeUtils.formatYardPriceDisplay(pending.unitCost);
     _rollCountController.text = '1';
     _updateRollsFromCount();
     if (_rolls.isNotEmpty) {
       _rolls.first.quantityYardsController.text = pending.remainingQuantity.toStringAsFixed(3);
-      _rolls.first.yardPriceController.text = pending.unitCost.toStringAsFixed(2);
+      _rolls.first.yardPriceController.text = FabricCodeUtils.formatYardPriceDisplay(pending.unitCost);
       _rolls.first.fabricTypeController.text = pending.itemDescription;
       _rolls.first.updateCalculations();
     }
@@ -319,8 +366,45 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
     }
   }
 
+  Future<void> _loadCodePrefixes() async {
+    try {
+      final response = await http.get(Uri.parse('$_baseUrl/settings/code-prefixes'));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return;
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) {
+        return;
+      }
+
+      for (final item in decoded.whereType<Map<String, dynamic>>()) {
+        final key = (item['key'] ?? item['SettingName'] ?? '').toString();
+        final value = (item['currentValue'] ?? item['value'] ?? item['SettingValue'] ?? '').toString();
+        if (key == 'FabricCodePrefix' && value.trim().isNotEmpty) {
+          _fabricCodePrefix = value.trim().toUpperCase();
+        } else if (key == 'CatalogNumberPrefix' && value.trim().isNotEmpty) {
+          _catalogNumberPrefix = value.trim().toUpperCase();
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _refreshCatalogNumberSeed();
+          if (_rolls.isNotEmpty) {
+            _updateRollsFromCount();
+          }
+        });
+      }
+    } catch (_) {
+      // Ignore prefix loading issues and keep the defaults in place.
+    }
+  }
+
   Future<void> _loadInventoryItems() async {
     try {
+      _allKnownFabricCodes.clear();
+
       final response = await http.get(Uri.parse('$_baseUrl/inventory/items'));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return;
@@ -342,6 +426,10 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
         final code = (item['itemCode'] ?? '').toString();
         final normalized = code.trim();
         if (normalized.toUpperCase().startsWith('FA') && RegExp(r'^FA\d+$').hasMatch(normalized.toUpperCase())) {
+          _allKnownFabricCodes.add(normalized.toUpperCase());
+        }
+
+        if (normalized.toUpperCase().startsWith('FAB') && RegExp(r'^FAB\d+$').hasMatch(normalized.toUpperCase())) {
           _allKnownFabricCodes.add(normalized.toUpperCase());
         }
 
@@ -382,7 +470,7 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
             }
           }
           if (_mode == _FabricEntryMode.newFabric) {
-            _catalogNumberController.text = _nextCatalogNumber();
+            _refreshCatalogNumberSeed();
           }
         });
         if (_mode == _FabricEntryMode.newFabric) {
@@ -396,6 +484,29 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
     }
   }
 
+  void _refreshCatalogNumberSeed() {
+    final current = _catalogNumberController.text.trim();
+    final existingCatalogs = _availableInventory
+        .map((item) => item.catalogNumber.trim())
+        .where((catalog) => catalog.isNotEmpty && catalog.startsWith(_catalogNumberPrefix))
+        .toList();
+
+    if (current.isEmpty || current == _catalogNumberPrefix) {
+      _catalogNumberController.text = _nextCatalogNumber();
+      return;
+    }
+
+    final currentNumber = int.tryParse(current.replaceFirst(_catalogNumberPrefix, ''));
+    final maxExisting = existingCatalogs
+        .map((catalog) => int.tryParse(catalog.replaceFirst(_catalogNumberPrefix, '')))
+        .whereType<int>()
+        .fold<int>(0, (max, value) => value > max ? value : max);
+
+    if (currentNumber == null || currentNumber <= maxExisting) {
+      _catalogNumberController.text = _nextCatalogNumber();
+    }
+  }
+
   void _applySelectedFabric() {
     final item = _selectedExistingFabric;
     if (item == null) return;
@@ -404,7 +515,7 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
       _fabricTypeController.text = item.name;
       _catalogNumberController.text = item.catalogNumber;
       _fabricWidthController.text = item.width > 0 ? item.width.toStringAsFixed(0) : '58';
-      _yardPriceController.text = item.unitPrice > 0 ? item.unitPrice.toStringAsFixed(2) : '';
+      _yardPriceController.text = item.unitPrice > 0 ? FabricCodeUtils.formatYardPriceDisplay(item.unitPrice) : '';
       _inchPriceController.text = item.unitPrice > 0 ? _FabricBatchUtils.inchPriceFromYardPrice(item.unitPrice).toStringAsFixed(3) : '0.000';
       if (_rolls.isNotEmpty) {
         for (final roll in _rolls) {
@@ -412,7 +523,7 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
           roll.fabricTypeController.text = item.name;
           roll.catalogNumberController.text = item.catalogNumber;
           roll.fabricWidthController.text = item.width > 0 ? item.width.toStringAsFixed(0) : '58';
-          roll.yardPriceController.text = item.unitPrice > 0 ? item.unitPrice.toStringAsFixed(2) : '';
+          roll.yardPriceController.text = item.unitPrice > 0 ? FabricCodeUtils.formatYardPriceDisplay(item.unitPrice) : '';
           roll.quantityYardsController.text = '';
           roll.fabricColorController.text = item.color;
           roll.updateCalculations();
@@ -435,7 +546,7 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
         final usedCodes = <String>{...existingCodes};
 
         for (var i = 0; i < safeCount - oldLength; i++) {
-          final nextCode = _FabricBatchUtils.nextFabricCode(usedCodes.toList(), prefix: 'FA');
+          final nextCode = _FabricBatchUtils.nextFabricCode(usedCodes.toList(), prefix: _fabricCodePrefix);
           usedCodes.add(nextCode);
           generatedCodes.add(nextCode);
         }
@@ -473,17 +584,17 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
           roll.fabricTypeController.text = _selectedExistingFabric!.name;
           roll.catalogNumberController.text = _catalogNumberController.text.trim();
           roll.fabricWidthController.text = _selectedExistingFabric!.width > 0 ? _selectedExistingFabric!.width.toStringAsFixed(0) : '58';
-          roll.yardPriceController.text = _selectedExistingFabric!.unitPrice > 0 ? _selectedExistingFabric!.unitPrice.toStringAsFixed(2) : '';
+          roll.yardPriceController.text = _selectedExistingFabric!.unitPrice > 0 ? FabricCodeUtils.formatYardPriceDisplay(_selectedExistingFabric!.unitPrice) : '';
           roll.quantityYardsController.text = i == 0 ? _rolls.first.quantityYardsController.text : roll.quantityYardsController.text;
         } else {
           roll.fabricCodeController.text = _FabricBatchUtils.nextFabricCode(
             [..._availableInventory.map((item) => item.code), ..._rolls.map((entry) => entry.fabricCodeController.text.trim())],
-            prefix: 'FA',
+            prefix: _fabricCodePrefix,
           );
           roll.catalogNumberController.text = _catalogNumberController.text.trim();
           roll.fabricTypeController.text = _fabricTypeController.text.trim();
           roll.fabricWidthController.text = _fabricWidthController.text.trim();
-          roll.yardPriceController.text = _yardPriceController.text.trim();
+          roll.yardPriceController.text = FabricCodeUtils.formatYardPriceDisplay(double.tryParse(_yardPriceController.text.trim().replaceAll(',', '.')) ?? 0);
         }
         roll.updateCalculations();
       }
@@ -492,6 +603,7 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
 
   String _nextCatalogNumber() => _FabricBatchUtils.nextCatalogNumber(
         _availableInventory.map((item) => item.catalogNumber).toList(),
+        prefix: _catalogNumberPrefix,
       );
 
   void _addRoll() {
@@ -547,6 +659,14 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
       final code = roll.fabricCodeController.text.trim();
       if (_mode == _FabricEntryMode.newFabric && code.isNotEmpty && !seenCodes.add(code)) {
         throw StateError('كود القماش مكرر داخل نفس الدفعة: $code');
+      }
+    }
+
+    final batchCatalog = _catalogNumberController.text.trim();
+    if (_mode == _FabricEntryMode.newFabric && batchCatalog.isNotEmpty) {
+      final existingCatalogs = _availableInventory.map((item) => item.catalogNumber.trim()).toSet();
+      if (existingCatalogs.contains(batchCatalog)) {
+        throw StateError('رقم الكتالوج موجود بالفعل في المخزون: $batchCatalog');
       }
     }
 

@@ -13,6 +13,7 @@ import 'services/workspace_registry.dart';
 import 'screens/module_screens.dart';
 import 'widgets/keyboard_policy.dart';
 import 'widgets/main_shell.dart';
+import 'widgets/workspace_task_close_button.dart';
 
 void main() => runApp(const LumarApp());
 
@@ -67,6 +68,9 @@ class _LumarAppState extends State<LumarApp> {
             ],
             builder: (context, child) => AppNavigationRegion(
               onBackMouseButton: () => workspace.open(WorkspaceRouteIds.dashboard),
+              onCloseWorkspaceTask: (context) =>
+                  WorkspaceTaskCloseButton.closeActiveTask(context, workspace),
+              showWorkspaceCloseButton: workspace.activeRouteId != null,
               child: KeyboardPolicy(
                     uiScale: uiScale,
                     child: Directionality(

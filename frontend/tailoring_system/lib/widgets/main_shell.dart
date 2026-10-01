@@ -25,7 +25,7 @@ class MainShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: UiPalette.screenBackground,
+      backgroundColor: const Color.fromARGB(255, 25, 34, 49),
       body: Column(
         children: [
           Expanded(
@@ -117,7 +117,7 @@ class _WorkspaceHeader extends StatelessWidget {
     return SizedBox(
       height: 48,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        padding: const EdgeInsets.fromLTRB(20, 6, 64, 6),
         child: Row(
           children: [
             Icon(

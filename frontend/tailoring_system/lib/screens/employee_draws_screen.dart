@@ -142,7 +142,6 @@ class _LedgerSection extends StatelessWidget {
     required this.title,
     required this.icon,
     required this.child,
-    super.key,
   });
 
   final String title;
@@ -191,7 +190,7 @@ class _LedgerSummaryRow {
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.row, super.key});
+  const _SummaryCard({required this.row});
 
   final _LedgerSummaryRow row;
 
@@ -242,7 +241,6 @@ class _LedgerTable extends StatelessWidget {
     required this.columns,
     required this.rows,
     required this.empty,
-    super.key,
   });
 
   final List<String> columns;
