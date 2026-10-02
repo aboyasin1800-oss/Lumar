@@ -436,6 +436,44 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
     public Task<IReadOnlyList<ImportedReadyMadeProductDto>> GetImportedAsync(CancellationToken ct) => QueryAsync("SELECT ImportedReadyMadeProductId, ProductName, ProductType, ProductCode, Unit, Quantity, PurchasePrice, SellingPrice, IsActive, AlertThreshold, Notes, Category, CreatedAt, UpdatedAt FROM dbo.ImportedReadyMadeProducts ORDER BY ProductName, ImportedReadyMadeProductId", reader => new ImportedReadyMadeProductDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetBoolean(8), reader.NullableDecimal("AlertThreshold"), reader.NullableString("Notes"), reader.GetString(11), reader.GetDateTime(12), reader.NullableDateTime("UpdatedAt")), null, ct);
     public Task<IReadOnlyList<InventoryItemDto>> GetToolsAsync(CancellationToken ct) => QueryAsync("SELECT InventoryItemID, ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice FROM dbo.InventoryItems WHERE Category LIKE '%Tool%' OR Category LIKE '%Accessory%' OR Category LIKE '%Thread%' OR Category LIKE '%Button%' OR Category LIKE '%Packing%' OR Category LIKE '%Glue%' OR ItemName LIKE '%خيط%' OR ItemName LIKE '%زر%' OR ItemName LIKE '%سحاب%' OR ItemName LIKE '%لاصق%' OR ItemName LIKE '%تغليف%' OR ItemName LIKE '%أداة%' OR ItemName LIKE '%مستلزم%' ORDER BY ItemName, InventoryItemID", MapItem, null, ct);
 
+    public static string BuildNextToolCode(string prefix, IEnumerable<string>? existingCodes)
+    {
+        var normalizedPrefix = string.IsNullOrWhiteSpace(prefix) ? "AT" : prefix.Trim();
+        if (normalizedPrefix.Length == 0)
+        {
+            normalizedPrefix = "AT";
+        }
+
+        var maxNumber = 0;
+        foreach (var code in existingCodes ?? Enumerable.Empty<string>())
+        {
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                continue;
+            }
+
+            var trimmed = code.Trim();
+            if (!trimmed.StartsWith(normalizedPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var suffix = trimmed[normalizedPrefix.Length..];
+            var numericPart = new string(suffix.SkipWhile(ch => !char.IsDigit(ch)).TakeWhile(char.IsDigit).ToArray());
+            if (string.IsNullOrEmpty(numericPart) || !int.TryParse(numericPart, out var number))
+            {
+                continue;
+            }
+
+            if (number > maxNumber)
+            {
+                maxNumber = number;
+            }
+        }
+
+        return $"{normalizedPrefix}{(maxNumber + 1).ToString().PadLeft(4, '0')}";
+    }
+
     public async Task<InventoryItemDto?> UpsertToolItemAsync(CreateToolItemDto tool, CancellationToken ct)
     {
         await using var connection = operationalConnections.Create();
@@ -512,23 +550,19 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
     {
         var prefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "ToolCodePrefix", "AT", ct);
         using var cmd = new SqlCommand(@"
-            SELECT TOP 1 ItemCode
+            SELECT ItemCode
             FROM dbo.InventoryItems WITH (NOLOCK)
             WHERE ItemCode LIKE @prefix
-            ORDER BY ItemCode DESC", connection, transaction);
+            ORDER BY ItemCode", connection, transaction);
         cmd.Parameters.AddWithValue("@prefix", $"{prefix}%");
         using var reader = await cmd.ExecuteReaderAsync(ct);
-        var maxNumber = 0;
+        var codes = new List<string>();
         while (await reader.ReadAsync(ct))
         {
-            var code = reader.GetString(0);
-            if (code.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && int.TryParse(code[prefix.Length..], out var number))
-            {
-                if (number > maxNumber) maxNumber = number;
-            }
+            codes.Add(reader.GetString(0));
         }
 
-        return $"{prefix}{(maxNumber + 1).ToString().PadLeft(4, '0')}";
+        return BuildNextToolCode(prefix, codes);
     }
 
     private static async Task<InventoryItemDto?> FindExistingToolAsync(SqlConnection connection, SqlTransaction transaction, string candidateCode, string productName, string productType, CancellationToken ct)

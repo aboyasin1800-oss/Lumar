@@ -32,6 +32,7 @@ class _ToolEntryScreenState extends State<ToolEntryScreen> {
 
   bool _renewExisting = false;
   bool _isSaving = false;
+  String _toolCodePrefix = 'AT';
   List<_ToolItemRow> _items = [];
   _ToolItemRow? _selectedItem;
 
@@ -42,6 +43,7 @@ class _ToolEntryScreenState extends State<ToolEntryScreen> {
     super.initState();
     _quantityController.addListener(_syncTotal);
     _unitPriceController.addListener(_syncTotal);
+    _loadToolCodePrefix();
     _loadExistingItems();
     _applyPendingReceipt();
   }
@@ -74,6 +76,25 @@ class _ToolEntryScreenState extends State<ToolEntryScreen> {
   }
 
   String _operationId() => '${DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(16).padLeft(32, '0').substring(0, 8)}-0000-4000-8000-${DateTime.now().microsecondsSinceEpoch.toRadixString(16).padLeft(12, '0').substring(0, 12)}';
+
+  Future<void> _loadToolCodePrefix() async {
+    try {
+      final response = await http.get(Uri.parse('$_baseUrl/settings/code-prefixes'));
+      if (response.statusCode < 200 || response.statusCode >= 300) return;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) return;
+      final item = decoded.whereType<Map<String, dynamic>>().firstWhere(
+        (entry) => (entry['key'] ?? entry['SettingName'] ?? '').toString() == 'ToolCodePrefix',
+        orElse: () => <String, dynamic>{},
+      );
+      if (item.isEmpty) return;
+      final value = (item['currentValue'] ?? item['value'] ?? 'AT').toString().trim();
+      if (!mounted) return;
+      setState(() => _toolCodePrefix = value.isNotEmpty ? value.toUpperCase() : 'AT');
+    } catch (_) {
+      // ignore load errors and keep default prefix
+    }
+  }
 
   Future<void> _loadExistingItems() async {
     try {
@@ -277,12 +298,25 @@ class _ToolEntryScreenState extends State<ToolEntryScreen> {
                             decoration: _inputDecoration('نوع المنتج'),
                             style: TextStyle(color: UiPalette.textMain),
                           )),
-                          _field(width: 220, child: TextFormField(
-                            readOnly: true,
-                            controller: TextEditingController(text: _selectedItem?.code ?? 'سيُولّد تلقائيًا'),
-                            decoration: _inputDecoration('كود المنتج'),
-                            style: TextStyle(color: UiPalette.textMain),
-                          )),
+                          _field(
+                            width: 220,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                TextFormField(
+                                  readOnly: true,
+                                  initialValue: _selectedItem?.code ?? (_toolCodePrefix.isEmpty ? 'سيُولّد تلقائيًا' : '$_toolCodePrefix-0001'),
+                                  decoration: _inputDecoration('كود المنتج'),
+                                  style: TextStyle(color: UiPalette.textMain),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'بادئة الأدوات الحالية: $_toolCodePrefix',
+                                  style: TextStyle(color: UiPalette.textSoft, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
                           _field(width: 220, child: DropdownButtonFormField<String>(
                             initialValue: _unitOptions.contains(_unitController.text) ? _unitController.text : _unitOptions.first,
                             items: _unitOptions.map((unit) => DropdownMenuItem(value: unit, child: Text(unit))).toList(),
