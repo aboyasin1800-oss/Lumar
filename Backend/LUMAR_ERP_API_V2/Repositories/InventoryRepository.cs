@@ -23,8 +23,12 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         var hasGoodsReceiptItemType = await ColumnExistsAsync(connection, null, "dbo.GoodsReceiptItems", "ItemType", ct);
         var hasSupplierInvoiceItemType = await ColumnExistsAsync(connection, null, "dbo.SupplierInvoiceLines", "ItemType", ct);
         var hasGoodsReceiptRollCount = await ColumnExistsAsync(connection, null, "dbo.GoodsReceiptItems", "RollCount", ct);
+        var hasGoodsReceiptProductType = await ColumnExistsAsync(connection, null, "dbo.GoodsReceiptItems", "ProductType", ct);
+        var hasSupplierInvoiceProductType = await ColumnExistsAsync(connection, null, "dbo.SupplierInvoiceLines", "ProductType", ct);
+        var hasGoodsReceiptUnitCode = await ColumnExistsAsync(connection, null, "dbo.GoodsReceiptItems", "UnitCode", ct);
+        var hasSupplierInvoiceUnitCode = await ColumnExistsAsync(connection, null, "dbo.SupplierInvoiceLines", "UnitCode", ct);
 
-        var sql = BuildPendingGoodsReceiptStorageQuery(hasGoodsReceiptItemType, hasSupplierInvoiceItemType, hasGoodsReceiptRollCount);
+        var sql = BuildPendingGoodsReceiptStorageQuery(hasGoodsReceiptItemType, hasSupplierInvoiceItemType, hasGoodsReceiptRollCount, hasGoodsReceiptProductType, hasSupplierInvoiceProductType, hasGoodsReceiptUnitCode, hasSupplierInvoiceUnitCode);
         return await QueryAsync(sql, reader => new PendingGoodsReceiptStorageDto(
             reader.GetInt32(0),
             reader.GetInt32(1),
@@ -40,10 +44,14 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             reader.GetString(11),
             reader.GetDecimal(12),
             reader.IsDBNull(13) ? null : reader.GetInt32(13),
-            reader.IsDBNull(14) ? null : reader.GetInt64(14)), null, ct);
+            reader.IsDBNull(14) ? null : reader.GetInt64(14),
+            reader.IsDBNull(15) ? null : reader.GetString(15),
+            reader.IsDBNull(16) ? null : reader.GetString(16),
+            reader.IsDBNull(17) ? null : reader.GetDecimal(17),
+            reader.IsDBNull(18) ? null : reader.GetDecimal(18)), null, ct);
     }
 
-    internal static string BuildPendingGoodsReceiptStorageQuery(bool hasGoodsReceiptItemType, bool hasSupplierInvoiceItemType, bool hasGoodsReceiptRollCount)
+    internal static string BuildPendingGoodsReceiptStorageQuery(bool hasGoodsReceiptItemType, bool hasSupplierInvoiceItemType, bool hasGoodsReceiptRollCount, bool hasGoodsReceiptProductType = false, bool hasSupplierInvoiceProductType = false, bool hasGoodsReceiptUnitCode = false, bool hasSupplierInvoiceUnitCode = false)
     {
         var itemTypeExpression = hasGoodsReceiptItemType && hasSupplierInvoiceItemType
             ? "COALESCE(i.ItemType, sil.ItemType)"
@@ -52,6 +60,25 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                 : hasSupplierInvoiceItemType
                     ? "sil.ItemType"
                     : "CAST(N'Legacy' AS nvarchar(30))";
+
+        var productTypeExpression = hasGoodsReceiptProductType && hasSupplierInvoiceProductType
+            ? "COALESCE(i.ProductType, sil.ProductType)"
+            : hasGoodsReceiptProductType
+                ? "i.ProductType"
+                : hasSupplierInvoiceProductType
+                    ? "sil.ProductType"
+                    : "CAST(N'ImportedProduct' AS nvarchar(50))";
+
+        var unitCodeExpression = hasGoodsReceiptUnitCode && hasSupplierInvoiceUnitCode
+            ? "COALESCE(i.UnitCode, sil.UnitCode)"
+            : hasGoodsReceiptUnitCode
+                ? "i.UnitCode"
+                : hasSupplierInvoiceUnitCode
+                    ? "sil.UnitCode"
+                    : "CAST(N'قطعة' AS nvarchar(30))";
+
+        var itemCountExpression = "COALESCE(i.ItemCount, sil.ItemCount, i.ReceivedQuantity, sil.Quantity)";
+        var receivedItemCountExpression = "COALESCE(i.ReceivedItemCount, sil.ItemCount, i.ReceivedQuantity, sil.Quantity)";
 
         var unitExpression = $"CASE {itemTypeExpression} WHEN N'Fabric' THEN N'ياردة' ELSE N'قطعة' END";
         var filterExpression = hasGoodsReceiptItemType || hasSupplierInvoiceItemType
@@ -74,7 +101,11 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                {unitExpression} AS Unit,
                i.UnitCost,
                {rollCountExpression} AS RollCount,
-               i.SupplierInvoiceLineId
+               i.SupplierInvoiceLineId,
+               {productTypeExpression} AS ProductType,
+               {unitCodeExpression} AS UnitCode,
+               {itemCountExpression} AS ItemCount,
+               {receivedItemCountExpression} AS ReceivedItemCount
         FROM dbo.GoodsReceiptItems i
         INNER JOIN dbo.GoodsReceipts r ON r.GoodsReceiptId=i.GoodsReceiptId
         INNER JOIN dbo.Suppliers s ON s.SupplierId=r.SupplierId

@@ -662,9 +662,21 @@ class _SupplierPurchasingOperationsScreenState
                               : invoiceType == 'tools'
                                   ? 'UsedTool'
                                   : 'ImportedProduct',
+                          'productType': invoiceType == 'fabric'
+                              ? 'Fabric'
+                              : invoiceType == 'tools'
+                                  ? 'UsedTool'
+                                  : 'ImportedProduct',
                           'supplierItemCode':
                               _nullable(line.supplierItemCode.text),
+                          'unitCode': invoiceType == 'fabric'
+                              ? 'ياردة'
+                              : invoiceType == 'tools'
+                                  ? 'قطعة'
+                                  : 'قطعة',
                           'quantity': double.parse(line.quantity.text.trim()),
+                          'itemCount': double.parse(line.quantity.text.trim()),
+                          'receivedItemCount': double.parse(line.quantity.text.trim()),
                           'unitCost': double.parse(line.cost.text.trim()),
                           'rollCount': line.rollCount.text.trim().isEmpty
                               ? null

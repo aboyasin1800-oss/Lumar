@@ -7,7 +7,7 @@ public sealed record InventoryTransactionDto(int TransactionId, int InventoryIte
 public sealed record InventoryWarehouseSummaryDto(string WarehouseKey, decimal TotalInputValue, decimal CurrentInventoryValue);
 public sealed record InventoryWarehouseDto(int WarehouseId, string WarehouseCode, string WarehouseName, bool IsActive);
 public sealed record GoodsReceiptDifferenceDto(long GoodsReceiptDifferenceId, int GoodsReceiptItemId, string DifferenceType, decimal? ExpectedQuantity, decimal? ActualQuantity, decimal? ExpectedUnitCost, decimal? ActualUnitCost);
-public sealed record PendingGoodsReceiptStorageDto(int GoodsReceiptItemId, int GoodsReceiptId, int SupplierId, string SupplierName, string ReceiptNumber, DateTime ReceiptDate, string ItemType, string ItemDescription, decimal ReceivedQuantity, decimal StoredQuantity, decimal RemainingQuantity, string Unit, decimal UnitCost, int? RollCount, long? SupplierInvoiceLineId);
+public sealed record PendingGoodsReceiptStorageDto(int GoodsReceiptItemId, int GoodsReceiptId, int SupplierId, string SupplierName, string ReceiptNumber, DateTime ReceiptDate, string ItemType, string ItemDescription, decimal ReceivedQuantity, decimal StoredQuantity, decimal RemainingQuantity, string Unit, decimal UnitCost, int? RollCount, long? SupplierInvoiceLineId, string? ProductType = null, string? UnitCode = null, decimal? ItemCount = null, decimal? ReceivedItemCount = null);
 public sealed record FabricDto(string SourceTable, int? FabricId, string? FabricCode, string? FabricName, decimal? FabricPrice, bool? IsActive, int? InventoryFabricCode, string? InventoryFabricName, string? Unit, string? Color, string? CatalogNumber, decimal? QuantityYard, decimal? QuantityInch, decimal? TotalRollCost, decimal? PricePerYard, decimal? PricePerInch, decimal? UsedQuantity, decimal? AvailableQuantity);
 public sealed record ReadyMadeProductDto(int ReadyMadeInventoryProductId, int ReadyMadeProductionOrderId, int ReadyMadeProductionOrderItemId, int ReadyMadeProductionOrderPieceInstanceId, int? ProductTypeId, string ProductionOrderNumber, string ProductionName, string PieceType, int PieceNumber, string TrackingCode, string? FabricCode, string? FabricType, string? FabricColor, string? CatalogNumber, string? FabricUnit, string? FabricWidth, string? FabricWidthUnit, decimal? ActualCost, decimal? SuggestedSellingPrice, string? MeasurementSnapshot, DateTime ReadyForSaleAt, string Status, string Source, string? Notes, bool IsActive, DateTime CreatedAt, string? ProductTypeName = null);
 public sealed record ImportedReadyMadeProductDto(int ImportedReadyMadeProductId, string ProductName, string ProductType, string ProductCode, string Unit, decimal Quantity, decimal PurchasePrice, decimal SellingPrice, bool IsActive, decimal? AlertThreshold, string? Notes, string Category, DateTime CreatedAt, DateTime? UpdatedAt);
@@ -311,6 +311,10 @@ public sealed class CreateGoodsReceiptItemDto
     public int? SupplierInvoiceLineId { get; init; }
 
     public string? ItemType { get; init; }
+    public string? ProductType { get; init; }
+    public string? UnitCode { get; init; }
+    public decimal? ItemCount { get; init; }
+    public decimal? ReceivedItemCount { get; init; }
     public string? RollCode { get; init; }
 }
 

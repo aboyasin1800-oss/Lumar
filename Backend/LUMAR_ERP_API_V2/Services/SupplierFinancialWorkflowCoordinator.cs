@@ -129,11 +129,15 @@ public sealed class SupplierFinancialWorkflowCoordinator(
         var total = request.Lines.Sum(line => decimal.Round(line.Quantity * line.UnitCost, 6, MidpointRounding.AwayFromZero));
         if (total != request.Amount) throw new InvalidOperationException("Supplier invoice amount must equal the lines total.");
 
+        var supportsProductType = await ColumnExistsAsync(connection, transaction, "dbo.SupplierInvoiceLines", "ProductType", cancellationToken);
+        var supportsUnitCode = await ColumnExistsAsync(connection, transaction, "dbo.SupplierInvoiceLines", "UnitCode", cancellationToken);
+        var supportsItemCount = await ColumnExistsAsync(connection, transaction, "dbo.SupplierInvoiceLines", "ItemCount", cancellationToken);
+
         for (var index = 0; index < request.Lines.Count; index++)
         {
             var line = request.Lines[index];
             var operationId = DeriveLineOperationId(request.SourceOperationId, index);
-            await using var command = new SqlCommand(@"
+            var idempotencySql = @"
 IF EXISTS (SELECT 1 FROM dbo.SupplierInvoiceLines WITH(UPDLOCK,HOLDLOCK) WHERE SourceOperationId=@operation)
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM dbo.SupplierInvoiceLines WHERE SourceOperationId=@operation AND SupplierInvoiceId=@invoiceId AND ((InventoryItemId=@itemId) OR (InventoryItemId IS NULL AND @itemId IS NULL)) AND ItemDescription=@description AND ItemType=@itemType AND ((SupplierItemCode IS NULL AND @supplierItemCode IS NULL) OR SupplierItemCode=@supplierItemCode) AND Quantity=@quantity AND UnitCost=@unitCost AND ((RollCount IS NULL AND @rollCount IS NULL) OR RollCount=@rollCount) AND Status=N'Posted')
@@ -143,9 +147,30 @@ ELSE
 BEGIN
     IF @itemId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.InventoryItems WITH(UPDLOCK,HOLDLOCK) WHERE InventoryItemID=@itemId AND IsActive=1)
         THROW 52121,N'Supplier invoice inventory item is unavailable.',1;
-    INSERT dbo.SupplierInvoiceLines(SupplierInvoiceId,InventoryItemId,ItemDescription,ItemType,SupplierItemCode,Quantity,UnitCost,RollCount,SourceOperationId,Status,CreatedBy)
-    VALUES(@invoiceId,@itemId,@description,@itemType,@supplierItemCode,@quantity,@unitCost,@rollCount,@operation,N'Posted',@createdBy);
-END", connection, transaction);
+    INSERT dbo.SupplierInvoiceLines(SupplierInvoiceId,InventoryItemId,ItemDescription,ItemType,SupplierItemCode,Quantity,UnitCost,RollCount,SourceOperationId,Status,CreatedBy";
+            var insertValues = @")
+    VALUES(@invoiceId,@itemId,@description,@itemType,@supplierItemCode,@quantity,@unitCost,@rollCount,@operation,N'Posted',@createdBy";
+
+            if (supportsProductType)
+            {
+                idempotencySql += ",ProductType";
+                insertValues += ",@productType";
+            }
+            if (supportsUnitCode)
+            {
+                idempotencySql += ",UnitCode";
+                insertValues += ",@unitCode";
+            }
+            if (supportsItemCount)
+            {
+                idempotencySql += ",ItemCount";
+                insertValues += ",@itemCount";
+            }
+
+            idempotencySql += @")" + insertValues + @");
+END";
+
+            await using var command = new SqlCommand(idempotencySql, connection, transaction);
             command.Parameters.AddWithValue("@invoiceId", invoiceId);
             command.Parameters.AddWithValue("@itemId", line.InventoryItemId ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("@description", (line.ItemDescription ?? string.Empty).Trim());
@@ -154,6 +179,18 @@ END", connection, transaction);
             AddDecimal(command, "@quantity", line.Quantity);
             AddDecimal(command, "@unitCost", line.UnitCost);
             command.Parameters.AddWithValue("@rollCount", line.RollCount ?? (object)DBNull.Value);
+            if (supportsProductType)
+                command.Parameters.AddWithValue("@productType", string.IsNullOrWhiteSpace(line.ProductType) ? (object)DBNull.Value : line.ProductType.Trim());
+            if (supportsUnitCode)
+                command.Parameters.AddWithValue("@unitCode", string.IsNullOrWhiteSpace(line.UnitCode) ? (object)DBNull.Value : line.UnitCode.Trim());
+            if (supportsItemCount)
+            {
+                var itemCount = line.ItemCount ?? line.Quantity;
+                var parameter = command.Parameters.Add("@itemCount", SqlDbType.Decimal);
+                parameter.Precision = 18;
+                parameter.Scale = 6;
+                parameter.Value = itemCount;
+            }
             command.Parameters.Add("@operation", SqlDbType.UniqueIdentifier).Value = operationId;
             command.Parameters.AddWithValue("@createdBy", createdBy);
             try
@@ -177,6 +214,20 @@ END", connection, transaction);
         hash[7] = (byte)((hash[7] & 0x0F) | 0x40);
         hash[8] = (byte)((hash[8] & 0x3F) | 0x80);
         return new Guid(hash[..16]);
+    }
+
+    private static async Task<bool> ColumnExistsAsync(SqlConnection connection, SqlTransaction transaction, string tableName, string columnName, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand(@"
+            SELECT CAST(CASE WHEN EXISTS (
+                SELECT 1
+                FROM sys.columns c
+                WHERE c.object_id = OBJECT_ID(@tableName)
+                  AND c.name = @columnName
+            ) THEN 1 ELSE 0 END AS bit)", connection, transaction);
+        command.Parameters.AddWithValue("@tableName", tableName);
+        command.Parameters.AddWithValue("@columnName", columnName);
+        return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken));
     }
 
     private static void AddDecimal(SqlCommand command, string name, decimal value)

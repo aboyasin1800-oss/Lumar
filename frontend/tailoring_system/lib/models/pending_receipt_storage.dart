@@ -15,6 +15,10 @@ class PendingReceiptStorage {
     required this.unitCost,
     this.rollCount,
     this.supplierInvoiceLineId,
+    this.productType,
+    this.unitCode,
+    this.itemCount,
+    this.receivedItemCount,
   });
 
   final int goodsReceiptItemId;
@@ -32,6 +36,10 @@ class PendingReceiptStorage {
   final double unitCost;
   final int? rollCount;
   final int? supplierInvoiceLineId;
+  final String? productType;
+  final String? unitCode;
+  final double? itemCount;
+  final double? receivedItemCount;
 
   factory PendingReceiptStorage.fromJson(Map<String, dynamic> json) {
     double number(String key) => (json[key] as num?)?.toDouble() ?? 0;
@@ -51,6 +59,10 @@ class PendingReceiptStorage {
       unitCost: number('unitCost'),
       rollCount: (json['rollCount'] as num?)?.toInt(),
       supplierInvoiceLineId: (json['supplierInvoiceLineId'] as num?)?.toInt(),
+      productType: json['productType']?.toString(),
+      unitCode: json['unitCode']?.toString(),
+      itemCount: (json['itemCount'] as num?)?.toDouble(),
+      receivedItemCount: (json['receivedItemCount'] as num?)?.toDouble(),
     );
   }
 

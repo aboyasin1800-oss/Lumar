@@ -64,7 +64,7 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
     final pending = widget.pendingReceipt;
     if (pending == null || pending.itemType != 'ImportedProduct') return;
     _productNameController.text = pending.itemDescription;
-    _productTypeController.text = pending.itemDescription;
+    _productTypeController.text = pending.productType ?? 'ImportedProduct';
     _productCodeController.text = pending.itemDescription;
     _quantityController.text = pending.remainingQuantity.toStringAsFixed(3);
     _purchasePriceController.text = pending.unitCost.toStringAsFixed(2);
@@ -161,11 +161,12 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
     }
 
     final supplierId = int.tryParse(_supplierController.text.trim());
+    final pending = widget.pendingReceipt;
     final payload = {
       'productName': _productNameController.text.trim(),
-      'productType': _productTypeController.text.trim(),
+      'productType': (_productTypeController.text.trim().isEmpty ? 'ImportedProduct' : _productTypeController.text.trim()),
       'productCode': _productCodeController.text.trim(),
-      'unit': 'حبة',
+      'unit': pending?.unitCode?.trim().isNotEmpty == true ? pending!.unitCode! : (pending?.unit.trim().isNotEmpty == true ? pending!.unit : 'حبة'),
       'quantity': quantity,
       'purchasePrice': purchasePrice,
       'sellingPrice': sellingPrice,
@@ -173,9 +174,9 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
       'notes': _notesController.text.trim(),
       'category': 'Imported',
       'renewExisting': _renewExisting,
-      if (widget.pendingReceipt != null && widget.pendingReceipt!.itemType == 'ImportedProduct')
-        'goodsReceiptItemId': widget.pendingReceipt!.goodsReceiptItemId,
-      if (widget.pendingReceipt != null && widget.pendingReceipt!.itemType == 'ImportedProduct')
+      if (pending != null && pending.itemType == 'ImportedProduct')
+        'goodsReceiptItemId': pending.goodsReceiptItemId,
+      if (pending != null && pending.itemType == 'ImportedProduct')
         'storageOperationId': _operationId(),
     };
 
