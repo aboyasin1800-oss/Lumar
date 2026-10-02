@@ -1,5 +1,6 @@
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Data;
+using LUMAR_ERP_API_V2.DTOs.Inventory;
 using LUMAR_ERP_API_V2.DTOs.Orders;
 using LUMAR_ERP_API_V2.Repositories;
 using Microsoft.Data.SqlClient;
@@ -10,6 +11,36 @@ namespace LUMAR_ERP_API_V2.Tests;
 
 public sealed class ReadyMadeSalesRepeatedSaleTests
 {
+    [Fact]
+    public async Task UpsertImportedProductAsync_GeneratesCanonicalProductCodeWhenBlank()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? "Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True;";
+        var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+        var repository = new InventoryRepository(
+            new ReadOnlySqlConnectionFactory(options),
+            new OperationalSqlConnectionFactory(options));
+
+        var expectedPrefix = await ReadConfiguredImportedProductPrefixAsync(connectionString);
+
+        var product = await repository.UpsertImportedProductAsync(new CreateImportedProductDto
+        {
+            ProductName = $"Auto Code Test {Guid.NewGuid():N}",
+            ProductType = "جاهز",
+            ProductCode = string.Empty,
+            Unit = "قطعة",
+            Quantity = 1m,
+            PurchasePrice = 10m,
+            SellingPrice = 20m,
+            Category = "اختبار",
+            Notes = "Test generated product code"
+        }, CancellationToken.None);
+
+        Assert.NotNull(product);
+        Assert.False(string.IsNullOrWhiteSpace(product!.ProductCode));
+        Assert.StartsWith(expectedPrefix, product.ProductCode);
+    }
+
     [Fact]
     public async Task CreateAsync_RejectsSeededImportedProductWithoutOfficialReceipt()
     {
@@ -30,6 +61,20 @@ public sealed class ReadyMadeSalesRepeatedSaleTests
         {
             await CleanupAsync(connectionString, seed);
         }
+    }
+
+    private static async Task<string> ReadConfiguredImportedProductPrefixAsync(string connectionString)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(@"
+            SELECT TOP (1) SettingValue
+            FROM dbo.System_Settings WITH (NOLOCK)
+            WHERE SettingName IN (N'ImportedProductCodePrefix', N'ImportedReadyMadeProductCodePrefix')
+            ORDER BY CASE WHEN SettingName = N'ImportedProductCodePrefix' THEN 0 ELSE 1 END;", connection);
+        var value = await command.ExecuteScalarAsync();
+        var prefix = value is null || value is DBNull ? "AB-" : value.ToString();
+        return string.IsNullOrWhiteSpace(prefix) ? "AB-" : prefix.Trim();
     }
 
     private static CreateReadyMadeSaleDto BuildSale((int CustomerId, int ProductId) seed, string reference) => new()

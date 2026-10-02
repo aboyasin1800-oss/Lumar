@@ -20,8 +20,8 @@ public sealed class CreateImportedProductDto
     [StringLength(150)]
     public string? ProductType { get; init; }
 
-    [Required, StringLength(100)]
-    public string ProductCode { get; init; } = string.Empty;
+    [StringLength(100)]
+    public string? ProductCode { get; init; }
 
     [Required, StringLength(50)]
     public string Unit { get; init; } = string.Empty;

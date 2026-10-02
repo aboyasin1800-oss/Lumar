@@ -22,4 +22,14 @@ public class InventoryStorageCompatibilityTests
     {
         Assert.False(InventoryRepository.IsStorageItemTypeCompatible("UsedTool", "Fabric"));
     }
+
+    [Fact]
+    public void PendingStorageQuery_UsesFallbackWhenColumnsAreMissing()
+    {
+        var sql = InventoryRepository.BuildPendingGoodsReceiptStorageQuery(false, false, false);
+
+        Assert.Contains("CAST(N'Legacy' AS nvarchar(30)) AS ItemType", sql);
+        Assert.Contains("CAST(NULL AS int) AS RollCount", sql);
+        Assert.Contains("1 = 0", sql);
+    }
 }

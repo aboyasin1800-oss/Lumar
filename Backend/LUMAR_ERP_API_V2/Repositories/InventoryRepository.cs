@@ -15,21 +15,65 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
     public Task<IReadOnlyList<InventoryTransactionDto>> GetTransactionsAsync(CancellationToken ct) => QueryAsync("SELECT TransactionID, InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt, TotalCostImpact, UnitCost FROM dbo.InventoryTransactions ORDER BY CreatedAt DESC, TransactionID DESC", reader => new InventoryTransactionDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetDecimal(3), reader.NullableString("ReferenceNumber"), reader.NullableString("Notes"), reader.GetDateTime(6), reader.NullableDecimal("TotalCostImpact"), reader.NullableDecimal("UnitCost")), null, ct);
     public Task<IReadOnlyList<InventoryWarehouseDto>> GetWarehousesAsync(CancellationToken ct) => QueryAsync("SELECT WarehouseId,WarehouseCode,WarehouseName,IsActive FROM dbo.Warehouses WHERE IsActive=1 ORDER BY WarehouseName,WarehouseId", reader => new InventoryWarehouseDto(reader.GetInt32(0),reader.GetString(1),reader.GetString(2),reader.GetBoolean(3)), null, ct);
     public Task<IReadOnlyList<GoodsReceiptDifferenceDto>> GetGoodsReceiptDifferencesAsync(int goodsReceiptId, CancellationToken ct) => QueryAsync("SELECT d.GoodsReceiptDifferenceId,d.GoodsReceiptItemId,d.DifferenceType,d.ExpectedQuantity,d.ActualQuantity,d.ExpectedUnitCost,d.ActualUnitCost FROM dbo.GoodsReceiptDifferences d INNER JOIN dbo.GoodsReceiptItems i ON i.GoodsReceiptItemId=d.GoodsReceiptItemId WHERE i.GoodsReceiptId=@id ORDER BY d.GoodsReceiptDifferenceId", reader => new GoodsReceiptDifferenceDto(reader.GetInt64(0),reader.GetInt32(1),reader.GetString(2),reader.NullableDecimal("ExpectedQuantity"),reader.NullableDecimal("ActualQuantity"),reader.NullableDecimal("ExpectedUnitCost"),reader.NullableDecimal("ActualUnitCost")), goodsReceiptId, ct);
-    public Task<IReadOnlyList<PendingGoodsReceiptStorageDto>> GetPendingGoodsReceiptStorageAsync(CancellationToken ct) => QueryAsync(@"
+    public async Task<IReadOnlyList<PendingGoodsReceiptStorageDto>> GetPendingGoodsReceiptStorageAsync(CancellationToken ct)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+
+        var hasGoodsReceiptItemType = await ColumnExistsAsync(connection, null, "dbo.GoodsReceiptItems", "ItemType", ct);
+        var hasSupplierInvoiceItemType = await ColumnExistsAsync(connection, null, "dbo.SupplierInvoiceLines", "ItemType", ct);
+        var hasGoodsReceiptRollCount = await ColumnExistsAsync(connection, null, "dbo.GoodsReceiptItems", "RollCount", ct);
+
+        var sql = BuildPendingGoodsReceiptStorageQuery(hasGoodsReceiptItemType, hasSupplierInvoiceItemType, hasGoodsReceiptRollCount);
+        return await QueryAsync(sql, reader => new PendingGoodsReceiptStorageDto(
+            reader.GetInt32(0),
+            reader.GetInt32(1),
+            reader.GetInt32(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetDateTime(5),
+            reader.GetString(6),
+            reader.GetString(7),
+            reader.GetDecimal(8),
+            reader.GetDecimal(9),
+            reader.GetDecimal(10),
+            reader.GetString(11),
+            reader.GetDecimal(12),
+            reader.IsDBNull(13) ? null : reader.GetInt32(13),
+            reader.IsDBNull(14) ? null : reader.GetInt64(14)), null, ct);
+    }
+
+    internal static string BuildPendingGoodsReceiptStorageQuery(bool hasGoodsReceiptItemType, bool hasSupplierInvoiceItemType, bool hasGoodsReceiptRollCount)
+    {
+        var itemTypeExpression = hasGoodsReceiptItemType && hasSupplierInvoiceItemType
+            ? "COALESCE(i.ItemType, sil.ItemType)"
+            : hasGoodsReceiptItemType
+                ? "i.ItemType"
+                : hasSupplierInvoiceItemType
+                    ? "sil.ItemType"
+                    : "CAST(N'Legacy' AS nvarchar(30))";
+
+        var unitExpression = $"CASE {itemTypeExpression} WHEN N'Fabric' THEN N'ياردة' ELSE N'قطعة' END";
+        var filterExpression = hasGoodsReceiptItemType || hasSupplierInvoiceItemType
+            ? $"{itemTypeExpression} IN (N'Fabric',N'ImportedProduct',N'UsedTool')"
+            : "1 = 0";
+        var rollCountExpression = hasGoodsReceiptRollCount ? "i.RollCount" : "CAST(NULL AS int)";
+
+        return $@"
         SELECT i.GoodsReceiptItemId,
                r.GoodsReceiptId,
                r.SupplierId,
                s.SupplierName,
                r.ReceiptNumber,
                r.ReceiptDate,
-               COALESCE(i.ItemType, sil.ItemType) AS ItemType,
+               {itemTypeExpression} AS ItemType,
                i.ItemName,
                i.ReceivedQuantity,
                COALESCE(a.StoredQuantity, 0) AS StoredQuantity,
                i.ReceivedQuantity - COALESCE(a.StoredQuantity, 0) AS RemainingQuantity,
-               CASE COALESCE(i.ItemType, sil.ItemType) WHEN N'Fabric' THEN N'ياردة' ELSE N'قطعة' END AS Unit,
+               {unitExpression} AS Unit,
                i.UnitCost,
-               i.RollCount,
+               {rollCountExpression} AS RollCount,
                i.SupplierInvoiceLineId
         FROM dbo.GoodsReceiptItems i
         INNER JOIN dbo.GoodsReceipts r ON r.GoodsReceiptId=i.GoodsReceiptId
@@ -43,9 +87,10 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         ) a
         WHERE r.ReceiptStatus=N'Confirmed'
           AND ISNULL(i.LineStatus,N'Confirmed')=N'Confirmed'
-          AND COALESCE(i.ItemType, sil.ItemType) IN (N'Fabric',N'ImportedProduct',N'UsedTool')
+          AND {filterExpression}
           AND i.ReceivedQuantity - COALESCE(a.StoredQuantity, 0) > 0
-        ORDER BY r.ReceiptDate, i.GoodsReceiptItemId", reader => new PendingGoodsReceiptStorageDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetString(3), reader.GetString(4), reader.GetDateTime(5), reader.GetString(6), reader.GetString(7), reader.GetDecimal(8), reader.GetDecimal(9), reader.GetDecimal(10), reader.GetString(11), reader.GetDecimal(12), reader.IsDBNull(13) ? null : reader.GetInt32(13), reader.IsDBNull(14) ? null : reader.GetInt64(14)), null, ct);
+        ORDER BY r.ReceiptDate, i.GoodsReceiptItemId";
+    }
     public Task<IReadOnlyList<InventoryWarehouseSummaryDto>> GetWarehouseSummariesAsync(CancellationToken ct) => QueryAsync(@"
         WITH FoundationValues AS
         (
@@ -552,7 +597,8 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             var now = DateTime.UtcNow;
             var productName = product.ProductName.Trim();
             var productType = string.IsNullOrWhiteSpace(product.ProductType) ? "غير محدد" : product.ProductType.Trim();
-            var productCode = product.ProductCode.Trim();
+            var requestedCode = string.IsNullOrWhiteSpace(product.ProductCode) ? null : product.ProductCode.Trim();
+            var productCode = requestedCode ?? await GetNextImportedProductCodeAsync(connection, transaction, ct);
             var unit = product.Unit.Trim();
             var category = string.IsNullOrWhiteSpace(product.Category) ? "Imported" : product.Category.Trim();
             var notes = string.IsNullOrWhiteSpace(product.Notes) ? null : product.Notes.Trim();
@@ -638,6 +684,29 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    private static async Task<string> GetNextImportedProductCodeAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken ct)
+    {
+        var prefix = await SystemCodeGenerator.ResolveImportedProductCodePrefixAsync(connection, transaction, ct);
+        using var cmd = new SqlCommand(@"
+            SELECT TOP 1 ProductCode
+            FROM dbo.ImportedReadyMadeProducts WITH (NOLOCK)
+            WHERE ProductCode LIKE @prefix
+            ORDER BY ProductCode DESC", connection, transaction);
+        cmd.Parameters.AddWithValue("@prefix", $"{prefix}%");
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        var maxNumber = 0;
+        while (await reader.ReadAsync(ct))
+        {
+            var code = reader.GetString(0);
+            if (code.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && int.TryParse(code[prefix.Length..], out var number))
+            {
+                if (number > maxNumber) maxNumber = number;
+            }
+        }
+
+        return $"{prefix}{(maxNumber + 1).ToString().PadLeft(4, '0')}";
     }
 
     private static async Task<ImportedReadyMadeProductDto?> GetImportedProductForUpdateAsync(SqlConnection connection, SqlTransaction transaction, string productCode, CancellationToken ct)

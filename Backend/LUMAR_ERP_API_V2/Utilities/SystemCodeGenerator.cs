@@ -4,6 +4,29 @@ namespace LUMAR_ERP_API_V2.Utilities;
 
 public static class SystemCodeGenerator
 {
+    public static async Task<string> ResolveImportedProductCodePrefixAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        CancellationToken cancellationToken)
+    {
+        foreach (var settingName in new[] { "ImportedProductCodePrefix", "ImportedReadyMadeProductCodePrefix", "ProductCodePrefix" })
+        {
+            var current = await ReadSettingAsync(connection, transaction, settingName, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(current))
+            {
+                return current.Trim();
+            }
+        }
+
+        const string fallback = "AB-";
+        foreach (var settingName in new[] { "ImportedProductCodePrefix", "ImportedReadyMadeProductCodePrefix", "ProductCodePrefix" })
+        {
+            await EnsureSettingAsync(connection, transaction, settingName, fallback, GetDescription(settingName), cancellationToken);
+        }
+
+        return fallback;
+    }
+
     public static async Task<string> ResolvePrefixAsync(
         SqlConnection connection,
         SqlTransaction? transaction,
@@ -82,9 +105,12 @@ public static class SystemCodeGenerator
         "CatalogNumberPrefix" => "Catalog number prefix used for new catalog records.",
         "CustomerCodePrefix" => "Customer code prefix used for new customer records.",
         "EmployeeCodePrefix" => "Employee code prefix used for new employee records.",
+        "ImportedProductCodePrefix" => "Imported ready-made product code prefix used for canonical product identity.",
+        "ImportedReadyMadeProductCodePrefix" => "Imported ready-made product code prefix used for canonical product identity.",
         "OrderCodePrefix" => "Order code prefix used for new order numbers.",
         "PieceTrackingPrefix" => "Piece tracking code prefix used for production pieces.",
         "ProductionTrackingPrefix" => "Production order tracking prefix used for ready-made production orders.",
+        "ProductCodePrefix" => "Generic product code prefix used for canonical product identity.",
         "ToolCodePrefix" => "Inventory tool code prefix used for new tool entries.",
         _ => $"Auto-generated code prefix for {settingName}."
     };
