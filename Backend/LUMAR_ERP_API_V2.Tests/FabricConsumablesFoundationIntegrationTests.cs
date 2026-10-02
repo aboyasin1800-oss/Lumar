@@ -391,6 +391,63 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
     }
 
     [Fact]
+    public async Task FoundationReceipt_MultiFabricItemBatch_GeneratesUniqueCatalogNumbersPerFabricItem()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+        var operationId = Guid.NewGuid();
+
+        try
+        {
+            var request = new ReceiveFabricInventoryDto
+            {
+                GoodsReceiptItemId = seed.FabricReceiptItemId,
+                ItemCode = seed.FabricItemCode,
+                FabricTypeCode = "CAT-UNIQUE-BATCH",
+                FabricWidth = 58m,
+                UnitId = 1,
+                OpposingLedgerAccountCode = "1000",
+                SourceOperationId = operationId,
+                Rolls =
+                [
+                    new ReceiveFabricInventoryRollDto { FabricCode = "CAT-ITEM-001", RollCode = "CAT-ROLL-001", ColorValue = "Navy", Quantity = 15m },
+                    new ReceiveFabricInventoryRollDto { FabricCode = "CAT-ITEM-001", RollCode = "CAT-ROLL-002", ColorValue = "Navy", Quantity = 15m },
+                    new ReceiveFabricInventoryRollDto { FabricCode = "CAT-ITEM-001", RollCode = "CAT-ROLL-003", ColorValue = "Navy", Quantity = 15m },
+                    new ReceiveFabricInventoryRollDto { FabricCode = "CAT-ITEM-002", RollCode = "CAT-ROLL-004", ColorValue = "Black", Quantity = 10m },
+                    new ReceiveFabricInventoryRollDto { FabricCode = "CAT-ITEM-002", RollCode = "CAT-ROLL-005", ColorValue = "Black", Quantity = 10m }
+                ]
+            };
+
+            var result = await repository.ReceiveFabricInventoryAsync(request, CancellationToken.None);
+            Assert.NotNull(result);
+            Assert.False(result!.IsExisting);
+
+            var firstCatalog = await ReadStringAsync(connectionString, "SELECT Barcode FROM dbo.InventoryItems WHERE ItemCode=@code", "CAT-ITEM-001");
+            var secondCatalog = await ReadStringAsync(connectionString, "SELECT Barcode FROM dbo.InventoryItems WHERE ItemCode=@code", "CAT-ITEM-002");
+
+            Assert.NotNull(firstCatalog);
+            Assert.NotNull(secondCatalog);
+            Assert.StartsWith("CAT", firstCatalog!);
+            Assert.StartsWith("CAT", secondCatalog!);
+            Assert.NotEqual(firstCatalog, secondCatalog);
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(DISTINCT Barcode) FROM dbo.InventoryItems WHERE ItemCode IN (@c1,@c2)", ("@c1", "CAT-ITEM-001"), ("@c2", "CAT-ITEM-002")));
+            Assert.Equal(3, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricRolls fr INNER JOIN dbo.InventoryItems i ON i.InventoryItemID = fr.InventoryItemId WHERE i.ItemCode=@code AND i.Barcode=@catalog", ("@code", "CAT-ITEM-001"), ("@catalog", firstCatalog)));
+            Assert.Equal(2, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricRolls fr INNER JOIN dbo.InventoryItems i ON i.InventoryItemID = fr.InventoryItemId WHERE i.ItemCode=@code AND i.Barcode=@catalog", ("@code", "CAT-ITEM-002"), ("@catalog", secondCatalog)));
+
+            var replay = await repository.ReceiveFabricInventoryAsync(request, CancellationToken.None);
+            Assert.NotNull(replay);
+            Assert.True(replay!.IsExisting);
+            Assert.Equal(firstCatalog, await ReadStringAsync(connectionString, "SELECT Barcode FROM dbo.InventoryItems WHERE ItemCode=@code", "CAT-ITEM-001"));
+            Assert.Equal(secondCatalog, await ReadStringAsync(connectionString, "SELECT Barcode FROM dbo.InventoryItems WHERE ItemCode=@code", "CAT-ITEM-002"));
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
     public async Task FoundationReceipt_PartialPostingWithoutStorage_IsCompletedSafely()
     {
         var connectionString = GetConnectionString();
@@ -1445,6 +1502,16 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@id", value);
         return Convert.ToInt64(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<string?> ReadStringAsync(string connectionString, string sql, string value)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@code", value);
+        var result = await command.ExecuteScalarAsync();
+        return result is DBNull or null ? null : Convert.ToString(result);
     }
 
     private sealed record TestSeed(

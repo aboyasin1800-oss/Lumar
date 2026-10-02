@@ -314,6 +314,7 @@ class _SettingsHomeScreenState extends State<SettingsHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isLightMode = theme.brightness == Brightness.light;
     final sections = _sections;
     final visibleSections = _searchText.isEmpty
         ? sections
@@ -550,7 +551,9 @@ class _SettingsSectionCardState extends State<_SettingsSectionCard> {
                             : (isInset ? 0.38 : 0.3),
                       ),
                       blurRadius: isInset ? 9 : 12,
+                      spreadRadius: -1,
                       offset: isInset ? const Offset(2, 3) : const Offset(0, 5),
+                    ),
                     BoxShadow(
                       color: isLightMode
                           ? Colors.white.withValues(alpha: isInset ? 0.1 : 0.08)
@@ -559,7 +562,6 @@ class _SettingsSectionCardState extends State<_SettingsSectionCard> {
                       spreadRadius: -1,
                       offset:
                           isInset ? const Offset(-1, -1) : const Offset(-1, -1),
-                    ),
                     ),
                     BoxShadow(
                       color:

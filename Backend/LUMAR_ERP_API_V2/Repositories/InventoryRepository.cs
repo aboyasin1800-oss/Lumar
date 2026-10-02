@@ -1,3 +1,4 @@
+using System.Globalization;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Inventory;
 using LUMAR_ERP_API_V2.FinancialFoundation;
@@ -2868,21 +2869,52 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
 
     private static async Task ApplyFabricPresentationAsync(SqlConnection connection, SqlTransaction transaction, int itemId, string fabricType, string? catalogNumber, string? colorValue, decimal fabricWidth, CancellationToken ct)
     {
+        var resolvedCatalog = await ResolveFabricCatalogNumberAsync(connection, transaction, itemId, catalogNumber, ct);
+
         const string sql = @"
             UPDATE dbo.InventoryItems
             SET FabricCategory=@fabricType,
-                Barcode=COALESCE(@catalogNumber,Barcode),
+                Barcode=@catalogNumber,
                 FabricColor=COALESCE(@colorValue,FabricColor),
                 FabricWidth=@fabricWidth,
                 FabricWidthUnit=N'Inch'
             WHERE InventoryItemID=@itemId;";
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@fabricType", fabricType);
-        AddNullable(command, "@catalogNumber", catalogNumber);
+        command.Parameters.AddWithValue("@catalogNumber", resolvedCatalog);
         AddNullable(command, "@colorValue", colorValue);
         AddDecimal(command, "@fabricWidth", fabricWidth, 4);
         command.Parameters.AddWithValue("@itemId", itemId);
         await command.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<string> ResolveFabricCatalogNumberAsync(SqlConnection connection, SqlTransaction transaction, int itemId, string? requestedCatalogNumber, CancellationToken ct)
+    {
+        using var readCurrent = new SqlCommand("SELECT Barcode FROM dbo.InventoryItems WITH (UPDLOCK, HOLDLOCK) WHERE InventoryItemID=@itemId", connection, transaction);
+        readCurrent.Parameters.AddWithValue("@itemId", itemId);
+        var currentValue = await readCurrent.ExecuteScalarAsync(ct);
+        var currentCatalog = currentValue is DBNull or null ? null : currentValue.ToString();
+        if (!string.IsNullOrWhiteSpace(currentCatalog))
+        {
+            return currentCatalog.Trim();
+        }
+
+        var preferredCatalog = string.IsNullOrWhiteSpace(requestedCatalogNumber) ? null : requestedCatalogNumber.Trim();
+        if (!string.IsNullOrWhiteSpace(preferredCatalog))
+        {
+            using var check = new SqlCommand("SELECT TOP (1) InventoryItemID FROM dbo.InventoryItems WITH (UPDLOCK, HOLDLOCK) WHERE Barcode=@requested AND InventoryItemID<>@itemId", connection, transaction);
+            check.Parameters.AddWithValue("@requested", preferredCatalog);
+            check.Parameters.AddWithValue("@itemId", itemId);
+            var existingItemId = await check.ExecuteScalarAsync(ct);
+            if (existingItemId is null)
+            {
+                return preferredCatalog;
+            }
+        }
+
+        var prefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "CatalogNumberPrefix", "CAT", ct);
+        var nextNumber = await SystemCodeGenerator.GetNextNumberAsync(connection, transaction, "dbo.InventoryItems", "Barcode", "CatalogNumberPrefix", "CAT", ct);
+        return $"{prefix}{nextNumber.ToString("D4", CultureInfo.InvariantCulture)}";
     }
 
     private static void AddNullable(SqlCommand command, string name, object? value) => command.Parameters.AddWithValue(name, value is string text ? (string.IsNullOrWhiteSpace(text) ? DBNull.Value : text.Trim()) : value ?? DBNull.Value);

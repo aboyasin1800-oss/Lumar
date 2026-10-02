@@ -9,13 +9,33 @@ class AppNavigation {
 	static final navigatorKey = GlobalKey<NavigatorState>();
 	static final observer = _AppNavigationObserver();
 
-	static Future<T?> push<T>(BuildContext context, AppPageBuilder builder, {RouteSettings? settings}) {
-		final route = _AppPageRoute<T>(pageBuilder: builder, settings: settings);
-		return Navigator.of(context).push<T>(route);
+	static BuildContext? _safeContext(BuildContext? context) {
+		if (context != null) {
+			try {
+				if (Navigator.maybeOf(context) != null) return context;
+			} catch (_) {
+				// Ignore invalid stale contexts and fall back to navigatorKey.
+			}
+		}
+		return navigatorKey.currentContext;
 	}
 
-	static Future<T?> pushNamed<T>(BuildContext context, String routeName, {Object? arguments}) =>
-			Navigator.of(context).pushNamed<T>(routeName, arguments: arguments);
+	static Future<T?> push<T>(BuildContext context, AppPageBuilder builder, {RouteSettings? settings}) {
+		final safeContext = _safeContext(context);
+		if (safeContext == null) {
+			return Future<T?>.value();
+		}
+		final route = _AppPageRoute<T>(pageBuilder: builder, settings: settings);
+		return Navigator.of(safeContext).push<T>(route);
+	}
+
+	static Future<T?> pushNamed<T>(BuildContext context, String routeName, {Object? arguments}) {
+		final safeContext = _safeContext(context);
+		if (safeContext == null) {
+			return Future<T?>.value();
+		}
+		return Navigator.of(safeContext).pushNamed<T>(routeName, arguments: arguments);
+	}
 
 	static Future<void> back() async {
 		final navigator = navigatorKey.currentState;
