@@ -327,7 +327,7 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
     _invoiceNumberController.text = pending.receiptNumber;
     _fabricTypeController.text = pending.itemDescription;
     _yardPriceController.text = FabricCodeUtils.formatYardPriceDisplay(pending.unitCost);
-    _rollCountController.text = '1';
+    _rollCountController.text = (pending.rollCount ?? 1).toString();
     _updateRollsFromCount();
     if (_rolls.isNotEmpty) {
       _rolls.first.quantityYardsController.text = pending.remainingQuantity.toStringAsFixed(3);

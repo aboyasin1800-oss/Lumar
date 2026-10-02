@@ -13,6 +13,7 @@ class PendingReceiptStorage {
     required this.remainingQuantity,
     required this.unit,
     required this.unitCost,
+    this.rollCount,
     this.supplierInvoiceLineId,
   });
 
@@ -29,6 +30,7 @@ class PendingReceiptStorage {
   final double remainingQuantity;
   final String unit;
   final double unitCost;
+  final int? rollCount;
   final int? supplierInvoiceLineId;
 
   factory PendingReceiptStorage.fromJson(Map<String, dynamic> json) {
@@ -47,6 +49,7 @@ class PendingReceiptStorage {
       remainingQuantity: number('remainingQuantity'),
       unit: json['unit']?.toString() ?? 'قطعة',
       unitCost: number('unitCost'),
+      rollCount: (json['rollCount'] as num?)?.toInt(),
       supplierInvoiceLineId: (json['supplierInvoiceLineId'] as num?)?.toInt(),
     );
   }

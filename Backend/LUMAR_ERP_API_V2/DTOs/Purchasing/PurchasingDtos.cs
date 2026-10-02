@@ -3,7 +3,7 @@ public sealed record PurchaseOrderListDto(int PurchaseOrderId, string PurchaseOr
 public sealed record PurchaseOrderDetailsDto(int PurchaseOrderId, string PurchaseOrderNumber, int SupplierId, DateTime OrderDate, DateTime? ExpectedDeliveryDate, string Status, decimal TotalAmount, DateTime CreatedAt);
 public sealed record PurchaseOrderItemDto(int PurchaseOrderItemId, int PurchaseOrderId, string ItemName, decimal Quantity, decimal UnitCost, decimal LineTotal);
 public sealed record GoodsReceiptDto(int GoodsReceiptId, int SupplierId, int? PurchaseOrderId, string ReceiptNumber, DateTime ReceiptDate, string? Notes, DateTime CreatedAt);
-public sealed record GoodsReceiptItemDto(int GoodsReceiptItemId, int GoodsReceiptId, string ItemName, decimal ReceivedQuantity, decimal UnitCost, decimal LineTotal);
+public sealed record GoodsReceiptItemDto(int GoodsReceiptItemId, int GoodsReceiptId, string ItemName, decimal ReceivedQuantity, decimal UnitCost, decimal LineTotal, int? RollCount);
 public sealed record PurchasingInvoiceDto(int SupplierInvoiceId, int SupplierId, int? PurchaseOrderId, string InvoiceNumber, DateTime InvoiceDate, DateTime DueDate, decimal TotalAmount, decimal AmountPaid, string Status, string? Notes, DateTime CreatedAt);
 public sealed record PurchasingInvoiceLineDto(long SupplierInvoiceLineId, int SupplierInvoiceId, int? InventoryItemId, string? ItemCode, string ItemName, string ItemType, string? SupplierItemCode, decimal Quantity, decimal UnitCost, decimal LineTotal, int? RollCount, string Status);
 public sealed record PurchasingPaymentDto(int SupplierPaymentId, int SupplierId, string PaymentNumber, DateTime PaymentDate, decimal Amount, string? PaymentMethod, string? ReferenceNumber, string? Notes, DateTime CreatedAt, int? JournalEntryId);

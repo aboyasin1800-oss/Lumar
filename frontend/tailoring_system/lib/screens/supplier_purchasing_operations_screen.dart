@@ -1547,7 +1547,9 @@ class _SupplierPurchasingOperationsScreenState
                                                 0 &&
                                             (double.tryParse(line.cost.text) ??
                                                     0) >
-                                                0)) {
+                                                0 &&
+                                            ((line.itemType ?? '') != 'Fabric' ||
+                                                (int.tryParse(line.rollCount.text.trim()) ?? 0) > 0))) {
                                       Navigator.pop(dialogContext, true);
                                     }
                                   }),
@@ -1568,9 +1570,11 @@ class _SupplierPurchasingOperationsScreenState
                                             0) <=
                                         0 ||
                                     (double.tryParse(line.cost.text) ?? 0) <=
-                                        0)) {
+                                        0 ||
+                                    ((line.itemType ?? '') == 'Fabric' &&
+                                        (int.tryParse(line.rollCount.text.trim()) ?? 0) <= 0))) {
                               _showMessage(
-                                  'راجع البنود والربط بالفاتورة والكميات والتكاليف.');
+                                  'راجع البنود والربط بالفاتورة والكميات والتكاليف وعدد اللفات للقماش.');
                               return;
                             }
                             Navigator.pop(dialogContext, true);
@@ -1599,6 +1603,9 @@ class _SupplierPurchasingOperationsScreenState
                           'quantity': double.parse(line.quantity.text),
                           'unitCost': double.parse(line.cost.text),
                           'supplierInvoiceLineId': line.invoiceLine?.id,
+                          'rollCount': line.rollCount.text.trim().isEmpty
+                              ? line.invoiceLine?.rollCount
+                              : int.parse(line.rollCount.text.trim()),
                           'rollCode': _nullable(line.rollCode.text)
                         })
                     .toList()),
@@ -1780,6 +1787,7 @@ class _SupplierPurchasingOperationsScreenState
                     line.description.text = value.itemName;
                     line.quantity.text = value.quantity.toString();
                     line.cost.text = value.unitCost.toString();
+                    line.rollCount.text = value.rollCount?.toString() ?? '';
                   }
                   onChanged();
                 },
@@ -1805,6 +1813,16 @@ class _SupplierPurchasingOperationsScreenState
                   child: _field(line.cost, 'تكلفة الوحدة',
                       required: true, number: true)),
             ]),
+            TextFormField(
+              controller: line.rollCount,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'عدد اللفات (للقماش)'),
+              validator: (value) {
+                if ((line.itemType ?? '') != 'Fabric') return null;
+                final parsed = int.tryParse(value?.trim() ?? '') ?? 0;
+                return parsed > 0 ? null : 'أدخل عدد لفات صحيحًا.';
+              },
+            ),
             _field(line.rollCode, 'رمز اللفة (عند استلام القماش)'),
           ]),
         ),
@@ -2033,6 +2051,7 @@ class _ReceiptDraftLine {
   final description = TextEditingController();
   final quantity = TextEditingController();
   final cost = TextEditingController();
+  final rollCount = TextEditingController();
   final rollCode = TextEditingController();
 
   String? get itemType => invoiceLine?.itemType;
@@ -2041,6 +2060,7 @@ class _ReceiptDraftLine {
     description.dispose();
     quantity.dispose();
     cost.dispose();
+    rollCount.dispose();
     rollCode.dispose();
   }
 }

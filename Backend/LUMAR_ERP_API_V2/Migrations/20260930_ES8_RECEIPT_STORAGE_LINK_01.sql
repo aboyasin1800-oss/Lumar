@@ -1,10 +1,13 @@
 SET XACT_ABORT ON;
-IF DB_NAME()<>N'LUMAR_ERP_ES_VALIDATION' THROW 52540,N'ES-8 receipt storage link is restricted to LUMAR_ERP_ES_VALIDATION.',1;
+IF DB_NAME() NOT IN(N'LUMAR_ERP_TEST',N'LUMAR_ERP_ES_VALIDATION') THROW 52540,N'ES-8 receipt storage link is restricted to approved ES validation databases.',1;
 BEGIN TRY
     BEGIN TRANSACTION;
 
     IF COL_LENGTH(N'dbo.GoodsReceiptItems',N'ItemType') IS NULL
         ALTER TABLE dbo.GoodsReceiptItems ADD ItemType nvarchar(30) NULL;
+
+    IF EXISTS(SELECT 1 FROM sys.check_constraints WHERE name=N'CK_GoodsReceiptItems_ES8_ItemType')
+        ALTER TABLE dbo.GoodsReceiptItems DROP CONSTRAINT CK_GoodsReceiptItems_ES8_ItemType;
 
     EXEC sys.sp_executesql N'
         UPDATE i
