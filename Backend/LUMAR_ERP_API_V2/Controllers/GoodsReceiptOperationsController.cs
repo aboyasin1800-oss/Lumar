@@ -3,6 +3,7 @@ using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Inventory;
 using LUMAR_ERP_API_V2.DTOs.Purchasing;
 using LUMAR_ERP_API_V2.Services;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LUMAR_ERP_API_V2.Controllers;
@@ -54,7 +55,9 @@ public sealed class GoodsReceiptOperationsController(
     {
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
         if (user is null) return (null, Unauthorized());
-        return Es7OperationalAuthorization.HasPermission(user, permission, testMode, ControllerContext.HttpContext?.Request) ? (user, null) : (null, Forbid());
+        return Es7OperationalAuthorization.HasPermission(user, permission, testMode, ControllerContext.HttpContext?.Request)
+            ? (user, null)
+            : (null, StatusCode(StatusCodes.Status403Forbidden));
     }
 
     private string CorrelationId => ControllerContext.HttpContext?.TraceIdentifier ?? "unbound";

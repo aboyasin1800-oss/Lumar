@@ -300,35 +300,13 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                    CASE WHEN YardPrice IS NOT NULL THEN YardPrice / 36 ELSE NULL END AS PricePerInch,
                    0 AS UsedQuantity,
                    AvailableQuantity
-            FROM dbo.InventoryItems
-            WHERE Category = N'Fabric'
-               OR ItemName LIKE N'%fabric%'
-               OR ItemName LIKE N'%cloth%'
-               OR ItemName LIKE N'%textile%'
-               OR ItemName LIKE N'%قماش%'
-               OR ItemName LIKE N'%نسيج%'
-               OR ItemName LIKE N'%بوليستر%'
-               OR ItemName LIKE N'%هندي%'
-               OR ItemName LIKE N'%انجليزي%'
-               OR ItemName LIKE N'%قطن%'
-               OR FabricCategory LIKE N'%fabric%'
-               OR FabricCategory LIKE N'%cloth%'
-               OR FabricCategory LIKE N'%textile%'
-               OR FabricCategory LIKE N'%قماش%'
-               OR FabricCategory LIKE N'%نسيج%'
-               OR FabricCategory LIKE N'%بوليستر%'
-               OR FabricCategory LIKE N'%هندي%'
-               OR FabricCategory LIKE N'%انجليزي%'
-               OR FabricCategory LIKE N'%قطن%'
-               OR Category LIKE N'%fabric%'
-               OR Category LIKE N'%cloth%'
-               OR Category LIKE N'%textile%'
-               OR Category LIKE N'%قماش%'
-               OR Category LIKE N'%نسيج%'
-               OR Category LIKE N'%بوليستر%'
-               OR Category LIKE N'%هندي%'
-               OR Category LIKE N'%انجليزي%'
-               OR Category LIKE N'%قطن%'
+            FROM dbo.InventoryItems i
+            WHERE EXISTS (
+                SELECT 1
+                FROM dbo.InventoryItemFoundation f
+                WHERE f.InventoryItemId = i.InventoryItemID
+                  AND f.InventoryClassId = 1
+            )
             ORDER BY FabricName";
 
         return await QueryAsync(sql, reader => new FabricDto(reader.GetString(0), reader.NullableInt32("FabricID"), reader.NullableString("FabricCode"), reader.NullableString("FabricName"), reader.NullableDecimal("FabricPrice"), reader.NullableBoolean("IsActive"), reader.NullableInt32("InventoryFabricCode"), reader.NullableString("InventoryFabricName"), reader.NullableString("Unit"), reader.NullableString("Color"), reader.NullableString("CatalogNumber"), reader.NullableDecimal("QuantityYard"), reader.NullableDecimal("QuantityInch"), reader.NullableDecimal("TotalRollCost"), reader.NullableDecimal("PricePerYard"), reader.NullableDecimal("PricePerInch"), reader.NullableDecimal("UsedQuantity"), reader.NullableDecimal("AvailableQuantity")), null, ct);
@@ -1003,6 +981,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                     ct);
                 await SetReceiptLineRollAsync(connection, transaction, lineId, fabricRollId, ct);
 
+                var transactionSourceOperationId = DeriveOperationId(request.SourceOperationId, itemId + (index + 1) * 100000);
                 var reference = $"GoodsReceipt:{receipt.ReceiptNumber}:Item:{request.GoodsReceiptItemId}:Roll:{roll.RollCode}";
                 var transactionId = await InsertFoundationInventoryTransactionAsync(
                     connection,
@@ -1013,7 +992,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                     reference,
                     decimal.Round(roll.Quantity * receipt.UnitCost, 6, MidpointRounding.AwayFromZero),
                     receipt.UnitCost,
-                    request.SourceOperationId,
+                    transactionSourceOperationId,
                     DateTime.UtcNow,
                     ct);
 

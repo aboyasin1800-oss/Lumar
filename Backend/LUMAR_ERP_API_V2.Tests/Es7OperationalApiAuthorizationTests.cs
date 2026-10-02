@@ -45,8 +45,29 @@ public sealed class Es7OperationalApiAuthorizationTests
 
         var result = await controller.Reverse(new ReverseSupplierFinancialRequestDto("Invoice", 10, Guid.NewGuid(), "Correction"), CancellationToken.None);
 
-        Assert.IsType<ForbidResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, ((StatusCodeResult)result.Result!).StatusCode);
         Assert.False(coordinator.ReversalCalled);
+    }
+
+    [Fact]
+    public async Task Fabric_invoice_line_requires_positive_roll_count()
+    {
+        var coordinator = new FakeSupplierFinancialCoordinator();
+        var controller = new SupplierFinancialOperationsController(coordinator, new FakeUserContext(User("Authorized Financial Manager")));
+
+        var result = await controller.CreateInvoice(new CreateSupplierInvoiceRequestDto(
+            7,
+            "ES7-API-INV-ROLL",
+            new DateOnly(2026, 9, 29),
+            new DateOnly(2026, 10, 1),
+            100m,
+            null,
+            Guid.NewGuid(),
+            Lines: [new(11, 2m, 50m, null, "Fabric sample", "Fabric")]),
+            CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.False(coordinator.InvoiceCalled);
     }
 
     [Fact]

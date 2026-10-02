@@ -3,6 +3,7 @@ using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Suppliers;
 using LUMAR_ERP_API_V2.FinancialFoundation;
 using LUMAR_ERP_API_V2.Services;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,7 +19,12 @@ public sealed class SupplierFinancialOperationsController(
     [HttpPost("invoices")]
     public async Task<ActionResult<SupplierFinancialInvoiceResult>> CreateInvoice(CreateSupplierInvoiceRequestDto request, CancellationToken cancellationToken)
     {
-        if (request.SupplierId <= 0 || string.IsNullOrWhiteSpace(request.InvoiceNumber) || request.Amount <= 0 || request.SourceOperationId == Guid.Empty || request.InvoiceDate > request.DueDate || request.Lines is not { Count: > 0 } || request.Lines.Any(line => (line.InventoryItemId is null && string.IsNullOrWhiteSpace(line.ItemDescription)) || line.Quantity <= 0 || line.UnitCost <= 0 || line.RollCount <= 0 || !IsSupportedInvoiceItemType(line.ItemType)))
+        if (request.SupplierId <= 0 || string.IsNullOrWhiteSpace(request.InvoiceNumber) || request.Amount <= 0 || request.SourceOperationId == Guid.Empty || request.InvoiceDate > request.DueDate || request.Lines is not { Count: > 0 } || request.Lines.Any(line =>
+                (line.InventoryItemId is null && string.IsNullOrWhiteSpace(line.ItemDescription))
+                || line.Quantity <= 0
+                || line.UnitCost <= 0
+                || (string.Equals(line.ItemType, "Fabric", StringComparison.OrdinalIgnoreCase) && (line.RollCount is null || line.RollCount <= 0))
+                || !IsSupportedInvoiceItemType(line.ItemType)))
             return BadRequest("Supplier invoice data is incomplete.");
         var linesTotal = request.Lines.Sum(line => decimal.Round(line.Quantity * line.UnitCost, 6, MidpointRounding.AwayFromZero));
         if (linesTotal != request.Amount) return BadRequest("Supplier invoice amount must equal the lines total.");
@@ -68,7 +74,9 @@ public sealed class SupplierFinancialOperationsController(
     {
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
         if (user is null) return (null, Unauthorized());
-        return Es7OperationalAuthorization.HasPermission(user, permission, testMode, ControllerContext.HttpContext?.Request) ? (user, null) : (null, Forbid());
+        return Es7OperationalAuthorization.HasPermission(user, permission, testMode, ControllerContext.HttpContext?.Request)
+            ? (user, null)
+            : (null, StatusCode(StatusCodes.Status403Forbidden));
     }
 
     private string CorrelationId => ControllerContext.HttpContext?.TraceIdentifier ?? "unbound";

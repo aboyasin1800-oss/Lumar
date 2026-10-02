@@ -1,6 +1,7 @@
 using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.DTOs.Suppliers;
 using LUMAR_ERP_API_V2.Services;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LUMAR_ERP_API_V2.Controllers;
@@ -32,7 +33,7 @@ public sealed class SuppliersController(
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
         if (user is null) return Unauthorized();
         if (!Es7OperationalAuthorization.HasPermission(user, Es7Permission.PurchasingManage, testMode, ControllerContext.HttpContext?.Request))
-            return Forbid();
+            return StatusCode(StatusCodes.Status403Forbidden);
         try
         {
             var created = await service.CreateAsync(request, cancellationToken);

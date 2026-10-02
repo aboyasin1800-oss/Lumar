@@ -333,27 +333,68 @@ class _SettingsHomeScreenState extends State<SettingsHomeScreen> {
       ),
       body: Column(
         children: [
-          Padding(
+                 Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-            child: TextField(
-              controller: _searchController,
-              textInputAction: TextInputAction.search,
-              textDirection: TextDirection.rtl,
-              onChanged: _onSearchChanged,
-              decoration: InputDecoration(
-                labelText: 'ابحث عن قسم أو إعداد أو عداد',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchText.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'مسح البحث',
-                        onPressed: () {
-                          _searchController.clear();
-                          _onSearchChanged('');
-                        },
-                        icon: const Icon(Icons.clear),
-                      ),
-                border: const OutlineInputBorder(),
+            child: Theme(
+              data: theme,
+              child: TextField(
+                controller: _searchController,
+                textInputAction: TextInputAction.search,
+                textDirection: TextDirection.rtl,
+                onChanged: _onSearchChanged,
+                decoration: InputDecoration(
+                  labelText: 'ابحث عن قسم أو إعداد أو عداد',
+                  labelStyle: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 14,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: theme.iconTheme.color?.withValues(alpha: 0.6),
+                    size: 20,
+                  ),
+                  suffixIcon: _searchText.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'مسح البحث',
+                          onPressed: () {
+                            _searchController.clear();
+                            _onSearchChanged('');
+                          },
+                          icon: const Icon(Icons.clear),
+                        ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: theme.colorScheme.outlineVariant,
+                      width: 1.5,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: theme.colorScheme.outlineVariant,
+                      width: 1.5,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: theme.colorScheme.primary,
+                      width: 2,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: isLightMode
+                      ? Colors.white.withValues(alpha: 0.9)
+                      : theme.colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.3),
+                  hintStyle: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant
+                        .withValues(alpha: 0.6),
+                    fontSize: 14,
+                  ),
+                ),
               ),
             ),
           ),
@@ -366,13 +407,13 @@ class _SettingsHomeScreenState extends State<SettingsHomeScreen> {
             child: visibleSections.isEmpty
                 ? const Center(child: Text('لا يوجد قسم أو إعداد مطابق.'))
                 : GridView.builder(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(12),
                     gridDelegate:
                         const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 300,
-                      mainAxisExtent: 240,
-                      mainAxisSpacing: 14,
-                      crossAxisSpacing: 14,
+                      maxCrossAxisExtent: 280,
+                      mainAxisExtent: 220,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
                     ),
                     itemCount: visibleSections.length,
                     itemBuilder: (context, index) => _SettingsSectionCard(
@@ -499,7 +540,7 @@ class _SettingsSectionCardState extends State<_SettingsSectionCard> {
               child: Container(
                 decoration: BoxDecoration(
                   color: cardSurface,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: border, width: 1.2),
                   boxShadow: [
                     BoxShadow(
@@ -508,8 +549,17 @@ class _SettingsSectionCardState extends State<_SettingsSectionCard> {
                             ? (isInset ? 0.1 : 0.16)
                             : (isInset ? 0.38 : 0.3),
                       ),
-                      blurRadius: isInset ? 9 : 16,
-                      offset: isInset ? const Offset(2, 3) : const Offset(0, 7),
+                      blurRadius: isInset ? 9 : 12,
+                      offset: isInset ? const Offset(2, 3) : const Offset(0, 5),
+                    BoxShadow(
+                      color: isLightMode
+                          ? Colors.white.withValues(alpha: isInset ? 0.1 : 0.08)
+                          : Colors.black.withValues(alpha: isInset ? 0.2 : 0.15),
+                      blurRadius: isInset ? 5 : 4,
+                      spreadRadius: -1,
+                      offset:
+                          isInset ? const Offset(-1, -1) : const Offset(-1, -1),
+                    ),
                     ),
                     BoxShadow(
                       color:
@@ -560,8 +610,8 @@ class _SettingsSectionCardState extends State<_SettingsSectionCard> {
                         children: [
                           IgnorePointer(
                             child: Container(
-                              width: 150,
-                              height: 130,
+                              width: 140,
+                              height: 120,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: cardSurface,
@@ -569,19 +619,19 @@ class _SettingsSectionCardState extends State<_SettingsSectionCard> {
                                 boxShadow: [
                                   BoxShadow(
                                     color: recessShadow,
-                                    blurRadius: isInset ? 20 : 16,
-                                    spreadRadius: isInset ? -2 : -4,
+                                    blurRadius: isInset ? 16 : 12,
+                                    spreadRadius: isInset ? -2 : -3,
                                     offset: isInset
-                                        ? const Offset(6, 7)
-                                        : const Offset(5, 6),
+                                        ? const Offset(5, 6)
+                                        : const Offset(4, 5),
                                   ),
                                   BoxShadow(
                                     color: recessHighlight,
-                                    blurRadius: isInset ? 9 : 12,
-                                    spreadRadius: isInset ? -4 : -3,
+                                    blurRadius: isInset ? 12 : 10,
+                                    spreadRadius: isInset ? -3 : -2,
                                     offset: isInset
                                         ? const Offset(-3, -3)
-                                        : const Offset(-4, -4),
+                                        : const Offset(-3, -3),
                                   ),
                                 ],
                               ),
@@ -604,7 +654,7 @@ class _SettingsSectionCardState extends State<_SettingsSectionCard> {
                             child: Icon(
                               widget.section.icon,
                               color: UiPalette.primary,
-                              size: 80,
+                              size: 64,
                             ),
                           ),
                         ],
@@ -615,7 +665,7 @@ class _SettingsSectionCardState extends State<_SettingsSectionCard> {
               ),
             ),
           ),
-          const SizedBox(height: 7),
+          const SizedBox(height: 6),
           Text(
             widget.section.title,
             maxLines: 1,
@@ -625,7 +675,7 @@ class _SettingsSectionCardState extends State<_SettingsSectionCard> {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 4),
           Text(
             widget.section.description,
             maxLines: 2,
