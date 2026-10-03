@@ -678,11 +678,9 @@ class _SupplierPurchasingOperationsScreenState
                               : invoiceType == 'tools'
                                   ? 'UsedTool'
                                   : 'ImportedProduct',
-                          'productType': invoiceType == 'fabric'
-                              ? 'Fabric'
-                              : invoiceType == 'tools'
-                                  ? 'UsedTool'
-                                  : (line.productType.text.trim().isNotEmpty ? line.productType.text.trim() : null),
+                          'productType': line.productType.text.trim().isNotEmpty
+                              ? line.productType.text.trim()
+                              : null,
                           'supplierItemCode':
                               _nullable(line.supplierItemCode.text),
                           'unitCode': invoiceType == 'fabric'
@@ -800,12 +798,14 @@ class _SupplierPurchasingOperationsScreenState
                                   ),
                                 ),
                                 Text(line.total.toStringAsFixed(2),
-                                    textAlign: TextAlign.left),
+                                    textAlign: TextAlign.left,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold)),
                               ],
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              '${_invoiceTypeLabel(line.itemType)}  •  الكمية ${line.quantity}  •  سعر الوحدة ${line.unitCost.toStringAsFixed(2)}${line.rollCount == null ? '' : '  •  اللفات ${line.rollCount}'}',
+                              'النوع: ${_resolvedProductType(line.productType, line.itemType)} • الوحدة: ${line.unitCode ?? 'غير محدد'} • الكمية: ${line.quantity} • تكلفة الوحدة: ${line.unitCost.toStringAsFixed(2)} • الإجمالي: ${line.total.toStringAsFixed(2)}${line.rollCount == null ? '' : ' • اللفات: ${line.rollCount}'}',
                             ),
                             if (line.supplierItemCode != null &&
                                 line.supplierItemCode!.trim().isNotEmpty)
@@ -864,7 +864,44 @@ class _SupplierPurchasingOperationsScreenState
     try {
       final supplier = _supplierRecord(receipt.supplierId);
       final linkedInvoice = _linkedInvoiceForReceipt(receipt);
+      final invoiceLines = linkedInvoice == null
+          ? <SupplierPurchasingInvoiceLine>[]
+          : await _repository.getInvoiceLines(linkedInvoice.id);
       final matching = await _repository.getReceiptMatching(receipt.id);
+      String normalizedReceiptLine(String value) => value
+          .trim()
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^\u0600-\u06FFa-zA-Z0-9\s]'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ');
+
+      SupplierPurchasingInvoiceLine? matchLine(String itemName) {
+        final normalizedTarget = normalizedReceiptLine(itemName);
+        if (normalizedTarget.isEmpty) return null;
+
+        SupplierPurchasingInvoiceLine? bestMatch;
+        int bestScore = 0;
+
+        for (final line in invoiceLines) {
+          final normalizedLineName = normalizedReceiptLine(line.itemName);
+          if (normalizedLineName.isEmpty) continue;
+
+          if (normalizedLineName == normalizedTarget) return line;
+
+          final containsDirectly =
+              normalizedLineName.contains(normalizedTarget) ||
+              normalizedTarget.contains(normalizedLineName);
+          if (!containsDirectly) continue;
+
+          final score = normalizedLineName.length + normalizedTarget.length;
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = line;
+          }
+        }
+
+        return bestMatch;
+      }
+
       if (!mounted) return;
       await showDialog<void>(
         context: context,
@@ -929,35 +966,49 @@ class _SupplierPurchasingOperationsScreenState
                     const Center(child: Text('لا توجد بنود في هذا الاستلام.'))
                   else ...[
                     for (final item in matching.items)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.outlineVariant,
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                    child: Text(item.itemName,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.bold))),
-                                Text((item.quantity * item.unitCost)
-                                    .toStringAsFixed(2)),
-                              ],
+                      () {
+                        final matchedLine = matchLine(item.itemName);
+                        final productType = _resolvedProductType(
+                            matchedLine?.productType,
+                            matchedLine?.itemType ?? 'ImportedProduct');
+                        final unitCode = matchedLine?.unitCode ?? 'غير محدد';
+                        final itemQuantity = matchedLine?.quantity ?? item.quantity;
+                        final unitCost = matchedLine?.unitCost ?? item.unitCost;
+                        final lineTotal = itemQuantity * unitCost;
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outlineVariant,
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                                'الكمية ${item.quantity}  •  تكلفة الوحدة ${item.unitCost.toStringAsFixed(2)}'),
-                          ],
-                        ),
-                      ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                      child: Text(item.itemName,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold))),
+                                  Text(lineTotal.toStringAsFixed(2),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                  'النوع: $productType • الوحدة: $unitCode • الكمية: $itemQuantity • تكلفة الوحدة: ${unitCost.toStringAsFixed(2)} • الإجمالي: ${lineTotal.toStringAsFixed(2)}'),
+                              if (matchedLine?.supplierItemCode != null &&
+                                  matchedLine!.supplierItemCode!.trim().isNotEmpty)
+                                Text('كود المورد: ${matchedLine.supplierItemCode}'),
+                            ],
+                          ),
+                        );
+                      }(),
                     if (matching.differences.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       const Align(
@@ -1504,7 +1555,9 @@ class _SupplierPurchasingOperationsScreenState
                                           draft.invoiceLine = invoiceLine;
                                           draft.description.text = invoiceLine.itemName;
                                           draft.productType.text =
-                                              invoiceLine.productType ?? invoiceLine.itemType;
+                                              invoiceLine.productType?.trim().isNotEmpty == true
+                                                  ? invoiceLine.productType!
+                                                  : invoiceLine.itemType;
                                           draft.unitCode.text = invoiceLine.unitCode ??
                                               _defaultUnitForType(invoiceLine.itemType);
                                           draft.quantity.text = invoiceLine.quantity.toString();
@@ -2087,12 +2140,25 @@ class _SupplierPurchasingOperationsScreenState
         _ => 'حبة',
       };
 
-  String _invoiceTypeLabel(String value) => switch (value) {
-        'Fabric' => 'أقمشة',
-        'UsedTool' => 'أدوات مستخدمة',
-        'ImportedProduct' => 'منتجات مستوردة',
-        _ => 'بند قديم مرتبط بالمخزون'
-      };
+  String _resolvedProductType(String? productType, String fallbackType) {
+    final raw = productType?.trim();
+    if (raw != null && raw.isNotEmpty &&
+        raw != 'Fabric' &&
+        raw != 'UsedTool' &&
+        raw != 'ImportedProduct') {
+      return raw;
+    }
+
+    final fallback = fallbackType.trim();
+    if (fallback.isNotEmpty &&
+        fallback != 'Fabric' &&
+        fallback != 'UsedTool' &&
+        fallback != 'ImportedProduct') {
+      return fallback;
+    }
+
+    return 'غير محدد';
+  }
 
   Future<DateTime?> _pickDate(DateTime initial) => showDatePicker(
       context: context,

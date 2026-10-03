@@ -116,11 +116,12 @@ public sealed class InventoryController(IInventoryService service) : ControllerB
             return BadRequest("Goods receipt item, item code, and fabric type code are required.");
         if (hasRollBatch)
         {
+            var batchRolls = request.Rolls ?? [];
             if (string.IsNullOrWhiteSpace(request.FabricTypeCode))
                 return BadRequest("Fabric type code is required when storing a multi-roll batch.");
-            if (request.Rolls!.Any(roll => string.IsNullOrWhiteSpace(roll.FabricCode) || roll.Quantity <= 0m))
+            if (batchRolls.Any(roll => string.IsNullOrWhiteSpace(roll.FabricCode) || roll.Quantity <= 0m))
                 return BadRequest("Each roll in the batch must include a fabric code and a positive quantity.");
-            if (request.Rolls.Sum(roll => roll.Quantity) <= 0m)
+            if (batchRolls.Sum(roll => roll.Quantity) <= 0m)
                 return BadRequest("The multi-roll batch must have a positive total quantity.");
         }
 

@@ -69,7 +69,10 @@ class _LumarAppState extends State<LumarApp> {
             builder: (context, child) => AppNavigationRegion(
               onBackMouseButton: () => workspace.open(WorkspaceRouteIds.dashboard),
               onCloseWorkspaceTask: (context) =>
-                  WorkspaceTaskCloseButton.closeActiveTask(context, workspace),
+                  WorkspaceTaskCloseButton.closeActiveTask(
+                    AppNavigation.navigatorKey.currentContext ?? context,
+                    workspace,
+                  ),
               showWorkspaceCloseButton: workspace.activeRouteId != null,
               child: KeyboardPolicy(
                     uiScale: uiScale,

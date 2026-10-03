@@ -46,22 +46,25 @@ public class InventoryStorageCompatibilityTests
     }
 
     [Fact]
-    public void PendingStorageQuery_IncludesOfficialImportedProductMetadataWhenAvailable()
+    public void PendingStorageQuery_UsesProductTypeAsSourceOfTruthForCommercialType()
     {
         var sql = InventoryRepository.BuildPendingGoodsReceiptStorageQuery(true, true, true, true, true, true, true, true, true, true);
 
-        Assert.Contains("COALESCE(i.ProductType, sil.ProductType, i.ItemType, sil.ItemType)", sql);
+        Assert.Contains("COALESCE(i.ProductType, sil.ProductType)", sql);
+        Assert.DoesNotContain("COALESCE(i.ProductType, sil.ProductType, i.ItemType, sil.ItemType)", sql);
+        Assert.DoesNotContain("COALESCE(i.ProductType, i.ItemType)", sql);
+        Assert.DoesNotContain("COALESCE(sil.ProductType, sil.ItemType)", sql);
         Assert.Contains("COALESCE(i.UnitCode, sil.UnitCode)", sql);
         Assert.Contains("COALESCE(i.ItemCount, sil.ItemCount, i.ReceivedQuantity, sil.Quantity)", sql);
         Assert.Contains("COALESCE(i.ReceivedItemCount, sil.ItemCount, i.ReceivedQuantity, sil.Quantity)", sql);
     }
 
     [Fact]
-    public void PendingStorageQuery_DoesNotUseGenericImportedProductAsProductTypeFallback()
+    public void PendingStorageQuery_DoesNotUseTechnicalItemTypeAsCommercialProductTypeFallback()
     {
         var sql = InventoryRepository.BuildPendingGoodsReceiptStorageQuery(true, true, true, true, true, true, true, true, true, true);
 
-        Assert.DoesNotContain("CAST(N'ImportedProduct' AS nvarchar(50))", sql);
-        Assert.Contains("COALESCE(i.ProductType, sil.ProductType, i.ItemType, sil.ItemType)", sql);
+        Assert.DoesNotContain("i.ItemType", sql.Replace("COALESCE(i.ProductType, sil.ProductType)", ""));
+        Assert.DoesNotContain("sil.ItemType", sql.Replace("COALESCE(i.ProductType, sil.ProductType)", ""));
     }
 }

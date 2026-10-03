@@ -71,10 +71,10 @@ class _ToolEntryScreenState extends State<ToolEntryScreen> {
 
     final payloadUnit = (pending.unitCode ?? pending.unit).trim();
     final resolvedUnit = payloadUnit.isNotEmpty ? payloadUnit : 'قطعة';
-    final resolvedProductType = (pending.productType ?? pending.itemType).trim();
+    final resolvedProductType = (pending.productType ?? '').trim();
 
     _nameController.text = pending.itemDescription.trim();
-    _typeController.text = resolvedProductType.isNotEmpty ? resolvedProductType : pending.itemDescription.trim();
+    _typeController.text = resolvedProductType.isNotEmpty ? resolvedProductType : '';
     _unitController.text = resolvedUnit;
     _quantityController.text = pending.remainingQuantity > 0 ? pending.remainingQuantity.toStringAsFixed(3) : '0';
     _unitPriceController.text = pending.unitCost > 0 ? pending.unitCost.toStringAsFixed(2) : '0.00';

@@ -31,6 +31,7 @@ class WorkspaceTaskCloseButton extends StatelessWidget {
   ) async {
     final task = controller.taskFor(routeId);
     if (task == null) return;
+    final dialogContext = AppNavigation.navigatorKey.currentContext ?? context;
     if (!task.isDirty) {
       beforeClose?.call();
       controller.close(routeId);
@@ -39,7 +40,7 @@ class WorkspaceTaskCloseButton extends StatelessWidget {
 
     controller.beginClose(routeId);
     final shouldClose = await showDialog<bool>(
-      context: context,
+      context: dialogContext,
       builder: (dialogContext) => AlertDialog(
         title: const Text('تغييرات غير محفوظة'),
         content: const Text('توجد تغييرات غير محفوظة. هل تريد إغلاق الشاشة؟'),

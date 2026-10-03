@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace LUMAR_ERP_API_V2.Repositories;
 
-public sealed class AuthRepository(OperationalSqlConnectionFactory connections) : IAuthRepository
+public sealed class AuthRepository(OperationalSqlConnectionFactory connections, ILogger<AuthRepository> logger) : IAuthRepository
 {
     public async Task<SessionDto?> LoginAsync(LoginDto login, CancellationToken ct)
     {
@@ -36,7 +36,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         var passwordHash = reader.IsDBNull(3) ? null : reader.GetString(3);
         var fullName = reader.IsDBNull(4) ? string.Empty : reader.GetString(4);
         var role = reader.IsDBNull(5) ? null : reader.GetString(5);
-        DateTime? lastLoginUtc = reader.IsDBNull(7) ? null : reader.GetDateTime(7);
+        var lastLoginUtc = reader.IsDBNull(7) ? (DateTime?)null : reader.GetDateTime(7);
 
         if (!PasswordsMatch(login.Password, passwordHash, legacyPassword))
             return null;
@@ -428,3 +428,4 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         return CryptographicOperations.FixedTimeEquals(actualHash, Convert.FromBase64String(parts[3]));
     }
 }
+

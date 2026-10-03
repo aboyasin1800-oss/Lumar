@@ -9,8 +9,10 @@ using Microsoft.Extensions.Logging;
 
 namespace LUMAR_ERP_API_V2.Repositories;
 
-public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections, ILogger<InventoryRepository>? logger = null) : IInventoryRepository, IGoodsReceiptTransactionRuntime
+public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections) : IInventoryRepository, IGoodsReceiptTransactionRuntime
 {
+    private static readonly ILogger<InventoryRepository>? _logger = null;
+
     public Task<IReadOnlyList<InventoryItemDto>> GetItemsAsync(CancellationToken ct) => QueryAsync("SELECT InventoryItemID, ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice FROM dbo.InventoryItems ORDER BY ItemName, InventoryItemID", MapItem, null, ct);
     public async Task<InventoryItemDto?> GetItemByIdAsync(int id, CancellationToken ct) => (await QueryAsync("SELECT InventoryItemID, ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice FROM dbo.InventoryItems WHERE InventoryItemID = @id", MapItem, id, ct)).SingleOrDefault();
     public Task<IReadOnlyList<InventoryTransactionDto>> GetTransactionsAsync(CancellationToken ct) => QueryAsync("SELECT TransactionID, InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt, TotalCostImpact, UnitCost FROM dbo.InventoryTransactions ORDER BY CreatedAt DESC, TransactionID DESC", reader => new InventoryTransactionDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetDecimal(3), reader.NullableString("ReferenceNumber"), reader.NullableString("Notes"), reader.GetDateTime(6), reader.NullableDecimal("TotalCostImpact"), reader.NullableDecimal("UnitCost")), null, ct);
@@ -66,12 +68,12 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                     : "CAST(N'Legacy' AS nvarchar(30))";
 
         var productTypeExpression = hasGoodsReceiptProductType && hasSupplierInvoiceProductType
-            ? "COALESCE(i.ProductType, sil.ProductType, i.ItemType, sil.ItemType)"
+            ? "COALESCE(i.ProductType, sil.ProductType)"
             : hasGoodsReceiptProductType
-                ? "COALESCE(i.ProductType, i.ItemType)"
+                ? "i.ProductType"
                 : hasSupplierInvoiceProductType
-                    ? "COALESCE(sil.ProductType, sil.ItemType)"
-                    : "COALESCE(i.ItemType, sil.ItemType)";
+                    ? "sil.ProductType"
+                    : "CAST(NULL AS nvarchar(100))";
 
         var unitCodeExpression = hasGoodsReceiptUnitCode && hasSupplierInvoiceUnitCode
             ? "COALESCE(i.UnitCode, sil.UnitCode)"
@@ -2788,7 +2790,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         await insert.ExecuteNonQueryAsync(ct);
     }
 
-    private static async Task<bool> ColumnExistsAsync(SqlConnection connection, SqlTransaction transaction, string tableName, string columnName, CancellationToken ct)
+    private static async Task<bool> ColumnExistsAsync(SqlConnection connection, SqlTransaction? transaction, string tableName, string columnName, CancellationToken ct)
     {
         await using var command = new SqlCommand(@"
             SELECT CAST(CASE WHEN EXISTS (
@@ -2871,7 +2873,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                 }
 
                 await transaction.CommitAsync(ct);
-                logger?.LogInformation("Storage-linked fabric batch completed without creating a new purchase order. SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; TotalRolls={TotalRolls}; TotalYards={TotalYards}", batch.SupplierId, invoiceNumber, storageLinkedRolls.Count, totalYards);
+                _logger?.LogInformation("Storage-linked fabric batch completed without creating a new purchase order. SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; TotalRolls={TotalRolls}; TotalYards={TotalYards}", batch.SupplierId, invoiceNumber, storageLinkedRolls.Count, totalYards);
                 return new FabricBatchResultDto(storageLinkedRolls.Count, totalYards, totalCost, $"STORAGE-{invoiceNumber}", now);
             }
 
@@ -2880,7 +2882,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             if (existing is not null)
             {
                 await transaction.CommitAsync(ct);
-                logger?.LogInformation("Official fabric batch already exists. SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}", batch.SupplierId, invoiceNumber, fabricCode);
+                _logger?.LogInformation("Official fabric batch already exists. SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}", batch.SupplierId, invoiceNumber, fabricCode);
                 return existing;
             }
 
@@ -2891,10 +2893,10 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             var officialTotalCost = decimal.Round(batch.Rolls.Sum(roll => roll.QuantityYards * roll.YardPrice), 2, MidpointRounding.AwayFromZero);
             step = "InsertPurchaseOrder";
             var purchaseOrderId = await InsertFabricPurchaseOrderAsync(connection, transaction, batch.SupplierId, invoiceNumber, officialTotalCost, officialNow, ct);
-            logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; PurchaseOrderId={PurchaseOrderId}", step, batch.SupplierId, invoiceNumber, purchaseOrderId);
+            _logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; PurchaseOrderId={PurchaseOrderId}", step, batch.SupplierId, invoiceNumber, purchaseOrderId);
             step = "InsertGoodsReceipt";
             var goodsReceiptId = await InsertFabricGoodsReceiptAsync(connection, transaction, batch.SupplierId, purchaseOrderId, invoiceNumber, batch.Notes, officialNow, ct);
-            logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; GoodsReceiptId={GoodsReceiptId}", step, batch.SupplierId, invoiceNumber, goodsReceiptId);
+            _logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; GoodsReceiptId={GoodsReceiptId}", step, batch.SupplierId, invoiceNumber, goodsReceiptId);
             decimal officialTotalYards = 0m;
 
             foreach (var roll in batch.Rolls)
@@ -2907,7 +2909,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                 await InsertFabricPurchaseOrderItemAsync(connection, transaction, purchaseOrderId, fabricType, roll.QuantityYards, roll.YardPrice, lineTotal, ct);
                 step = "InsertGoodsReceiptItem";
                 var goodsReceiptItemId = await InsertFabricGoodsReceiptItemAsync(connection, transaction, goodsReceiptId, fabricType, roll.QuantityYards, roll.YardPrice, lineTotal, ct);
-                logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}; GoodsReceiptItemId={GoodsReceiptItemId}", step, batch.SupplierId, invoiceNumber, code, goodsReceiptItemId);
+                _logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}; GoodsReceiptItemId={GoodsReceiptItemId}", step, batch.SupplierId, invoiceNumber, code, goodsReceiptItemId);
                 step = "PostOfficialFabricReceipt";
                 await PostOfficialFabricBatchRollAsync(
                     connection,
@@ -2922,25 +2924,25 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                     roll.StorageOperationId,
                     officialNow,
                     ct);
-                logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}", step, batch.SupplierId, invoiceNumber, code);
+                _logger?.LogInformation("Official fabric batch step succeeded. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}", step, batch.SupplierId, invoiceNumber, code);
                 officialTotalYards += roll.QuantityYards;
             }
 
             step = "CommitTransaction";
             await transaction.CommitAsync(ct);
-            logger?.LogInformation("Official fabric batch transaction committed. SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}", batch.SupplierId, invoiceNumber, fabricCode);
+            _logger?.LogInformation("Official fabric batch transaction committed. SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}", batch.SupplierId, invoiceNumber, fabricCode);
             return new FabricBatchResultDto(batch.Rolls.Count, officialTotalYards, officialTotalCost, $"FAB-{invoiceNumber}", officialNow);
         }
         catch (Exception exception)
         {
-            logger?.LogError(
+            _logger?.LogError(
                 exception,
                 "Official fabric batch transaction failed. Step={Step}; SupplierId={SupplierId}; InvoiceNumber={InvoiceNumber}; FabricCode={FabricCode}; SqlErrorNumber={SqlErrorNumber}; InnerException={InnerException}",
                 step,
                 batch.SupplierId,
                 invoiceNumber,
                 fabricCode,
-                exception is SqlException sqlException ? sqlException.Number : null,
+                exception is SqlException sqlException ? (int?)sqlException.Number : null,
                 exception.InnerException?.ToString() ?? "<none>");
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
