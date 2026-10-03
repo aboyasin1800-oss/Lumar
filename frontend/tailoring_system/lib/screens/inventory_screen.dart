@@ -58,6 +58,7 @@ class _InventoryScreenState extends State<InventoryScreen>
         http.get(Uri.parse('$_baseUrl/suppliers')),
         http.get(Uri.parse('$_baseUrl/inventory/transactions')),
         http.get(Uri.parse('$_baseUrl/inventory/summary')),
+        http.get(Uri.parse('$_baseUrl/inventory/tools')),
       ]);
 
       List<PendingReceiptStorage> pendingReceipts = const [];
@@ -76,11 +77,6 @@ class _InventoryScreenState extends State<InventoryScreen>
       if (responses.any((response) => response.statusCode < 200 || response.statusCode >= 300)) {
         throw Exception();
       }
-
-      final inventoryItems = (jsonDecode(responses[0].body) as List)
-          .cast<Map<String, dynamic>>()
-          .map(InventoryItemRecord.fromJson)
-          .toList();
 
       final fabricRows = (jsonDecode(responses[1].body) as List)
           .cast<Map<String, dynamic>>();
@@ -135,9 +131,9 @@ class _InventoryScreenState extends State<InventoryScreen>
 
       final fabrics = _deduplicateFabrics(fabricsFromApi);
 
-      final tools = inventoryItems
-          .where((item) => _isToolCategory(item.category) || _isToolCategory(item.itemName))
-          .map(ToolItem.fromInventory)
+      final tools = (jsonDecode(responses[7].body) as List)
+          .cast<Map<String, dynamic>>()
+          .map(ToolItem.fromJson)
           .toList();
 
       setState(() {
@@ -188,18 +184,6 @@ class _InventoryScreenState extends State<InventoryScreen>
     ].join(' ').toLowerCase();
 
     return haystack.contains(normalizedQuery);
-  }
-
-  bool _isToolCategory(String category) {
-    final value = category.toLowerCase();
-    return value.contains('tool') ||
-        value.contains('sewing') ||
-        value.contains('needle') ||
-        value.contains('thread') ||
-        value.contains('machine') ||
-        value.contains('equipment') ||
-        value.contains('اداة') ||
-        value.contains('أداة');
   }
 
   FabricItem? _fabricItemFromApi(
@@ -1432,6 +1416,17 @@ class ToolItem {
         quantity: item.currentQuantity,
         unit: item.unit.isEmpty ? 'قطعة' : item.unit,
       );
+
+  factory ToolItem.fromJson(Map<String, dynamic> json) {
+    final unit = json['unit']?.toString() ?? '';
+    return ToolItem(
+      code: json['itemCode']?.toString() ?? '-',
+      name: json['itemName']?.toString() ?? '-',
+      category: json['category']?.toString() ?? '-',
+      quantity: (json['currentQuantity'] as num?)?.toDouble() ?? 0,
+      unit: unit.isEmpty ? 'قطعة' : unit,
+    );
+  }
 
   final String code;
   final String name;

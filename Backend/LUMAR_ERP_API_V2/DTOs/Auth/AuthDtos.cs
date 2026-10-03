@@ -21,7 +21,7 @@ public sealed record RecoveryCompleteResultDto(bool Success, string? Message);
 
 public sealed record SessionInfoDto(Guid SessionId, DateTime CreatedAtUtc, DateTime ExpiresAtUtc, DateTime? RevokedAtUtc, string? RevocationReason, string? DeviceInfo, bool IsCurrent);
 
-public sealed record AccountTypeDto(string AccountType, int? CustomerId, int? EmployeeId);
+public sealed record AccountTypeDto(string AccountType, int? CustomerId, int? EmployeeId, int? SupplierId);
 
 public sealed record MobileLoginDto(string Username, string Password, bool RememberMe);
-public sealed record MobileSessionDto(string Token, DateTime ExpiresAtUtc, CurrentUserDto User, string AccountType, int? CustomerId, int? EmployeeId);
+public sealed record MobileSessionDto(string Token, DateTime ExpiresAtUtc, CurrentUserDto User, string AccountType, int? CustomerId, int? EmployeeId, int? SupplierId);

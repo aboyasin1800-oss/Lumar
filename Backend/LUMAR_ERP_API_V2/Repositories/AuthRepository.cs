@@ -318,7 +318,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         await connection.OpenAsync(ct);
 
         await using var command = new SqlCommand(
-            "SELECT AccountType, CustomerId, EmployeeId FROM dbo.MobileAccounts WHERE UserId = @uid AND IsActive = 1",
+            "SELECT AccountType, CustomerId, EmployeeId, SupplierId FROM dbo.MobileAccounts WHERE UserId = @uid AND IsActive = 1",
             connection);
         command.Parameters.AddWithValue("@uid", currentUser.UserId);
 
@@ -328,10 +328,11 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             var accountType = reader.GetString(0);
             var customerId = reader.IsDBNull(1) ? null : (int?)reader.GetInt32(1);
             var employeeId = reader.IsDBNull(2) ? null : (int?)reader.GetInt32(2);
-            return new AccountTypeDto(accountType, customerId, employeeId);
+            var supplierId = reader.IsDBNull(3) ? null : (int?)reader.GetInt32(3);
+            return new AccountTypeDto(accountType, customerId, employeeId, supplierId);
         }
 
-        return new AccountTypeDto(currentUser.Role ?? "User", null, null);
+        return new AccountTypeDto(currentUser.Role ?? "User", null, null, null);
     }
 
     private async Task<CurrentUserDto?> GetUserAsync(string token, CancellationToken ct)
