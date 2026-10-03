@@ -13,9 +13,12 @@ public sealed class CodePrefixSettingsRepository(ReadOnlySqlConnectionFactory co
         ["CatalogNumberPrefix"] = "CAT",
         ["CustomerCodePrefix"] = "C",
         ["EmployeeCodePrefix"] = "MO",
+        ["ImportedProductCodePrefix"] = "IMP",
+        ["ImportedReadyMadeProductCodePrefix"] = "IRP",
         ["OrderCodePrefix"] = "OR",
         ["PieceTrackingPrefix"] = "TAR",
         ["ProductionTrackingPrefix"] = "TRK",
+        ["ProductCodePrefix"] = "PRO",
         ["ToolCodePrefix"] = "AT"
     };
 
@@ -25,9 +28,12 @@ public sealed class CodePrefixSettingsRepository(ReadOnlySqlConnectionFactory co
         ["CatalogNumberPrefix"] = "بادئة رقم الكتالوج",
         ["CustomerCodePrefix"] = "بادئة كود العميل",
         ["EmployeeCodePrefix"] = "بادئة كود الموظف",
+        ["ImportedProductCodePrefix"] = "بادئة كود المنتجات المستوردة",
+        ["ImportedReadyMadeProductCodePrefix"] = "بادئة كود المنتجات الجاهزة المستوردة",
         ["OrderCodePrefix"] = "بادئة رقم الطلب",
         ["PieceTrackingPrefix"] = "بادئة تتبع قطعة التفصيل",
         ["ProductionTrackingPrefix"] = "بادئة تتبع الإنتاج الجاهز",
+        ["ProductCodePrefix"] = "بادئة كود المنتج العام",
         ["ToolCodePrefix"] = "بادئة كود الأدوات"
     };
 
@@ -161,9 +167,12 @@ public sealed class CodePrefixSettingsRepository(ReadOnlySqlConnectionFactory co
             "CatalogNumberPrefix" => "0001",
             "CustomerCodePrefix" => "0001",
             "EmployeeCodePrefix" => "0001",
+            "ImportedProductCodePrefix" => "0001",
+            "ImportedReadyMadeProductCodePrefix" => "0001",
             "OrderCodePrefix" => "0001",
             "PieceTrackingPrefix" => "0001",
             "ProductionTrackingPrefix" => "0001",
+            "ProductCodePrefix" => "0001",
             "ToolCodePrefix" => "0001",
             _ => "0001"
         };

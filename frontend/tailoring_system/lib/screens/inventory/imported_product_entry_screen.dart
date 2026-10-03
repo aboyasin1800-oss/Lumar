@@ -32,6 +32,7 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
 
   bool _isSaving = false;
   bool _renewExisting = false;
+  String _productCodePrefix = 'IMP';
   List<_ImportedProductRow> _products = [];
   _ImportedProductRow? _selectedProduct;
 
@@ -42,6 +43,7 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
     _purchasePriceController.addListener(_syncTotal);
     _loadSuppliers();
     _loadExistingProducts();
+    _loadImportedProductCodePrefix();
     _applyPendingReceipt();
   }
 
@@ -70,6 +72,7 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
     _quantityController.text = pending.remainingQuantity.toStringAsFixed(3);
     _purchasePriceController.text = pending.unitCost.toStringAsFixed(2);
     _supplierController.text = pending.supplierId.toString();
+    _refreshGeneratedProductCode(force: true);
   }
 
   String _operationId() => '${DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(16).padLeft(32, '0').substring(0, 8)}-0000-4000-8000-${DateTime.now().microsecondsSinceEpoch.toRadixString(16).padLeft(12, '0').substring(0, 12)}';
@@ -107,10 +110,82 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
       final decoded = jsonDecode(response.body);
       if (decoded is! List) return;
       final products = decoded.whereType<Map<String, dynamic>>().map(_ImportedProductRow.fromJson).toList();
-      if (mounted) setState(() => _products = products);
+      if (mounted) {
+        setState(() => _products = products);
+        _refreshGeneratedProductCode(force: true);
+      }
     } catch (_) {
       // ignore load errors; user can still add a new product
     }
+  }
+
+  Future<void> _loadImportedProductCodePrefix() async {
+    try {
+      final response = await http.get(Uri.parse('$_baseUrl/settings/code-prefixes'));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return;
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) {
+        return;
+      }
+
+      final settings = decoded.whereType<Map<String, dynamic>>();
+      const keys = [
+        'ImportedProductCodePrefix',
+        'ImportedReadyMadeProductCodePrefix',
+        'ProductCodePrefix',
+      ];
+
+      for (final key in keys) {
+        final match = settings.firstWhere(
+          (entry) => (entry['key'] ?? entry['SettingName'] ?? '').toString() == key,
+          orElse: () => <String, dynamic>{},
+        );
+        if (match.isNotEmpty) {
+          final value = (match['currentValue'] ?? match['defaultValue'] ?? key).toString().trim();
+          if (value.isNotEmpty) {
+            if (mounted) {
+              setState(() {
+                _productCodePrefix = value;
+              });
+              _refreshGeneratedProductCode(force: true);
+            }
+            return;
+          }
+        }
+      }
+    } catch (_) {
+      // ignore prefix lookup errors and keep the default prefix.
+    }
+  }
+
+  void _refreshGeneratedProductCode({bool force = false}) {
+    if (_selectedProduct != null && _selectedProduct!.code.isNotEmpty && !force) {
+      return;
+    }
+
+    if (!force && _productCodeController.text.trim().isNotEmpty) {
+      return;
+    }
+
+    final prefix = _productCodePrefix.trim();
+    if (prefix.isEmpty) return;
+
+    var highest = 0;
+    for (final product in _products) {
+      final code = product.code.trim();
+      if (code.isEmpty || !code.toUpperCase().startsWith(prefix.toUpperCase())) continue;
+      final suffix = code.substring(prefix.length);
+      final suffixNumber = int.tryParse(suffix);
+      if (suffixNumber != null && suffixNumber > highest) {
+        highest = suffixNumber;
+      }
+    }
+
+    final nextValue = highest + 1;
+    _productCodeController.text = '$prefix${nextValue.toString().padLeft(4, '0')}';
   }
 
   double get _totalCost {
@@ -293,6 +368,45 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
                             }).toList(),
                           ),
                         const SizedBox(height: 12),
+                        if (_selectedProduct != null) ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: UiPalette.softBlue,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: UiPalette.borderSoft),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'تفاصيل المنتج المختار',
+                                  style: UiPalette.adaptiveTextStyle(
+                                    context,
+                                    backgroundColor: UiPalette.softBlue,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 12,
+                                  children: [
+                                    _detailItem('اسم المنتج', _selectedProduct!.name),
+                                    _detailItem('النوع', _selectedProduct!.productType.isEmpty ? 'غير محدد' : _selectedProduct!.productType),
+                                    _detailItem('الكود', _selectedProduct!.code.isEmpty ? 'غير محدد' : _selectedProduct!.code),
+                                    _detailItem('الكمية', _selectedProduct!.quantity.toStringAsFixed(2)),
+                                    _detailItem('سعر الشراء', _selectedProduct!.purchasePrice.toStringAsFixed(2)),
+                                    _detailItem('سعر البيع', _selectedProduct!.sellingPrice.toStringAsFixed(2)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                       ],
                       Wrap(
                         spacing: 12,
@@ -430,6 +544,37 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: UiPalette.borderSoft)),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: UiPalette.primaryBlue, width: 1.4)),
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    );
+  }
+
+  Widget _detailItem(String title, String value) {
+    return SizedBox(
+      width: 220,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: UiPalette.surfaceCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: UiPalette.borderSoft),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(fontSize: 11, color: UiPalette.textSoft),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: TextStyle(
+                color: UiPalette.textMain,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -394,6 +394,29 @@ class _InventoryScreenState extends State<InventoryScreen>
     );
   }
 
+  Future<void> _showImportedDetails(ImportedItem item) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تفاصيل المنتج المستورد'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _readyMadeDetail('اسم المنتج', item.product),
+              _readyMadeDetail('نوع المنتج', item.productType),
+              _readyMadeDetail('الكمية', '${quantity(item.quantity)} ${item.unit.isEmpty ? 'قطعة' : item.unit}'),
+              _readyMadeDetail('الوحدة', item.unit.isEmpty ? 'قطعة' : item.unit),
+              _readyMadeDetail('سعر الشراء', money(item.purchasePrice)),
+              _readyMadeDetail('سعر البيع', money(item.sellingPrice)),
+            ],
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('إغلاق'))],
+      ),
+    );
+  }
+
   Widget _readyMadeDetail(String label, String value) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Row(
@@ -726,8 +749,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                     runSpacing: 12,
                     children: [
                       _StatMetric(icon: Icons.layers_outlined, label: 'إجمالي الأصناف', value: '${visibleFabrics.length}'),
-                      _StatMetric(icon: Icons.inventory_2_outlined, label: 'الرصيد الحالي', value: quantity(visibleFabrics.fold(0.0, (sum, item) => sum + item.current))),
-                      _StatMetric(icon: Icons.check_circle_outline, label: 'المتاح', value: quantity(visibleFabrics.fold(0.0, (sum, item) => sum + item.available))),
+                      _StatMetric(icon: Icons.inventory_2_outlined, label: 'الرصيد الحالي', value: quantity(visibleFabrics.fold<double>(0.0, (sum, item) => sum + item.current))),
+                      _StatMetric(icon: Icons.check_circle_outline, label: 'المتاح', value: quantity(visibleFabrics.fold<double>(0.0, (sum, item) => sum + item.available))),
                       _StatMetric(icon: Icons.input_outlined, label: 'إجمالي قيمة المدخلات', value: money(fabricSummary.totalInputValue)),
                       _StatMetric(icon: Icons.account_balance_wallet_outlined, label: 'القيمة الحالية للمخزون', value: money(fabricSummary.currentInventoryValue)),
                     ].map(
@@ -899,6 +922,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                         title: item.product,
                         subtitle: '${item.productType} • ${item.unit}',
                         value: '${quantity(item.quantity)} ${item.unit}',
+                        onTap: () => _showImportedDetails(item),
                         trailing: IconButton(
                           tooltip: 'حذف المنتج',
                           onPressed: () => _deleteImportedAt(data.imported.indexOf(item)),
@@ -1190,8 +1214,8 @@ class InventoryData {
   final List<ToolItem> tools;
   final Map<String, InventoryWarehouseSummary> summaries;
 
-  double get fabricBalance => fabrics.fold(0.0, (sum, item) => sum + item.current);
-  double get importedQuantity => imported.fold(0.0, (sum, item) => sum + item.quantity);
+  double get fabricBalance => fabrics.fold<double>(0.0, (sum, item) => sum + item.current);
+  double get importedQuantity => imported.fold<double>(0.0, (sum, item) => sum + (item.quantity ?? 0.0));
 
   InventoryWarehouseSummary summaryFor(String warehouseKey) =>
       summaries[warehouseKey] ?? const InventoryWarehouseSummary.empty();
@@ -1372,6 +1396,7 @@ class ImportedItem {
     required this.quantity,
     required this.unit,
     required this.purchasePrice,
+    required this.sellingPrice,
   });
 
   factory ImportedItem.fromJson(Map<String, dynamic> json) => ImportedItem(
@@ -1380,13 +1405,15 @@ class ImportedItem {
         quantity: (json['quantity'] as num?)?.toDouble() ?? 0,
         unit: json['unit']?.toString() ?? '',
         purchasePrice: (json['purchasePrice'] as num?)?.toDouble() ?? 0,
+        sellingPrice: (json['sellingPrice'] as num?)?.toDouble() ?? 0,
       );
 
   final String product;
   final String productType;
-  final double quantity;
+  final double? quantity;
   final String unit;
-  final double purchasePrice;
+  final double? purchasePrice;
+  final double? sellingPrice;
 }
 
 class ToolItem {
@@ -1440,7 +1467,7 @@ class _LoadError extends StatelessWidget {
 final numberFormat = NumberFormat('#,##0.##');
 final moneyFormat = NumberFormat('#,##0.00');
 
-String quantity(double value) => numberFormat.format(value);
+String quantity(double? value) => numberFormat.format(value ?? 0);
 String money(double? value) => value == null ? '-' : moneyFormat.format(value);
 String statusLabel(String status) => switch (status) {
       'AvailableForSale' => 'متاح للبيع',

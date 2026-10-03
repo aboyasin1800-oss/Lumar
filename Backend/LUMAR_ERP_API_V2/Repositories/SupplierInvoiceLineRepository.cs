@@ -25,11 +25,12 @@ public sealed class SupplierInvoiceLineRepository(ReadOnlySqlConnectionFactory c
         var hasUnitCode = await ColumnExistsAsync(connection, "dbo.SupplierInvoiceLines", "UnitCode", cancellationToken);
         var hasItemCount = await ColumnExistsAsync(connection, "dbo.SupplierInvoiceLines", "ItemCount", cancellationToken);
 
-        var productTypeSql = hasProductType ? "COALESCE(l.ProductType, l.ItemType)" : "COALESCE(l.ItemType, N'Legacy')";
+        var itemTypeSql = "COALESCE(l.ItemType, N'Legacy')";
+        var productTypeSql = hasProductType ? "COALESCE(l.ProductType, l.ItemType, N'Legacy')" : "COALESCE(l.ItemType, N'Legacy')";
         var unitCodeSql = hasUnitCode ? "COALESCE(l.UnitCode, N'قطعة')" : "N'قطعة'";
         var itemCountSql = hasItemCount ? "COALESCE(l.ItemCount, l.Quantity)" : "l.Quantity";
 
-        var sql = $@"SELECT l.SupplierInvoiceLineId,l.SupplierInvoiceId,l.InventoryItemId,item.ItemCode,COALESCE(l.ItemDescription,item.ItemName,N'غير محدد'),{productTypeSql} AS ItemType,l.SupplierItemCode,l.Quantity,l.UnitCost,l.Quantity*l.UnitCost,l.RollCount,l.Status,{productTypeSql} AS ProductType,{unitCodeSql} AS UnitCode,{itemCountSql} AS ItemCount FROM dbo.SupplierInvoiceLines l LEFT JOIN dbo.InventoryItems item ON item.InventoryItemID=l.InventoryItemId WHERE l.SupplierInvoiceId=@invoiceId ORDER BY l.SupplierInvoiceLineId";
+        var sql = $@"SELECT l.SupplierInvoiceLineId,l.SupplierInvoiceId,l.InventoryItemId,item.ItemCode,COALESCE(l.ItemDescription,item.ItemName,N'غير محدد'),{itemTypeSql} AS ItemType,l.SupplierItemCode,l.Quantity,l.UnitCost,l.Quantity*l.UnitCost,l.RollCount,l.Status,{productTypeSql} AS ProductType,{unitCodeSql} AS UnitCode,{itemCountSql} AS ItemCount FROM dbo.SupplierInvoiceLines l LEFT JOIN dbo.InventoryItems item ON item.InventoryItemID=l.InventoryItemId WHERE l.SupplierInvoiceId=@invoiceId ORDER BY l.SupplierInvoiceLineId";
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@invoiceId", invoiceId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
