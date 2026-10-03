@@ -64,7 +64,29 @@ public class InventoryStorageCompatibilityTests
     {
         var sql = InventoryRepository.BuildPendingGoodsReceiptStorageQuery(true, true, true, true, true, true, true, true, true, true);
 
-        Assert.DoesNotContain("i.ItemType", sql.Replace("COALESCE(i.ProductType, sil.ProductType)", ""));
-        Assert.DoesNotContain("sil.ItemType", sql.Replace("COALESCE(i.ProductType, sil.ProductType)", ""));
+        Assert.Contains("COALESCE(i.ProductType, sil.ProductType) AS ProductType", sql);
+        Assert.DoesNotContain("COALESCE(i.ItemType, sil.ItemType) AS ProductType", sql);
+        Assert.DoesNotContain("COALESCE(sil.ItemType, i.ItemType) AS ProductType", sql);
+    }
+
+    [Fact]
+    public void UsedToolInventoryQuery_UsesOfficialStorageAllocationIdentity()
+    {
+        var sql = InventoryRepository.BuildOfficialUsedToolItemPredicate("i");
+
+        Assert.Contains("dbo.GoodsReceiptItemStorageAllocations sga", sql);
+        Assert.Contains("sga.ItemType = N'UsedTool'", sql);
+        Assert.DoesNotContain("Category LIKE", sql);
+        Assert.DoesNotContain("ItemName LIKE", sql);
+    }
+
+    [Fact]
+    public void UsedToolInventoryQuery_ExposesCommercialCategoryValuesWithoutFilteringOnThem()
+    {
+        var sql = InventoryRepository.BuildOfficialUsedToolItemPredicate("i");
+
+        Assert.Contains("sga.InventoryItemId = i.InventoryItemID", sql);
+        Assert.DoesNotContain("i.Category = N'UsedTool'", sql);
+        Assert.DoesNotContain("i.Category LIKE", sql);
     }
 }

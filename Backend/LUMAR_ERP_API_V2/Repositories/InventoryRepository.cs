@@ -208,34 +208,19 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                OR Category LIKE N'%انجليزي%'
                OR Category LIKE N'%قطن%'
         ),
-        LegacyToolItems AS
+        OfficialUsedToolItems AS
         (
-            SELECT InventoryItemID,
-                   IsActive,
-                   CurrentQuantity,
-                   COALESCE(YardPrice, InchPrice) AS UnitCost
-            FROM LegacyInventoryItems
-            WHERE Category LIKE N'%Tool%'
-               OR Category LIKE N'%Accessory%'
-               OR Category LIKE N'%Thread%'
-               OR Category LIKE N'%Button%'
-               OR Category LIKE N'%Packing%'
-               OR Category LIKE N'%Glue%'
-               OR Category LIKE N'%Sewing%'
-               OR Category LIKE N'%Needle%'
-               OR Category LIKE N'%Machine%'
-               OR Category LIKE N'%Equipment%'
-               OR ItemName LIKE N'%خيط%'
-               OR ItemName LIKE N'%زر%'
-               OR ItemName LIKE N'%سحاب%'
-               OR ItemName LIKE N'%لاصق%'
-               OR ItemName LIKE N'%تغليف%'
-               OR ItemName LIKE N'%أداة%'
-               OR ItemName LIKE N'%اداة%'
-               OR ItemName LIKE N'%مستلزم%'
-               OR Category LIKE N'%أداة%'
-               OR Category LIKE N'%اداة%'
-               OR Category LIKE N'%مستلزم%'
+            SELECT DISTINCT i.InventoryItemID,
+                   i.IsActive,
+                   i.CurrentQuantity,
+                   COALESCE(NULLIF(i.YardPrice, 0), i.InchPrice) AS UnitCost
+            FROM dbo.InventoryItems i
+            WHERE EXISTS (
+                SELECT 1
+                FROM dbo.GoodsReceiptItemStorageAllocations sga
+                WHERE sga.InventoryItemId = i.InventoryItemID
+                  AND sga.ItemType = N'UsedTool'
+            )
         ),
         LegacyFabricInputs AS
         (
@@ -253,21 +238,21 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             SELECT COALESCE(SUM(CASE WHEN IsActive = 1 THEN CurrentQuantity * COALESCE(UnitCost, 0) ELSE 0 END), 0) AS CurrentValue
             FROM LegacyFabricItems
         ),
-        LegacyToolInputs AS
+        OfficialToolInputs AS
         (
             SELECT COALESCE(SUM(COALESCE(NULLIF(t.OperationalCostImpact, 0), NULLIF(t.TotalCostImpact, 0), t.Quantity * t.UnitCost)), 0) AS InputValue
             FROM dbo.InventoryTransactions t
-            INNER JOIN LegacyToolItems i ON i.InventoryItemID = t.InventoryItemID
+            INNER JOIN OfficialUsedToolItems i ON i.InventoryItemID = t.InventoryItemID
             WHERE t.TransactionType IN (N'InitialBalance', N'Receive', N'Renewal')
               AND t.Quantity > 0
               AND t.ReadyMadeInventoryProductId IS NULL
               AND t.ImportedReadyMadeInventoryReceiptId IS NULL
               AND t.ImportedReadyMadeSaleCostPostingId IS NULL
         ),
-        LegacyToolCurrent AS
+        OfficialToolCurrent AS
         (
             SELECT COALESCE(SUM(CASE WHEN IsActive = 1 THEN CurrentQuantity * COALESCE(UnitCost, 0) ELSE 0 END), 0) AS CurrentValue
-            FROM LegacyToolItems
+            FROM OfficialUsedToolItems
         ),
         ReadyProductCosts AS
         (
@@ -324,8 +309,8 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                COALESCE((SELECT SUM(CurrentValue) FROM ImportedProductCosts), 0)
         UNION ALL
         SELECT N'tools',
-               COALESCE((SELECT InputValue FROM OfficialReceiptValues WHERE InventoryClassId = 2), 0) + (SELECT InputValue FROM LegacyToolInputs),
-               COALESCE((SELECT CurrentValue FROM FoundationValues WHERE InventoryClassId = 2), 0) + (SELECT CurrentValue FROM LegacyToolCurrent);", reader => new InventoryWarehouseSummaryDto(reader.GetString(0), reader.GetDecimal(1), reader.GetDecimal(2)), null, ct);
+               COALESCE((SELECT InputValue FROM OfficialReceiptValues WHERE InventoryClassId = 2), 0) + (SELECT InputValue FROM OfficialToolInputs),
+               COALESCE((SELECT CurrentValue FROM FoundationValues WHERE InventoryClassId = 2), 0) + (SELECT CurrentValue FROM OfficialToolCurrent);", reader => new InventoryWarehouseSummaryDto(reader.GetString(0), reader.GetDecimal(1), reader.GetDecimal(2)), null, ct);
     public async Task<IReadOnlyList<FabricDto>> GetFabricsAsync(CancellationToken ct)
     {
         const string sql = @"
@@ -478,7 +463,25 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         }
     }
     public Task<IReadOnlyList<ImportedReadyMadeProductDto>> GetImportedAsync(CancellationToken ct) => QueryAsync("SELECT ImportedReadyMadeProductId, ProductName, ProductType, ProductCode, Unit, Quantity, PurchasePrice, SellingPrice, IsActive, AlertThreshold, Notes, Category, CreatedAt, UpdatedAt FROM dbo.ImportedReadyMadeProducts ORDER BY ProductName, ImportedReadyMadeProductId", reader => new ImportedReadyMadeProductDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetBoolean(8), reader.NullableDecimal("AlertThreshold"), reader.NullableString("Notes"), reader.GetString(11), reader.GetDateTime(12), reader.NullableDateTime("UpdatedAt")), null, ct);
-    public Task<IReadOnlyList<InventoryItemDto>> GetToolsAsync(CancellationToken ct) => QueryAsync("SELECT InventoryItemID, ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice FROM dbo.InventoryItems WHERE Category LIKE '%Tool%' OR Category LIKE '%Accessory%' OR Category LIKE '%Thread%' OR Category LIKE '%Button%' OR Category LIKE '%Packing%' OR Category LIKE '%Glue%' OR ItemName LIKE '%خيط%' OR ItemName LIKE '%زر%' OR ItemName LIKE '%سحاب%' OR ItemName LIKE '%لاصق%' OR ItemName LIKE '%تغليف%' OR ItemName LIKE '%أداة%' OR ItemName LIKE '%مستلزم%' ORDER BY ItemName, InventoryItemID", MapItem, null, ct);
+    internal static string BuildOfficialUsedToolItemPredicate(string tableAlias)
+    {
+        var alias = string.IsNullOrWhiteSpace(tableAlias) ? "i" : tableAlias.Trim();
+        return $@"EXISTS (
+                SELECT 1
+                FROM dbo.GoodsReceiptItemStorageAllocations sga
+                WHERE sga.InventoryItemId = {alias}.InventoryItemID
+                  AND sga.ItemType = N'UsedTool')";
+    }
+
+    public Task<IReadOnlyList<InventoryItemDto>> GetToolsAsync(CancellationToken ct) => QueryAsync($@"
+        SELECT i.InventoryItemID, i.ItemCode, i.ItemName, i.Category, i.Unit,
+               i.CurrentQuantity, i.AvailableQuantity, i.ReservedQuantity,
+               i.IsActive, i.CreatedAt, i.UpdatedAt, i.Barcode,
+               i.FabricCategory, i.FabricColor, i.FabricWidth, i.FabricWidthUnit,
+               i.InchPrice, i.YardPrice
+        FROM dbo.InventoryItems i
+        WHERE {BuildOfficialUsedToolItemPredicate("i")}
+        ORDER BY i.ItemName, i.InventoryItemID", MapItem, null, ct);
 
     public static string BuildNextToolCode(string prefix, IEnumerable<string>? existingCodes)
     {
