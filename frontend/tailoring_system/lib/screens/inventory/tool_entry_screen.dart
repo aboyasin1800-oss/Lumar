@@ -43,8 +43,10 @@ class _ToolEntryScreenState extends State<ToolEntryScreen> {
     super.initState();
     _quantityController.addListener(_syncTotal);
     _unitPriceController.addListener(_syncTotal);
-    _loadToolCodePrefix();
-    _loadExistingItems();
+    if (widget.pendingReceipt == null) {
+      _loadToolCodePrefix();
+      _loadExistingItems();
+    }
     _applyPendingReceipt();
   }
 
@@ -66,11 +68,16 @@ class _ToolEntryScreenState extends State<ToolEntryScreen> {
   void _applyPendingReceipt() {
     final pending = widget.pendingReceipt;
     if (pending == null || pending.itemType != 'UsedTool') return;
-    _nameController.text = pending.itemDescription;
-    _typeController.text = pending.itemDescription;
-    _unitController.text = pending.unit;
-    _quantityController.text = pending.remainingQuantity.toStringAsFixed(3);
-    _unitPriceController.text = pending.unitCost.toStringAsFixed(2);
+
+    final payloadUnit = (pending.unitCode ?? pending.unit).trim();
+    final resolvedUnit = payloadUnit.isNotEmpty ? payloadUnit : 'قطعة';
+    final resolvedProductType = (pending.productType ?? pending.itemType).trim();
+
+    _nameController.text = pending.itemDescription.trim();
+    _typeController.text = resolvedProductType.isNotEmpty ? resolvedProductType : pending.itemDescription.trim();
+    _unitController.text = resolvedUnit;
+    _quantityController.text = pending.remainingQuantity > 0 ? pending.remainingQuantity.toStringAsFixed(3) : '0';
+    _unitPriceController.text = pending.unitCost > 0 ? pending.unitCost.toStringAsFixed(2) : '0.00';
     _supplierController.text = pending.supplierId.toString();
     _invoiceController.text = pending.receiptNumber;
   }

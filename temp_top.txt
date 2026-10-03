@@ -1,0 +1,36 @@
+using System.Security.Cryptography;
+using System.Diagnostics;
+using LUMAR_ERP_API_V2.Data;
+using LUMAR_ERP_API_V2.DTOs.Auth;
+using Microsoft.Data.SqlClient;
+namespace LUMAR_ERP_API_V2.Repositories;
+public sealed class AuthRepository(OperationalSqlConnectionFactory connections, ILogger<AuthRepository> logger) : IAuthRepository
+{
+    public async Task<SessionDto?> LoginAsync(LoginDto login, CancellationToken ct)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        if (string.IsNullOrWhiteSpace(login.Username) || string.IsNullOrWhiteSpace(login.Password)) return null;
+        try
+        {
+            await using var connection = connections.Create(); await connection.OpenAsync(ct);
+            logger.LogInformation("Authentication database connection opened in {ElapsedMilliseconds} ms.", stopwatch.ElapsedMilliseconds);
+            await using var command = new SqlCommand("SELECT UserID, Username, UserPassword, PasswordHash, FullName, UserRole, IsActive, LastLoginUtc FROM dbo.Users WHERE Username=@username", connection);
+            command.Parameters.AddWithValue("@username", login.Username.Trim()); await using var reader = await command.ExecuteReaderAsync(ct); if (!await reader.ReadAsync(ct) || !reader.GetBoolean(6)) return null;
+            var legacy = reader.GetString(2); var hash = reader.IsDBNull(3) ? null : reader.GetString(3); var user = new CurrentUserDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5), true, reader.IsDBNull(7) ? null : reader.GetDateTime(7));
+            if (!Verify(login.Password, hash, legacy)) return null;
+            logger.LogInformation("Authentication password verification completed in {ElapsedMilliseconds} ms.", stopwatch.ElapsedMilliseconds);
+            await reader.CloseAsync();
+            if (hash is null) { await using var upgrade = new SqlCommand("UPDATE dbo.Users SET PasswordHash=@hash, UserPassword='' WHERE UserID=@id", connection); upgrade.Parameters.AddWithValue("@hash", HashPassword(login.Password)); upgrade.Parameters.AddWithValue("@id", user.UserId); await upgrade.ExecuteNonQueryAsync(ct); }
+            var session = await CreateSessionAsync(connection, user, login.RememberMe, ct);
+            logger.LogInformation("Authentication session creation and login update completed in {ElapsedMilliseconds} ms.", stopwatch.ElapsedMilliseconds);
+            return session;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Authentication login failed after {ElapsedMilliseconds} ms.", stopwatch.ElapsedMilliseconds);
+            throw;
+        }
+    }
+    public Task<CurrentUserDto?> GetCurrentUserAsync(string token, CancellationToken ct) => GetUserAsync(token, ct);
+    public async Task<bool> LogoutAsync(string token, CancellationToken ct) { await using var c=connections.Create(); await c.OpenAsync(ct); await using var cmd=new SqlCommand("UPDATE dbo.UserSessions SET RevokedAtUtc=SYSUTCDATETIME(), RevocationReason='Logout' WHERE TokenHash=@hash AND RevokedAtUtc IS NULL",c); cmd.Parameters.Add("@hash",System.Data.SqlDbType.VarBinary,32).Value=TokenHash(token); return await cmd.ExecuteNonQueryAsync(ct)>0; }
+    public async Task<SessionDto?> ChangeUsernameAsync(string token, ChangeUsernameDto request, CancellationToken ct) { if(string.IsNullOrWhiteSpace(request.Username)) return null; var user=await GetUserAsync(token,ct); if(user is null || !await VerifyCurrentAsync(user.UserId,request.CurrentPassword,ct)) return null; await using var c=connections.Create(); await c.OpenAsync(ct); try { await using var cmd=new SqlCommand("UPDATE dbo.Users SET Username=@name WHERE UserID=@id",c);cmd.Parameters.AddWithValue("@name",request.Username.Trim());cmd.Parameters.AddWithValue("@id",user.UserId);if(await cmd.ExecuteNonQueryAsync(ct)!=1) return null; await LogoutAsync(token,ct); return await CreateSessionAsync(c,user with { Username=request.Username.Trim() },true,ct); } catch (SqlException e) when(e.Number is 2601 or 2627) { throw new ArgumentException("Username already exists."); } }
