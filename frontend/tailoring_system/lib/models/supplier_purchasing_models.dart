@@ -130,7 +130,11 @@ class SupplierPurchasingInvoiceLine {
             required this.unitCost,
             required this.total,
             required this.status,
-            this.rollCount});
+            this.rollCount,
+            this.productType,
+            this.unitCode,
+            this.itemCount,
+            this.receivedItemCount});
     factory SupplierPurchasingInvoiceLine.fromJson(Map<String, dynamic> json) =>
             SupplierPurchasingInvoiceLine(
                     id: (json['supplierInvoiceLineId'] as num).toInt(),
@@ -144,7 +148,11 @@ class SupplierPurchasingInvoiceLine {
                     unitCost: ((json['unitCost'] ?? 0) as num).toDouble(),
                     total: ((json['lineTotal'] ?? 0) as num).toDouble(),
                     rollCount: (json['rollCount'] as num?)?.toInt(),
-                    status: (json['status'] ?? '').toString());
+                    status: (json['status'] ?? '').toString(),
+                    productType: json['productType']?.toString(),
+                    unitCode: json['unitCode']?.toString(),
+                    itemCount: ((json['itemCount'] ?? json['quantity'] ?? 0) as num).toDouble(),
+                    receivedItemCount: ((json['receivedItemCount'] ?? json['itemCount'] ?? json['quantity'] ?? 0) as num?)?.toDouble());
     final int id;
     final int invoiceId;
     final int? inventoryItemId;
@@ -157,6 +165,10 @@ class SupplierPurchasingInvoiceLine {
     final double total;
     final int? rollCount;
     final String status;
+    final String? productType;
+    final String? unitCode;
+    final double? itemCount;
+    final double? receivedItemCount;
 }
 
 class SupplierPurchasingPayment {

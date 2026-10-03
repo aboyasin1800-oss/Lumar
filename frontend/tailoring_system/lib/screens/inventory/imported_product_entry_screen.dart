@@ -63,9 +63,10 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
   void _applyPendingReceipt() {
     final pending = widget.pendingReceipt;
     if (pending == null || pending.itemType != 'ImportedProduct') return;
-    _productNameController.text = pending.itemDescription;
-    _productTypeController.text = pending.productType ?? 'ImportedProduct';
-    _productCodeController.text = pending.itemDescription;
+
+    _productNameController.text = pending.itemDescription.trim();
+    _productTypeController.text = (pending.productType ?? '').trim().isNotEmpty ? pending.productType! : 'ImportedProduct';
+    _productCodeController.clear();
     _quantityController.text = pending.remainingQuantity.toStringAsFixed(3);
     _purchasePriceController.text = pending.unitCost.toStringAsFixed(2);
     _supplierController.text = pending.supplierId.toString();
@@ -308,11 +309,11 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
                             style: TextStyle(color: UiPalette.textMain),
                             decoration: _inputDecoration('نوع المنتج'),
                           )),
-                          _field(width: 220, label: 'كود المنتج *', child: TextFormField(
+                          _field(width: 220, label: 'كود المنتج', child: TextFormField(
                             controller: _productCodeController,
-                            validator: (value) => (value == null || value.trim().isEmpty) ? 'كود المنتج مطلوب' : null,
+                            validator: (_) => null,
                             style: TextStyle(color: UiPalette.textMain),
-                            decoration: _inputDecoration('كود المنتج *'),
+                            decoration: _inputDecoration('كود المنتج'),
                           )),
                           _field(width: 220, label: 'الكمية *', child: TextFormField(
                             controller: _quantityController,

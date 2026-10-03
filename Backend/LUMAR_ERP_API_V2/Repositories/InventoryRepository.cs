@@ -27,8 +27,11 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         var hasSupplierInvoiceProductType = await ColumnExistsAsync(connection, null, "dbo.SupplierInvoiceLines", "ProductType", ct);
         var hasGoodsReceiptUnitCode = await ColumnExistsAsync(connection, null, "dbo.GoodsReceiptItems", "UnitCode", ct);
         var hasSupplierInvoiceUnitCode = await ColumnExistsAsync(connection, null, "dbo.SupplierInvoiceLines", "UnitCode", ct);
+        var hasGoodsReceiptItemCount = await ColumnExistsAsync(connection, null, "dbo.GoodsReceiptItems", "ItemCount", ct);
+        var hasSupplierInvoiceItemCount = await ColumnExistsAsync(connection, null, "dbo.SupplierInvoiceLines", "ItemCount", ct);
+        var hasGoodsReceiptReceivedItemCount = await ColumnExistsAsync(connection, null, "dbo.GoodsReceiptItems", "ReceivedItemCount", ct);
 
-        var sql = BuildPendingGoodsReceiptStorageQuery(hasGoodsReceiptItemType, hasSupplierInvoiceItemType, hasGoodsReceiptRollCount, hasGoodsReceiptProductType, hasSupplierInvoiceProductType, hasGoodsReceiptUnitCode, hasSupplierInvoiceUnitCode);
+        var sql = BuildPendingGoodsReceiptStorageQuery(hasGoodsReceiptItemType, hasSupplierInvoiceItemType, hasGoodsReceiptRollCount, hasGoodsReceiptProductType, hasSupplierInvoiceProductType, hasGoodsReceiptUnitCode, hasSupplierInvoiceUnitCode, hasGoodsReceiptItemCount, hasSupplierInvoiceItemCount, hasGoodsReceiptReceivedItemCount);
         return await QueryAsync(sql, reader => new PendingGoodsReceiptStorageDto(
             reader.GetInt32(0),
             reader.GetInt32(1),
@@ -51,7 +54,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             reader.IsDBNull(18) ? null : reader.GetDecimal(18)), null, ct);
     }
 
-    internal static string BuildPendingGoodsReceiptStorageQuery(bool hasGoodsReceiptItemType, bool hasSupplierInvoiceItemType, bool hasGoodsReceiptRollCount, bool hasGoodsReceiptProductType = false, bool hasSupplierInvoiceProductType = false, bool hasGoodsReceiptUnitCode = false, bool hasSupplierInvoiceUnitCode = false)
+    internal static string BuildPendingGoodsReceiptStorageQuery(bool hasGoodsReceiptItemType, bool hasSupplierInvoiceItemType, bool hasGoodsReceiptRollCount, bool hasGoodsReceiptProductType = false, bool hasSupplierInvoiceProductType = false, bool hasGoodsReceiptUnitCode = false, bool hasSupplierInvoiceUnitCode = false, bool hasGoodsReceiptItemCount = false, bool hasSupplierInvoiceItemCount = false, bool hasGoodsReceiptReceivedItemCount = false)
     {
         var itemTypeExpression = hasGoodsReceiptItemType && hasSupplierInvoiceItemType
             ? "COALESCE(i.ItemType, sil.ItemType)"
@@ -77,8 +80,15 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                     ? "sil.UnitCode"
                     : "CAST(N'قطعة' AS nvarchar(30))";
 
-        var itemCountExpression = "COALESCE(i.ItemCount, sil.ItemCount, i.ReceivedQuantity, sil.Quantity)";
-        var receivedItemCountExpression = "COALESCE(i.ReceivedItemCount, sil.ItemCount, i.ReceivedQuantity, sil.Quantity)";
+        var itemCountExpression = hasGoodsReceiptItemCount || hasSupplierInvoiceItemCount
+            ? "COALESCE(i.ItemCount, sil.ItemCount, i.ReceivedQuantity, sil.Quantity)"
+            : "COALESCE(i.ReceivedQuantity, sil.Quantity)";
+
+        var receivedItemCountExpression = hasGoodsReceiptReceivedItemCount
+            ? "COALESCE(i.ReceivedItemCount, sil.ItemCount, i.ReceivedQuantity, sil.Quantity)"
+            : hasGoodsReceiptItemCount || hasSupplierInvoiceItemCount
+                ? "COALESCE(i.ItemCount, sil.ItemCount, i.ReceivedQuantity, sil.Quantity)"
+                : "COALESCE(i.ReceivedQuantity, sil.Quantity)";
 
         var unitExpression = $"CASE {itemTypeExpression} WHEN N'Fabric' THEN N'ياردة' ELSE N'قطعة' END";
         var filterExpression = hasGoodsReceiptItemType || hasSupplierInvoiceItemType

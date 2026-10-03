@@ -489,14 +489,18 @@ class _SupplierPurchasingOperationsScreenState
                 (double.tryParse(line.quantity.text.trim()) ?? 0) *
                     (double.tryParse(line.cost.text.trim()) ?? 0))
         .toStringAsFixed(6));
-    bool validLines() =>
-        lines.isNotEmpty &&
-        lines.every((line) =>
-            line.description.text.trim().isNotEmpty &&
-            (double.tryParse(line.quantity.text.trim()) ?? 0) > 0 &&
-            (double.tryParse(line.cost.text.trim()) ?? 0) > 0 &&
-            (line.rollCount.text.trim().isEmpty ||
-                (int.tryParse(line.rollCount.text.trim()) ?? 0) > 0));
+    bool validLines() => lines.isNotEmpty && lines.every((line) {
+      final quantity = double.tryParse(line.quantity.text.trim()) ?? 0;
+      final cost = double.tryParse(line.cost.text.trim()) ?? 0;
+      final itemCount = double.tryParse(line.itemCount.text.trim()) ?? 0;
+      final hasName = line.description.text.trim().isNotEmpty;
+      final isImported = invoiceType == 'imported';
+      final productTypeOk = !isImported || line.productType.text.trim().isNotEmpty;
+      final unitOk = !isImported || _isApprovedImportedUnit(line.unitCode.text.trim());
+      if (!hasName || quantity <= 0 || cost <= 0) return false;
+      if (isImported) return productTypeOk && unitOk && itemCount > 0;
+      return line.rollCount.text.trim().isEmpty || (int.tryParse(line.rollCount.text.trim()) ?? 0) > 0;
+    });
     final save = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -554,8 +558,24 @@ class _SupplierPurchasingOperationsScreenState
                     onChanged: (value) => setDialogState(() {
                       invoiceType = value ?? 'fabric';
                       for (final line in lines) {
-                        line.description.clear();
-                        line.supplierItemCode.clear();
+                        if (invoiceType == 'fabric') {
+                          line.productType.clear();
+                          line.unitCode.clear();
+                          line.itemCount.clear();
+                        } else {
+                          if (line.productType.text.trim().isEmpty) {
+                            line.productType.text =
+                                invoiceType == 'tools' ? 'أداة' : 'منتج مستورد';
+                          }
+                          if (line.unitCode.text.trim().isEmpty) {
+                            line.unitCode.text =
+                                invoiceType == 'tools' ? 'قطعة' : 'حبة';
+                          }
+                          if (line.itemCount.text.trim().isEmpty) {
+                            line.itemCount.text =
+                                line.quantity.text.trim().isEmpty ? '1' : line.quantity.text.trim();
+                          }
+                        }
                       }
                     }),
                   ),
@@ -666,17 +686,17 @@ class _SupplierPurchasingOperationsScreenState
                               ? 'Fabric'
                               : invoiceType == 'tools'
                                   ? 'UsedTool'
-                                  : 'ImportedProduct',
+                                  : (line.productType.text.trim().isNotEmpty ? line.productType.text.trim() : 'ImportedProduct'),
                           'supplierItemCode':
                               _nullable(line.supplierItemCode.text),
                           'unitCode': invoiceType == 'fabric'
                               ? 'ياردة'
                               : invoiceType == 'tools'
                                   ? 'قطعة'
-                                  : 'قطعة',
+                                  : (line.unitCode.text.trim().isNotEmpty ? line.unitCode.text.trim() : 'قطعة'),
                           'quantity': double.parse(line.quantity.text.trim()),
-                          'itemCount': double.parse(line.quantity.text.trim()),
-                          'receivedItemCount': double.parse(line.quantity.text.trim()),
+                          'itemCount': double.parse(line.itemCount.text.trim()),
+                          'receivedItemCount': double.parse(line.itemCount.text.trim()),
                           'unitCost': double.parse(line.cost.text.trim()),
                           'rollCount': line.rollCount.text.trim().isEmpty
                               ? null
@@ -1611,8 +1631,16 @@ class _SupplierPurchasingOperationsScreenState
                     .map((line) => {
                           'inventoryItemId': null,
                           'itemDescription': line.description.text.trim(),
-                          'itemType': line.itemType,
+                          'itemType': line.itemType ?? (line.invoiceLine?.itemType ?? 'ImportedProduct'),
+                          'productType': line.productType.text.trim().isNotEmpty
+                              ? line.productType.text.trim()
+                              : (line.invoiceLine?.productType ?? line.itemType ?? 'ImportedProduct'),
+                          'unitCode': line.unitCode.text.trim().isNotEmpty
+                              ? line.unitCode.text.trim()
+                              : (line.invoiceLine?.unitCode ?? _defaultUnitForType(line.itemType ?? line.invoiceLine?.itemType ?? 'ImportedProduct')),
                           'quantity': double.parse(line.quantity.text),
+                          'itemCount': double.parse(line.itemCount.text.trim().isNotEmpty ? line.itemCount.text.trim() : (line.invoiceLine?.itemCount ?? line.quantity.text).toString()),
+                          'receivedItemCount': double.parse(line.itemCount.text.trim().isNotEmpty ? line.itemCount.text.trim() : (line.invoiceLine?.receivedItemCount ?? line.invoiceLine?.itemCount ?? line.quantity.text).toString()),
                           'unitCost': double.parse(line.cost.text),
                           'supplierInvoiceLineId': line.invoiceLine?.id,
                           'rollCount': line.rollCount.text.trim().isEmpty
@@ -1797,8 +1825,11 @@ class _SupplierPurchasingOperationsScreenState
                   line.invoiceLine = value;
                   if (value != null) {
                     line.description.text = value.itemName;
+                    line.productType.text = value.productType ?? value.itemType;
+                    line.unitCode.text = value.unitCode ?? _defaultUnitForType(value.itemType);
                     line.quantity.text = value.quantity.toString();
                     line.cost.text = value.unitCost.toString();
+                    line.itemCount.text = (value.itemCount ?? value.quantity).toString();
                     line.rollCount.text = value.rollCount?.toString() ?? '';
                   }
                   onChanged();
@@ -1816,25 +1847,56 @@ class _SupplierPurchasingOperationsScreenState
               validator: (value) =>
                   value?.trim().isEmpty ?? true ? 'أدخل وصف البضاعة.' : null,
             ),
+            const SizedBox(height: 10),
             Row(children: [
               Expanded(
-                  child: _field(line.quantity, 'الكمية',
+                  child: TextFormField(
+                    controller: line.productType,
+                    decoration: const InputDecoration(labelText: 'نوع المنتج'),
+                    onChanged: (_) => onChanged(),
+                  )),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: TextFormField(
+                    controller: line.unitCode,
+                    decoration: const InputDecoration(labelText: 'الوحدة'),
+                    onChanged: (_) => onChanged(),
+                  )),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                  child: _field(line.quantity, 'الكمية المستلمة',
                       required: true, number: true)),
               const SizedBox(width: 10),
               Expanded(
-                  child: _field(line.cost, 'تكلفة الوحدة',
+                  child: _field(line.cost, 'تكلفة الوحدة المستلمة',
                       required: true, number: true)),
             ]),
-            TextFormField(
-              controller: line.rollCount,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'عدد اللفات (للقماش)'),
-              validator: (value) {
-                if ((line.itemType ?? '') != 'Fabric') return null;
-                final parsed = int.tryParse(value?.trim() ?? '') ?? 0;
-                return parsed > 0 ? null : 'أدخل عدد لفات صحيحًا.';
-              },
-            ),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                  child: TextFormField(
+                    controller: line.itemCount,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'العدد المستلم'),
+                    onChanged: (_) => onChanged(),
+                    validator: (value) =>
+                        (double.tryParse(value?.trim() ?? '') ?? 0) <= 0 ? 'أدخل عددًا صحيحًا.' : null,
+                  )),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: TextFormField(
+                    controller: line.rollCount,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'عدد اللفات (للقماش)'),
+                    validator: (value) {
+                      if ((line.itemType ?? '') != 'Fabric') return null;
+                      final parsed = int.tryParse(value?.trim() ?? '') ?? 0;
+                      return parsed > 0 ? null : 'أدخل عدد لفات صحيحًا.';
+                    },
+                  )),
+            ]),
             _field(line.rollCode, 'رمز اللفة (عند استلام القماش)'),
           ]),
         ),
@@ -1842,6 +1904,9 @@ class _SupplierPurchasingOperationsScreenState
 
   Widget _invoiceLine(_InvoiceDraftLine line, int index, String invoiceType,
       VoidCallback? onRemove, VoidCallback onChanged) {
+    final isFabric = invoiceType == 'fabric';
+    final isTools = invoiceType == 'tools';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
@@ -1854,74 +1919,154 @@ class _SupplierPurchasingOperationsScreenState
                 tooltip: 'حذف البند',
                 icon: const Icon(Icons.delete_outline))
           ]),
-          TextFormField(
-            controller: line.description,
-            textInputAction: TextInputAction.next,
-            decoration:
-                InputDecoration(labelText: _invoiceItemLabel(invoiceType)),
-            onChanged: (_) => onChanged(),
-            validator: (value) =>
-                value?.trim().isEmpty ?? true ? 'أدخل وصف بند الفاتورة.' : null,
-          ),
-          const SizedBox(height: 10),
-          TextFormField(
-            controller: line.supplierItemCode,
-            textInputAction: TextInputAction.next,
-            decoration:
-                const InputDecoration(labelText: 'كود المورد (اختياري)'),
-            onChanged: (_) => onChanged(),
-          ),
-          Row(children: [
-            Expanded(
+          if (isFabric) ...[
+            TextFormField(
+              controller: line.description,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'نوع القماش'),
+              onChanged: (_) => onChanged(),
+              validator: (value) =>
+                  value?.trim().isEmpty ?? true ? 'أدخل نوع القماش.' : null,
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: line.supplierItemCode,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'كود المورد (اختياري)'),
+              onChanged: (_) => onChanged(),
+            ),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                  child: TextFormField(
+                      controller: line.quantity,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(labelText: 'الكمية'),
+                      onChanged: (_) => onChanged(),
+                      validator: (value) =>
+                          (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
+                              ? 'أدخل كمية صحيحة.'
+                              : null)),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: TextFormField(
+                      controller: line.cost,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.next,
+                      decoration:
+                          const InputDecoration(labelText: 'تكلفة الوحدة'),
+                      onChanged: (_) => onChanged(),
+                      validator: (value) =>
+                          (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
+                              ? 'أدخل تكلفة صحيحة.'
+                              : null)),
+            ]),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: line.rollCount,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+              decoration:
+                  const InputDecoration(labelText: 'عدد اللفات (اختياري)'),
+              validator: (value) {
+                final text = value?.trim() ?? '';
+                if (text.isEmpty) return null;
+                return (int.tryParse(text) ?? 0) <= 0
+                    ? 'أدخل عدد لفات صحيحًا.'
+                    : null;
+              },
+            ),
+          ] else ...[
+            Row(children: [
+              Expanded(
                 child: TextFormField(
-                    controller: line.quantity,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(labelText: 'الكمية'),
-                    onChanged: (_) => onChanged(),
-                    validator: (value) =>
-                        (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
-                            ? 'أدخل كمية صحيحة.'
-                            : null)),
-            const SizedBox(width: 10),
-            Expanded(
+                  controller: line.description,
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    labelText: isTools ? 'اسم المنتج' : 'اسم المنتج'),
+                  onChanged: (_) => onChanged(),
+                  validator: (value) =>
+                      value?.trim().isEmpty ?? true ? 'أدخل اسم المنتج.' : null,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
                 child: TextFormField(
-                    controller: line.cost,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    textInputAction: TextInputAction.next,
-                    decoration:
-                        const InputDecoration(labelText: 'تكلفة الوحدة'),
-                    onChanged: (_) => onChanged(),
-                    validator: (value) =>
-                        (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
-                            ? 'أدخل تكلفة صحيحة.'
-                            : null)),
-          ]),
-          TextFormField(
-            controller: line.rollCount,
-            keyboardType: TextInputType.number,
-            textInputAction: TextInputAction.next,
-            decoration:
-                const InputDecoration(labelText: 'عدد اللفات (اختياري)'),
-            validator: (value) {
-              final text = value?.trim() ?? '';
-              if (text.isEmpty) return null;
-              return (int.tryParse(text) ?? 0) <= 0
-                  ? 'أدخل عدد لفات صحيحًا.'
-                  : null;
-            },
-          ),
+                  controller: line.productType,
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    labelText: isTools ? 'نوع الأداة' : 'نوع المنتج'),
+                  onChanged: (_) => onChanged(),
+                  validator: (value) =>
+                      (value?.trim().isEmpty ?? true) ? 'الحقل مطلوب.' : null,
+                ),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: line.unitCode,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'الوحدة'),
+              onChanged: (_) => onChanged(),
+              validator: (value) =>
+                  (value?.trim().isEmpty ?? true) ? 'أدخل الوحدة.' : null,
+            ),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                  child: TextFormField(
+                      controller: line.quantity,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(labelText: 'الكمية'),
+                      onChanged: (_) => onChanged(),
+                      validator: (value) =>
+                          (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
+                              ? 'أدخل كمية صحيحة.'
+                              : null)),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: TextFormField(
+                      controller: line.cost,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.next,
+                      decoration:
+                          const InputDecoration(labelText: 'تكلفة الوحدة'),
+                      onChanged: (_) => onChanged(),
+                      validator: (value) =>
+                          (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
+                              ? 'أدخل تكلفة صحيحة.'
+                              : null)),
+            ]),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: line.itemCount,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'العدد'),
+              onChanged: (_) => onChanged(),
+              validator: (value) =>
+                  (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
+                      ? 'أدخل عددًا صحيحًا.'
+                      : null,
+            ),
+          ],
         ]),
       ),
     );
   }
 
-  String _invoiceItemLabel(String invoiceType) => switch (invoiceType) {
-        'fabric' => 'نوع القماش',
-        'tools' || 'imported' => 'اسم المنتج',
-        _ => 'البند'
+  bool _isApprovedImportedUnit(String value) => const {'حبة', 'قطعة', 'متر', 'ياردة'}.contains(value.trim());
+
+  String _defaultUnitForType(String? itemType) => switch ((itemType ?? '').trim()) {
+        'Fabric' => 'ياردة',
+        'UsedTool' => 'قطعة',
+        _ => 'حبة',
       };
 
   String _invoiceTypeLabel(String value) => switch (value) {
@@ -2061,8 +2206,11 @@ class _ErrorState extends StatelessWidget {
 class _ReceiptDraftLine {
   SupplierPurchasingInvoiceLine? invoiceLine;
   final description = TextEditingController();
+  final productType = TextEditingController();
+  final unitCode = TextEditingController();
   final quantity = TextEditingController();
   final cost = TextEditingController();
+  final itemCount = TextEditingController();
   final rollCount = TextEditingController();
   final rollCode = TextEditingController();
 
@@ -2070,8 +2218,11 @@ class _ReceiptDraftLine {
 
   void dispose() {
     description.dispose();
+    productType.dispose();
+    unitCode.dispose();
     quantity.dispose();
     cost.dispose();
+    itemCount.dispose();
     rollCount.dispose();
     rollCode.dispose();
   }
@@ -2079,16 +2230,22 @@ class _ReceiptDraftLine {
 
 class _InvoiceDraftLine {
   final description = TextEditingController();
+  final productType = TextEditingController();
+  final unitCode = TextEditingController();
   final supplierItemCode = TextEditingController();
   final quantity = TextEditingController();
   final cost = TextEditingController();
+  final itemCount = TextEditingController();
   final rollCount = TextEditingController();
 
   void dispose() {
     description.dispose();
+    productType.dispose();
+    unitCode.dispose();
     supplierItemCode.dispose();
     quantity.dispose();
     cost.dispose();
+    itemCount.dispose();
     rollCount.dispose();
   }
 }

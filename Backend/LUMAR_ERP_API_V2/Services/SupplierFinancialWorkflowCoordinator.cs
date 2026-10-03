@@ -137,37 +137,80 @@ public sealed class SupplierFinancialWorkflowCoordinator(
         {
             var line = request.Lines[index];
             var operationId = DeriveLineOperationId(request.SourceOperationId, index);
-            var idempotencySql = @"
+
+            var columns = new List<string>
+            {
+                "SupplierInvoiceId",
+                "InventoryItemId",
+                "ItemDescription",
+                "ItemType",
+                "SupplierItemCode",
+                "Quantity",
+                "UnitCost",
+                "RollCount",
+                "SourceOperationId",
+                "Status",
+                "CreatedBy"
+            };
+            var values = new List<string>
+            {
+                "@invoiceId",
+                "@itemId",
+                "@description",
+                "@itemType",
+                "@supplierItemCode",
+                "@quantity",
+                "@unitCost",
+                "@rollCount",
+                "@operation",
+                "N'Posted'",
+                "@createdBy"
+            };
+
+            var idempotencyChecks = new List<string>
+            {
+                "SupplierInvoiceId=@invoiceId",
+                "((InventoryItemId=@itemId) OR (InventoryItemId IS NULL AND @itemId IS NULL))",
+                "ItemDescription=@description",
+                "ItemType=@itemType",
+                "((SupplierItemCode IS NULL AND @supplierItemCode IS NULL) OR SupplierItemCode=@supplierItemCode)",
+                "Quantity=@quantity",
+                "UnitCost=@unitCost",
+                "((RollCount IS NULL AND @rollCount IS NULL) OR RollCount=@rollCount)",
+                "Status=N'Posted'"
+            };
+
+            if (supportsProductType)
+            {
+                columns.Add("ProductType");
+                values.Add("@productType");
+                idempotencyChecks.Add("((ProductType IS NULL AND @productType IS NULL) OR ProductType=@productType)");
+            }
+            if (supportsUnitCode)
+            {
+                columns.Add("UnitCode");
+                values.Add("@unitCode");
+                idempotencyChecks.Add("((UnitCode IS NULL AND @unitCode IS NULL) OR UnitCode=@unitCode)");
+            }
+            if (supportsItemCount)
+            {
+                columns.Add("ItemCount");
+                values.Add("@itemCount");
+                idempotencyChecks.Add("((ItemCount IS NULL AND @itemCount IS NULL) OR ItemCount=@itemCount)");
+            }
+
+            var idempotencySql = $@"
 IF EXISTS (SELECT 1 FROM dbo.SupplierInvoiceLines WITH(UPDLOCK,HOLDLOCK) WHERE SourceOperationId=@operation)
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM dbo.SupplierInvoiceLines WHERE SourceOperationId=@operation AND SupplierInvoiceId=@invoiceId AND ((InventoryItemId=@itemId) OR (InventoryItemId IS NULL AND @itemId IS NULL)) AND ItemDescription=@description AND ItemType=@itemType AND ((SupplierItemCode IS NULL AND @supplierItemCode IS NULL) OR SupplierItemCode=@supplierItemCode) AND Quantity=@quantity AND UnitCost=@unitCost AND ((RollCount IS NULL AND @rollCount IS NULL) OR RollCount=@rollCount) AND Status=N'Posted')
-        THROW 52120,N'IDEMPOTENCY CONFLICT',1;
+    IF NOT EXISTS (SELECT 1 FROM dbo.SupplierInvoiceLines WHERE SourceOperationId=@operation AND {string.Join(" AND ", idempotencyChecks)})
+        THROW 52120, N'IDEMPOTENCY CONFLICT', 1;
 END
 ELSE
 BEGIN
     IF @itemId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.InventoryItems WITH(UPDLOCK,HOLDLOCK) WHERE InventoryItemID=@itemId AND IsActive=1)
-        THROW 52121,N'Supplier invoice inventory item is unavailable.',1;
-    INSERT dbo.SupplierInvoiceLines(SupplierInvoiceId,InventoryItemId,ItemDescription,ItemType,SupplierItemCode,Quantity,UnitCost,RollCount,SourceOperationId,Status,CreatedBy";
-            var insertValues = @")
-    VALUES(@invoiceId,@itemId,@description,@itemType,@supplierItemCode,@quantity,@unitCost,@rollCount,@operation,N'Posted',@createdBy";
-
-            if (supportsProductType)
-            {
-                idempotencySql += ",ProductType";
-                insertValues += ",@productType";
-            }
-            if (supportsUnitCode)
-            {
-                idempotencySql += ",UnitCode";
-                insertValues += ",@unitCode";
-            }
-            if (supportsItemCount)
-            {
-                idempotencySql += ",ItemCount";
-                insertValues += ",@itemCount";
-            }
-
-            idempotencySql += @")" + insertValues + @");
+        THROW 52121, N'Supplier invoice inventory item is unavailable.', 1;
+    INSERT dbo.SupplierInvoiceLines({string.Join(",", columns)})
+    VALUES({string.Join(",", values)});
 END";
 
             await using var command = new SqlCommand(idempotencySql, connection, transaction);
