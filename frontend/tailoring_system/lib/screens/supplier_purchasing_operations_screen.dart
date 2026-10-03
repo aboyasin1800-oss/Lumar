@@ -1379,7 +1379,7 @@ class _SupplierPurchasingOperationsScreenState
     final formKey = GlobalKey<FormState>();
     final number = TextEditingController();
     final notes = TextEditingController();
-    final lines = <_ReceiptDraftLine>[_ReceiptDraftLine()];
+    final lines = <_ReceiptDraftLine>[];
     SupplierPurchasingSupplier? supplier;
     SupplierPurchasingOrder? order;
     SupplierPurchasingInvoice? invoice;
@@ -1488,17 +1488,32 @@ class _SupplierPurchasingOperationsScreenState
                                       setDialogState(() {
                                         invoice = value;
                                         invoiceLines = const [];
-                                        for (final line in lines) {
-                                          line.invoiceLine = null;
-                                        }
+                                        lines.clear();
                                       });
                                       final loaded = await _repository
                                           .getInvoiceLines(value.id);
                                       if (!dialogContext.mounted) return;
-                                      setDialogState(() => invoiceLines = loaded
-                                          .where(
-                                              (line) => line.status == 'Posted')
-                                          .toList());
+                                      setDialogState(() {
+                                        invoiceLines = loaded
+                                            .where(
+                                                (line) => line.status == 'Posted')
+                                            .toList();
+                                        lines.clear();
+                                        for (final invoiceLine in invoiceLines) {
+                                          final draft = _ReceiptDraftLine();
+                                          draft.invoiceLine = invoiceLine;
+                                          draft.description.text = invoiceLine.itemName;
+                                          draft.productType.text =
+                                              invoiceLine.productType ?? invoiceLine.itemType;
+                                          draft.unitCode.text = invoiceLine.unitCode ??
+                                              _defaultUnitForType(invoiceLine.itemType);
+                                          draft.quantity.text = invoiceLine.quantity.toString();
+                                          draft.cost.text = invoiceLine.unitCost.toString();
+                                          draft.itemCount.text =
+                                              (invoiceLine.itemCount ?? invoiceLine.quantity).toString();
+                                          lines.add(draft);
+                                        }
+                                      });
                                     },
                                     fieldViewBuilder: (context, controller,
                                             focusNode, onSubmitted) =>
@@ -1615,6 +1630,13 @@ class _SupplierPurchasingOperationsScreenState
       if (duplicate) {
         _showMessage('يوجد استلام بالرقم نفسه.');
       } else {
+        final draftLines = lines
+            .where((line) => line.description.text.trim().isNotEmpty)
+            .toList();
+        if (draftLines.isEmpty) {
+          _showMessage('لا توجد بنود صالحة لإرسالها في الاستلام.');
+          return;
+        }
         await _run(
             () => _repository.createReceipt(
                 supplierId: supplier!.id,
@@ -1623,7 +1645,7 @@ class _SupplierPurchasingOperationsScreenState
                 receiptNumber: number.text.trim(),
                 receiptDate: receiptDate,
                 notes: _nullable(notes.text),
-                items: lines
+                items: draftLines
                     .map((line) => {
                           'inventoryItemId': null,
                           'itemDescription': line.description.text.trim(),

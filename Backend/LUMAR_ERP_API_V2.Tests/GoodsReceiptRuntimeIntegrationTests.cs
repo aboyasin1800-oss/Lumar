@@ -41,7 +41,7 @@ public sealed class GoodsReceiptRuntimeIntegrationTests
             Assert.False(reversal.IsExisting);
             Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceipts WHERE GoodsReceiptId=@id AND ReceiptStatus=N'Reversed'", result.GoodsReceiptId));
             Assert.Equal(0, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.GoodsReceiptReversalLines WHERE GoodsReceiptReversalId=@id", reversal.GoodsReceiptReversalId));
-            Assert.Equal(1m, await DecimalAsync(connectionString, "SELECT CurrentQuantity FROM dbo.InventoryItems WHERE InventoryItemID=@id", seed.InventoryItemId));
+            Assert.Equal(1m, await DecimalAsync(connectionString, "SELECT CurrentQuantity FROM dbo.InventoryItems WHERE InventoryItemID=@id", ("@id", seed.InventoryItemId)));
 
             var direct = await repository.CreateGoodsReceiptAsync(new CreateGoodsReceiptDto
             {
@@ -79,6 +79,59 @@ public sealed class GoodsReceiptRuntimeIntegrationTests
 
             Assert.Equal(4, await IntAsync(connectionString, "SELECT RollCount FROM dbo.GoodsReceiptItems WHERE GoodsReceiptId=@id AND SupplierInvoiceLineId=@lineId", ("@id", receipt.GoodsReceiptId), ("@lineId", seed.InvoiceLineId)));
             Assert.Equal(4, await IntAsync(connectionString, "SELECT RollCount FROM dbo.SupplierInvoiceLines WHERE SupplierInvoiceLineId=@id", ("@id", seed.InvoiceLineId)));
+        }
+        finally { await CleanupAsync(connectionString, seed); }
+    }
+
+    [Fact]
+    public async Task ReceiptRuntime_PersistsImportedProductMetadataFromInvoiceLine()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        try
+        {
+            await using (var c = new SqlConnection(connectionString))
+            {
+                await c.OpenAsync();
+                await using var cmd = new SqlCommand("UPDATE dbo.SupplierInvoiceLines SET ProductType=@productType, UnitCode=@unitCode, ItemCount=@itemCount WHERE SupplierInvoiceLineId=@lineId", c);
+                cmd.Parameters.AddWithValue("@productType", "كشميري");
+                cmd.Parameters.AddWithValue("@unitCode", "حبة");
+                cmd.Parameters.AddWithValue("@itemCount", 10m);
+                cmd.Parameters.AddWithValue("@lineId", seed.InvoiceLineId);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            var receipt = await CreateRepository(connectionString).CreateGoodsReceiptAsync(new CreateGoodsReceiptDto
+            {
+                SupplierId = seed.SupplierId, PurchaseOrderId = seed.PurchaseOrderId, WarehouseId = seed.WarehouseId,
+                ReceiptNumber = $"ES6-IMPORTED-{seed.Suffix}", CreatedBy = "ES6-Test", SourceOperationId = Guid.NewGuid(),
+                Items = [new CreateGoodsReceiptItemDto { InventoryItemId = seed.InventoryItemId, Quantity = 4m, UnitCost = 12m, SupplierInvoiceLineId = seed.InvoiceLineId }]
+            }, CancellationToken.None);
+
+            Assert.Equal("كشميري", await StringAsync(connectionString, "SELECT ProductType FROM dbo.GoodsReceiptItems WHERE GoodsReceiptId=@id AND SupplierInvoiceLineId=@lineId", ("@id", receipt.GoodsReceiptId), ("@lineId", seed.InvoiceLineId)));
+            Assert.Equal("حبة", await StringAsync(connectionString, "SELECT UnitCode FROM dbo.GoodsReceiptItems WHERE GoodsReceiptId=@id AND SupplierInvoiceLineId=@lineId", ("@id", receipt.GoodsReceiptId), ("@lineId", seed.InvoiceLineId)));
+            Assert.Equal(10m, await DecimalAsync(connectionString, "SELECT ItemCount FROM dbo.GoodsReceiptItems WHERE GoodsReceiptId=@id AND SupplierInvoiceLineId=@lineId", ("@id", receipt.GoodsReceiptId), ("@lineId", seed.InvoiceLineId)));
+            Assert.Equal(10m, await DecimalAsync(connectionString, "SELECT ReceivedItemCount FROM dbo.GoodsReceiptItems WHERE GoodsReceiptId=@id AND SupplierInvoiceLineId=@lineId", ("@id", receipt.GoodsReceiptId), ("@lineId", seed.InvoiceLineId)));
+        }
+        finally { await CleanupAsync(connectionString, seed); }
+    }
+
+    [Fact]
+    public async Task ReceiptRuntime_AcceptsDescriptionOnlyConfirmationLine()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedAsync(connectionString);
+        try
+        {
+            var receipt = await CreateRepository(connectionString).CreateGoodsReceiptAsync(new CreateGoodsReceiptDto
+            {
+                SupplierId = seed.SupplierId, PurchaseOrderId = seed.PurchaseOrderId, WarehouseId = seed.WarehouseId,
+                ReceiptNumber = $"ES6-DESC-{seed.Suffix}", CreatedBy = "ES6-Test", SourceOperationId = Guid.NewGuid(),
+                Items = [new CreateGoodsReceiptItemDto { ItemDescription = "Receipt line without inventory id", Quantity = 2m, UnitCost = 9m }]
+            }, CancellationToken.None);
+
+            Assert.Equal("Receipt line without inventory id", await StringAsync(connectionString, "SELECT ItemName FROM dbo.GoodsReceiptItems WHERE GoodsReceiptId=@id", ("@id", receipt.GoodsReceiptId)));
+            Assert.Equal(2m, await DecimalAsync(connectionString, "SELECT ReceivedQuantity FROM dbo.GoodsReceiptItems WHERE GoodsReceiptId=@id", ("@id", receipt.GoodsReceiptId)));
         }
         finally { await CleanupAsync(connectionString, seed); }
     }
@@ -303,7 +356,8 @@ public sealed class GoodsReceiptRuntimeIntegrationTests
     private static string GetConnectionString() { var b = new SqlConnectionStringBuilder(Environment.GetEnvironmentVariable("Lumar__ConnectionString") ?? "Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True"); if (!string.Equals(b.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase) && !string.Equals(b.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("ES-6 tests require an approved ES validation database."); return b.ConnectionString; }
     private static async Task<int> CountAsync(string cs, string sql, object value) { await using var c = new SqlConnection(cs); await c.OpenAsync(); await using var cmd = new SqlCommand(sql, c); cmd.Parameters.AddWithValue(sql.Contains("@warehouse") ? "@warehouse" : sql.Contains("@operation") ? "@operation" : sql.Contains("@value") ? "@value" : "@id", value); return Convert.ToInt32(await cmd.ExecuteScalarAsync()); }
     private static async Task<int> IntAsync(string cs, string sql, params (string Name, object Value)[] values) { await using var c = new SqlConnection(cs); await c.OpenAsync(); await using var cmd = new SqlCommand(sql, c); foreach (var value in values) cmd.Parameters.AddWithValue(value.Name, value.Value); var result = await cmd.ExecuteScalarAsync(); return result is DBNull ? 0 : Convert.ToInt32(result); }
-    private static async Task<decimal> DecimalAsync(string cs, string sql, object value) { await using var c = new SqlConnection(cs); await c.OpenAsync(); await using var cmd = new SqlCommand(sql, c); cmd.Parameters.AddWithValue("@id", value); return Convert.ToDecimal(await cmd.ExecuteScalarAsync()); }
+    private static async Task<decimal> DecimalAsync(string cs, string sql, params (string Name, object Value)[] values) { await using var c = new SqlConnection(cs); await c.OpenAsync(); await using var cmd = new SqlCommand(sql, c); foreach (var value in values) cmd.Parameters.AddWithValue(value.Name, value.Value); var result = await cmd.ExecuteScalarAsync(); return result is DBNull ? 0m : Convert.ToDecimal(result); }
+    private static async Task<string> StringAsync(string cs, string sql, params (string Name, object Value)[] values) { await using var c = new SqlConnection(cs); await c.OpenAsync(); await using var cmd = new SqlCommand(sql, c); foreach (var value in values) cmd.Parameters.AddWithValue(value.Name, value.Value); var result = await cmd.ExecuteScalarAsync(); return result is DBNull ? string.Empty : Convert.ToString(result) ?? string.Empty; }
     private static async Task<int> ScalarAsync(SqlConnection c, SqlTransaction t, string sql, params (string Name, object Value)[] values) { await using var cmd = new SqlCommand(sql, c, t); foreach (var value in values) cmd.Parameters.AddWithValue(value.Name, value.Value); return Convert.ToInt32(await cmd.ExecuteScalarAsync()); }
     private static async Task ExecuteAsync(SqlConnection c, SqlTransaction t, string sql, params (string Name, object Value)[] values) { await using var cmd = new SqlCommand(sql, c, t); foreach (var value in values) cmd.Parameters.AddWithValue(value.Name, value.Value); await cmd.ExecuteNonQueryAsync(); }
     private sealed record Seed(string Suffix, int SupplierId, int WarehouseId, int InventoryItemId, int SecondInventoryItemId, int PurchaseOrderId, int InvoiceId, int InvoiceLineId, int SecondInvoiceLineId, bool ReversalWasEnabled);

@@ -1,3 +1,7 @@
+SET QUOTED_IDENTIFIER ON;
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+
 IF COL_LENGTH(N'dbo.SupplierInvoiceLines', N'ProductType') IS NULL
     ALTER TABLE dbo.SupplierInvoiceLines ADD ProductType nvarchar(50) NULL;
 
@@ -30,3 +34,5 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.Suppl
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.GoodsReceiptItems') AND name = N'IX_GoodsReceiptItems_ProductType')
     EXEC(N'CREATE INDEX IX_GoodsReceiptItems_ProductType ON dbo.GoodsReceiptItems(ProductType) WHERE ProductType IS NOT NULL;');
+
+COMMIT TRANSACTION;
