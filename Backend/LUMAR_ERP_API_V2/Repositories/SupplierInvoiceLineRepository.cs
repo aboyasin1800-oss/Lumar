@@ -25,7 +25,7 @@ public sealed class SupplierInvoiceLineRepository(ReadOnlySqlConnectionFactory c
         var hasUnitCode = await ColumnExistsAsync(connection, "dbo.SupplierInvoiceLines", "UnitCode", cancellationToken);
         var hasItemCount = await ColumnExistsAsync(connection, "dbo.SupplierInvoiceLines", "ItemCount", cancellationToken);
 
-        var productTypeSql = hasProductType ? "COALESCE(l.ProductType, l.ItemType, N'Legacy')" : "COALESCE(l.ItemType, N'Legacy')";
+        var productTypeSql = hasProductType ? "COALESCE(l.ProductType, l.ItemType)" : "COALESCE(l.ItemType, N'Legacy')";
         var unitCodeSql = hasUnitCode ? "COALESCE(l.UnitCode, N'قطعة')" : "N'قطعة'";
         var itemCountSql = hasItemCount ? "COALESCE(l.ItemCount, l.Quantity)" : "l.Quantity";
 

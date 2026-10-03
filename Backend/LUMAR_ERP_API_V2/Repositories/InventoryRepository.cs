@@ -65,12 +65,12 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                     : "CAST(N'Legacy' AS nvarchar(30))";
 
         var productTypeExpression = hasGoodsReceiptProductType && hasSupplierInvoiceProductType
-            ? "COALESCE(i.ProductType, sil.ProductType)"
+            ? "COALESCE(i.ProductType, sil.ProductType, i.ItemType, sil.ItemType)"
             : hasGoodsReceiptProductType
-                ? "i.ProductType"
+                ? "COALESCE(i.ProductType, i.ItemType)"
                 : hasSupplierInvoiceProductType
-                    ? "sil.ProductType"
-                    : "CAST(N'ImportedProduct' AS nvarchar(50))";
+                    ? "COALESCE(sil.ProductType, sil.ItemType)"
+                    : "COALESCE(i.ItemType, sil.ItemType)";
 
         var unitCodeExpression = hasGoodsReceiptUnitCode && hasSupplierInvoiceUnitCode
             ? "COALESCE(i.UnitCode, sil.UnitCode)"

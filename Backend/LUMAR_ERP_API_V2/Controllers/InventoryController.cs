@@ -80,7 +80,6 @@ public sealed class InventoryController(IInventoryService service) : ControllerB
     public async Task<ActionResult<ImportedReadyMadeProductDto>> UpsertImportedProduct(CreateImportedProductDto product, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(product.ProductName)) return BadRequest("Product name is required.");
-        if (string.IsNullOrWhiteSpace(product.ProductCode)) return BadRequest("Product code is required.");
         if (string.IsNullOrWhiteSpace(product.Unit)) return BadRequest("Product unit is required.");
         if (product.Quantity <= 0) return BadRequest("Quantity must be greater than zero.");
         if (product.PurchasePrice <= 0) return BadRequest("Purchase price must be greater than zero.");

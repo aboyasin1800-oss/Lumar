@@ -50,9 +50,18 @@ public class InventoryStorageCompatibilityTests
     {
         var sql = InventoryRepository.BuildPendingGoodsReceiptStorageQuery(true, true, true, true, true, true, true, true, true, true);
 
-        Assert.Contains("COALESCE(i.ProductType, sil.ProductType)", sql);
+        Assert.Contains("COALESCE(i.ProductType, sil.ProductType, i.ItemType, sil.ItemType)", sql);
         Assert.Contains("COALESCE(i.UnitCode, sil.UnitCode)", sql);
         Assert.Contains("COALESCE(i.ItemCount, sil.ItemCount, i.ReceivedQuantity, sil.Quantity)", sql);
         Assert.Contains("COALESCE(i.ReceivedItemCount, sil.ItemCount, i.ReceivedQuantity, sil.Quantity)", sql);
+    }
+
+    [Fact]
+    public void PendingStorageQuery_DoesNotUseGenericImportedProductAsProductTypeFallback()
+    {
+        var sql = InventoryRepository.BuildPendingGoodsReceiptStorageQuery(true, true, true, true, true, true, true, true, true, true);
+
+        Assert.DoesNotContain("CAST(N'ImportedProduct' AS nvarchar(50))", sql);
+        Assert.Contains("COALESCE(i.ProductType, sil.ProductType, i.ItemType, sil.ItemType)", sql);
     }
 }
