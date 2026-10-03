@@ -65,7 +65,7 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
     if (pending == null || pending.itemType != 'ImportedProduct') return;
 
     _productNameController.text = pending.itemDescription.trim();
-    _productTypeController.text = (pending.productType ?? '').trim().isNotEmpty ? pending.productType! : 'ImportedProduct';
+    _productTypeController.text = (pending.productType ?? '').trim();
     _productCodeController.clear();
     _quantityController.text = pending.remainingQuantity.toStringAsFixed(3);
     _purchasePriceController.text = pending.unitCost.toStringAsFixed(2);
@@ -165,7 +165,7 @@ class _ImportedProductEntryScreenState extends State<ImportedProductEntryScreen>
     final pending = widget.pendingReceipt;
     final payload = {
       'productName': _productNameController.text.trim(),
-      'productType': (_productTypeController.text.trim().isEmpty ? 'ImportedProduct' : _productTypeController.text.trim()),
+      'productType': _productTypeController.text.trim(),
       'productCode': _productCodeController.text.trim(),
       'unit': pending?.unitCode?.trim().isNotEmpty == true ? pending!.unitCode! : (pending?.unit.trim().isNotEmpty == true ? pending!.unit : 'حبة'),
       'quantity': quantity,

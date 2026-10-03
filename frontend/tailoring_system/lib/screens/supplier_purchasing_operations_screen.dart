@@ -563,10 +563,6 @@ class _SupplierPurchasingOperationsScreenState
                           line.unitCode.clear();
                           line.itemCount.clear();
                         } else {
-                          if (line.productType.text.trim().isEmpty) {
-                            line.productType.text =
-                                invoiceType == 'tools' ? 'أداة' : 'منتج مستورد';
-                          }
                           if (line.unitCode.text.trim().isEmpty) {
                             line.unitCode.text =
                                 invoiceType == 'tools' ? 'قطعة' : 'حبة';
@@ -686,7 +682,7 @@ class _SupplierPurchasingOperationsScreenState
                               ? 'Fabric'
                               : invoiceType == 'tools'
                                   ? 'UsedTool'
-                                  : (line.productType.text.trim().isNotEmpty ? line.productType.text.trim() : 'ImportedProduct'),
+                                  : (line.productType.text.trim().isNotEmpty ? line.productType.text.trim() : null),
                           'supplierItemCode':
                               _nullable(line.supplierItemCode.text),
                           'unitCode': invoiceType == 'fabric'
@@ -1634,7 +1630,7 @@ class _SupplierPurchasingOperationsScreenState
                           'itemType': line.itemType ?? (line.invoiceLine?.itemType ?? 'ImportedProduct'),
                           'productType': line.productType.text.trim().isNotEmpty
                               ? line.productType.text.trim()
-                              : (line.invoiceLine?.productType ?? line.itemType ?? 'ImportedProduct'),
+                              : line.invoiceLine?.productType,
                           'unitCode': line.unitCode.text.trim().isNotEmpty
                               ? line.unitCode.text.trim()
                               : (line.invoiceLine?.unitCode ?? _defaultUnitForType(line.itemType ?? line.invoiceLine?.itemType ?? 'ImportedProduct')),
