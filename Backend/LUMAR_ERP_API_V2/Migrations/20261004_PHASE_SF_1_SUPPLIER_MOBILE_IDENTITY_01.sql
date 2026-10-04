@@ -1,5 +1,6 @@
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
+SET QUOTED_IDENTIFIER ON;
 
 IF DB_NAME() <> N'LUMAR_ERP_ES_VALIDATION'
     THROW 51600, N'This Phase SF-1 supplier mobile identity migration is restricted to LUMAR_ERP_ES_VALIDATION.', 1;

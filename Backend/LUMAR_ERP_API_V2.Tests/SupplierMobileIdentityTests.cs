@@ -1,3 +1,4 @@
+using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.Services;
 using Xunit;
@@ -67,9 +68,37 @@ public sealed class SupplierMobileIdentityTests
     [Fact]
     public void Mobile_session_dto_supports_supplier_identity()
     {
-        var dto = new MobileSessionDto("token", DateTime.UtcNow.AddHours(1), new CurrentUserDto(1, "supplier", "Supplier User", "Supplier", true, null), "Supplier", null, null, 12);
+        var dto = new MobileSessionDto("token", DateTime.UtcNow.AddHours(1), new CurrentUserDto(1, "supplier", "Supplier User", "Supplier", true, null, "Supplier", null, null, 12), "Supplier", null, null, 12);
 
         Assert.Equal("Supplier", dto.AccountType);
         Assert.Equal(12, dto.SupplierId);
+    }
+
+    [Fact]
+    public void Supplier_owner_context_is_resolved_from_authenticated_account_only()
+    {
+        var user = new CurrentUserDto(10, "supplier_user", "Supplier User", "Supplier", true, null, "Supplier", null, null, 77);
+
+        Assert.Equal("Supplier", user.AccountType);
+        Assert.Equal(77, user.SupplierId);
+        Assert.True(SupplierOwnershipGuard.IsAllowed(77, null));
+        Assert.False(SupplierOwnershipGuard.IsAllowed(77, 99));
+    }
+
+    [Fact]
+    public async Task Supplier_ownership_resolver_ignores_client_supplied_supplier_ids()
+    {
+        var resolver = new SupplierOwnershipResolver(new FixedAuthenticatedUserContext(new CurrentUserDto(10, "supplier_user", "Supplier User", "Supplier", true, null, "Supplier", null, null, 77)));
+
+        var resolved = await resolver.ResolveCurrentSupplierAsync();
+
+        Assert.Equal(77, resolved);
+        Assert.True(resolver.CanAccessSupplier(77, 99) == false);
+        Assert.True(resolver.CanAccessSupplier(77, 77));
+    }
+
+    private sealed class FixedAuthenticatedUserContext(CurrentUserDto user) : IAuthenticatedUserContext
+    {
+        public Task<CurrentUserDto?> GetCurrentUserAsync(CancellationToken cancellationToken = default) => Task.FromResult<CurrentUserDto?>(user);
     }
 }

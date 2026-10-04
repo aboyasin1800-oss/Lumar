@@ -344,7 +344,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         await connection.OpenAsync(ct);
 
         await using var command = new SqlCommand(
-            "SELECT u.UserID, u.Username, u.FullName, u.UserRole, u.IsActive, u.LastLoginUtc FROM dbo.UserSessions s JOIN dbo.Users u ON u.UserID = s.UserId WHERE s.TokenHash = @hash AND s.RevokedAtUtc IS NULL AND s.ExpiresAtUtc > SYSUTCDATETIME() AND u.IsActive = 1",
+            "SELECT u.UserID, u.Username, u.FullName, u.UserRole, u.IsActive, u.LastLoginUtc, ma.AccountType, ma.CustomerId, ma.EmployeeId, ma.SupplierId FROM dbo.UserSessions s JOIN dbo.Users u ON u.UserID = s.UserId LEFT JOIN dbo.MobileAccounts ma ON ma.UserId = u.UserID AND ma.IsActive = 1 WHERE s.TokenHash = @hash AND s.RevokedAtUtc IS NULL AND s.ExpiresAtUtc > SYSUTCDATETIME() AND u.IsActive = 1",
             connection);
         command.Parameters.Add("@hash", System.Data.SqlDbType.VarBinary, 32).Value = TokenHash(token);
 
@@ -352,13 +352,22 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         if (!await reader.ReadAsync(ct))
             return null;
 
+        var accountType = reader.IsDBNull(6) ? null : reader.GetString(6);
+        var customerId = reader.IsDBNull(7) ? null : (int?)reader.GetInt32(7);
+        var employeeId = reader.IsDBNull(8) ? null : (int?)reader.GetInt32(8);
+        var supplierId = reader.IsDBNull(9) ? null : (int?)reader.GetInt32(9);
+
         return new CurrentUserDto(
             reader.GetInt32(0),
             reader.GetString(1),
             reader.GetString(2),
             reader.IsDBNull(3) ? null : reader.GetString(3),
             true,
-            reader.IsDBNull(5) ? null : reader.GetDateTime(5));
+            reader.IsDBNull(5) ? null : reader.GetDateTime(5),
+            accountType,
+            customerId,
+            employeeId,
+            supplierId);
     }
 
     private async Task<bool> VerifyCurrentPasswordAsync(int userId, string password, CancellationToken ct)
