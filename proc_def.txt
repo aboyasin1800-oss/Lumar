@@ -1,0 +1,10 @@
+definition
+----------
+
+    CREATE   PROCEDURE dbo.usp_PostAccountingEvent
+        @AccountingEventType tinyint,
+        @PostingAmount decimal(18,2),
+        @PaymentId int = NULL,
+        @OrderId int = NULL,
+        @MeasurementCardPrintHistoryId int = NULL,
+        @R

@@ -604,6 +604,16 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
 
         try
         {
+            var existing = await ReadToolIssuanceBySourceOperationAsync(connection, transaction, request.SourceOperationId, ct);
+            if (existing is not null)
+            {
+                if (!MatchesOperationalIssue(existing, request))
+                    throw new InvalidOperationException("SOURCE_OPERATION_CONFLICT: SourceOperationId already used for a different operational tool issue.");
+
+                await transaction.CommitAsync(ct);
+                return await ReadToolIssuanceResultAsync(connection, existing.ToolIssuanceId, ct);
+            }
+
             var item = await ReadToolItemForUpdateAsync(connection, transaction, request.InventoryItemId, ct)
                 ?? throw new InvalidOperationException("The tool item does not exist or is not registered as a used tool.");
             if (item.CurrentQuantity < request.Quantity)
@@ -613,56 +623,68 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             var operationalAmount = decimal.Round(request.Quantity * request.OfficialUnitCost, 6, MidpointRounding.AwayFromZero);
             var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
 
-            var issuanceId = await InsertToolIssuanceAsync(
-                connection,
-                transaction,
-                request.InventoryItemId,
-                "Operational",
-                request.Quantity,
-                request.OfficialUnitCost,
-                operationalAmount,
-                postingAmount,
-                request.OperationalReason,
-                null,
-                null,
-                null,
-                null,
-                request.SourceOperationId,
-                request.ConfirmedByUserId,
-                now,
-                "PendingPosting",
-                ct);
+            try
+            {
+                var issuanceId = await InsertToolIssuanceAsync(
+                    connection,
+                    transaction,
+                    request.InventoryItemId,
+                    "Operational",
+                    request.Quantity,
+                    request.OfficialUnitCost,
+                    operationalAmount,
+                    postingAmount,
+                    request.OperationalReason,
+                    null,
+                    null,
+                    null,
+                    null,
+                    request.SourceOperationId,
+                    request.ConfirmedByUserId,
+                    now,
+                    "PendingPosting",
+                    ct);
 
-            var inventoryTransactionId = await InsertToolInventoryTransactionAsync(
-                connection,
-                transaction,
-                request.InventoryItemId,
-                "OperationalIssue",
-                -request.Quantity,
-                $"TOOL-ISSUE-{issuanceId}",
-                $"Operational issue for item {item.ItemName}",
-                now,
-                request.OfficialUnitCost,
-                null,
-                ct);
+                var inventoryTransactionId = await InsertToolInventoryTransactionAsync(
+                    connection,
+                    transaction,
+                    request.InventoryItemId,
+                    "OperationalIssue",
+                    -request.Quantity,
+                    $"TOOL-ISSUE-{issuanceId}",
+                    $"Operational issue for item {item.ItemName}",
+                    now,
+                    request.OfficialUnitCost,
+                    null,
+                    ct);
 
-            await UpdateToolInventoryQuantityAsync(connection, transaction, request.InventoryItemId, request.Quantity, takeFromStock: true, now, ct);
-            var accountingResult = await AccountingEventPostingGateway.PostToolOperationalIssueAsync(
-                connection,
-                transaction,
-                issuanceId,
-                postingAmount,
-                $"TOOL-ISSUE-{issuanceId}",
-                $"Operational tool issue for {item.ItemName}",
-                ct);
+                await UpdateToolInventoryQuantityAsync(connection, transaction, request.InventoryItemId, request.Quantity, takeFromStock: true, now, ct);
+                var accountingResult = await AccountingEventPostingGateway.PostToolOperationalIssueAsync(
+                    connection,
+                    transaction,
+                    issuanceId,
+                    postingAmount,
+                    $"TOOL-ISSUE-{issuanceId}",
+                    $"Operational tool issue for {item.ItemName}",
+                    ct);
 
-            await UpdateToolIssuancePostingAsync(connection, transaction, issuanceId, accountingResult.AccountingEventId, inventoryTransactionId, "Posted", ct);
-            await InsertStorageAllocationAsync(connection, transaction, null, "UsedTool", request.Quantity, request.SourceOperationId, request.InventoryItemId, inventoryTransactionId, accountingResult.AccountingEventId, null, null, ct);
+                await UpdateToolIssuancePostingAsync(connection, transaction, issuanceId, accountingResult.AccountingEventId, inventoryTransactionId, "Posted", ct);
+                await InsertStorageAllocationAsync(connection, transaction, null, "UsedTool", request.Quantity, request.SourceOperationId, request.InventoryItemId, inventoryTransactionId, accountingResult.AccountingEventId, null, null, ct);
 
-            await transaction.CommitAsync(ct);
-            return await ReadToolIssuanceResultAsync(connection, issuanceId, ct);
+                await transaction.CommitAsync(ct);
+                return await ReadToolIssuanceResultAsync(connection, issuanceId, ct);
+            }
+            catch (SqlException ex) when (IsDuplicateKeyViolation(ex))
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                var replay = await ReadToolIssuanceBySourceOperationAsync(connection, null, request.SourceOperationId, ct);
+                if (replay is not null && MatchesOperationalIssue(replay, request))
+                    return await ReadToolIssuanceResultAsync(connection, replay.ToolIssuanceId, ct);
+
+                throw new InvalidOperationException("SOURCE_OPERATION_CONFLICT: SourceOperationId already used for a different operational tool issue.", ex);
+            }
         }
-        catch
+        catch (Exception)
         {
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
@@ -680,6 +702,16 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
 
         try
         {
+            var existing = await ReadToolIssuanceBySourceOperationAsync(connection, transaction, request.SourceOperationId, ct);
+            if (existing is not null)
+            {
+                if (!MatchesCustodyIssue(existing, request))
+                    throw new InvalidOperationException("SOURCE_OPERATION_CONFLICT: SourceOperationId already used for a different custody issue.");
+
+                await transaction.CommitAsync(ct);
+                return await ReadToolIssuanceResultAsync(connection, existing.ToolIssuanceId, ct);
+            }
+
             var item = await ReadToolItemForUpdateAsync(connection, transaction, request.InventoryItemId, ct)
                 ?? throw new InvalidOperationException("The tool item does not exist or is not registered as a used tool.");
             if (item.CurrentQuantity < request.Quantity)
@@ -689,47 +721,59 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             var operationalAmount = decimal.Round(request.Quantity * request.OfficialUnitCost, 6, MidpointRounding.AwayFromZero);
             var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
 
-            var issuanceId = await InsertToolIssuanceAsync(
-                connection,
-                transaction,
-                request.InventoryItemId,
-                "Custody",
-                request.Quantity,
-                request.OfficialUnitCost,
-                operationalAmount,
-                postingAmount,
-                null,
-                request.BeneficiaryName,
-                request.DestinationType,
-                request.DestinationName,
-                request.LoanReason,
-                request.SourceOperationId,
-                request.ConfirmedByUserId,
-                now,
-                "Outstanding",
-                ct);
+            try
+            {
+                var issuanceId = await InsertToolIssuanceAsync(
+                    connection,
+                    transaction,
+                    request.InventoryItemId,
+                    "Custody",
+                    request.Quantity,
+                    request.OfficialUnitCost,
+                    operationalAmount,
+                    postingAmount,
+                    null,
+                    request.BeneficiaryName,
+                    request.DestinationType,
+                    request.DestinationName,
+                    request.LoanReason,
+                    request.SourceOperationId,
+                    request.ConfirmedByUserId,
+                    now,
+                    "Outstanding",
+                    ct);
 
-            var inventoryTransactionId = await InsertToolInventoryTransactionAsync(
-                connection,
-                transaction,
-                request.InventoryItemId,
-                "CustodyIssue",
-                -request.Quantity,
-                $"TOOL-CUSTODY-{issuanceId}",
-                $"Custody issue for {item.ItemName}",
-                now,
-                request.OfficialUnitCost,
-                null,
-                ct);
+                var inventoryTransactionId = await InsertToolInventoryTransactionAsync(
+                    connection,
+                    transaction,
+                    request.InventoryItemId,
+                    "CustodyIssue",
+                    -request.Quantity,
+                    $"TOOL-CUSTODY-{issuanceId}",
+                    $"Custody issue for {item.ItemName}",
+                    now,
+                    request.OfficialUnitCost,
+                    null,
+                    ct);
 
-            await UpdateToolInventoryQuantityAsync(connection, transaction, request.InventoryItemId, request.Quantity, takeFromStock: true, now, ct);
-            await UpdateToolIssuancePostingAsync(connection, transaction, issuanceId, null, inventoryTransactionId, "Outstanding", ct);
-            await InsertStorageAllocationAsync(connection, transaction, null, "UsedTool", request.Quantity, request.SourceOperationId, request.InventoryItemId, inventoryTransactionId, null, null, null, ct);
+                await UpdateToolInventoryQuantityAsync(connection, transaction, request.InventoryItemId, request.Quantity, takeFromStock: true, now, ct);
+                await UpdateToolIssuancePostingAsync(connection, transaction, issuanceId, null, inventoryTransactionId, "Outstanding", ct);
+                await InsertStorageAllocationAsync(connection, transaction, null, "UsedTool", request.Quantity, request.SourceOperationId, request.InventoryItemId, inventoryTransactionId, null, null, null, ct);
 
-            await transaction.CommitAsync(ct);
-            return await ReadToolIssuanceResultAsync(connection, issuanceId, ct);
+                await transaction.CommitAsync(ct);
+                return await ReadToolIssuanceResultAsync(connection, issuanceId, ct);
+            }
+            catch (SqlException ex) when (IsDuplicateKeyViolation(ex))
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                var replay = await ReadToolIssuanceBySourceOperationAsync(connection, null, request.SourceOperationId, ct);
+                if (replay is not null && MatchesCustodyIssue(replay, request))
+                    return await ReadToolIssuanceResultAsync(connection, replay.ToolIssuanceId, ct);
+
+                throw new InvalidOperationException("SOURCE_OPERATION_CONFLICT: SourceOperationId already used for a different custody issue.", ex);
+            }
         }
-        catch
+        catch (Exception)
         {
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
@@ -747,6 +791,16 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
 
         try
         {
+            var existingReturn = await ReadToolIssuanceReturnBySourceOperationAsync(connection, transaction, request.SourceOperationId, ct);
+            if (existingReturn is not null)
+            {
+                if (!MatchesReturn(existingReturn, request))
+                    throw new InvalidOperationException("SOURCE_OPERATION_CONFLICT: SourceOperationId already used for a different custody return.");
+
+                await transaction.CommitAsync(ct);
+                return await ReadToolIssuanceResultAsync(connection, existingReturn.ToolIssuanceId, ct);
+            }
+
             var issuance = await ReadToolIssuanceAsync(connection, transaction, request.ToolIssuanceId, ct)
                 ?? throw new InvalidOperationException("The custody issuance record was not found.");
             if (!string.Equals(issuance.IssueType, "Custody", StringComparison.OrdinalIgnoreCase))
@@ -758,30 +812,42 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                 throw new InvalidOperationException("The return quantity exceeds the remaining outstanding custody quantity.");
 
             var now = DateTime.UtcNow;
-            var returnId = await InsertToolReturnAsync(connection, transaction, request.ToolIssuanceId, request.ReturnedQuantity, request.ReturnNotes, request.ConfirmedByUserId, request.SourceOperationId, now, ct);
-            var inventoryTransactionId = await InsertToolInventoryTransactionAsync(
-                connection,
-                transaction,
-                issuance.InventoryItemId,
-                "CustodyReturn",
-                request.ReturnedQuantity,
-                $"TOOL-RETURN-{returnId}",
-                $"Custody return for tool issuance {request.ToolIssuanceId}",
-                now,
-                issuance.OfficialUnitCost,
-                null,
-                ct);
+            try
+            {
+                var returnId = await InsertToolReturnAsync(connection, transaction, request.ToolIssuanceId, request.ReturnedQuantity, request.ReturnNotes, request.ConfirmedByUserId, request.SourceOperationId, now, ct);
+                var inventoryTransactionId = await InsertToolInventoryTransactionAsync(
+                    connection,
+                    transaction,
+                    issuance.InventoryItemId,
+                    "CustodyReturn",
+                    request.ReturnedQuantity,
+                    $"TOOL-RETURN-{returnId}",
+                    $"Custody return for tool issuance {request.ToolIssuanceId}",
+                    now,
+                    issuance.OfficialUnitCost,
+                    null,
+                    ct);
 
-            await UpdateToolInventoryQuantityAsync(connection, transaction, issuance.InventoryItemId, request.ReturnedQuantity, takeFromStock: false, now, ct);
-            var updatedReturned = returnedToDate + request.ReturnedQuantity;
-            var nextStatus = updatedReturned >= issuance.Quantity ? "Returned" : "PartiallyReturned";
-            await UpdateToolIssuanceStatusAsync(connection, transaction, request.ToolIssuanceId, nextStatus, ct);
-            await UpdateToolReturnTransactionAsync(connection, transaction, returnId, inventoryTransactionId, ct);
+                await UpdateToolInventoryQuantityAsync(connection, transaction, issuance.InventoryItemId, request.ReturnedQuantity, takeFromStock: false, now, ct);
+                var updatedReturned = returnedToDate + request.ReturnedQuantity;
+                var nextStatus = updatedReturned >= issuance.Quantity ? "Returned" : "PartiallyReturned";
+                await UpdateToolIssuanceStatusAsync(connection, transaction, request.ToolIssuanceId, nextStatus, ct);
+                await UpdateToolReturnTransactionAsync(connection, transaction, returnId, inventoryTransactionId, ct);
 
-            await transaction.CommitAsync(ct);
-            return await ReadToolIssuanceResultAsync(connection, request.ToolIssuanceId, ct);
+                await transaction.CommitAsync(ct);
+                return await ReadToolIssuanceResultAsync(connection, request.ToolIssuanceId, ct);
+            }
+            catch (SqlException ex) when (IsDuplicateKeyViolation(ex))
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                var replay = await ReadToolIssuanceReturnBySourceOperationAsync(connection, null, request.SourceOperationId, ct);
+                if (replay is not null && MatchesReturn(replay, request))
+                    return await ReadToolIssuanceResultAsync(connection, replay.ToolIssuanceId, ct);
+
+                throw new InvalidOperationException("SOURCE_OPERATION_CONFLICT: SourceOperationId already used for a different custody return.", ex);
+            }
         }
-        catch
+        catch (Exception)
         {
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
@@ -799,6 +865,16 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
 
         try
         {
+            var existingReversal = await ReadToolIssuanceReversalBySourceOperationAsync(connection, transaction, request.SourceOperationId, ct);
+            if (existingReversal is not null)
+            {
+                if (!MatchesReversal(existingReversal, request))
+                    throw new InvalidOperationException("SOURCE_OPERATION_CONFLICT: SourceOperationId already used for a different operational reversal.");
+
+                await transaction.CommitAsync(ct);
+                return await ReadToolIssuanceResultAsync(connection, existingReversal.ToolIssuanceId, ct);
+            }
+
             var issuance = await ReadToolIssuanceAsync(connection, transaction, request.ToolIssuanceId, ct)
                 ?? throw new InvalidOperationException("The operational issuance record was not found.");
             if (!string.Equals(issuance.IssueType, "Operational", StringComparison.OrdinalIgnoreCase))
@@ -808,37 +884,49 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
 
             var postingAmount = issuance.PostingAmount;
             var now = DateTime.UtcNow;
-            var reversalId = await InsertToolReversalAsync(connection, transaction, request.ToolIssuanceId, postingAmount, request.ReversalReason, request.Notes, request.ReversedBy, request.SourceOperationId, now, ct);
-            var inventoryTransactionId = await InsertToolInventoryTransactionAsync(
-                connection,
-                transaction,
-                issuance.InventoryItemId,
-                "OperationalReversal",
-                issuance.Quantity,
-                $"TOOL-REVERSAL-{reversalId}",
-                $"Operational reversal for issuance {request.ToolIssuanceId}",
-                now,
-                issuance.OfficialUnitCost,
-                null,
-                ct);
+            try
+            {
+                var reversalId = await InsertToolReversalAsync(connection, transaction, request.ToolIssuanceId, postingAmount, request.ReversalReason, request.Notes, request.ReversedBy, request.SourceOperationId, now, ct);
+                var inventoryTransactionId = await InsertToolInventoryTransactionAsync(
+                    connection,
+                    transaction,
+                    issuance.InventoryItemId,
+                    "OperationalReversal",
+                    issuance.Quantity,
+                    $"TOOL-REVERSAL-{reversalId}",
+                    $"Operational reversal for issuance {request.ToolIssuanceId}",
+                    now,
+                    issuance.OfficialUnitCost,
+                    null,
+                    ct);
 
-            await UpdateToolInventoryQuantityAsync(connection, transaction, issuance.InventoryItemId, issuance.Quantity, takeFromStock: false, now, ct);
-            var accountingResult = await AccountingEventPostingGateway.PostToolOperationalReversalAsync(
-                connection,
-                transaction,
-                reversalId,
-                postingAmount,
-                $"TOOL-REVERSAL-{reversalId}",
-                $"Operational tool reversal for {issuance.ItemName}",
-                ct);
+                await UpdateToolInventoryQuantityAsync(connection, transaction, issuance.InventoryItemId, issuance.Quantity, takeFromStock: false, now, ct);
+                var accountingResult = await AccountingEventPostingGateway.PostToolOperationalReversalAsync(
+                    connection,
+                    transaction,
+                    reversalId,
+                    postingAmount,
+                    $"TOOL-REVERSAL-{reversalId}",
+                    $"Operational tool reversal for {issuance.ItemName}",
+                    ct);
 
-            await UpdateToolIssuanceReversalAsync(connection, transaction, reversalId, accountingResult.AccountingEventId, inventoryTransactionId, ct);
-            await UpdateToolIssuanceStatusAsync(connection, transaction, request.ToolIssuanceId, "Reversed", ct);
+                await UpdateToolIssuanceReversalAsync(connection, transaction, reversalId, accountingResult.AccountingEventId, inventoryTransactionId, ct);
+                await UpdateToolIssuanceStatusAsync(connection, transaction, request.ToolIssuanceId, "Reversed", ct);
 
-            await transaction.CommitAsync(ct);
-            return await ReadToolIssuanceResultAsync(connection, request.ToolIssuanceId, ct);
+                await transaction.CommitAsync(ct);
+                return await ReadToolIssuanceResultAsync(connection, request.ToolIssuanceId, ct);
+            }
+            catch (SqlException ex) when (IsDuplicateKeyViolation(ex))
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                var replay = await ReadToolIssuanceReversalBySourceOperationAsync(connection, null, request.SourceOperationId, ct);
+                if (replay is not null && MatchesReversal(replay, request))
+                    return await ReadToolIssuanceResultAsync(connection, replay.ToolIssuanceId, ct);
+
+                throw new InvalidOperationException("SOURCE_OPERATION_CONFLICT: SourceOperationId already used for a different operational reversal.", ex);
+            }
         }
-        catch
+        catch (Exception)
         {
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
@@ -1150,7 +1238,12 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                    ti.AccountingEventId,
                    ti.InventoryTransactionId,
                    ti.SourceOperationId,
-                   ti.CreatedAt
+                   ti.CreatedAt,
+                   ti.OperationalReason,
+                   ti.BeneficiaryName,
+                   ti.DestinationType,
+                   ti.DestinationName,
+                   ti.LoanReason
             FROM dbo.ToolIssuances ti
             INNER JOIN dbo.InventoryItems ii ON ii.InventoryItemID = ti.InventoryItemId
             WHERE ti.ToolIssuanceId = @issuanceId", connection, transaction);
@@ -1173,8 +1266,141 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             reader.NullableInt64("AccountingEventId"),
             reader.NullableInt32("InventoryTransactionId"),
             reader.GetGuid(12),
-            reader.GetDateTime(13));
+            reader.GetDateTime(13),
+            reader.NullableString("OperationalReason"),
+            reader.NullableString("BeneficiaryName"),
+            reader.NullableString("DestinationType"),
+            reader.NullableString("DestinationName"),
+            reader.NullableString("LoanReason"));
     }
+
+    private static async Task<ToolIssuanceRecord?> ReadToolIssuanceBySourceOperationAsync(SqlConnection connection, SqlTransaction? transaction, Guid sourceOperationId, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand(@"
+            SELECT ti.ToolIssuanceId,
+                   ti.InventoryItemId,
+                   ii.ItemCode,
+                   ii.ItemName,
+                   ti.IssueType,
+                   ti.Quantity,
+                   ti.OfficialUnitCost,
+                   ti.OperationalAmount,
+                   ti.PostingAmount,
+                   ti.Status,
+                   ti.AccountingEventId,
+                   ti.InventoryTransactionId,
+                   ti.SourceOperationId,
+                   ti.CreatedAt,
+                   ti.OperationalReason,
+                   ti.BeneficiaryName,
+                   ti.DestinationType,
+                   ti.DestinationName,
+                   ti.LoanReason
+            FROM dbo.ToolIssuances ti
+            INNER JOIN dbo.InventoryItems ii ON ii.InventoryItemID = ti.InventoryItemId
+            WHERE ti.SourceOperationId = @sourceOperationId", connection, transaction);
+        cmd.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return null;
+
+        return new ToolIssuanceRecord(
+            reader.GetInt64(0),
+            reader.GetInt32(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetDecimal(5),
+            reader.GetDecimal(6),
+            reader.GetDecimal(7),
+            reader.GetDecimal(8),
+            reader.GetString(9),
+            reader.NullableInt64("AccountingEventId"),
+            reader.NullableInt32("InventoryTransactionId"),
+            reader.GetGuid(12),
+            reader.GetDateTime(13),
+            reader.NullableString("OperationalReason"),
+            reader.NullableString("BeneficiaryName"),
+            reader.NullableString("DestinationType"),
+            reader.NullableString("DestinationName"),
+            reader.NullableString("LoanReason"));
+    }
+
+    private static async Task<ToolIssuanceReturnRecord?> ReadToolIssuanceReturnBySourceOperationAsync(SqlConnection connection, SqlTransaction? transaction, Guid sourceOperationId, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand(@"
+            SELECT tr.ToolIssuanceReturnId,
+                   tr.ToolIssuanceId,
+                   tr.ReturnedQuantity,
+                   tr.ReturnNotes,
+                   tr.SourceOperationId
+            FROM dbo.ToolIssuanceReturns tr
+            WHERE tr.SourceOperationId = @sourceOperationId", connection, transaction);
+        cmd.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return null;
+
+        return new ToolIssuanceReturnRecord(
+            reader.GetInt64(0),
+            reader.GetInt64(1),
+            reader.GetDecimal(2),
+            reader.NullableString("ReturnNotes"),
+            reader.GetGuid(4));
+    }
+
+    private static async Task<ToolIssuanceReversalRecord?> ReadToolIssuanceReversalBySourceOperationAsync(SqlConnection connection, SqlTransaction? transaction, Guid sourceOperationId, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand(@"
+            SELECT tr.ToolIssuanceReversalId,
+                   tr.ToolIssuanceId,
+                   tr.PostingAmount,
+                   tr.ReversalReason,
+                   tr.Notes,
+                   tr.SourceOperationId
+            FROM dbo.ToolIssuanceReversals tr
+            WHERE tr.SourceOperationId = @sourceOperationId", connection, transaction);
+        cmd.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return null;
+
+        return new ToolIssuanceReversalRecord(
+            reader.GetInt64(0),
+            reader.GetInt64(1),
+            reader.GetDecimal(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetGuid(5));
+    }
+
+    private static bool MatchesOperationalIssue(ToolIssuanceRecord existing, CreateToolOperationalIssueDto request)
+        => existing.IssueType == "Operational"
+           && existing.InventoryItemId == request.InventoryItemId
+           && existing.Quantity == request.Quantity
+           && string.Equals(existing.OperationalReason, request.OperationalReason, StringComparison.Ordinal);
+
+    private static bool MatchesCustodyIssue(ToolIssuanceRecord existing, CreateToolCustodyIssueDto request)
+        => existing.IssueType == "Custody"
+           && existing.InventoryItemId == request.InventoryItemId
+           && existing.Quantity == request.Quantity
+           && string.Equals(existing.BeneficiaryName, request.BeneficiaryName, StringComparison.Ordinal)
+           && string.Equals(existing.DestinationType, request.DestinationType, StringComparison.Ordinal)
+           && string.Equals(existing.DestinationName, request.DestinationName, StringComparison.Ordinal)
+           && string.Equals(existing.LoanReason, request.LoanReason, StringComparison.Ordinal);
+
+    private static bool MatchesReturn(ToolIssuanceReturnRecord existing, ReturnToolCustodyDto request)
+        => existing.ToolIssuanceId == request.ToolIssuanceId
+           && existing.ReturnedQuantity == request.ReturnedQuantity;
+
+    private static bool MatchesReversal(ToolIssuanceReversalRecord existing, ReverseToolOperationalIssueDto request)
+        => existing.ToolIssuanceId == request.ToolIssuanceId
+           && existing.PostingAmount > 0m
+           && string.Equals(existing.ReversalReason, request.ReversalReason, StringComparison.Ordinal)
+           && string.Equals(existing.Notes, request.Notes, StringComparison.Ordinal);
+
+    private static bool IsDuplicateKeyViolation(SqlException ex)
+        => ex.Number == 2627 || ex.Number == 2601;
 
     private static async Task<decimal> GetToolReturnTotalAsync(SqlConnection connection, SqlTransaction transaction, long issuanceId, CancellationToken ct)
     {
@@ -1184,7 +1410,9 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         return result is decimal value ? value : Convert.ToDecimal(result ?? 0m);
     }
 
-    private sealed record ToolIssuanceRecord(long ToolIssuanceId, int InventoryItemId, string ItemCode, string ItemName, string IssueType, decimal Quantity, decimal OfficialUnitCost, decimal OperationalAmount, decimal PostingAmount, string Status, long? AccountingEventId, int? InventoryTransactionId, Guid SourceOperationId, DateTime CreatedAt);
+    private sealed record ToolIssuanceRecord(long ToolIssuanceId, int InventoryItemId, string ItemCode, string ItemName, string IssueType, decimal Quantity, decimal OfficialUnitCost, decimal OperationalAmount, decimal PostingAmount, string Status, long? AccountingEventId, int? InventoryTransactionId, Guid SourceOperationId, DateTime CreatedAt, string? OperationalReason, string? BeneficiaryName, string? DestinationType, string? DestinationName, string? LoanReason);
+    private sealed record ToolIssuanceReturnRecord(long ToolIssuanceReturnId, long ToolIssuanceId, decimal ReturnedQuantity, string? ReturnNotes, Guid SourceOperationId);
+    private sealed record ToolIssuanceReversalRecord(long ToolIssuanceReversalId, long ToolIssuanceId, decimal PostingAmount, string ReversalReason, string Notes, Guid SourceOperationId);
 
     private static async Task<string> GetNextToolCodeAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken ct)
     {

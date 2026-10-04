@@ -18,7 +18,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         await connection.OpenAsync(ct);
 
         await using var command = new SqlCommand(
-            "SELECT u.UserID, u.Username, u.UserPassword, u.PasswordHash, u.FullName, u.UserRole, u.IsActive, u.LastLoginUtc, ma.AccountType, ma.CustomerId, ma.EmployeeId, ma.SupplierId FROM dbo.Users u LEFT JOIN dbo.MobileAccounts ma ON ma.UserId = u.UserID AND ma.IsActive = 1 WHERE u.Username = @username",
+            "SELECT u.UserID, u.Username, u.UserPassword, u.PasswordHash, u.FullName, u.UserRole, u.IsActive, u.LastLoginUtc FROM dbo.Users u WHERE u.Username = @username",
             connection);
         command.Parameters.AddWithValue("@username", login.Username.Trim());
 
@@ -37,10 +37,6 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         var fullName = reader.IsDBNull(4) ? string.Empty : reader.GetString(4);
         var role = reader.IsDBNull(5) ? null : reader.GetString(5);
         DateTime? lastLoginUtc = reader.IsDBNull(7) ? null : reader.GetDateTime(7);
-        var accountType = reader.IsDBNull(8) ? null : reader.GetString(8);
-        var customerId = reader.IsDBNull(9) ? null : (int?)reader.GetInt32(9);
-        var employeeId = reader.IsDBNull(10) ? null : (int?)reader.GetInt32(10);
-        var supplierId = reader.IsDBNull(11) ? null : (int?)reader.GetInt32(11);
 
         if (!PasswordsMatch(login.Password, passwordHash, legacyPassword))
             return null;
@@ -62,10 +58,10 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             role,
             true,
             lastLoginUtc,
-            accountType,
-            customerId,
-            employeeId,
-            supplierId);
+            null,
+            null,
+            null,
+            null);
         return await CreateSessionAsync(connection, currentUser, login.RememberMe, ct);
     }
 
@@ -328,24 +324,6 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         if (currentUser is null)
             return null;
 
-        await using var connection = connections.Create();
-        await connection.OpenAsync(ct);
-
-        await using var command = new SqlCommand(
-            "SELECT AccountType, CustomerId, EmployeeId, SupplierId FROM dbo.MobileAccounts WHERE UserId = @uid AND IsActive = 1",
-            connection);
-        command.Parameters.AddWithValue("@uid", currentUser.UserId);
-
-        await using var reader = await command.ExecuteReaderAsync(ct);
-        if (await reader.ReadAsync(ct))
-        {
-            var accountType = reader.GetString(0);
-            var customerId = reader.IsDBNull(1) ? null : (int?)reader.GetInt32(1);
-            var employeeId = reader.IsDBNull(2) ? null : (int?)reader.GetInt32(2);
-            var supplierId = reader.IsDBNull(3) ? null : (int?)reader.GetInt32(3);
-            return new AccountTypeDto(accountType, customerId, employeeId, supplierId);
-        }
-
         return new AccountTypeDto(string.Empty, null, null, null);
     }
 
@@ -358,18 +336,13 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         await connection.OpenAsync(ct);
 
         await using var command = new SqlCommand(
-            "SELECT u.UserID, u.Username, u.FullName, u.UserRole, u.IsActive, u.LastLoginUtc, ma.AccountType, ma.CustomerId, ma.EmployeeId, ma.SupplierId FROM dbo.UserSessions s JOIN dbo.Users u ON u.UserID = s.UserId LEFT JOIN dbo.MobileAccounts ma ON ma.UserId = u.UserID AND ma.IsActive = 1 WHERE s.TokenHash = @hash AND s.RevokedAtUtc IS NULL AND s.ExpiresAtUtc > SYSUTCDATETIME() AND u.IsActive = 1",
+            "SELECT u.UserID, u.Username, u.FullName, u.UserRole, u.IsActive, u.LastLoginUtc FROM dbo.UserSessions s JOIN dbo.Users u ON u.UserID = s.UserId WHERE s.TokenHash = @hash AND s.RevokedAtUtc IS NULL AND s.ExpiresAtUtc > SYSUTCDATETIME() AND u.IsActive = 1",
             connection);
         command.Parameters.Add("@hash", System.Data.SqlDbType.VarBinary, 32).Value = TokenHash(token);
 
         await using var reader = await command.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct))
             return null;
-
-        var accountType = reader.IsDBNull(6) ? null : reader.GetString(6);
-        var customerId = reader.IsDBNull(7) ? null : (int?)reader.GetInt32(7);
-        var employeeId = reader.IsDBNull(8) ? null : (int?)reader.GetInt32(8);
-        var supplierId = reader.IsDBNull(9) ? null : (int?)reader.GetInt32(9);
 
         return new CurrentUserDto(
             reader.GetInt32(0),
@@ -378,10 +351,10 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             reader.IsDBNull(3) ? null : reader.GetString(3),
             true,
             reader.IsDBNull(5) ? null : reader.GetDateTime(5),
-            accountType,
-            customerId,
-            employeeId,
-            supplierId);
+            null,
+            null,
+            null,
+            null);
     }
 
     private async Task<bool> VerifyCurrentPasswordAsync(int userId, string password, CancellationToken ct)

@@ -722,7 +722,11 @@ BEGIN TRY
         ELSE IF @AccountingEventType = 13
             UPDATE dbo.ImportedReadyMadeSaleCostPostings SET AccountingEventId = @accountingEventId WHERE ImportedReadyMadeSaleCostPostingId = @ImportedReadyMadeSaleCostPostingId;
         ELSE IF @AccountingEventType = 14
-            UPDATE dbo.ToolIssuances SET AccountingEventId = @accountingEventId WHERE ToolIssuanceId = @ToolIssuanceId;
+            UPDATE dbo.ToolIssuances
+            SET AccountingEventId = @accountingEventId,
+                Status = N'Posted'
+            WHERE ToolIssuanceId = @ToolIssuanceId
+              AND Status = N'PendingPosting';
         ELSE IF @AccountingEventType = 15
             UPDATE dbo.ToolIssuanceReversals SET AccountingEventId = @accountingEventId WHERE ToolIssuanceReversalId = @ToolIssuanceReversalId;
 
