@@ -69,7 +69,7 @@ BEGIN TRY
             AND PostingAmount > 0
         ),
         
-        CONSTRAINT CK_ToolIssuances_Status CHECK (Status IN (N'Posted', N'Reversed', N'Outstanding', N'PartiallyReturned', N'Returned')),
+        CONSTRAINT CK_ToolIssuances_Status CHECK (Status IN (N'PendingPosting', N'Posted', N'Reversed', N'Outstanding', N'PartiallyReturned', N'Returned')),
         CONSTRAINT CK_ToolIssuances_OperationalFields CHECK (
             (IssueType = N'Operational' AND OperationalReason IS NOT NULL AND BeneficiaryName IS NULL AND DestinationType IS NULL AND DestinationName IS NULL AND LoanReason IS NULL)
             OR
@@ -78,10 +78,12 @@ BEGIN TRY
         CONSTRAINT CK_ToolIssuances_CustodyStatus CHECK (
             (IssueType = N'Custody' AND Status IN (N'Outstanding', N'PartiallyReturned', N'Returned'))
             OR
-            (IssueType = N'Operational' AND Status IN (N'Posted', N'Reversed'))
+            (IssueType = N'Operational' AND Status IN (N'PendingPosting', N'Posted', N'Reversed'))
         ),
         CONSTRAINT CK_ToolIssuances_AccountingEvent CHECK (
-            (IssueType = N'Operational' AND AccountingEventId IS NOT NULL)
+            (IssueType = N'Operational' AND Status = N'PendingPosting' AND AccountingEventId IS NULL)
+            OR
+            (IssueType = N'Operational' AND Status IN (N'Posted', N'Reversed') AND AccountingEventId IS NOT NULL)
             OR
             (IssueType = N'Custody' AND AccountingEventId IS NULL)
         ),
