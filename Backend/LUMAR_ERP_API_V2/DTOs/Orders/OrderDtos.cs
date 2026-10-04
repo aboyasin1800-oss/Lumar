@@ -59,7 +59,30 @@ public sealed class UpdateOrderDto : CreateOrderDto;
 public sealed record OrderItemDto(int OrderItemId, int OrderId, string PieceType, int Quantity, string? FabricCode, string? FabricType, string? FabricColor, string? Request1, string? Request2, string? SpecialRequest, string? Notes1, string? Notes2, string? MeasurementSnapshot, string? TrackingCode, string? PieceStatus, DateTime CreatedDate, int? ProductTypeId = null, int? ImportedReadyMadeProductId = null);
 public sealed record OrderFabricDto(int OrderItemFabricId, int OrderItemId, int? InventoryItemId, string? FabricCode, string? FabricType, string? FabricColor, decimal Quantity, string Unit, decimal UnitCost, decimal TotalCost, decimal ConsumedQuantity, decimal? YardPrice, DateTime CreatedDate);
 public sealed record OrderPaymentDto(int PaymentId, int OrderId, int? InvoiceId, DateTime PaymentDate, decimal Amount, string? PaymentMethod, string? ReferenceNumber, string? Notes, DateTime CreatedDate, string PaymentKind);
-public sealed record OrderTrackingDto(int TrackingCode, int? InvoiceId, int? CustomerId, string? ItemType, string? Status, string? CuttingEmployee, string? SewingEmployee, string? IroningEmployee, DateTime? CreatedDate, DateTime? CuttingDate, DateTime? SewingDate, DateTime? IroningDate, bool? IsCompleted, bool? IsDelivered, DateTime? DeliveryDate, bool? IsOnHold, string? HoldReason);
+public sealed record OrderTrackingDto(
+    string? TrackingCode,
+    int? InvoiceId,
+    int? CustomerId,
+    string? ItemType,
+    string? Status,
+    string? CuttingEmployee,
+    string? SewingEmployee,
+    string? IroningEmployee,
+    DateTime? CreatedDate,
+    DateTime? CuttingDate,
+    DateTime? SewingDate,
+    DateTime? IroningDate,
+    bool? IsCompleted,
+    bool? IsDelivered,
+    DateTime? DeliveryDate,
+    bool? IsOnHold,
+    string? HoldReason,
+    string? CurrentStage = null,
+    string? NextStage = null,
+    int? TotalPieces = null,
+    int? CompletedPieces = null,
+    decimal? ProgressPercent = null,
+    bool? ReadyForDelivery = null);
 public sealed record OrderPieceDto(int PieceId, int OrderItemId, string TrackingCode, string PieceStatus, int PieceNumber, DateTime CreatedDate);
 public sealed record OrderDeliveryDto(int OrderId, string OrderStatus, DateTime? DeliveryDate);
 public sealed class CustomerPaymentRequestDto

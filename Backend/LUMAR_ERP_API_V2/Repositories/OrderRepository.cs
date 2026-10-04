@@ -196,6 +196,154 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
 
     public Task<IReadOnlyList<OrderPaymentDto>> GetPaymentsAsync(int orderId, CancellationToken cancellationToken) => QueryAsync("SELECT PaymentID, OrderID, InvoiceID, PaymentDate, Amount, PaymentMethod, ReferenceNo, Notes, CreatedDate, PaymentKind FROM dbo.Payments WHERE OrderID = @orderId ORDER BY PaymentDate DESC, PaymentID DESC", reader => new OrderPaymentDto(reader.GetInt32(0), reader.GetInt32(1), reader.NullableInt32("InvoiceID"), reader.GetDateTime(3), reader.GetDecimal(4), reader.NullableString("PaymentMethod"), reader.NullableString("ReferenceNo"), reader.NullableString("Notes"), reader.GetDateTime(8), reader.GetString(9)), orderId, cancellationToken);
 
+    public async Task<IReadOnlyList<OrderTrackingDto>?> GetTrackingAsync(int orderId, CancellationToken cancellationToken)
+    {
+        var orderExists = await QueryAsync(
+            "SELECT TOP(1) o.OrderID, o.OrderNumber, o.CustomerID, c.CustomerName FROM dbo.Orders o LEFT JOIN dbo.Customers c ON c.CustomerID = o.CustomerID WHERE o.OrderID = @orderId",
+            reader => new
+            {
+                OrderId = reader.GetInt32(0),
+                OrderNumber = reader.GetString(1),
+                CustomerId = reader.NullableInt32("CustomerID"),
+                CustomerName = reader.NullableString("CustomerName")
+            },
+            orderId,
+            cancellationToken);
+
+        if (orderExists.Count == 0)
+            return null;
+
+        var order = orderExists[0];
+        var pieces = await QueryAsync(
+            "SELECT p.PieceID, p.OrderItemID, oi.PieceType, p.TrackingCode, p.PieceStatus, p.CreatedDate FROM dbo.Pieces p INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = p.OrderItemID WHERE oi.OrderID = @orderId ORDER BY p.CreatedDate, p.PieceID",
+            reader => new PieceTrackingSummary(
+                reader.GetInt32(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetDateTime(5)),
+            orderId,
+            cancellationToken);
+
+        if (pieces.Count == 0)
+            return Array.Empty<OrderTrackingDto>();
+
+        var result = new List<OrderTrackingDto>(pieces.Count);
+        foreach (var piece in pieces)
+        {
+            var events = await QueryAsync(
+                "SELECT TrackingEventID, PieceID, OrderItemID, OrderID, TrackingCode, Stage, Status, EventTime, EmployeeCode, Notes, IsReverted, RevertedAt FROM dbo.TrackingEvents WHERE PieceID = @pieceId ORDER BY EventTime ASC, TrackingEventID ASC",
+                reader => new OrderTrackingEventPoint(
+                    reader.GetInt32(0),
+                    reader.NullableInt32("PieceID"),
+                    reader.NullableInt32("OrderItemID"),
+                    reader.NullableInt32("OrderID"),
+                    reader.NullableString("TrackingCode"),
+                    reader.NullableString("Stage") ?? string.Empty,
+                    reader.NullableString("Status") ?? string.Empty,
+                    reader.GetDateTime(7),
+                    reader.NullableString("EmployeeCode"),
+                    reader.NullableString("Notes"),
+                    reader.GetBoolean(10),
+                    reader.NullableDateTime("RevertedAt")),
+                piece.PieceId,
+                cancellationToken);
+
+            result.Add(BuildTrackingDto(order.OrderId, order.OrderNumber, order.CustomerId ?? 0, order.CustomerName, piece, events));
+        }
+
+        var totalPieces = result.Count;
+        var completedPieces = result.Count(dto => dto.ReadyForDelivery == true || dto.IsDelivered == true || dto.IsCompleted == true);
+        var progressPercent = totalPieces == 0 ? 0m : Math.Round((completedPieces * 100m) / totalPieces, 2);
+        for (var i = 0; i < result.Count; i++)
+        {
+            var dto = result[i];
+            result[i] = dto with
+            {
+                TotalPieces = totalPieces,
+                CompletedPieces = completedPieces,
+                ProgressPercent = progressPercent,
+                CurrentStage = string.IsNullOrWhiteSpace(dto.CurrentStage) ? dto.Status : dto.CurrentStage,
+                NextStage = string.IsNullOrWhiteSpace(dto.NextStage) ? null : dto.NextStage
+            };
+        }
+
+        return result;
+    }
+
+    public static OrderTrackingDto BuildTrackingDto(int orderId, string orderNumber, int customerId, string? customerName, PieceTrackingSummary piece, IReadOnlyList<OrderTrackingEventPoint> events)
+    {
+        var orderedEvents = events
+            .OrderBy(e => e.EventTime)
+            .ThenBy(e => e.TrackingEventId)
+            .ToList();
+
+        var cuttingEvent = orderedEvents.FirstOrDefault(e => string.Equals(e.Stage, "Cutting", StringComparison.OrdinalIgnoreCase));
+        var sewingEvent = orderedEvents.FirstOrDefault(e => string.Equals(e.Stage, "Sewing", StringComparison.OrdinalIgnoreCase));
+        var ironingEvent = orderedEvents.FirstOrDefault(e => string.Equals(e.Stage, "Ironing", StringComparison.OrdinalIgnoreCase));
+        var latestEvent = orderedEvents.LastOrDefault();
+        var currentStage = latestEvent is not null && !string.IsNullOrWhiteSpace(latestEvent.Stage)
+            ? latestEvent.Stage
+            : piece.PieceStatus;
+        var nextStage = ProductionTrackingEngine.GetNextStage(piece.PieceType, currentStage);
+        var isCompleted = string.Equals(piece.PieceStatus, "Delivered", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(piece.PieceStatus, "ReadyForDelivery", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(piece.PieceStatus, "Completed", StringComparison.OrdinalIgnoreCase)
+            || (latestEvent is not null && (string.Equals(latestEvent.Stage, "Assembly", StringComparison.OrdinalIgnoreCase) || string.Equals(latestEvent.Stage, "Quality", StringComparison.OrdinalIgnoreCase)) && string.Equals(latestEvent.Status, "Completed", StringComparison.OrdinalIgnoreCase));
+        var isDelivered = string.Equals(piece.PieceStatus, "Delivered", StringComparison.OrdinalIgnoreCase)
+            || (latestEvent is not null && string.Equals(latestEvent.Stage, "Delivery", StringComparison.OrdinalIgnoreCase) && string.Equals(latestEvent.Status, "Completed", StringComparison.OrdinalIgnoreCase));
+        var readyForDelivery = isDelivered || string.Equals(piece.PieceStatus, "ReadyForDelivery", StringComparison.OrdinalIgnoreCase)
+            || (latestEvent is not null && string.Equals(latestEvent.Stage, "Quality", StringComparison.OrdinalIgnoreCase) && string.Equals(latestEvent.Status, "Completed", StringComparison.OrdinalIgnoreCase));
+        var holdReason = orderedEvents
+            .Where(e => string.Equals(e.Status, "OnHold", StringComparison.OrdinalIgnoreCase) || string.Equals(e.Stage, "OnHold", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(e => e.EventTime)
+            .ThenByDescending(e => e.TrackingEventId)
+            .Select(e => e.Notes)
+            .FirstOrDefault();
+
+        return new OrderTrackingDto(
+            piece.TrackingCode,
+            null,
+            customerId,
+            piece.PieceType,
+            piece.PieceStatus,
+            cuttingEvent?.EmployeeCode,
+            sewingEvent?.EmployeeCode,
+            ironingEvent?.EmployeeCode,
+            piece.CreatedDate,
+            cuttingEvent?.EventTime,
+            sewingEvent?.EventTime,
+            ironingEvent?.EventTime,
+            isCompleted,
+            isDelivered,
+            isDelivered ? latestEvent?.EventTime : null,
+            string.Equals(piece.PieceStatus, "OnHold", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(holdReason),
+            holdReason,
+            currentStage,
+            nextStage,
+            null,
+            null,
+            null,
+            readyForDelivery);
+    }
+
+    public sealed record PieceTrackingSummary(int PieceId, int OrderItemId, string PieceType, string TrackingCode, string PieceStatus, DateTime CreatedDate);
+
+    public sealed record OrderTrackingEventPoint(
+        int TrackingEventId,
+        int? PieceId,
+        int? OrderItemId,
+        int? OrderId,
+        string? TrackingCode,
+        string Stage,
+        string Status,
+        DateTime EventTime,
+        string? EmployeeCode,
+        string? Notes,
+        bool IsReverted,
+        DateTime? RevertedAt);
+
     public async Task<OrderDeliveryDto?> GetDeliveryAsync(int orderId, CancellationToken cancellationToken)
     {
         var results = await QueryAsync("SELECT OrderID, OrderStatus, DeliveryDate FROM dbo.Orders WHERE OrderID = @orderId", reader => new OrderDeliveryDto(reader.GetInt32(0), reader.GetString(1), reader.NullableDateTime("DeliveryDate")), orderId, cancellationToken);

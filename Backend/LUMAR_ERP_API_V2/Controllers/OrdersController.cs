@@ -89,8 +89,14 @@ public sealed class OrdersController(IOrderService service) : ControllerBase
     }
 
     [HttpGet("{id:int}/tracking")]
-    [ProducesResponseType(StatusCodes.Status501NotImplemented)]
-    public ActionResult<IReadOnlyList<OrderTrackingDto>> GetTracking(int id) => StatusCode(StatusCodes.Status501NotImplemented, "Order tracking is unavailable until the documented TrackingCode type mismatch and missing direct relationship are resolved.");
+    [ProducesResponseType<IReadOnlyList<OrderTrackingDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<OrderTrackingDto>>> GetTracking(int id, CancellationToken cancellationToken)
+    {
+        if (id <= 0) return BadRequest("Order id must be positive.");
+        var tracking = await service.GetTrackingAsync(id, cancellationToken);
+        return tracking is null ? NotFound() : Ok(tracking);
+    }
 
     [HttpGet("{id:int}/delivery")]
     [ProducesResponseType<OrderDeliveryDto>(StatusCodes.Status200OK)]

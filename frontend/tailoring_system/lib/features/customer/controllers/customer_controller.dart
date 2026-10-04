@@ -1,0 +1,3 @@
+class CustomerController {
+  const CustomerController();
+}

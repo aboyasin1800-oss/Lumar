@@ -1,0 +1,3 @@
+class SupplierController {
+  const SupplierController();
+}
