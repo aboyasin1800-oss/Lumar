@@ -1,5 +1,8 @@
 using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.DTOs.Auth;
+using LUMAR_ERP_API_V2.DTOs.Purchasing;
+using LUMAR_ERP_API_V2.DTOs.Suppliers;
+using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
 using Xunit;
 
@@ -97,8 +100,80 @@ public sealed class SupplierMobileIdentityTests
         Assert.True(resolver.CanAccessSupplier(77, 77));
     }
 
-    private sealed class FixedAuthenticatedUserContext(CurrentUserDto user) : IAuthenticatedUserContext
+    [Fact]
+    public async Task Supplier_ownership_resolver_rejects_customer_employee_and_anonymous_accounts()
     {
-        public Task<CurrentUserDto?> GetCurrentUserAsync(CancellationToken cancellationToken = default) => Task.FromResult<CurrentUserDto?>(user);
+        var customerResolver = new SupplierOwnershipResolver(new FixedAuthenticatedUserContext(new CurrentUserDto(1, "cust", "Customer User", "Customer", true, null, "Customer", 55, null, null)));
+        var employeeResolver = new SupplierOwnershipResolver(new FixedAuthenticatedUserContext(new CurrentUserDto(2, "emp", "Employee User", "Employee", true, null, "Employee", null, 33, null)));
+        var anonymousResolver = new SupplierOwnershipResolver(new FixedAuthenticatedUserContext(null));
+
+        Assert.Null(await customerResolver.ResolveCurrentSupplierAsync());
+        Assert.Null(await employeeResolver.ResolveCurrentSupplierAsync());
+        Assert.Null(await anonymousResolver.ResolveCurrentSupplierAsync());
+    }
+
+    [Fact]
+    public async Task Supplier_read_service_filters_invoice_payment_and_goods_receipt_by_authenticated_supplier_only()
+    {
+        var service = new SupplierService(new StubSupplierRepository(), new StubPurchasingRepository());
+
+        var invoice = await service.GetInvoiceAsync(77, 100, default);
+        var payment = await service.GetPaymentAsync(77, 200, default);
+        var receipt = await service.GetGoodsReceiptAsync(77, 300, default);
+
+        Assert.NotNull(invoice);
+        Assert.Equal(77, invoice!.SupplierId);
+        Assert.NotNull(payment);
+        Assert.Equal(77, payment!.SupplierId);
+        Assert.NotNull(receipt);
+        Assert.Equal(77, receipt!.SupplierId);
+
+        Assert.Null(await service.GetInvoiceAsync(77, 999, default));
+        Assert.Null(await service.GetPaymentAsync(77, 999, default));
+        Assert.Null(await service.GetGoodsReceiptAsync(77, 999, default));
+    }
+
+    private sealed class FixedAuthenticatedUserContext(CurrentUserDto? user) : IAuthenticatedUserContext
+    {
+        public Task<CurrentUserDto?> GetCurrentUserAsync(CancellationToken cancellationToken = default) => Task.FromResult(user);
+    }
+
+    private sealed class StubSupplierRepository : ISupplierRepository
+    {
+        public Task<SupplierDetailsDto> CreateAsync(CreateSupplierRequestDto supplier, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SupplierListDto>> GetAllAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<SupplierListDto>>(Array.Empty<SupplierListDto>());
+        public Task<SupplierDetailsDto?> GetByIdAsync(int id, CancellationToken ct) => Task.FromResult<SupplierDetailsDto?>(null);
+        public Task<SupplierHomeSummaryDto?> GetHomeSummaryAsync(int supplierId, CancellationToken ct) => Task.FromResult<SupplierHomeSummaryDto?>(null);
+        public Task<SupplierPaymentResponseStatusDto?> GetPaymentResponseStatusAsync(int supplierId, int paymentId, CancellationToken ct) => Task.FromResult<SupplierPaymentResponseStatusDto?>(null);
+        public Task<IReadOnlyList<SupplierTransactionDto>> GetTransactionsAsync(int id, CancellationToken ct) => Task.FromResult<IReadOnlyList<SupplierTransactionDto>>(Array.Empty<SupplierTransactionDto>());
+        public Task<IReadOnlyList<SupplierLedgerEntryDto>> GetLedgerAsync(int id, CancellationToken ct) => Task.FromResult<IReadOnlyList<SupplierLedgerEntryDto>>(Array.Empty<SupplierLedgerEntryDto>());
+        public Task<IReadOnlyList<SupplierInvoiceDto>> GetInvoicesAsync(int id, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<SupplierInvoiceDto>>(
+                id == 77
+                    ? new[] { new SupplierInvoiceDto(100, 77, 10, "INV-100", DateTime.UtcNow, DateTime.UtcNow.AddDays(7), 100m, 0m, "Open", "ok", DateTime.UtcNow) }
+                    : Array.Empty<SupplierInvoiceDto>());
+        public Task<IReadOnlyList<SupplierPaymentDto>> GetPaymentsAsync(int id, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<SupplierPaymentDto>>(
+                id == 77
+                    ? new[] { new SupplierPaymentDto(200, 77, "PAY-200", DateTime.UtcNow, 150m, "Bank", "REF-200", "notes", DateTime.UtcNow, null) }
+                    : Array.Empty<SupplierPaymentDto>());
+        public Task<IReadOnlyList<SupplierPaymentAllocationDto>> GetAllocationsAsync(int id, CancellationToken ct) => Task.FromResult<IReadOnlyList<SupplierPaymentAllocationDto>>(Array.Empty<SupplierPaymentAllocationDto>());
+    }
+
+    private sealed class StubPurchasingRepository : IPurchasingRepository
+    {
+        public Task<IReadOnlyList<PurchaseOrderListDto>> GetOrdersAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<PurchaseOrderListDto>>(Array.Empty<PurchaseOrderListDto>());
+        public Task<PurchaseOrderDetailsDto?> GetOrderAsync(int id, CancellationToken ct) => Task.FromResult<PurchaseOrderDetailsDto?>(null);
+        public Task<IReadOnlyList<PurchaseOrderItemDto>> GetOrderItemsAsync(int id, CancellationToken ct) => Task.FromResult<IReadOnlyList<PurchaseOrderItemDto>>(Array.Empty<PurchaseOrderItemDto>());
+        public Task<IReadOnlyList<GoodsReceiptDto>> GetOrderReceiptsAsync(int id, CancellationToken ct) => Task.FromResult<IReadOnlyList<GoodsReceiptDto>>(Array.Empty<GoodsReceiptDto>());
+        public Task<IReadOnlyList<GoodsReceiptDto>> GetReceiptsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<GoodsReceiptDto>>(Array.Empty<GoodsReceiptDto>());
+        public Task<GoodsReceiptDto?> GetReceiptAsync(int id, CancellationToken ct)
+            => Task.FromResult<GoodsReceiptDto?>(id == 300 ? new GoodsReceiptDto(300, 77, 10, "GR-300", DateTime.UtcNow, "ok", DateTime.UtcNow) : null);
+        public Task<IReadOnlyList<GoodsReceiptItemDto>> GetReceiptItemsAsync(int id, CancellationToken ct) => Task.FromResult<IReadOnlyList<GoodsReceiptItemDto>>(Array.Empty<GoodsReceiptItemDto>());
+        public Task<IReadOnlyList<PurchasingInvoiceDto>> GetInvoicesAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<PurchasingInvoiceDto>>(Array.Empty<PurchasingInvoiceDto>());
+        public Task<PurchasingInvoiceDto?> GetInvoiceAsync(int id, CancellationToken ct) => Task.FromResult<PurchasingInvoiceDto?>(null);
+        public Task<IReadOnlyList<PurchasingPaymentDto>> GetPaymentsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<PurchasingPaymentDto>>(Array.Empty<PurchasingPaymentDto>());
+        public Task<PurchasingPaymentDto?> GetPaymentAsync(int id, CancellationToken ct) => Task.FromResult<PurchasingPaymentDto?>(null);
+        public Task<IReadOnlyList<PurchasingPaymentAllocationDto>> GetAllocationsAsync(int id, CancellationToken ct) => Task.FromResult<IReadOnlyList<PurchasingPaymentAllocationDto>>(Array.Empty<PurchasingPaymentAllocationDto>());
     }
 }
