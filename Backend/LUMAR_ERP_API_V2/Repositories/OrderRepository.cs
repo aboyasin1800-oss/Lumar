@@ -232,24 +232,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
         var result = new List<OrderTrackingDto>(pieces.Count);
         foreach (var piece in pieces)
         {
-            var events = await QueryAsync(
-                "SELECT TrackingEventID, PieceID, OrderItemID, OrderID, TrackingCode, Stage, Status, EventTime, EmployeeCode, Notes, IsReverted, RevertedAt FROM dbo.TrackingEvents WHERE PieceID = @pieceId ORDER BY EventTime ASC, TrackingEventID ASC",
-                reader => new OrderTrackingEventPoint(
-                    reader.GetInt32(0),
-                    reader.NullableInt32("PieceID"),
-                    reader.NullableInt32("OrderItemID"),
-                    reader.NullableInt32("OrderID"),
-                    reader.NullableString("TrackingCode"),
-                    reader.NullableString("Stage") ?? string.Empty,
-                    reader.NullableString("Status") ?? string.Empty,
-                    reader.GetDateTime(7),
-                    reader.NullableString("EmployeeCode"),
-                    reader.NullableString("Notes"),
-                    reader.GetBoolean(10),
-                    reader.NullableDateTime("RevertedAt")),
-                piece.PieceId,
-                cancellationToken);
-
+            var events = await QueryTrackingEventsAsync(piece.PieceId, cancellationToken);
             result.Add(BuildTrackingDto(order.OrderId, order.OrderNumber, order.CustomerId ?? 0, order.CustomerName, piece, events));
         }
 
@@ -1549,6 +1532,35 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var results = new List<T>();
         while (await reader.ReadAsync(cancellationToken)) results.Add(map(reader));
+        return results;
+    }
+
+    private async Task<IReadOnlyList<OrderTrackingEventPoint>> QueryTrackingEventsAsync(int pieceId, CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT TrackingEventID, PieceID, OrderItemID, OrderID, TrackingCode, Stage, Status, EventTime, EmployeeCode, Notes, IsReverted, RevertedAt FROM dbo.TrackingEvents WHERE PieceID = @pieceId ORDER BY EventTime ASC, TrackingEventID ASC";
+        await using var connection = connections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var results = new List<OrderTrackingEventPoint>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(new OrderTrackingEventPoint(
+                reader.GetInt32(0),
+                reader.NullableInt32("PieceID"),
+                reader.NullableInt32("OrderItemID"),
+                reader.NullableInt32("OrderID"),
+                reader.NullableString("TrackingCode"),
+                reader.NullableString("Stage") ?? string.Empty,
+                reader.NullableString("Status") ?? string.Empty,
+                reader.GetDateTime(7),
+                reader.NullableString("EmployeeCode"),
+                reader.NullableString("Notes"),
+                reader.GetBoolean(10),
+                reader.NullableDateTime("RevertedAt")));
+        }
+
         return results;
     }
 }

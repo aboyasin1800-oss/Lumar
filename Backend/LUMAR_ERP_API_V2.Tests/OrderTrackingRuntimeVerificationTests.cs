@@ -178,14 +178,14 @@ public sealed class OrderTrackingRuntimeVerificationTests : IDisposable
             {
                 Assert.NotNull(currentStage);
                 if (!string.IsNullOrWhiteSpace(nextStage))
-                    Assert.NotEqual(currentStage, nextStage, $"Current stage and next stage should differ for order {orderId}.");
+                    Assert.False(string.Equals(currentStage, nextStage, StringComparison.OrdinalIgnoreCase), $"Current stage and next stage should differ for order {orderId}.");
             }
         }
 
         if (eventTimes.Count > 1)
         {
             var ordered = eventTimes.OrderBy(value => value).ToList();
-            Assert.Equal(ordered, eventTimes, $"Tracking event dates for order {orderId} are not ordered chronologically.");
+            Assert.True(ordered.SequenceEqual(eventTimes), $"Tracking event dates for order {orderId} are not ordered chronologically.");
         }
     }
 
