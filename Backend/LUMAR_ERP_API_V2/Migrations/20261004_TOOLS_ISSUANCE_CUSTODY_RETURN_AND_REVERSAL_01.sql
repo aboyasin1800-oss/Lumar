@@ -144,7 +144,10 @@ BEGIN TRY
         ALTER TABLE dbo.AccountingEvents DROP CONSTRAINT CK_AccountingEvents_Type;
         ALTER TABLE dbo.AccountingEvents ADD
             CONSTRAINT CK_AccountingEvents_Type
-                CHECK (AccountingEventType BETWEEN 1 AND 15);');
+                CHECK (
+                    (AccountingEventType >= 1 AND AccountingEventType <= 15)
+                    OR (AccountingEventType >= 20 AND AccountingEventType <= 35)
+                );');
 
     EXEC(N'
         ALTER TABLE dbo.AccountingEvents DROP CONSTRAINT CK_AccountingEvents_SourceCardinality;
