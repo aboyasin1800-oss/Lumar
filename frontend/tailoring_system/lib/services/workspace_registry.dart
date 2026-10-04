@@ -6,6 +6,13 @@ abstract final class WorkspaceRouteIds {
   static const dashboard = '/dashboard';
   static const login = '/login';
   static const designSystemDemo = '/design-system-demo';
+  static const supplierHome = '/supplier-home';
+  static const supplierMessages = '/supplier-messages';
+  static const supplierMessageDetail = '/supplier-message-detail';
+  static const supplierNotifications = '/supplier-notifications';
+  static const supplierNotificationDetail = '/supplier-notification-detail';
+  static const supplierAnnouncements = '/supplier-announcements';
+  static const supplierAnnouncementDetail = '/supplier-announcement-detail';
   static const referralDashboard = '/referral-dashboard';
   static const referralTree = '/referral-tree';
   static const referralHistory = '/referral-history';

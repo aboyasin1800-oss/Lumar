@@ -28,6 +28,10 @@ import 'settings/points_settings_screen.dart';
 import 'settings/piece_point_settings_screen.dart';
 import 'settings/imported_product_loyalty_point_settings_screen.dart';
 import 'settings/ready_made_product_loyalty_point_settings_screen.dart';
+import 'supplier_mobile/supplier_announcements_list_screen.dart';
+import 'supplier_mobile/supplier_messages_list_screen.dart';
+import 'supplier_mobile/supplier_mobile_home_screen.dart';
+import 'supplier_mobile/supplier_notifications_list_screen.dart';
 import 'loyalty/loyalty_dashboard_screen.dart';
 import 'loyalty/loyalty_redemption_screen.dart';
 import 'loyalty/loyalty_redemptions_history_screen.dart';
@@ -77,6 +81,10 @@ Widget screenForIndex(
   if (index == 38) return const PiecePointSettingsScreen();
   if (index == 39) return const ReadyMadeProductLoyaltyPointSettingsScreen();
   if (index == 40) return const ImportedProductLoyaltyPointSettingsScreen();
+  if (index == 41) return SupplierMobileHomeScreen(auth: auth);
+  if (index == 42) return SupplierMessagesListScreen(auth: auth);
+  if (index == 43) return SupplierNotificationsListScreen(auth: auth);
+  if (index == 44) return SupplierAnnouncementsListScreen(auth: auth);
   if (index == 18) {
     return SettingsScreen(auth: auth, themeState: themeState, uiScale: uiScale);
   }
@@ -484,6 +492,30 @@ final workspaceRegistry = <WorkspaceRouteDefinition>[
       routeId: WorkspaceRouteIds.importedProductPointSettings,
       title: 'نقاط الأصناف المستوردة',
       icon: Icons.inventory_2_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 41,
+      routeId: WorkspaceRouteIds.supplierHome,
+      title: 'لوحة المورد',
+      icon: Icons.home_work_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 42,
+      routeId: WorkspaceRouteIds.supplierMessages,
+      title: 'الرسائل',
+      icon: Icons.mail_outline,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 43,
+      routeId: WorkspaceRouteIds.supplierNotifications,
+      title: 'الإشعارات',
+      icon: Icons.notifications_outlined,
+      statePolicy: WorkspaceStatePolicy.lazyRestorable),
+  _indexedWorkspaceDefinition(
+      index: 44,
+      routeId: WorkspaceRouteIds.supplierAnnouncements,
+      title: 'الإعلانات',
+      icon: Icons.campaign_outlined,
       statePolicy: WorkspaceStatePolicy.lazyRestorable),
 ];
 

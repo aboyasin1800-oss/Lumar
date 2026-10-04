@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../screens/inventory/bulk_fabric_entry_screen.dart';
 import '../screens/login_screen.dart';
+import '../screens/supplier_mobile/supplier_announcements_list_screen.dart';
+import '../screens/supplier_mobile/supplier_messages_list_screen.dart';
+import '../screens/supplier_mobile/supplier_mobile_home_screen.dart';
+import '../screens/supplier_mobile/supplier_notifications_list_screen.dart';
 import '../services/auth_state.dart';
 import '../services/theme_state.dart';
 import '../services/ui_scale_state.dart';
@@ -15,6 +19,10 @@ class AppRoutes {
   static const login = WorkspaceRouteIds.login;
   static const dashboard = WorkspaceRouteIds.dashboard;
   static const designSystemDemo = WorkspaceRouteIds.designSystemDemo;
+  static const supplierHome = WorkspaceRouteIds.supplierHome;
+  static const supplierMessages = WorkspaceRouteIds.supplierMessages;
+  static const supplierNotifications = WorkspaceRouteIds.supplierNotifications;
+  static const supplierAnnouncements = WorkspaceRouteIds.supplierAnnouncements;
   static const referralDashboard = WorkspaceRouteIds.referralDashboard;
   static const referralTree = WorkspaceRouteIds.referralTree;
   static const referralHistory = WorkspaceRouteIds.referralHistory;
@@ -65,6 +73,34 @@ class AppRoutes {
           uiScale: uiScale,
           workspace: workspace,
         ),
+        settings: settings,
+      );
+    }
+
+    if (settings.name == supplierHome) {
+      return MaterialPageRoute(
+        builder: (_) => SupplierMobileHomeScreen(auth: auth),
+        settings: settings,
+      );
+    }
+
+    if (settings.name == supplierMessages) {
+      return MaterialPageRoute(
+        builder: (_) => SupplierMessagesListScreen(auth: auth),
+        settings: settings,
+      );
+    }
+
+    if (settings.name == supplierNotifications) {
+      return MaterialPageRoute(
+        builder: (_) => SupplierNotificationsListScreen(auth: auth),
+        settings: settings,
+      );
+    }
+
+    if (settings.name == supplierAnnouncements) {
+      return MaterialPageRoute(
+        builder: (_) => SupplierAnnouncementsListScreen(auth: auth),
         settings: settings,
       );
     }
