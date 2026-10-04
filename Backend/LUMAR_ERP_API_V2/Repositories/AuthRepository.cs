@@ -18,7 +18,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         await connection.OpenAsync(ct);
 
         await using var command = new SqlCommand(
-            "SELECT UserID, Username, UserPassword, PasswordHash, FullName, UserRole, IsActive, LastLoginUtc FROM dbo.Users WHERE Username = @username",
+            "SELECT u.UserID, u.Username, u.UserPassword, u.PasswordHash, u.FullName, u.UserRole, u.IsActive, u.LastLoginUtc, ma.AccountType, ma.CustomerId, ma.EmployeeId, ma.SupplierId FROM dbo.Users u LEFT JOIN dbo.MobileAccounts ma ON ma.UserId = u.UserID AND ma.IsActive = 1 WHERE u.Username = @username",
             connection);
         command.Parameters.AddWithValue("@username", login.Username.Trim());
 
@@ -37,6 +37,10 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         var fullName = reader.IsDBNull(4) ? string.Empty : reader.GetString(4);
         var role = reader.IsDBNull(5) ? null : reader.GetString(5);
         DateTime? lastLoginUtc = reader.IsDBNull(7) ? null : reader.GetDateTime(7);
+        var accountType = reader.IsDBNull(8) ? null : reader.GetString(8);
+        var customerId = reader.IsDBNull(9) ? null : (int?)reader.GetInt32(9);
+        var employeeId = reader.IsDBNull(10) ? null : (int?)reader.GetInt32(10);
+        var supplierId = reader.IsDBNull(11) ? null : (int?)reader.GetInt32(11);
 
         if (!PasswordsMatch(login.Password, passwordHash, legacyPassword))
             return null;
@@ -51,7 +55,17 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             await update.ExecuteNonQueryAsync(ct);
         }
 
-        var currentUser = new CurrentUserDto(userId, username, fullName, role, true, lastLoginUtc);
+        var currentUser = new CurrentUserDto(
+            userId,
+            username,
+            fullName,
+            role,
+            true,
+            lastLoginUtc,
+            accountType,
+            customerId,
+            employeeId,
+            supplierId);
         return await CreateSessionAsync(connection, currentUser, login.RememberMe, ct);
     }
 
@@ -332,7 +346,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             return new AccountTypeDto(accountType, customerId, employeeId, supplierId);
         }
 
-        return new AccountTypeDto(currentUser.Role ?? "User", null, null, null);
+        return new AccountTypeDto(string.Empty, null, null, null);
     }
 
     private async Task<CurrentUserDto?> GetUserAsync(string token, CancellationToken ct)

@@ -6,14 +6,40 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuthUser {
-	const AuthUser({required this.userId, required this.username, required this.fullName, required this.isActive, this.role, this.lastLoginUtc});
-	factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(userId: json['userId'] as int, username: json['username'] as String, fullName: json['fullName'] as String, role: json['role'] as String?, isActive: json['isActive'] as bool, lastLoginUtc: json['lastLoginUtc'] as String?);
+	const AuthUser({
+		required this.userId,
+		required this.username,
+		required this.fullName,
+		required this.isActive,
+		this.role,
+		this.lastLoginUtc,
+		this.accountType,
+		this.customerId,
+		this.employeeId,
+		this.supplierId,
+	});
+	factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
+		userId: json['userId'] as int,
+		username: json['username'] as String,
+		fullName: json['fullName'] as String,
+		role: json['role'] as String?,
+		isActive: json['isActive'] as bool,
+		lastLoginUtc: json['lastLoginUtc'] as String?,
+		accountType: json['accountType'] as String?,
+		customerId: json['customerId'] as int?,
+		employeeId: json['employeeId'] as int?,
+		supplierId: json['supplierId'] as int?,
+	);
 	final int userId;
 	final String username;
 	final String fullName;
 	final String? role;
 	final bool isActive;
 	final String? lastLoginUtc;
+	final String? accountType;
+	final int? customerId;
+	final int? employeeId;
+	final int? supplierId;
 }
 
 class AuthState extends ChangeNotifier {

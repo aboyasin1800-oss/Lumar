@@ -18,6 +18,12 @@ public sealed class InventoryService(IInventoryRepository repository) : IInvento
     public Task<ReadyMadeProductDto?> RecordReadyMadeSaleCostAsync(int readyMadeInventoryProductId, CancellationToken ct) => repository.RecordReadyMadeSaleCostAsync(readyMadeInventoryProductId, ct);
     public Task<IReadOnlyList<ImportedReadyMadeProductDto>> GetImportedAsync(CancellationToken ct) => repository.GetImportedAsync(ct);
     public Task<IReadOnlyList<InventoryItemDto>> GetToolsAsync(CancellationToken ct) => repository.GetToolsAsync(ct);
+    public Task<ToolIssuanceResultDto?> IssueToolOperationalAsync(CreateToolOperationalIssueDto request, CancellationToken ct) => repository.IssueToolOperationalAsync(request, ct);
+    public Task<ToolIssuanceResultDto?> IssueToolCustodyAsync(CreateToolCustodyIssueDto request, CancellationToken ct) => repository.IssueToolCustodyAsync(request, ct);
+    public Task<ToolIssuanceResultDto?> ReturnToolCustodyAsync(ReturnToolCustodyDto request, CancellationToken ct) => repository.ReturnToolCustodyAsync(request, ct);
+    public Task<ToolIssuanceResultDto?> ReverseToolOperationalIssueAsync(ReverseToolOperationalIssueDto request, CancellationToken ct) => repository.ReverseToolOperationalIssueAsync(request, ct);
+    public Task<IReadOnlyList<ToolIssuanceHistoryDto>> GetToolIssuanceHistoryAsync(CancellationToken ct) => repository.GetToolIssuanceHistoryAsync(ct);
+    public Task<IReadOnlyList<OpenToolCustodyDto>> GetOpenToolCustodyAsync(CancellationToken ct) => repository.GetOpenToolCustodyAsync(ct);
     public Task<ImportedReadyMadeProductDto?> UpsertImportedProductAsync(CreateImportedProductDto product, CancellationToken ct) => repository.UpsertImportedProductAsync(product, ct);
     public Task<InventoryItemDto?> UpsertToolItemAsync(CreateToolItemDto tool, CancellationToken ct) => repository.UpsertToolItemAsync(tool, ct);
     public Task<FabricBatchResultDto?> ReceiveFabricBatchAsync(CreateFabricBatchDto batch, CancellationToken ct) => repository.ReceiveFabricBatchAsync(batch, ct);

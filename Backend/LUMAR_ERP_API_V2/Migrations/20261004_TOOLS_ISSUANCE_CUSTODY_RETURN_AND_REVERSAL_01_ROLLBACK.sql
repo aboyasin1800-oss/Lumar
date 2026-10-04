@@ -145,22 +145,10 @@ BEGIN TRY
             AND ReadyMadeSaleCostPostingId IS NULL AND ImportedReadyMadeInventoryReceiptId IS NULL
             AND ImportedReadyMadeSaleCostPostingId IS NOT NULL
             AND ToolIssuanceId IS NULL AND ToolIssuanceReversalId IS NULL)
-        OR (AccountingEventType = 14
-            AND PaymentId IS NULL AND OrderId IS NULL
-            AND MeasurementCardPrintHistoryId IS NULL AND ReadyMadeInventoryProductId IS NULL
-            AND CustomerAdvanceApplicationId IS NULL AND InventoryReceiptPostingId IS NULL
-            AND FabricConsumptionSourceId IS NULL AND ProductionMaterialConsumptionId IS NULL
-            AND ReadyMadeSaleCostPostingId IS NULL AND ImportedReadyMadeInventoryReceiptId IS NULL
-            AND ImportedReadyMadeSaleCostPostingId IS NULL
-            AND ToolIssuanceId IS NOT NULL AND ToolIssuanceReversalId IS NULL)
-        OR (AccountingEventType = 15
-            AND PaymentId IS NULL AND OrderId IS NULL
-            AND MeasurementCardPrintHistoryId IS NULL AND ReadyMadeInventoryProductId IS NULL
-            AND CustomerAdvanceApplicationId IS NULL AND InventoryReceiptPostingId IS NULL
-            AND FabricConsumptionSourceId IS NULL AND ProductionMaterialConsumptionId IS NULL
-            AND ReadyMadeSaleCostPostingId IS NULL AND ImportedReadyMadeInventoryReceiptId IS NULL
-            AND ImportedReadyMadeSaleCostPostingId IS NULL
-            AND ToolIssuanceId IS NULL AND ToolIssuanceReversalId IS NOT NULL)
+        OR (AccountingEventType >= 20 AND AccountingEventType <= 35
+            AND SourceType IS NOT NULL AND SourceId IS NOT NULL AND SourceOperationId IS NOT NULL
+            AND OriginalAccountingEventId IS NULL
+            AND ToolIssuanceId IS NULL AND ToolIssuanceReversalId IS NULL)
     );
 
 -- Step 9: إعادة usp_PostAccountingEvent إلى التعريف الأصلي (تم التحقق syntactically)

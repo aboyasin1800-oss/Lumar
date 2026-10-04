@@ -593,6 +593,599 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
         }
     }
 
+    public async Task<ToolIssuanceResultDto?> IssueToolOperationalAsync(CreateToolOperationalIssueDto request, CancellationToken ct)
+    {
+        if (request.InventoryItemId <= 0 || request.Quantity <= 0m || request.OfficialUnitCost <= 0m || request.SourceOperationId == Guid.Empty)
+            throw new ArgumentException("Inventory item, quantity, official unit cost, and source operation id are required.");
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+
+        try
+        {
+            var item = await ReadToolItemForUpdateAsync(connection, transaction, request.InventoryItemId, ct)
+                ?? throw new InvalidOperationException("The tool item does not exist or is not registered as a used tool.");
+            if (item.CurrentQuantity < request.Quantity)
+                throw new InvalidOperationException("The available tool quantity is not sufficient for the operational issue.");
+
+            var now = DateTime.UtcNow;
+            var operationalAmount = decimal.Round(request.Quantity * request.OfficialUnitCost, 6, MidpointRounding.AwayFromZero);
+            var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+
+            var issuanceId = await InsertToolIssuanceAsync(
+                connection,
+                transaction,
+                request.InventoryItemId,
+                "Operational",
+                request.Quantity,
+                request.OfficialUnitCost,
+                operationalAmount,
+                postingAmount,
+                request.OperationalReason,
+                null,
+                null,
+                null,
+                null,
+                request.SourceOperationId,
+                request.ConfirmedByUserId,
+                now,
+                "PendingPosting",
+                ct);
+
+            var inventoryTransactionId = await InsertToolInventoryTransactionAsync(
+                connection,
+                transaction,
+                request.InventoryItemId,
+                "OperationalIssue",
+                -request.Quantity,
+                $"TOOL-ISSUE-{issuanceId}",
+                $"Operational issue for item {item.ItemName}",
+                now,
+                request.OfficialUnitCost,
+                null,
+                ct);
+
+            await UpdateToolInventoryQuantityAsync(connection, transaction, request.InventoryItemId, request.Quantity, takeFromStock: true, now, ct);
+            var accountingResult = await AccountingEventPostingGateway.PostToolOperationalIssueAsync(
+                connection,
+                transaction,
+                issuanceId,
+                postingAmount,
+                $"TOOL-ISSUE-{issuanceId}",
+                $"Operational tool issue for {item.ItemName}",
+                ct);
+
+            await UpdateToolIssuancePostingAsync(connection, transaction, issuanceId, accountingResult.AccountingEventId, inventoryTransactionId, "Posted", ct);
+            await InsertStorageAllocationAsync(connection, transaction, null, "UsedTool", request.Quantity, request.SourceOperationId, request.InventoryItemId, inventoryTransactionId, accountingResult.AccountingEventId, null, null, ct);
+
+            await transaction.CommitAsync(ct);
+            return await ReadToolIssuanceResultAsync(connection, issuanceId, ct);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<ToolIssuanceResultDto?> IssueToolCustodyAsync(CreateToolCustodyIssueDto request, CancellationToken ct)
+    {
+        if (request.InventoryItemId <= 0 || request.Quantity <= 0m || request.OfficialUnitCost <= 0m || request.SourceOperationId == Guid.Empty)
+            throw new ArgumentException("Inventory item, quantity, official unit cost, and source operation id are required.");
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+
+        try
+        {
+            var item = await ReadToolItemForUpdateAsync(connection, transaction, request.InventoryItemId, ct)
+                ?? throw new InvalidOperationException("The tool item does not exist or is not registered as a used tool.");
+            if (item.CurrentQuantity < request.Quantity)
+                throw new InvalidOperationException("The available tool quantity is not sufficient for the custody issue.");
+
+            var now = DateTime.UtcNow;
+            var operationalAmount = decimal.Round(request.Quantity * request.OfficialUnitCost, 6, MidpointRounding.AwayFromZero);
+            var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+
+            var issuanceId = await InsertToolIssuanceAsync(
+                connection,
+                transaction,
+                request.InventoryItemId,
+                "Custody",
+                request.Quantity,
+                request.OfficialUnitCost,
+                operationalAmount,
+                postingAmount,
+                null,
+                request.BeneficiaryName,
+                request.DestinationType,
+                request.DestinationName,
+                request.LoanReason,
+                request.SourceOperationId,
+                request.ConfirmedByUserId,
+                now,
+                "Outstanding",
+                ct);
+
+            var inventoryTransactionId = await InsertToolInventoryTransactionAsync(
+                connection,
+                transaction,
+                request.InventoryItemId,
+                "CustodyIssue",
+                -request.Quantity,
+                $"TOOL-CUSTODY-{issuanceId}",
+                $"Custody issue for {item.ItemName}",
+                now,
+                request.OfficialUnitCost,
+                null,
+                ct);
+
+            await UpdateToolInventoryQuantityAsync(connection, transaction, request.InventoryItemId, request.Quantity, takeFromStock: true, now, ct);
+            await UpdateToolIssuancePostingAsync(connection, transaction, issuanceId, null, inventoryTransactionId, "Outstanding", ct);
+            await InsertStorageAllocationAsync(connection, transaction, null, "UsedTool", request.Quantity, request.SourceOperationId, request.InventoryItemId, inventoryTransactionId, null, null, null, ct);
+
+            await transaction.CommitAsync(ct);
+            return await ReadToolIssuanceResultAsync(connection, issuanceId, ct);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<ToolIssuanceResultDto?> ReturnToolCustodyAsync(ReturnToolCustodyDto request, CancellationToken ct)
+    {
+        if (request.ToolIssuanceId <= 0 || request.ReturnedQuantity <= 0m || request.SourceOperationId == Guid.Empty)
+            throw new ArgumentException("Tool issuance id, returned quantity, and source operation id are required.");
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+
+        try
+        {
+            var issuance = await ReadToolIssuanceAsync(connection, transaction, request.ToolIssuanceId, ct)
+                ?? throw new InvalidOperationException("The custody issuance record was not found.");
+            if (!string.Equals(issuance.IssueType, "Custody", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Only custody issuances can be returned through this endpoint.");
+
+            var returnedToDate = await GetToolReturnTotalAsync(connection, transaction, request.ToolIssuanceId, ct);
+            var availableToReturn = issuance.Quantity - returnedToDate;
+            if (request.ReturnedQuantity > availableToReturn)
+                throw new InvalidOperationException("The return quantity exceeds the remaining outstanding custody quantity.");
+
+            var now = DateTime.UtcNow;
+            var returnId = await InsertToolReturnAsync(connection, transaction, request.ToolIssuanceId, request.ReturnedQuantity, request.ReturnNotes, request.ConfirmedByUserId, request.SourceOperationId, now, ct);
+            var inventoryTransactionId = await InsertToolInventoryTransactionAsync(
+                connection,
+                transaction,
+                issuance.InventoryItemId,
+                "CustodyReturn",
+                request.ReturnedQuantity,
+                $"TOOL-RETURN-{returnId}",
+                $"Custody return for tool issuance {request.ToolIssuanceId}",
+                now,
+                issuance.OfficialUnitCost,
+                null,
+                ct);
+
+            await UpdateToolInventoryQuantityAsync(connection, transaction, issuance.InventoryItemId, request.ReturnedQuantity, takeFromStock: false, now, ct);
+            var updatedReturned = returnedToDate + request.ReturnedQuantity;
+            var nextStatus = updatedReturned >= issuance.Quantity ? "Returned" : "PartiallyReturned";
+            await UpdateToolIssuanceStatusAsync(connection, transaction, request.ToolIssuanceId, nextStatus, ct);
+            await UpdateToolReturnTransactionAsync(connection, transaction, returnId, inventoryTransactionId, ct);
+
+            await transaction.CommitAsync(ct);
+            return await ReadToolIssuanceResultAsync(connection, request.ToolIssuanceId, ct);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<ToolIssuanceResultDto?> ReverseToolOperationalIssueAsync(ReverseToolOperationalIssueDto request, CancellationToken ct)
+    {
+        if (request.ToolIssuanceId <= 0 || request.SourceOperationId == Guid.Empty || string.IsNullOrWhiteSpace(request.ReversalReason) || string.IsNullOrWhiteSpace(request.Notes))
+            throw new ArgumentException("Tool issuance id, reversal reason, notes, and source operation id are required.");
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+
+        try
+        {
+            var issuance = await ReadToolIssuanceAsync(connection, transaction, request.ToolIssuanceId, ct)
+                ?? throw new InvalidOperationException("The operational issuance record was not found.");
+            if (!string.Equals(issuance.IssueType, "Operational", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Only operational tool issuances can be reversed through this endpoint.");
+            if (!string.Equals(issuance.Status, "Posted", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Only posted operational tool issuances can be reversed.");
+
+            var postingAmount = issuance.PostingAmount;
+            var now = DateTime.UtcNow;
+            var reversalId = await InsertToolReversalAsync(connection, transaction, request.ToolIssuanceId, postingAmount, request.ReversalReason, request.Notes, request.ReversedBy, request.SourceOperationId, now, ct);
+            var inventoryTransactionId = await InsertToolInventoryTransactionAsync(
+                connection,
+                transaction,
+                issuance.InventoryItemId,
+                "OperationalReversal",
+                issuance.Quantity,
+                $"TOOL-REVERSAL-{reversalId}",
+                $"Operational reversal for issuance {request.ToolIssuanceId}",
+                now,
+                issuance.OfficialUnitCost,
+                null,
+                ct);
+
+            await UpdateToolInventoryQuantityAsync(connection, transaction, issuance.InventoryItemId, issuance.Quantity, takeFromStock: false, now, ct);
+            var accountingResult = await AccountingEventPostingGateway.PostToolOperationalReversalAsync(
+                connection,
+                transaction,
+                reversalId,
+                postingAmount,
+                $"TOOL-REVERSAL-{reversalId}",
+                $"Operational tool reversal for {issuance.ItemName}",
+                ct);
+
+            await UpdateToolIssuanceReversalAsync(connection, transaction, reversalId, accountingResult.AccountingEventId, inventoryTransactionId, ct);
+            await UpdateToolIssuanceStatusAsync(connection, transaction, request.ToolIssuanceId, "Reversed", ct);
+
+            await transaction.CommitAsync(ct);
+            return await ReadToolIssuanceResultAsync(connection, request.ToolIssuanceId, ct);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<ToolIssuanceHistoryDto>> GetToolIssuanceHistoryAsync(CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT ti.ToolIssuanceId,
+                   ti.InventoryItemId,
+                   ii.ItemCode,
+                   ii.ItemName,
+                   ti.IssueType,
+                   ti.Quantity,
+                   ti.OfficialUnitCost,
+                   ti.OperationalAmount,
+                   ti.PostingAmount,
+                   ti.Status,
+                   ti.AccountingEventId,
+                   ti.InventoryTransactionId,
+                   ti.SourceOperationId,
+                   ti.CreatedAt,
+                   ti.BeneficiaryName,
+                   ti.DestinationType,
+                   ti.DestinationName,
+                   ti.OperationalReason,
+                   ti.LoanReason
+            FROM dbo.ToolIssuances ti
+            INNER JOIN dbo.InventoryItems ii ON ii.InventoryItemID = ti.InventoryItemId
+            ORDER BY ti.CreatedAt DESC, ti.ToolIssuanceId DESC;";
+
+        return await QueryAsync(sql, reader => new ToolIssuanceHistoryDto(
+            reader.GetInt64(0),
+            reader.GetInt32(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetDecimal(5),
+            reader.GetDecimal(6),
+            reader.GetDecimal(7),
+            reader.GetDecimal(8),
+            reader.GetString(9),
+            reader.NullableInt64("AccountingEventId"),
+            reader.NullableInt32("InventoryTransactionId"),
+            reader.GetGuid(12),
+            reader.GetDateTime(13),
+            reader.NullableString("BeneficiaryName"),
+            reader.NullableString("DestinationType"),
+            reader.NullableString("DestinationName"),
+            reader.NullableString("OperationalReason"),
+            reader.NullableString("LoanReason")), null, ct);
+    }
+
+    public async Task<IReadOnlyList<OpenToolCustodyDto>> GetOpenToolCustodyAsync(CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT ti.ToolIssuanceId,
+                   ti.InventoryItemId,
+                   ii.ItemCode,
+                   ii.ItemName,
+                   ti.Quantity,
+                   COALESCE(SUM(tr.ReturnedQuantity), 0) AS ReturnedQuantity,
+                   ti.Quantity - COALESCE(SUM(tr.ReturnedQuantity), 0) AS OutstandingQuantity,
+                   ti.BeneficiaryName,
+                   ti.DestinationType,
+                   ti.DestinationName,
+                   ti.LoanReason,
+                   ti.CreatedAt,
+                   ti.SourceOperationId
+            FROM dbo.ToolIssuances ti
+            INNER JOIN dbo.InventoryItems ii ON ii.InventoryItemID = ti.InventoryItemId
+            LEFT JOIN dbo.ToolIssuanceReturns tr ON tr.ToolIssuanceId = ti.ToolIssuanceId
+            WHERE ti.IssueType = N'Custody'
+              AND ti.Status IN (N'Outstanding', N'PartiallyReturned')
+            GROUP BY ti.ToolIssuanceId, ti.InventoryItemId, ii.ItemCode, ii.ItemName, ti.Quantity, ti.BeneficiaryName, ti.DestinationType, ti.DestinationName, ti.LoanReason, ti.CreatedAt, ti.SourceOperationId
+            ORDER BY ti.CreatedAt DESC;";
+
+        return await QueryAsync(sql, reader => new OpenToolCustodyDto(
+            reader.GetInt64(0),
+            reader.GetInt32(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetDecimal(4),
+            reader.GetDecimal(5),
+            reader.GetDecimal(6),
+            reader.GetString(7),
+            reader.GetString(8),
+            reader.GetString(9),
+            reader.GetString(10),
+            reader.GetDateTime(11),
+            reader.GetGuid(12)), null, ct);
+    }
+
+    private static async Task<InventoryItemDto?> ReadToolItemForUpdateAsync(SqlConnection connection, SqlTransaction transaction, int inventoryItemId, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand(@"
+            SELECT InventoryItemID, ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt, Barcode, FabricCategory, FabricColor, FabricWidth, FabricWidthUnit, InchPrice, YardPrice
+            FROM dbo.InventoryItems WITH (UPDLOCK, HOLDLOCK)
+            WHERE InventoryItemID = @id
+              AND EXISTS (
+                  SELECT 1
+                  FROM dbo.GoodsReceiptItemStorageAllocations sga
+                  WHERE sga.InventoryItemId = dbo.InventoryItems.InventoryItemID
+                    AND sga.ItemType = N'UsedTool')", connection, transaction);
+        cmd.Parameters.AddWithValue("@id", inventoryItemId);
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        return await reader.ReadAsync(ct) ? MapItem(reader) : null;
+    }
+
+    private static async Task<long> InsertToolIssuanceAsync(SqlConnection connection, SqlTransaction transaction, int inventoryItemId, string issueType, decimal quantity, decimal officialUnitCost, decimal operationalAmount, decimal postingAmount, string? operationalReason, string? beneficiaryName, string? destinationType, string? destinationName, string? loanReason, Guid sourceOperationId, int? confirmedByUserId, DateTime now, string status, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand(@"
+            INSERT INTO dbo.ToolIssuances
+                (InventoryItemId, IssueType, Quantity, OfficialUnitCost, OperationalAmount, PostingAmount,
+                 OperationalReason, BeneficiaryName, DestinationType, DestinationName, LoanReason, Status,
+                 SourceOperationId, ConfirmedByUserId, CreatedAt)
+            OUTPUT INSERTED.ToolIssuanceId
+            VALUES
+                (@inventoryItemId, @issueType, @quantity, @officialUnitCost, @operationalAmount, @postingAmount,
+                 @operationalReason, @beneficiaryName, @destinationType, @destinationName, @loanReason, @status,
+                 @sourceOperationId, @confirmedByUserId, @now)", connection, transaction);
+        cmd.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
+        cmd.Parameters.AddWithValue("@issueType", issueType);
+        cmd.Parameters.AddWithValue("@quantity", quantity);
+        cmd.Parameters.AddWithValue("@officialUnitCost", officialUnitCost);
+        cmd.Parameters.AddWithValue("@operationalAmount", operationalAmount);
+        cmd.Parameters.AddWithValue("@postingAmount", postingAmount);
+        AddNullable(cmd, "@operationalReason", operationalReason);
+        AddNullable(cmd, "@beneficiaryName", beneficiaryName);
+        AddNullable(cmd, "@destinationType", destinationType);
+        AddNullable(cmd, "@destinationName", destinationName);
+        AddNullable(cmd, "@loanReason", loanReason);
+        cmd.Parameters.AddWithValue("@status", status);
+        cmd.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        cmd.Parameters.AddWithValue("@confirmedByUserId", confirmedByUserId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@now", now);
+
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result is long issuanceId ? issuanceId : Convert.ToInt64(result ?? throw new InvalidOperationException("Unable to create tool issuance record."));
+    }
+
+    private static async Task<int> InsertToolInventoryTransactionAsync(SqlConnection connection, SqlTransaction transaction, int inventoryItemId, string transactionType, decimal quantity, string referenceNumber, string notes, DateTime createdAt, decimal unitCost, long? accountingEventId, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand(@"
+            INSERT INTO dbo.InventoryTransactions
+                (InventoryItemID, TransactionType, Quantity, ReferenceNumber, Notes, CreatedAt, TotalCostImpact, UnitCost, AccountingEventId)
+            OUTPUT INSERTED.TransactionID
+            VALUES
+                (@inventoryItemId, @transactionType, @quantity, @referenceNumber, @notes, @createdAt, @totalCostImpact, @unitCost, @accountingEventId)", connection, transaction);
+        cmd.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
+        cmd.Parameters.AddWithValue("@transactionType", transactionType);
+        cmd.Parameters.AddWithValue("@quantity", quantity);
+        cmd.Parameters.AddWithValue("@referenceNumber", referenceNumber);
+        cmd.Parameters.AddWithValue("@notes", notes);
+        cmd.Parameters.AddWithValue("@createdAt", createdAt);
+        cmd.Parameters.AddWithValue("@totalCostImpact", quantity * unitCost);
+        cmd.Parameters.AddWithValue("@unitCost", unitCost);
+        cmd.Parameters.AddWithValue("@accountingEventId", accountingEventId ?? (object)DBNull.Value);
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result is int transactionId ? transactionId : Convert.ToInt32(result ?? throw new InvalidOperationException("Unable to record tool inventory transaction."));
+    }
+
+    private static async Task UpdateToolInventoryQuantityAsync(SqlConnection connection, SqlTransaction transaction, int inventoryItemId, decimal quantity, bool takeFromStock, DateTime now, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand($@"
+            UPDATE dbo.InventoryItems
+            SET CurrentQuantity = CurrentQuantity {(takeFromStock ? "-" : "+")} @quantity,
+                AvailableQuantity = AvailableQuantity {(takeFromStock ? "-" : "+")} @quantity,
+                UpdatedAt = @now
+            WHERE InventoryItemID = @inventoryItemId", connection, transaction);
+        cmd.Parameters.AddWithValue("@quantity", quantity);
+        cmd.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
+        cmd.Parameters.AddWithValue("@now", now);
+        if (await cmd.ExecuteNonQueryAsync(ct) != 1)
+            throw new InvalidOperationException("The inventory item could not be updated for the tool issuance change.");
+    }
+
+    private static async Task UpdateToolIssuancePostingAsync(SqlConnection connection, SqlTransaction transaction, long issuanceId, long? accountingEventId, int? inventoryTransactionId, string status, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand(@"
+            UPDATE dbo.ToolIssuances
+            SET AccountingEventId = @accountingEventId,
+                InventoryTransactionId = @inventoryTransactionId,
+                Status = @status
+            WHERE ToolIssuanceId = @issuanceId", connection, transaction);
+        cmd.Parameters.AddWithValue("@issuanceId", issuanceId);
+        cmd.Parameters.AddWithValue("@accountingEventId", accountingEventId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@inventoryTransactionId", inventoryTransactionId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@status", status);
+        if (await cmd.ExecuteNonQueryAsync(ct) != 1)
+            throw new InvalidOperationException("Unable to finalize the tool issuance record.");
+    }
+
+    private static async Task UpdateToolIssuanceStatusAsync(SqlConnection connection, SqlTransaction transaction, long issuanceId, string status, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand("UPDATE dbo.ToolIssuances SET Status = @status WHERE ToolIssuanceId = @issuanceId", connection, transaction);
+        cmd.Parameters.AddWithValue("@issuanceId", issuanceId);
+        cmd.Parameters.AddWithValue("@status", status);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<long> InsertToolReturnAsync(SqlConnection connection, SqlTransaction transaction, long issuanceId, decimal returnedQuantity, string? returnNotes, int? confirmedByUserId, Guid sourceOperationId, DateTime now, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand(@"
+            INSERT INTO dbo.ToolIssuanceReturns
+                (ToolIssuanceId, ReturnedQuantity, ReturnNotes, SourceOperationId, ConfirmedByUserId, CreatedAt)
+            OUTPUT INSERTED.ToolIssuanceReturnId
+            VALUES (@issuanceId, @returnedQuantity, @returnNotes, @sourceOperationId, @confirmedByUserId, @now)", connection, transaction);
+        cmd.Parameters.AddWithValue("@issuanceId", issuanceId);
+        cmd.Parameters.AddWithValue("@returnedQuantity", returnedQuantity);
+        AddNullable(cmd, "@returnNotes", returnNotes);
+        cmd.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        cmd.Parameters.AddWithValue("@confirmedByUserId", confirmedByUserId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@now", now);
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result is long returnId ? returnId : Convert.ToInt64(result ?? throw new InvalidOperationException("Unable to create custody return record."));
+    }
+
+    private static async Task UpdateToolReturnTransactionAsync(SqlConnection connection, SqlTransaction transaction, long returnId, int inventoryTransactionId, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand("UPDATE dbo.ToolIssuanceReturns SET InventoryTransactionId = @inventoryTransactionId WHERE ToolIssuanceReturnId = @returnId", connection, transaction);
+        cmd.Parameters.AddWithValue("@returnId", returnId);
+        cmd.Parameters.AddWithValue("@inventoryTransactionId", inventoryTransactionId);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<long> InsertToolReversalAsync(SqlConnection connection, SqlTransaction transaction, long issuanceId, decimal postingAmount, string reversalReason, string notes, int? reversedBy, Guid sourceOperationId, DateTime now, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand(@"
+            INSERT INTO dbo.ToolIssuanceReversals
+                (ToolIssuanceId, PostingAmount, ReversalReason, Notes, SourceOperationId, ReversedBy, CreatedAt)
+            OUTPUT INSERTED.ToolIssuanceReversalId
+            VALUES (@issuanceId, @postingAmount, @reversalReason, @notes, @sourceOperationId, @reversedBy, @now)", connection, transaction);
+        cmd.Parameters.AddWithValue("@issuanceId", issuanceId);
+        cmd.Parameters.AddWithValue("@postingAmount", postingAmount);
+        cmd.Parameters.AddWithValue("@reversalReason", reversalReason);
+        cmd.Parameters.AddWithValue("@notes", notes);
+        cmd.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        cmd.Parameters.AddWithValue("@reversedBy", reversedBy ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@now", now);
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result is long reversalId ? reversalId : Convert.ToInt64(result ?? throw new InvalidOperationException("Unable to create tool reversal record."));
+    }
+
+    private static async Task UpdateToolIssuanceReversalAsync(SqlConnection connection, SqlTransaction transaction, long reversalId, long? accountingEventId, int? inventoryTransactionId, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand(@"
+            UPDATE dbo.ToolIssuanceReversals
+            SET AccountingEventId = @accountingEventId,
+                InventoryTransactionId = @inventoryTransactionId
+            WHERE ToolIssuanceReversalId = @reversalId", connection, transaction);
+        cmd.Parameters.AddWithValue("@reversalId", reversalId);
+        cmd.Parameters.AddWithValue("@accountingEventId", accountingEventId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@inventoryTransactionId", inventoryTransactionId ?? (object)DBNull.Value);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<ToolIssuanceResultDto?> ReadToolIssuanceResultAsync(SqlConnection connection, long issuanceId, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand(@"
+            SELECT ti.ToolIssuanceId,
+                   ti.InventoryItemId,
+                   ti.IssueType,
+                   ti.Quantity,
+                   ti.OfficialUnitCost,
+                   ti.OperationalAmount,
+                   ti.PostingAmount,
+                   ti.Status,
+                   ti.AccountingEventId,
+                   ti.InventoryTransactionId,
+                   ti.SourceOperationId,
+                   ti.CreatedAt
+            FROM dbo.ToolIssuances ti
+            WHERE ti.ToolIssuanceId = @issuanceId", connection);
+        cmd.Parameters.AddWithValue("@issuanceId", issuanceId);
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return null;
+
+        return new ToolIssuanceResultDto(
+            reader.GetInt64(0),
+            reader.GetInt32(1),
+            reader.GetString(2),
+            reader.GetDecimal(3),
+            reader.GetDecimal(4),
+            reader.GetDecimal(5),
+            reader.GetDecimal(6),
+            reader.GetString(7),
+            reader.NullableInt64("AccountingEventId"),
+            reader.NullableInt32("InventoryTransactionId"),
+            reader.GetGuid(10),
+            reader.GetDateTime(11));
+    }
+
+    private static async Task<ToolIssuanceRecord?> ReadToolIssuanceAsync(SqlConnection connection, SqlTransaction transaction, long issuanceId, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand(@"
+            SELECT ti.ToolIssuanceId,
+                   ti.InventoryItemId,
+                   ii.ItemCode,
+                   ii.ItemName,
+                   ti.IssueType,
+                   ti.Quantity,
+                   ti.OfficialUnitCost,
+                   ti.OperationalAmount,
+                   ti.PostingAmount,
+                   ti.Status,
+                   ti.AccountingEventId,
+                   ti.InventoryTransactionId,
+                   ti.SourceOperationId,
+                   ti.CreatedAt
+            FROM dbo.ToolIssuances ti
+            INNER JOIN dbo.InventoryItems ii ON ii.InventoryItemID = ti.InventoryItemId
+            WHERE ti.ToolIssuanceId = @issuanceId", connection, transaction);
+        cmd.Parameters.AddWithValue("@issuanceId", issuanceId);
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return null;
+
+        return new ToolIssuanceRecord(
+            reader.GetInt64(0),
+            reader.GetInt32(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetDecimal(5),
+            reader.GetDecimal(6),
+            reader.GetDecimal(7),
+            reader.GetDecimal(8),
+            reader.GetString(9),
+            reader.NullableInt64("AccountingEventId"),
+            reader.NullableInt32("InventoryTransactionId"),
+            reader.GetGuid(12),
+            reader.GetDateTime(13));
+    }
+
+    private static async Task<decimal> GetToolReturnTotalAsync(SqlConnection connection, SqlTransaction transaction, long issuanceId, CancellationToken ct)
+    {
+        using var cmd = new SqlCommand("SELECT ISNULL(SUM(ReturnedQuantity), 0) FROM dbo.ToolIssuanceReturns WHERE ToolIssuanceId = @issuanceId", connection, transaction);
+        cmd.Parameters.AddWithValue("@issuanceId", issuanceId);
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result is decimal value ? value : Convert.ToDecimal(result ?? 0m);
+    }
+
+    private sealed record ToolIssuanceRecord(long ToolIssuanceId, int InventoryItemId, string ItemCode, string ItemName, string IssueType, decimal Quantity, decimal OfficialUnitCost, decimal OperationalAmount, decimal PostingAmount, string Status, long? AccountingEventId, int? InventoryTransactionId, Guid SourceOperationId, DateTime CreatedAt);
+
     private static async Task<string> GetNextToolCodeAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken ct)
     {
         var prefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "ToolCodePrefix", "AT", ct);

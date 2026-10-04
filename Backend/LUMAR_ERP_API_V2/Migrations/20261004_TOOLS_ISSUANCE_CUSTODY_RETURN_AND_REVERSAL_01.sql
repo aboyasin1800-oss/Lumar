@@ -243,6 +243,10 @@ BEGIN TRY
                         AND ReadyMadeSaleCostPostingId IS NULL AND ImportedReadyMadeInventoryReceiptId IS NULL
                         AND ImportedReadyMadeSaleCostPostingId IS NOT NULL
                         AND ToolIssuanceId IS NULL AND ToolIssuanceReversalId IS NULL)
+                    OR (AccountingEventType >= 20 AND AccountingEventType <= 35
+                        AND SourceType IS NOT NULL AND SourceId IS NOT NULL AND SourceOperationId IS NOT NULL
+                        AND OriginalAccountingEventId IS NULL
+                        AND ToolIssuanceId IS NULL AND ToolIssuanceReversalId IS NULL)
                     OR (AccountingEventType = 14
                         AND PaymentId IS NULL AND OrderId IS NULL
                         AND MeasurementCardPrintHistoryId IS NULL AND ReadyMadeInventoryProductId IS NULL

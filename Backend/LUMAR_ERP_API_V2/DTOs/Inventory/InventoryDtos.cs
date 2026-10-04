@@ -85,6 +85,143 @@ public sealed class CreateToolItemDto
     public Guid? StorageOperationId { get; init; }
 }
 
+public sealed class CreateToolOperationalIssueDto
+{
+    [Range(1, int.MaxValue)]
+    public int InventoryItemId { get; init; }
+
+    [Range(typeof(decimal), "0.000001", "1000000000")]
+    public decimal Quantity { get; init; }
+
+    [Range(typeof(decimal), "0.01", "1000000000")]
+    public decimal OfficialUnitCost { get; init; }
+
+    [Required, StringLength(500)]
+    public string OperationalReason { get; init; } = string.Empty;
+
+    [Range(1, int.MaxValue)]
+    public int? ConfirmedByUserId { get; init; }
+
+    public Guid SourceOperationId { get; init; }
+}
+
+public sealed class CreateToolCustodyIssueDto
+{
+    [Range(1, int.MaxValue)]
+    public int InventoryItemId { get; init; }
+
+    [Range(typeof(decimal), "0.000001", "1000000000")]
+    public decimal Quantity { get; init; }
+
+    [Range(typeof(decimal), "0.01", "1000000000")]
+    public decimal OfficialUnitCost { get; init; }
+
+    [Required, StringLength(200)]
+    public string BeneficiaryName { get; init; } = string.Empty;
+
+    [Required, StringLength(100)]
+    public string DestinationType { get; init; } = string.Empty;
+
+    [Required, StringLength(200)]
+    public string DestinationName { get; init; } = string.Empty;
+
+    [Required, StringLength(500)]
+    public string LoanReason { get; init; } = string.Empty;
+
+    [StringLength(1000)]
+    public string? Notes { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? ConfirmedByUserId { get; init; }
+
+    public Guid SourceOperationId { get; init; }
+}
+
+public sealed class ReturnToolCustodyDto
+{
+    [Range(1, long.MaxValue)]
+    public long ToolIssuanceId { get; init; }
+
+    [Range(typeof(decimal), "0.000001", "1000000000")]
+    public decimal ReturnedQuantity { get; init; }
+
+    [StringLength(1000)]
+    public string? ReturnNotes { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? ConfirmedByUserId { get; init; }
+
+    public Guid SourceOperationId { get; init; }
+}
+
+public sealed class ReverseToolOperationalIssueDto
+{
+    [Range(1, long.MaxValue)]
+    public long ToolIssuanceId { get; init; }
+
+    [Required, StringLength(500)]
+    public string ReversalReason { get; init; } = string.Empty;
+
+    [Required, StringLength(1000)]
+    public string Notes { get; init; } = string.Empty;
+
+    [Range(1, int.MaxValue)]
+    public int? ReversedBy { get; init; }
+
+    public Guid SourceOperationId { get; init; }
+}
+
+public sealed record ToolIssuanceResultDto(
+    long ToolIssuanceId,
+    int InventoryItemId,
+    string IssueType,
+    decimal Quantity,
+    decimal OfficialUnitCost,
+    decimal OperationalAmount,
+    decimal PostingAmount,
+    string Status,
+    long? AccountingEventId,
+    int? InventoryTransactionId,
+    Guid SourceOperationId,
+    DateTime CreatedAt,
+    bool IsExisting = false);
+
+public sealed record ToolIssuanceHistoryDto(
+    long ToolIssuanceId,
+    int InventoryItemId,
+    string ItemCode,
+    string ItemName,
+    string IssueType,
+    decimal Quantity,
+    decimal OfficialUnitCost,
+    decimal OperationalAmount,
+    decimal PostingAmount,
+    string Status,
+    long? AccountingEventId,
+    int? InventoryTransactionId,
+    Guid SourceOperationId,
+    DateTime CreatedAt,
+    string? BeneficiaryName,
+    string? DestinationType,
+    string? DestinationName,
+    string? OperationalReason,
+    string? LoanReason);
+
+public sealed record OpenToolCustodyDto(
+    long ToolIssuanceId,
+    int InventoryItemId,
+    string ItemCode,
+    string ItemName,
+    decimal Quantity,
+    decimal ReturnedQuantity,
+    decimal OutstandingQuantity,
+    string BeneficiaryName,
+    string DestinationType,
+    string DestinationName,
+    string LoanReason,
+    DateTime CreatedAt,
+    Guid SourceOperationId);
+
 public sealed class CreateFabricBatchDto
 {
     [Required, Range(1, int.MaxValue)]

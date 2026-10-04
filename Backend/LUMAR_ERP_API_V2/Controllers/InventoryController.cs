@@ -74,6 +74,72 @@ public sealed class InventoryController(IInventoryService service) : ControllerB
         return result is null ? BadRequest("Unable to save tool item.") : Ok(result);
     }
 
+    [HttpPost("tools/issue-operational")]
+    [ProducesResponseType<ToolIssuanceResultDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<ToolIssuanceResultDto>> IssueToolOperational(CreateToolOperationalIssueDto request, CancellationToken ct)
+    {
+        if (request.InventoryItemId <= 0) return BadRequest("Inventory item is required.");
+        if (request.Quantity <= 0m) return BadRequest("Quantity must be positive.");
+        if (request.OfficialUnitCost <= 0m) return BadRequest("Official unit cost must be positive.");
+        if (string.IsNullOrWhiteSpace(request.OperationalReason)) return BadRequest("Operational reason is required.");
+        if (request.SourceOperationId == Guid.Empty) return BadRequest("Source operation id is required.");
+
+        var result = await service.IssueToolOperationalAsync(request, ct);
+        return result is null ? BadRequest("Unable to issue tool operationally.") : Ok(result);
+    }
+
+    [HttpPost("tools/issue-custody")]
+    [ProducesResponseType<ToolIssuanceResultDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<ToolIssuanceResultDto>> IssueToolCustody(CreateToolCustodyIssueDto request, CancellationToken ct)
+    {
+        if (request.InventoryItemId <= 0) return BadRequest("Inventory item is required.");
+        if (request.Quantity <= 0m) return BadRequest("Quantity must be positive.");
+        if (request.OfficialUnitCost <= 0m) return BadRequest("Official unit cost must be positive.");
+        if (string.IsNullOrWhiteSpace(request.BeneficiaryName)) return BadRequest("Beneficiary name is required.");
+        if (string.IsNullOrWhiteSpace(request.DestinationType)) return BadRequest("Destination type is required.");
+        if (string.IsNullOrWhiteSpace(request.DestinationName)) return BadRequest("Destination name is required.");
+        if (string.IsNullOrWhiteSpace(request.LoanReason)) return BadRequest("Loan reason is required.");
+        if (request.SourceOperationId == Guid.Empty) return BadRequest("Source operation id is required.");
+
+        var result = await service.IssueToolCustodyAsync(request, ct);
+        return result is null ? BadRequest("Unable to issue tool custody.") : Ok(result);
+    }
+
+    [HttpPost("tools/returns/custody")]
+    [ProducesResponseType<ToolIssuanceResultDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<ToolIssuanceResultDto>> ReturnToolCustody(ReturnToolCustodyDto request, CancellationToken ct)
+    {
+        if (request.ToolIssuanceId <= 0) return BadRequest("Tool issuance id is required.");
+        if (request.ReturnedQuantity <= 0m) return BadRequest("Returned quantity must be positive.");
+        if (request.SourceOperationId == Guid.Empty) return BadRequest("Source operation id is required.");
+
+        var result = await service.ReturnToolCustodyAsync(request, ct);
+        return result is null ? BadRequest("Unable to return tool custody.") : Ok(result);
+    }
+
+    [HttpPost("tools/reversals/operational")]
+    [ProducesResponseType<ToolIssuanceResultDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<ToolIssuanceResultDto>> ReverseToolOperationalIssue(ReverseToolOperationalIssueDto request, CancellationToken ct)
+    {
+        if (request.ToolIssuanceId <= 0) return BadRequest("Tool issuance id is required.");
+        if (string.IsNullOrWhiteSpace(request.ReversalReason)) return BadRequest("Reversal reason is required.");
+        if (string.IsNullOrWhiteSpace(request.Notes)) return BadRequest("Notes are required.");
+        if (request.SourceOperationId == Guid.Empty) return BadRequest("Source operation id is required.");
+
+        var result = await service.ReverseToolOperationalIssueAsync(request, ct);
+        return result is null ? BadRequest("Unable to reverse tool operational issue.") : Ok(result);
+    }
+
+    [HttpGet("tools/history")]
+    public Task<IReadOnlyList<ToolIssuanceHistoryDto>> GetToolIssuanceHistory(CancellationToken ct) => service.GetToolIssuanceHistoryAsync(ct);
+
+    [HttpGet("tools/custody/open")]
+    public Task<IReadOnlyList<OpenToolCustodyDto>> GetOpenToolCustody(CancellationToken ct) => service.GetOpenToolCustodyAsync(ct);
+
     [HttpPost("imported")]
     [ProducesResponseType<ImportedReadyMadeProductDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

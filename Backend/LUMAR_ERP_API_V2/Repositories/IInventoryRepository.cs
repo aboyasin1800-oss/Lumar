@@ -17,6 +17,12 @@ public interface IInventoryRepository
     Task<ReadyMadeProductDto?> RecordReadyMadeSaleCostAsync(int readyMadeInventoryProductId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ImportedReadyMadeProductDto>> GetImportedAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<InventoryItemDto>> GetToolsAsync(CancellationToken cancellationToken);
+    Task<ToolIssuanceResultDto?> IssueToolOperationalAsync(CreateToolOperationalIssueDto request, CancellationToken cancellationToken);
+    Task<ToolIssuanceResultDto?> IssueToolCustodyAsync(CreateToolCustodyIssueDto request, CancellationToken cancellationToken);
+    Task<ToolIssuanceResultDto?> ReturnToolCustodyAsync(ReturnToolCustodyDto request, CancellationToken cancellationToken);
+    Task<ToolIssuanceResultDto?> ReverseToolOperationalIssueAsync(ReverseToolOperationalIssueDto request, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ToolIssuanceHistoryDto>> GetToolIssuanceHistoryAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<OpenToolCustodyDto>> GetOpenToolCustodyAsync(CancellationToken cancellationToken);
     Task<ImportedReadyMadeProductDto?> UpsertImportedProductAsync(CreateImportedProductDto product, CancellationToken cancellationToken);
     Task<InventoryItemDto?> UpsertToolItemAsync(CreateToolItemDto tool, CancellationToken cancellationToken);
     Task<FabricBatchResultDto?> ReceiveFabricBatchAsync(CreateFabricBatchDto batch, CancellationToken cancellationToken);
