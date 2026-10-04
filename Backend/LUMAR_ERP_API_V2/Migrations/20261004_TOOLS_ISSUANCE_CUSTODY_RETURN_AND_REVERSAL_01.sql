@@ -40,9 +40,10 @@ BEGIN TRY
         InventoryItemId int NOT NULL,
         IssueType nvarchar(20) NOT NULL,
         Quantity decimal(18,3) NOT NULL,
+        OfficialUnitCost decimal(18,6) NOT NULL,
         OperationalAmount decimal(18,6) NOT NULL,
         PostingAmount decimal(18,2) NOT NULL,
-        ReturnedQuantity decimal(18,3) NOT NULL CONSTRAINT DF_ToolIssuances_ReturnedQuantity DEFAULT 0,
+
         OperationalReason nvarchar(500) NULL,
         BeneficiaryName nvarchar(200) NULL,
         DestinationType nvarchar(100) NULL,
@@ -59,8 +60,15 @@ BEGIN TRY
         CONSTRAINT UQ_ToolIssuances_SourceOperation UNIQUE (SourceOperationId),
         CONSTRAINT CK_ToolIssuances_IssueType CHECK (IssueType IN (N'Operational', N'Custody')),
         CONSTRAINT CK_ToolIssuances_Quantity CHECK (Quantity > 0),
-        CONSTRAINT CK_ToolIssuances_Amounts CHECK (OperationalAmount > 0 AND PostingAmount > 0 AND PostingAmount = CONVERT(decimal(18,2), ROUND(OperationalAmount, 2))),
-        CONSTRAINT CK_ToolIssuances_ReturnedQuantity CHECK (ReturnedQuantity >= 0 AND ReturnedQuantity <= Quantity),
+        CONSTRAINT CK_ToolIssuances_Amounts CHECK (
+            Quantity > 0
+            AND OfficialUnitCost > 0
+            AND OperationalAmount = Quantity * OfficialUnitCost
+            AND OperationalAmount > 0
+            AND PostingAmount = CONVERT(decimal(18,2), ROUND(OperationalAmount, 2))
+            AND PostingAmount > 0
+        ),
+        
         CONSTRAINT CK_ToolIssuances_Status CHECK (Status IN (N'Posted', N'Reversed', N'Outstanding', N'PartiallyReturned', N'Returned')),
         CONSTRAINT CK_ToolIssuances_OperationalFields CHECK (
             (IssueType = N'Operational' AND OperationalReason IS NOT NULL AND BeneficiaryName IS NULL AND DestinationType IS NULL AND DestinationName IS NULL AND LoanReason IS NULL)
