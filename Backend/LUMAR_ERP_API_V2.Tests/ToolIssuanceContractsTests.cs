@@ -270,7 +270,75 @@ public sealed class ToolIssuanceContractsTests
         }, CancellationToken.None);
 
         Assert.NotNull(created);
-        return created!;
+
+        var connectionString = GetConnectionString();
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(CancellationToken.None);
+        await using var transaction = connection.BeginTransaction();
+
+        var receiptId = await InsertUsedToolReceiptAsync(connection, transaction, created!.InventoryItemId);
+        var receiptItemId = await InsertUsedToolReceiptItemAsync(connection, transaction, receiptId, created.InventoryItemId, 10m, 25.5m);
+        var operationId = Guid.NewGuid();
+
+        await using (var cmd = new SqlCommand(@"
+            INSERT INTO dbo.GoodsReceiptItemStorageAllocations
+                (GoodsReceiptItemId, ItemType, StorageOperationId, StoredQuantity, InventoryItemId, InventoryTransactionId, AccountingEventId, InventoryReceiptPostingId, ImportedReadyMadeInventoryReceiptId, CreatedAt)
+            VALUES
+                (@goodsReceiptItemId, N'UsedTool', @storageOperationId, @storedQuantity, @inventoryItemId, NULL, NULL, NULL, NULL, @createdAt)", connection, transaction))
+        {
+            cmd.Parameters.AddWithValue("@goodsReceiptItemId", receiptItemId);
+            cmd.Parameters.Add("@storageOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = operationId;
+            cmd.Parameters.AddWithValue("@storedQuantity", 10m);
+            cmd.Parameters.AddWithValue("@inventoryItemId", created.InventoryItemId);
+            cmd.Parameters.AddWithValue("@createdAt", DateTime.UtcNow);
+            await cmd.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        await transaction.CommitAsync(CancellationToken.None);
+        return created;
+    }
+
+    private static async Task<int> InsertUsedToolReceiptAsync(SqlConnection connection, SqlTransaction transaction, int inventoryItemId)
+    {
+        await using var command = new SqlCommand(@"
+            INSERT INTO dbo.GoodsReceipts
+                (SupplierId, PurchaseOrderId, ReceiptNumber, ReceiptDate, Notes, CreatedAt, WarehouseId, SourceOperationId, ReceiptStatus, OriginalGoodsReceiptId)
+            OUTPUT INSERTED.GoodsReceiptId
+            VALUES
+                (@supplierId, NULL, @receiptNumber, @receiptDate, @notes, @createdAt, NULL, @sourceOperationId, N'Confirmed', NULL)", connection, transaction);
+
+        var receiptNumber = $"TOOLFIX-{Guid.NewGuid():N}";
+        command.Parameters.AddWithValue("@supplierId", 235);
+        command.Parameters.AddWithValue("@receiptNumber", receiptNumber);
+        command.Parameters.AddWithValue("@receiptDate", DateTime.UtcNow);
+        command.Parameters.AddWithValue("@notes", "Fixture storage allocation for used tool");
+        command.Parameters.AddWithValue("@createdAt", DateTime.UtcNow);
+        command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = Guid.NewGuid();
+
+        var result = await command.ExecuteScalarAsync(CancellationToken.None);
+        return result is int receiptId ? receiptId : Convert.ToInt32(result ?? 0);
+    }
+
+    private static async Task<int> InsertUsedToolReceiptItemAsync(SqlConnection connection, SqlTransaction transaction, int receiptId, int inventoryItemId, decimal quantity, decimal unitCost)
+    {
+        await using var command = new SqlCommand(@"
+            INSERT INTO dbo.GoodsReceiptItems
+                (GoodsReceiptId, ItemName, ReceivedQuantity, UnitCost, LineTotal, InventoryItemId, SourceOperationId, OriginalGoodsReceiptItemId, LineStatus, SupplierInvoiceLineId, ItemType, RollCount, ProductType, UnitCode, ItemCount, ReceivedItemCount)
+            OUTPUT INSERTED.GoodsReceiptItemId
+            VALUES
+                (@goodsReceiptId, @itemName, @receivedQuantity, @unitCost, @lineTotal, @inventoryItemId, @sourceOperationId, NULL, N'Confirmed', NULL, N'UsedTool', NULL, N'أداة', N'Piece', @quantity, @quantity)", connection, transaction);
+
+        command.Parameters.AddWithValue("@goodsReceiptId", receiptId);
+        command.Parameters.AddWithValue("@itemName", "Fixture used tool");
+        command.Parameters.AddWithValue("@receivedQuantity", quantity);
+        command.Parameters.AddWithValue("@unitCost", unitCost);
+        command.Parameters.AddWithValue("@lineTotal", quantity * unitCost);
+        command.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
+        command.Parameters.AddWithValue("@quantity", quantity);
+        command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = Guid.NewGuid();
+
+        var result = await command.ExecuteScalarAsync(CancellationToken.None);
+        return result is int itemId ? itemId : Convert.ToInt32(result ?? 0);
     }
 
     private static string GetConnectionString()
