@@ -4,15 +4,17 @@
 		{
 			"label": "RL6 Flutter Analyze",
 			"type": "shell",
-			"command": "flutter analyze",
-			"args": [],
+			"command": "C:\\src\\flutter\\bin\\flutter.bat",
+			"args": [
+				"analyze"
+			],
 			"isBackground": false,
 			"problemMatcher": []
 		},
 		{
 			"label": "RL6 Flutter Analyze Once",
 			"type": "shell",
-			"command": "flutter",
+			"command": "C:\\src\\flutter\\bin\\flutter.bat",
 			"args": [
 				"analyze"
 			],
