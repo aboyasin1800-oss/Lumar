@@ -595,8 +595,8 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
 
     public async Task<ToolIssuanceResultDto?> IssueToolOperationalAsync(CreateToolOperationalIssueDto request, CancellationToken ct)
     {
-        if (request.InventoryItemId <= 0 || request.Quantity <= 0m || request.OfficialUnitCost <= 0m || request.SourceOperationId == Guid.Empty)
-            throw new ArgumentException("Inventory item, quantity, official unit cost, and source operation id are required.");
+        if (request.InventoryItemId <= 0 || request.Quantity <= 0m || request.SourceOperationId == Guid.Empty)
+            throw new ArgumentException("Inventory item, quantity, and source operation id are required.");
 
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(ct);
@@ -619,9 +619,14 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             if (item.CurrentQuantity < request.Quantity)
                 throw new InvalidOperationException("The available tool quantity is not sufficient for the operational issue.");
 
+            var officialUnitCost = ResolveOfficialToolUnitCost(item);
+            if (officialUnitCost <= 0m)
+                throw new InvalidOperationException("The tool item does not have a valid official unit cost in stock for operational issuance.");
+
             var now = DateTime.UtcNow;
-            var operationalAmount = decimal.Round(request.Quantity * request.OfficialUnitCost, 6, MidpointRounding.AwayFromZero);
+            var operationalAmount = decimal.Round(request.Quantity * officialUnitCost, 6, MidpointRounding.AwayFromZero);
             var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+            var transactionNotes = BuildOperationalIssueTransactionNotes(item.ItemName, request.Notes);
 
             try
             {
@@ -631,7 +636,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                     request.InventoryItemId,
                     "Operational",
                     request.Quantity,
-                    request.OfficialUnitCost,
+                    officialUnitCost,
                     operationalAmount,
                     postingAmount,
                     request.OperationalReason,
@@ -652,9 +657,9 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                     "OperationalIssue",
                     -request.Quantity,
                     $"TOOL-ISSUE-{issuanceId}",
-                    $"Operational issue for item {item.ItemName}",
+                    transactionNotes,
                     now,
-                    request.OfficialUnitCost,
+                    officialUnitCost,
                     null,
                     ct);
 
@@ -1379,6 +1384,21 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
            && existing.InventoryItemId == request.InventoryItemId
            && existing.Quantity == request.Quantity
            && string.Equals(existing.OperationalReason, request.OperationalReason, StringComparison.Ordinal);
+
+    private static decimal ResolveOfficialToolUnitCost(InventoryItemDto item)
+    {
+        if (item.Unit.Contains("Inch", StringComparison.OrdinalIgnoreCase) || item.Unit.Contains("بوص", StringComparison.OrdinalIgnoreCase))
+            return item.InchPrice ?? (item.YardPrice is > 0m ? item.YardPrice.Value / 36m : 0m);
+        if (item.Unit.Contains("Yard", StringComparison.OrdinalIgnoreCase) || item.Unit.Contains("يارد", StringComparison.OrdinalIgnoreCase))
+            return item.YardPrice ?? (item.InchPrice is > 0m ? item.InchPrice.Value * 36m : 0m);
+        return item.YardPrice ?? item.InchPrice ?? 0m;
+    }
+
+    private static string BuildOperationalIssueTransactionNotes(string itemName, string? notes)
+    {
+        var baseText = $"Operational issue for item {itemName}";
+        return string.IsNullOrWhiteSpace(notes) ? baseText : $"{baseText}. {notes.Trim()}";
+    }
 
     private static bool MatchesCustodyIssue(ToolIssuanceRecord existing, CreateToolCustodyIssueDto request)
         => existing.IssueType == "Custody"

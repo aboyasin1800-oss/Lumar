@@ -81,7 +81,7 @@ public sealed class InventoryController(IInventoryService service) : ControllerB
     {
         if (request.InventoryItemId <= 0) return BadRequest("Inventory item is required.");
         if (request.Quantity <= 0m) return BadRequest("Quantity must be positive.");
-        if (request.OfficialUnitCost <= 0m) return BadRequest("Official unit cost must be positive.");
+        if (request.OfficialUnitCost is not null && request.OfficialUnitCost <= 0m) return BadRequest("Official unit cost must be positive when provided.");
         if (string.IsNullOrWhiteSpace(request.OperationalReason)) return BadRequest("Operational reason is required.");
         if (request.SourceOperationId == Guid.Empty) return BadRequest("Source operation id is required.");
 

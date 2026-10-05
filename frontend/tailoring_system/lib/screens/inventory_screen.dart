@@ -9,6 +9,7 @@ import '../core/ui_palette.dart';
 import '../models/pending_receipt_storage.dart';
 import 'inventory/bulk_fabric_entry_screen.dart';
 import 'inventory/imported_product_entry_screen.dart';
+import 'inventory/inventory_issuance_screen.dart';
 import 'inventory/tool_entry_screen.dart';
 
 class InventoryScreen extends StatefulWidget {
@@ -546,6 +547,11 @@ class _InventoryScreenState extends State<InventoryScreen>
               tooltip: 'تحديث البيانات',
               onPressed: _refresh,
               icon: const Icon(Icons.refresh),
+            ),
+             IconButton(
+              tooltip: 'إدارة الصرف المخزني والعهد',
+              onPressed: () => AppNavigation.push<void>(context, (_) => InventoryIssuanceScreen()),
+              icon: const Icon(Icons.history_edu),
             ),
           ],
         ),

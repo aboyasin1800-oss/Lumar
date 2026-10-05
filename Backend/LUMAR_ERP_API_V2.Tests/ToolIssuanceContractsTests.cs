@@ -31,7 +31,8 @@ public sealed class ToolIssuanceContractsTests
             InventoryItemId = 1,
             Quantity = 2m,
             OfficialUnitCost = 50m,
-            OperationalReason = "Issue for project"
+            OperationalReason = "Issue for project",
+            Notes = "Daily tool issue"
         };
 
         var custody = new CreateToolCustodyIssueDto
@@ -47,6 +48,30 @@ public sealed class ToolIssuanceContractsTests
 
         Assert.Equal(1, issue.InventoryItemId);
         Assert.Equal("Ali", custody.BeneficiaryName);
+        Assert.Equal("Daily tool issue", issue.Notes);
+    }
+
+    [Fact]
+    public async Task OperationalIssue_UsesInventoryStockCost_AndPersistsOptionalNotes()
+    {
+        var repository = CreateRepository();
+        var tool = await CreateUsedToolAsync(repository, "Operational stock cost");
+        var sourceOperationId = Guid.NewGuid();
+
+        var issuance = await repository.IssueToolOperationalAsync(new CreateToolOperationalIssueDto
+        {
+            InventoryItemId = tool.InventoryItemId,
+            Quantity = 1m,
+            OfficialUnitCost = 999m,
+            OperationalReason = "Project dispatch",
+            Notes = "Saved in transaction notes",
+            ConfirmedByUserId = 1,
+            SourceOperationId = sourceOperationId
+        }, CancellationToken.None);
+
+        Assert.NotNull(issuance);
+        Assert.Equal(25.5m, issuance!.OfficialUnitCost);
+        Assert.Equal(25.5m, issuance.PostingAmount / issuance.Quantity);
     }
 
     [Fact]

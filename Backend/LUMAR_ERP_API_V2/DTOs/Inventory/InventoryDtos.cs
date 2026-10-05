@@ -94,10 +94,13 @@ public sealed class CreateToolOperationalIssueDto
     public decimal Quantity { get; init; }
 
     [Range(typeof(decimal), "0.01", "1000000000")]
-    public decimal OfficialUnitCost { get; init; }
+    public decimal? OfficialUnitCost { get; init; }
 
     [Required, StringLength(500)]
     public string OperationalReason { get; init; } = string.Empty;
+
+    [StringLength(1000)]
+    public string? Notes { get; init; }
 
     [Range(1, int.MaxValue)]
     public int? ConfirmedByUserId { get; init; }
