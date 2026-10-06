@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/app_routes.dart';
@@ -10,7 +11,11 @@ class LoginScreen extends StatefulWidget {
 }
 class _LoginScreenState extends State<LoginScreen> {
 	final username=TextEditingController(); final password=TextEditingController(); final passwordFocus=FocusNode(); bool rememberMe=false; bool loading=false; String? error;
-	@override void initState(){super.initState();username.text=widget.auth.rememberedUsername??'';}
+	@override void initState(){
+		super.initState();
+		username.text = widget.auth.rememberedUsername ?? (kDebugMode ? 'test' : '');
+		if (kDebugMode) password.text = '123456';
+	}
 	@override void dispose(){username.dispose();password.dispose();passwordFocus.dispose();super.dispose();}
 	Future<void> _login() async { if(loading)return;setState(()=>loading=true);final message=await widget.auth.login(username.text,password.text,rememberMe);if(!mounted)return;setState((){loading=false;error=message;});if(message==null)Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard); }
 

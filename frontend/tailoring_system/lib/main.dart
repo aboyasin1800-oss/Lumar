@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'app/navigation/app_router.dart';
+import 'app/navigation/role_gate.dart';
 import 'core/app_navigation.dart';
 import 'core/app_routes.dart';
 import 'core/theme/app_theme.dart';
@@ -14,6 +16,8 @@ import 'screens/module_screens.dart';
 import 'widgets/keyboard_policy.dart';
 import 'widgets/main_shell.dart';
 import 'widgets/workspace_task_close_button.dart';
+
+const bool kUnifiedPreviewEnabled = true;
 
 void main() => runApp(const LumarApp());
 
@@ -85,21 +89,30 @@ class _LumarAppState extends State<LumarApp> {
             themeMode: themeState.themeMode,
             theme: AppTheme.light(scale: uiScale.scale),
             darkTheme: AppTheme.dark(scale: uiScale.scale),
-            home: !auth.initialized ||
-                    !themeState.initialized ||
-                    !uiScale.initialized ||
-                    !workspace.initialized
-                ? const Scaffold(
-                    body: Center(child: CircularProgressIndicator()))
-                : auth.signedIn
-                    ? MainShell(
-                        auth: auth,
-                        themeState: themeState,
-                        uiScale: uiScale,
-                        workspace: workspace)
-                    : LoginScreen(auth: auth),
-            onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(
-              settings, auth, themeState, uiScale, workspace),
+            home: kUnifiedPreviewEnabled
+                ? const RoleGate()
+                : !auth.initialized ||
+                        !themeState.initialized ||
+                        !uiScale.initialized ||
+                        !workspace.initialized
+                    ? const Scaffold(
+                        body: Center(child: CircularProgressIndicator()))
+                    : auth.signedIn
+                        ? MainShell(
+                            auth: auth,
+                            themeState: themeState,
+                            uiScale: uiScale,
+                            workspace: workspace)
+                        : LoginScreen(auth: auth),
+            onGenerateRoute: (settings) {
+              if (kUnifiedPreviewEnabled &&
+                  AppRouter.foundationRoutes.contains(settings.name)) {
+                return AppRouter.generateRoute(settings);
+              }
+              return AppRoutes.onGenerateRoute(
+                settings, auth, themeState, uiScale, workspace,
+              );
+            },
           ));
 }
 
