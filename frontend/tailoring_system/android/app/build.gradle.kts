@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "com.lumar.tailoring_system"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "22.1.7171670"
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
