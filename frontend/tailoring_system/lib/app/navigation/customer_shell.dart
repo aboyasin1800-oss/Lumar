@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../features/customer/screens/customer_home_placeholder.dart';
 import '../../shared/widgets/shell_page.dart';
 
 class CustomerShell extends StatefulWidget {
@@ -39,10 +40,29 @@ class _CustomerShellState extends State<CustomerShell> {
     final tab = _tabs[_selectedIndex];
     final items = _sections[tab.label] ?? const <String>[];
 
+    final body = _selectedIndex == 0
+        ? const CustomerHomeScreen()
+        : ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              ShellInfoCard(
+                title: tab.label,
+                caption: 'محتوى محلي مؤقت — لا توجد بيانات حقيقية بعد.',
+                trailing: Icon(tab.icon),
+              ),
+              ...items.map(
+                (item) => ShellInfoCard(
+                  title: item,
+                  caption: 'قائمة مؤقتة للعرض التجريبي.',
+                ),
+              ),
+            ],
+          );
+
     return ShellPage(
-      title: 'Customer Shell',
+      title: 'عميل',
       icon: Icons.person_outline,
-      subtitle: 'Customer local navigation preview',
+      subtitle: 'لوحة العميل',
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -54,7 +74,7 @@ class _CustomerShellState extends State<CustomerShell> {
                 children: [
                   Icon(Icons.account_circle_rounded, size: 42, color: Colors.white),
                   SizedBox(height: 8),
-                  Text('Customer', style: TextStyle(color: Colors.white, fontSize: 20)),
+                  Text('العميل', style: TextStyle(color: Colors.white, fontSize: 20)),
                 ],
               ),
             ),
@@ -73,22 +93,7 @@ class _CustomerShellState extends State<CustomerShell> {
           ],
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          ShellInfoCard(
-            title: tab.label,
-            caption: 'Local-only shell navigation. No business logic or backend calls.',
-            trailing: Icon(tab.icon),
-          ),
-          ...items.map(
-            (item) => ShellInfoCard(
-              title: item,
-              caption: 'Placeholder content for the customer flow.',
-            ),
-          ),
-        ],
-      ),
+      body: body,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _selectTab,

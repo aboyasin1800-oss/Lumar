@@ -103,10 +103,12 @@ class _OperationalIssueFormState extends State<_OperationalIssueForm> {
   bool _isLoadingTools = true;
   bool _isSubmitting = false;
   _ToolOption? _selectedTool;
+  String _sourceOperationId = '';
 
   @override
   void initState() {
     super.initState();
+    _sourceOperationId = _generateSourceOperationId();
     _loadTools();
   }
 
@@ -167,6 +169,10 @@ class _OperationalIssueFormState extends State<_OperationalIssueForm> {
       _showMessage('يرجى إدخال كمية صحيحة أكبر من صفر.');
       return;
     }
+    if (quantity > _selectedTool!.availableQuantity) {
+      _showMessage('الكمية المطلوبة تتجاوز المتاح (${_selectedTool!.availableQuantity}).', backgroundColor: Colors.red);
+      return;
+    }
 
     setState(() => _isSubmitting = true);
     final payload = <String, dynamic>{
@@ -174,7 +180,7 @@ class _OperationalIssueFormState extends State<_OperationalIssueForm> {
       'quantity': quantity,
       'operationalReason': _reasonController.text.trim(),
       'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
-      'sourceOperationId': _generateSourceOperationId(),
+      'sourceOperationId': _sourceOperationId,
     };
 
     try {
@@ -260,35 +266,56 @@ class _OperationalIssueFormState extends State<_OperationalIssueForm> {
         key: _formKey,
         child: ListView(
           children: [
-            DropdownButtonFormField<_ToolOption>(
-              initialValue: _selectedTool,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: UiPalette.surfaceCard,
-              ),
-              hint: const Text('اختر الأداة'),
-              items: _tools
-                  .map(
-                    (tool) => DropdownMenuItem<_ToolOption>(
-                      value: tool,
-                      child: Text(tool.label),
-                    ),
-                  )
-                  .toList(),
-              onChanged: _isLoadingTools || _isSubmitting
-                  ? null
-                  : (value) {
-                      setState(() => _selectedTool = value);
-                    },
-              validator: (value) {
-                if (value == null) {
-                  return 'يرجى اختيار أداة';
+            Autocomplete<_ToolOption>(
+              initialValue: TextEditingValue(text: _selectedTool?.label ?? ''),
+              optionsBuilder: (TextEditingValue value) {
+                if (value.text.trim().isEmpty) {
+                  return const Iterable<_ToolOption>.empty();
                 }
-                return null;
+                final query = value.text.trim().toLowerCase();
+                return _tools.where((tool) {
+                  final itemName = tool.itemName.toLowerCase();
+                  final itemCode = tool.itemCode.toLowerCase();
+                  return itemName.contains(query) || itemCode.contains(query);
+                });
               },
+              displayStringForOption: (option) => option.label,
+              fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+                if (_selectedTool != null && textController.text.isEmpty) {
+                  textController.text = _selectedTool!.label;
+                }
+                return TextFormField(
+                  controller: textController,
+                  focusNode: focusNode,
+                  enabled: !_isLoadingTools && !_isSubmitting,
+                  decoration: InputDecoration(
+                    labelText: 'اختر الأداة',
+                    hintText: 'ابحث بالاسم أو الكود',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: UiPalette.surfaceCard,
+                    prefixIcon: const Icon(Icons.search),
+                  ),
+                  validator: (_) {
+                    if (_selectedTool == null) {
+                      return 'يرجى اختيار أداة';
+                    }
+                    return null;
+                  },
+                  onChanged: (_) {
+                    if (_selectedTool != null && textController.text.trim() != _selectedTool!.label) {
+                      setState(() => _selectedTool = null);
+                    }
+                  },
+                );
+              },
+              onSelected: _isLoadingTools || _isSubmitting
+                  ? null
+                  : (tool) {
+                      setState(() => _selectedTool = tool);
+                    },
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -383,26 +410,30 @@ class _ToolOption {
     required this.itemCode,
     required this.itemName,
     required this.unit,
+    required this.availableQuantity,
   });
 
   final int inventoryItemId;
   final String itemCode;
   final String itemName;
   final String unit;
+  final double availableQuantity;
 
-  String get label => '$itemName (${itemCode.isEmpty ? 'بدون كود' : itemCode})';
+  String get label => '$itemName (${itemCode.isEmpty ? 'بدون كود' : itemCode}) - $availableQuantity ${unit.isEmpty ? '' : unit}';
 
   static _ToolOption fromJson(Map<String, dynamic> json) {
     final inventoryItemId = (json['inventoryItemId'] ?? json['InventoryItemId'] ?? 0) as num?;
     final itemCode = (json['itemCode'] ?? json['ItemCode'] ?? '').toString();
     final itemName = (json['itemName'] ?? json['ItemName'] ?? 'أداة').toString();
     final unit = (json['unit'] ?? json['Unit'] ?? '').toString();
+    final availableQuantity = (json['availableQuantity'] ?? json['AvailableQuantity'] ?? json['currentQuantity'] ?? json['CurrentQuantity'] ?? 0) as num? ?? 0;
 
     return _ToolOption(
       inventoryItemId: inventoryItemId?.toInt() ?? 0,
       itemCode: itemCode,
       itemName: itemName,
       unit: unit,
+      availableQuantity: availableQuantity.toDouble(),
     );
   }
 }
@@ -426,16 +457,17 @@ class _CustodyIssueFormState extends State<_CustodyIssueForm> {
   final _destinationController = TextEditingController();
   final _loanReasonController = TextEditingController();
   final _notesController = TextEditingController();
-  final _officialUnitCostController = TextEditingController();
 
   final List<_ToolOption> _tools = <_ToolOption>[];
   _ToolOption? _selectedTool;
   bool _isLoadingTools = true;
   bool _isSubmitting = false;
+  String _sourceOperationId = '';
 
   @override
   void initState() {
     super.initState();
+    _sourceOperationId = _generateSourceOperationId();
     _loadTools();
   }
 
@@ -446,7 +478,6 @@ class _CustodyIssueFormState extends State<_CustodyIssueForm> {
     _destinationController.dispose();
     _loanReasonController.dispose();
     _notesController.dispose();
-    _officialUnitCostController.dispose();
     super.dispose();
   }
 
@@ -491,13 +522,12 @@ class _CustodyIssueFormState extends State<_CustodyIssueForm> {
     }
 
     final quantity = double.tryParse(_quantityController.text.trim().replaceAll(',', '.'));
-    final unitCost = double.tryParse(_officialUnitCostController.text.trim().replaceAll(',', '.'));
     if (quantity == null || quantity <= 0) {
       _showMessage('يرجى إدخال كمية صحيحة أكبر من صفر.');
       return;
     }
-    if (unitCost == null || unitCost <= 0) {
-      _showMessage('يرجى إدخال سعر وحدة رسمي صحيح.');
+    if (quantity > _selectedTool!.availableQuantity) {
+      _showMessage('الكمية المطلوبة تتجاوز المتاح (${_selectedTool!.availableQuantity}).', backgroundColor: Colors.red);
       return;
     }
 
@@ -506,13 +536,12 @@ class _CustodyIssueFormState extends State<_CustodyIssueForm> {
     final payload = <String, dynamic>{
       'inventoryItemId': _selectedTool!.inventoryItemId,
       'quantity': quantity,
-      'officialUnitCost': unitCost,
       'beneficiaryName': _beneficiaryController.text.trim(),
       'destinationType': _destinationController.text.trim(),
       'destinationName': _destinationController.text.trim(),
       'loanReason': _loanReasonController.text.trim(),
       'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
-      'sourceOperationId': _generateSourceOperationId(),
+      'sourceOperationId': _sourceOperationId,
     };
 
     try {
@@ -534,7 +563,7 @@ class _CustodyIssueFormState extends State<_CustodyIssueForm> {
           _destinationController.clear();
           _loanReasonController.clear();
           _notesController.clear();
-          _officialUnitCostController.clear();
+          _sourceOperationId = _generateSourceOperationId();
         });
         return;
       }
@@ -594,36 +623,56 @@ class _CustodyIssueFormState extends State<_CustodyIssueForm> {
         key: _formKey,
         child: ListView(
           children: [
-            DropdownButtonFormField<_ToolOption>(
-              initialValue: _selectedTool,
-              isExpanded: true,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: UiPalette.surfaceCard,
-              ),
-              hint: const Text('اختر الأداة'),
-              items: _tools
-                  .map(
-                    (tool) => DropdownMenuItem<_ToolOption>(
-                      value: tool,
-                      child: Text(tool.label),
-                    ),
-                  )
-                  .toList(),
-              onChanged: _isLoadingTools || _isSubmitting
-                  ? null
-                  : (value) {
-                      setState(() => _selectedTool = value);
-                    },
-              validator: (value) {
-                if (value == null) {
-                  return 'يرجى اختيار أداة';
+            Autocomplete<_ToolOption>(
+              initialValue: TextEditingValue(text: _selectedTool?.label ?? ''),
+              optionsBuilder: (TextEditingValue value) {
+                if (value.text.trim().isEmpty) {
+                  return const Iterable<_ToolOption>.empty();
                 }
-                return null;
+                final query = value.text.trim().toLowerCase();
+                return _tools.where((tool) {
+                  final itemName = tool.itemName.toLowerCase();
+                  final itemCode = tool.itemCode.toLowerCase();
+                  return itemName.contains(query) || itemCode.contains(query);
+                });
               },
+              displayStringForOption: (option) => option.label,
+              fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+                if (_selectedTool != null && textController.text.isEmpty) {
+                  textController.text = _selectedTool!.label;
+                }
+                return TextFormField(
+                  controller: textController,
+                  focusNode: focusNode,
+                  enabled: !_isLoadingTools && !_isSubmitting,
+                  decoration: InputDecoration(
+                    labelText: 'اختر الأداة',
+                    hintText: 'ابحث بالاسم أو الكود',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: UiPalette.surfaceCard,
+                    prefixIcon: const Icon(Icons.search),
+                  ),
+                  validator: (_) {
+                    if (_selectedTool == null) {
+                      return 'يرجى اختيار أداة';
+                    }
+                    return null;
+                  },
+                  onChanged: (_) {
+                    if (_selectedTool != null && textController.text.trim() != _selectedTool!.label) {
+                      setState(() => _selectedTool = null);
+                    }
+                  },
+                );
+              },
+              onSelected: _isLoadingTools || _isSubmitting
+                  ? null
+                  : (tool) {
+                      setState(() => _selectedTool = tool);
+                    },
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -642,26 +691,6 @@ class _CustodyIssueFormState extends State<_CustodyIssueForm> {
                 if (value == null || value.trim().isEmpty) return 'يرجى إدخال الكمية';
                 final parsed = double.tryParse(value.trim().replaceAll(',', '.'));
                 if (parsed == null || parsed <= 0) return 'يرجى إدخال كمية صحيحة';
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _officialUnitCostController,
-              enabled: !_isSubmitting,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'سعر الوحدة الرسمي',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: UiPalette.surfaceCard,
-              ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) return 'يرجى إدخال سعر الوحدة الرسمي';
-                final parsed = double.tryParse(value.trim().replaceAll(',', '.'));
-                if (parsed == null || parsed <= 0) return 'يرجى إدخال سعر وحدة صحيح';
                 return null;
               },
             ),
@@ -1432,8 +1461,8 @@ class _HistoryRow {
       operationalAmount: operationalAmount.toDouble(),
       postingAmount: postingAmount.toDouble(),
       status: (json['status'] ?? json['Status'] ?? '').toString(),
-      accountingEventId: (json['accountingEventId'] ?? json['AccountingEventId']) is num ? (json['accountingEventId'] ?? json['AccountingEventId']) as num? : null,
-      inventoryTransactionId: (json['inventoryTransactionId'] ?? json['InventoryTransactionId']) is num ? (json['inventoryTransactionId'] ?? json['InventoryTransactionId']) as num? : null,
+      accountingEventId: (json['accountingEventId'] ?? json['AccountingEventId']) is num ? ((json['accountingEventId'] ?? json['AccountingEventId']) as num).toInt() : null,
+      inventoryTransactionId: (json['inventoryTransactionId'] ?? json['InventoryTransactionId']) is num ? ((json['inventoryTransactionId'] ?? json['InventoryTransactionId']) as num).toInt() : null,
       sourceOperationId: (json['sourceOperationId'] ?? json['SourceOperationId'] ?? '').toString(),
       createdAt: DateTime.tryParse((json['createdAt'] ?? json['CreatedAt'] ?? '').toString()) ?? DateTime.now(),
       beneficiaryName: (json['beneficiaryName'] ?? json['BeneficiaryName'])?.toString(),

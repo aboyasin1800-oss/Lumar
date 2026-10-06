@@ -117,7 +117,7 @@ public sealed class CreateToolCustodyIssueDto
     public decimal Quantity { get; init; }
 
     [Range(typeof(decimal), "0.01", "1000000000")]
-    public decimal OfficialUnitCost { get; init; }
+    public decimal? OfficialUnitCost { get; init; }
 
     [Required, StringLength(200)]
     public string BeneficiaryName { get; init; } = string.Empty;

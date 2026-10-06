@@ -698,8 +698,8 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
 
     public async Task<ToolIssuanceResultDto?> IssueToolCustodyAsync(CreateToolCustodyIssueDto request, CancellationToken ct)
     {
-        if (request.InventoryItemId <= 0 || request.Quantity <= 0m || request.OfficialUnitCost <= 0m || request.SourceOperationId == Guid.Empty)
-            throw new ArgumentException("Inventory item, quantity, official unit cost, and source operation id are required.");
+        if (request.InventoryItemId <= 0 || request.Quantity <= 0m || request.SourceOperationId == Guid.Empty)
+            throw new ArgumentException("Inventory item, quantity, and source operation id are required.");
 
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(ct);
@@ -722,9 +722,16 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
             if (item.CurrentQuantity < request.Quantity)
                 throw new InvalidOperationException("The available tool quantity is not sufficient for the custody issue.");
 
+            var officialUnitCost = ResolveOfficialToolUnitCost(item);
+            if (officialUnitCost <= 0m)
+                throw new InvalidOperationException("The tool item does not have a valid official unit cost in stock for custody issuance.");
+
             var now = DateTime.UtcNow;
-            var operationalAmount = decimal.Round(request.Quantity * request.OfficialUnitCost, 6, MidpointRounding.AwayFromZero);
+            var operationalAmount = decimal.Round(request.Quantity * officialUnitCost, 6, MidpointRounding.AwayFromZero);
             var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
+            var transactionNotes = string.IsNullOrWhiteSpace(request.Notes)
+                ? $"Custody issue for {item.ItemName}"
+                : $"Custody issue for {item.ItemName}. {request.Notes.Trim()}";
 
             try
             {
@@ -734,7 +741,7 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                     request.InventoryItemId,
                     "Custody",
                     request.Quantity,
-                    request.OfficialUnitCost,
+                    officialUnitCost,
                     operationalAmount,
                     postingAmount,
                     null,
@@ -755,9 +762,9 @@ public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections
                     "CustodyIssue",
                     -request.Quantity,
                     $"TOOL-CUSTODY-{issuanceId}",
-                    $"Custody issue for {item.ItemName}",
+                    transactionNotes,
                     now,
-                    request.OfficialUnitCost,
+                    officialUnitCost,
                     null,
                     ct);
 

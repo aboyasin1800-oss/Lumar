@@ -96,7 +96,7 @@ public sealed class InventoryController(IInventoryService service) : ControllerB
     {
         if (request.InventoryItemId <= 0) return BadRequest("Inventory item is required.");
         if (request.Quantity <= 0m) return BadRequest("Quantity must be positive.");
-        if (request.OfficialUnitCost <= 0m) return BadRequest("Official unit cost must be positive.");
+        if (request.OfficialUnitCost is not null && request.OfficialUnitCost <= 0m) return BadRequest("Official unit cost must be positive when provided.");
         if (string.IsNullOrWhiteSpace(request.BeneficiaryName)) return BadRequest("Beneficiary name is required.");
         if (string.IsNullOrWhiteSpace(request.DestinationType)) return BadRequest("Destination type is required.");
         if (string.IsNullOrWhiteSpace(request.DestinationName)) return BadRequest("Destination name is required.");
