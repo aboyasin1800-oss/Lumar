@@ -7,21 +7,21 @@ class CustomerOrdersScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final orders = [
       _OrderItem(
-        id: 'ORD-000125',
+        id: 'طلب رقم 125',
         status: 'قيد التنفيذ',
         date: '12 مايو 2026',
         details: 'تم تجهيز الطلب وجاري التوصيل',
         color: Colors.blue,
       ),
       _OrderItem(
-        id: 'ORD-000121',
+        id: 'طلب رقم 121',
         status: 'مكتمل',
         date: '09 مايو 2026',
         details: 'تم استلام الطلب بنجاح',
         color: Colors.green,
       ),
       _OrderItem(
-        id: 'ORD-000118',
+        id: 'طلب رقم 118',
         status: 'جاهز للتسليم',
         date: '04 مايو 2026',
         details: 'بانتظار الموعد المخصص',

@@ -16,17 +16,17 @@ class _CustomerShellState extends State<CustomerShell> {
   int _selectedIndex = 0;
 
   final List<_ShellTab> _tabs = const [
-    _ShellTab(label: 'Home', icon: Icons.home_outlined),
-    _ShellTab(label: 'Orders', icon: Icons.receipt_long_outlined),
-    _ShellTab(label: 'Invoices', icon: Icons.receipt_outlined),
-    _ShellTab(label: 'Profile', icon: Icons.person_outline),
+    _ShellTab(label: 'الرئيسية', icon: Icons.home_outlined),
+    _ShellTab(label: 'الطلبات', icon: Icons.receipt_long_outlined),
+    _ShellTab(label: 'الفواتير', icon: Icons.receipt_outlined),
+    _ShellTab(label: 'الملف الشخصي', icon: Icons.person_outline),
   ];
 
   final Map<String, List<String>> _sections = const {
-    'Home': ['Overview', 'Account summary', 'Recent activity'],
-    'Orders': ['Current orders', 'Order history', 'Track delivery'],
-    'Invoices': ['Payments', 'Receipts', 'Due invoices'],
-    'Profile': ['Personal data', 'Preferences', 'Support'],
+    'الرئيسية': ['نظرة عامة', 'ملخص الحساب', 'آخر النشاطات'],
+    'الطلبات': ['الطلبات الحالية', 'سجل الطلبات', 'تتبع التسليم'],
+    'الفواتير': ['المدفوعات', 'الإيصالات', 'الفواتير المستحقة'],
+    'الملف الشخصي': ['البيانات الشخصية', 'التفضيلات', 'الدعم'],
   };
 
   void _selectTab(int index) {

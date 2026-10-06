@@ -7,21 +7,21 @@ class CustomerInvoicesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final invoices = [
       _InvoiceItem(
-        number: 'INV-2026-042',
+        number: 'فاتورة 2026-042',
         total: '1,250 ر.س',
         dueDate: '15 مايو 2026',
         status: 'مفتوح',
         color: Colors.orange,
       ),
       _InvoiceItem(
-        number: 'INV-2026-038',
+        number: 'فاتورة 2026-038',
         total: '860 ر.س',
         dueDate: '09 مايو 2026',
         status: 'مدفوع',
         color: Colors.green,
       ),
       _InvoiceItem(
-        number: 'INV-2026-031',
+        number: 'فاتورة 2026-031',
         total: '2,140 ر.س',
         dueDate: '01 مايو 2026',
         status: 'متأخر',

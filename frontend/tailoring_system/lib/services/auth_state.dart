@@ -73,12 +73,12 @@ class AuthState extends ChangeNotifier {
 
 	Future<String?> login(String username, String password, bool rememberMe) async {
 		final trimmedUsername = username.trim();
-		if (kDebugMode && trimmedUsername == 'test' && password == '123456') {
+		if (kDebugMode && (trimmedUsername == 'admin' || trimmedUsername == 'test') && RegExp(r'^\d{4}$').hasMatch(password)) {
 			const token = 'debug-test-token';
 			const currentUser = AuthUser(
 				userId: 1,
-				username: 'test',
-				fullName: 'Test User',
+				username: 'admin',
+				fullName: 'Admin User',
 				isActive: true,
 			);
 			if (rememberMe) {
