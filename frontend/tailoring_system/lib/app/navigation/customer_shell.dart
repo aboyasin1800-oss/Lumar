@@ -4,10 +4,13 @@ import '../../features/customer/screens/customer_home_placeholder.dart';
 import '../../features/customer/screens/customer_invoices_screen.dart';
 import '../../features/customer/screens/customer_orders_screen.dart';
 import '../../features/customer/screens/customer_profile_screen.dart';
+import '../../services/auth_state.dart';
 import '../../shared/widgets/shell_page.dart';
 
 class CustomerShell extends StatefulWidget {
-  const CustomerShell({super.key});
+  const CustomerShell({required this.auth, super.key});
+
+  final AuthState auth;
 
   @override
   State<CustomerShell> createState() => _CustomerShellState();
@@ -39,7 +42,7 @@ class _CustomerShellState extends State<CustomerShell> {
             ? const CustomerOrdersScreen()
             : _selectedIndex == 2
                 ? const CustomerInvoicesScreen()
-                : const CustomerProfileScreen();
+                : CustomerProfileScreen(auth: widget.auth);
 
     return ShellPage(
       title: 'عميل',

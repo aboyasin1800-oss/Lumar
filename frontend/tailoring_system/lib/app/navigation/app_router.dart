@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/auth_state.dart';
 import 'customer_shell.dart';
 import 'employee_shell.dart';
 import 'role_gate.dart';
@@ -30,7 +31,7 @@ class AppRouter {
       case customerShell:
         return MaterialPageRoute<void>(
           settings: settings,
-          builder: (_) => const CustomerShell(),
+          builder: (_) => CustomerShell(auth: AuthState.instance),
         );
       case employeeShell:
         return MaterialPageRoute<void>(

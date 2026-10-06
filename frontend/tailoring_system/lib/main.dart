@@ -28,7 +28,7 @@ class LumarApp extends StatefulWidget {
 }
 
 class _LumarAppState extends State<LumarApp> {
-  final auth = AuthState();
+  final auth = AuthState.instance;
   final themeState = ThemeState();
   final uiScale = UiScaleState();
   late final WorkspaceController workspace;
@@ -71,14 +71,15 @@ class _LumarAppState extends State<LumarApp> {
               GlobalCupertinoLocalizations.delegate
             ],
             builder: (context, child) => AppNavigationRegion(
-              onBackMouseButton: () => workspace.open(WorkspaceRouteIds.dashboard),
-              onCloseWorkspaceTask: (context) =>
-                  WorkspaceTaskCloseButton.closeActiveTask(
-                    AppNavigation.navigatorKey.currentContext ?? context,
-                    workspace,
-                  ),
-              showWorkspaceCloseButton: workspace.activeRouteId != null,
-              child: KeyboardPolicy(
+                onBackMouseButton: () =>
+                    workspace.open(WorkspaceRouteIds.dashboard),
+                onCloseWorkspaceTask: (context) =>
+                    WorkspaceTaskCloseButton.closeActiveTask(
+                      AppNavigation.navigatorKey.currentContext ?? context,
+                      workspace,
+                    ),
+                showWorkspaceCloseButton: workspace.activeRouteId != null,
+                child: KeyboardPolicy(
                     uiScale: uiScale,
                     child: Directionality(
                         textDirection: TextDirection.rtl,
@@ -110,7 +111,11 @@ class _LumarAppState extends State<LumarApp> {
                 return AppRouter.generateRoute(settings);
               }
               return AppRoutes.onGenerateRoute(
-                settings, auth, themeState, uiScale, workspace,
+                settings,
+                auth,
+                themeState,
+                uiScale,
+                workspace,
               );
             },
           ));

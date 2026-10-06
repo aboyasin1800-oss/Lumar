@@ -1,34 +1,32 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/auth_state.dart';
+import '../controllers/customer_controller.dart';
+
 class CustomerProfileScreen extends StatelessWidget {
-  const CustomerProfileScreen({super.key});
+  const CustomerProfileScreen({required this.auth, super.key});
+
+  final AuthState auth;
 
   @override
   Widget build(BuildContext context) {
-    final profile = const _CustomerProfile(
-      fullName: 'عبد الرحمن محمد',
-      customerCode: 'CUST-2048',
-      status: 'نشط',
-      lastLogin: 'آخر تسجيل دخول: اليوم, 09:45',
-      mobile: '+966 50 123 4567',
-      email: 'abdulrahman.mohammed@example.com',
-      city: 'الرياض',
-      address: 'شارع الملك فهد، حي النخيل، الرياض 12273',
-      loyaltyTier: 'عضو فضي',
-      points: '2,480 نقطة',
-      preferredLanguage: 'العربية',
-      joinedAt: 'انضم في أكتوبر 2024',
-      preferences: [
-        'تجربة تسليم سريعة',
-        'تأكيد الطلب عبر الرسائل',
-        'مراجعة الطلب قبل الشحن',
-      ],
-      supportOptions: [
-        'الدعم المتاح 24/7',
-        'متوسط الرد خلال 10 دقائق',
-        'المساعدة عبر الهاتف والواتساب',
-      ],
-    );
+    final profile = const CustomerController().profileFor(auth.user);
+
+    final accountDetails = <_InfoRow>[
+      _InfoRow(label: 'اسم العميل', value: profile.fullName),
+      _InfoRow(label: 'اسم المستخدم', value: profile.username),
+      _InfoRow(label: 'رمز العميل', value: profile.customerCode),
+      _InfoRow(label: 'حالة الحساب', value: profile.status),
+      _InfoRow(label: 'الدور', value: profile.role),
+      _InfoRow(label: 'آخر تسجيل دخول', value: profile.lastLogin),
+    ];
+
+    final contactDetails = <_InfoRow>[
+      _InfoRow(label: 'الجوال', value: profile.mobile),
+      _InfoRow(label: 'البريد الإلكتروني', value: profile.email),
+      _InfoRow(label: 'المدينة', value: profile.city),
+      _InfoRow(label: 'العنوان', value: profile.address),
+    ];
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -38,23 +36,13 @@ class CustomerProfileScreen extends StatelessWidget {
         _InfoSection(
           title: 'البيانات الشخصية',
           icon: Icons.person_outline,
-          items: [
-            _InfoRow(label: 'اسم العميل', value: profile.fullName),
-            _InfoRow(label: 'رمز العميل', value: profile.customerCode),
-            _InfoRow(label: 'حالة الحساب', value: profile.status),
-            _InfoRow(label: 'تاريخ الانضمام', value: profile.joinedAt),
-          ],
+          items: accountDetails,
         ),
         const SizedBox(height: 16),
         _InfoSection(
           title: 'معلومات التواصل',
           icon: Icons.contact_phone_outlined,
-          items: [
-            _InfoRow(label: 'الجوال', value: profile.mobile),
-            _InfoRow(label: 'البريد الإلكتروني', value: profile.email),
-            _InfoRow(label: 'المدينة', value: profile.city),
-            _InfoRow(label: 'العنوان', value: profile.address),
-          ],
+          items: contactDetails,
         ),
         const SizedBox(height: 16),
         _ActionSummaryCard(
@@ -63,60 +51,15 @@ class CustomerProfileScreen extends StatelessWidget {
           level: profile.loyaltyTier,
           language: profile.preferredLanguage,
         ),
-        const SizedBox(height: 16),
-        _PreferenceSection(
-          title: 'التفضيلات',
-          items: profile.preferences,
-        ),
-        const SizedBox(height: 16),
-        _PreferenceSection(
-          title: 'الدعم',
-          items: profile.supportOptions,
-          accentColor: Colors.green,
-        ),
       ],
     );
   }
 }
 
-class _CustomerProfile {
-  const _CustomerProfile({
-    required this.fullName,
-    required this.customerCode,
-    required this.status,
-    required this.lastLogin,
-    required this.mobile,
-    required this.email,
-    required this.city,
-    required this.address,
-    required this.loyaltyTier,
-    required this.points,
-    required this.preferredLanguage,
-    required this.joinedAt,
-    required this.preferences,
-    required this.supportOptions,
-  });
-
-  final String fullName;
-  final String customerCode;
-  final String status;
-  final String lastLogin;
-  final String mobile;
-  final String email;
-  final String city;
-  final String address;
-  final String loyaltyTier;
-  final String points;
-  final String preferredLanguage;
-  final String joinedAt;
-  final List<String> preferences;
-  final List<String> supportOptions;
-}
-
 class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({required this.profile});
 
-  final _CustomerProfile profile;
+  final CustomerProfileViewModel profile;
 
   @override
   Widget build(BuildContext context) {
@@ -370,51 +313,6 @@ class _StatMiniCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _PreferenceSection extends StatelessWidget {
-  const _PreferenceSection({
-    required this.title,
-    required this.items,
-    this.accentColor = Colors.blue,
-  });
-
-  final String title;
-  final List<String> items;
-  final Color accentColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 12),
-            ...items.map((item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.check_circle_rounded,
-                          color: accentColor, size: 20),
-                      const SizedBox(width: 10),
-                      Expanded(child: Text(item)),
-                    ],
-                  ),
-                )),
-          ],
-        ),
       ),
     );
   }
