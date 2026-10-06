@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../features/customer/screens/customer_home_placeholder.dart';
 import '../../features/customer/screens/customer_invoices_screen.dart';
 import '../../features/customer/screens/customer_orders_screen.dart';
+import '../../features/customer/screens/customer_profile_screen.dart';
 import '../../shared/widgets/shell_page.dart';
 
 class CustomerShell extends StatefulWidget {
@@ -22,13 +23,6 @@ class _CustomerShellState extends State<CustomerShell> {
     _ShellTab(label: 'الملف الشخصي', icon: Icons.person_outline),
   ];
 
-  final Map<String, List<String>> _sections = const {
-    'الرئيسية': ['نظرة عامة', 'ملخص الحساب', 'آخر النشاطات'],
-    'الطلبات': ['الطلبات الحالية', 'سجل الطلبات', 'تتبع التسليم'],
-    'الفواتير': ['المدفوعات', 'الإيصالات', 'الفواتير المستحقة'],
-    'الملف الشخصي': ['البيانات الشخصية', 'التفضيلات', 'الدعم'],
-  };
-
   void _selectTab(int index) {
     if (index < 0 || index >= _tabs.length) {
       return;
@@ -39,31 +33,13 @@ class _CustomerShellState extends State<CustomerShell> {
 
   @override
   Widget build(BuildContext context) {
-    final tab = _tabs[_selectedIndex];
-    final items = _sections[tab.label] ?? const <String>[];
-
     final body = _selectedIndex == 0
         ? const CustomerHomeScreen()
         : _selectedIndex == 1
             ? const CustomerOrdersScreen()
             : _selectedIndex == 2
                 ? const CustomerInvoicesScreen()
-                : ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      ShellInfoCard(
-                        title: tab.label,
-                        caption: 'محتوى محلي مؤقت — لا توجد بيانات حقيقية بعد.',
-                        trailing: Icon(tab.icon),
-                      ),
-                      ...items.map(
-                        (item) => ShellInfoCard(
-                          title: item,
-                          caption: 'قائمة مؤقتة للعرض التجريبي.',
-                        ),
-                      ),
-                    ],
-                  );
+                : const CustomerProfileScreen();
 
     return ShellPage(
       title: 'عميل',
@@ -78,9 +54,11 @@ class _CustomerShellState extends State<CustomerShell> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.account_circle_rounded, size: 42, color: Colors.white),
+                  Icon(Icons.account_circle_rounded,
+                      size: 42, color: Colors.white),
                   SizedBox(height: 8),
-                  Text('العميل', style: TextStyle(color: Colors.white, fontSize: 20)),
+                  Text('العميل',
+                      style: TextStyle(color: Colors.white, fontSize: 20)),
                 ],
               ),
             ),
