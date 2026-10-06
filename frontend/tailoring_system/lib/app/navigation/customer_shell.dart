@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../features/customer/screens/customer_home_placeholder.dart';
+import '../../features/customer/screens/customer_invoices_screen.dart';
 import '../../features/customer/screens/customer_orders_screen.dart';
 import '../../shared/widgets/shell_page.dart';
 
@@ -45,22 +46,24 @@ class _CustomerShellState extends State<CustomerShell> {
         ? const CustomerHomeScreen()
         : _selectedIndex == 1
             ? const CustomerOrdersScreen()
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  ShellInfoCard(
-                    title: tab.label,
-                    caption: 'محتوى محلي مؤقت — لا توجد بيانات حقيقية بعد.',
-                    trailing: Icon(tab.icon),
-                  ),
-                  ...items.map(
-                    (item) => ShellInfoCard(
-                      title: item,
-                      caption: 'قائمة مؤقتة للعرض التجريبي.',
-                    ),
-                  ),
-                ],
-              );
+            : _selectedIndex == 2
+                ? const CustomerInvoicesScreen()
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      ShellInfoCard(
+                        title: tab.label,
+                        caption: 'محتوى محلي مؤقت — لا توجد بيانات حقيقية بعد.',
+                        trailing: Icon(tab.icon),
+                      ),
+                      ...items.map(
+                        (item) => ShellInfoCard(
+                          title: item,
+                          caption: 'قائمة مؤقتة للعرض التجريبي.',
+                        ),
+                      ),
+                    ],
+                  );
 
     return ShellPage(
       title: 'عميل',

@@ -6,6 +6,17 @@ import 'package:http/http.dart' as http;
 
 import '../../core/ui_palette.dart';
 
+String createSourceOperationId() {
+  final random = Random();
+  final hex = List<String>.generate(32, (_) => '0123456789abcdef'[random.nextInt(16)]).join();
+  final a = hex.substring(0, 8);
+  final b = hex.substring(8, 12);
+  final c = '4${hex.substring(12, 15)}';
+  final d = '${(8 + random.nextInt(2)).toRadixString(16)}${hex.substring(15, 18)}';
+  final e = hex.substring(18, 32);
+  return '$a-$b-$c-$d-$e';
+}
+
 class InventoryIssuanceScreen extends StatelessWidget {
   const InventoryIssuanceScreen({super.key});
 
@@ -108,7 +119,7 @@ class _OperationalIssueFormState extends State<_OperationalIssueForm> {
   @override
   void initState() {
     super.initState();
-    _sourceOperationId = _generateSourceOperationId();
+    _sourceOperationId = createSourceOperationId();
     _loadTools();
   }
 
@@ -205,6 +216,7 @@ class _OperationalIssueFormState extends State<_OperationalIssueForm> {
           _quantityController.clear();
           _reasonController.clear();
           _notesController.clear();
+          _sourceOperationId = createSourceOperationId();
         });
         await _loadTools();
         return;
@@ -245,17 +257,6 @@ class _OperationalIssueFormState extends State<_OperationalIssueForm> {
         backgroundColor: backgroundColor,
       ),
     );
-  }
-
-  String _generateSourceOperationId() {
-    final random = Random();
-    final hex = List<String>.generate(32, (_) => '0123456789abcdef'[random.nextInt(16)]).join();
-    final a = hex.substring(0, 8);
-    final b = hex.substring(8, 12);
-    final c = '4${hex.substring(12, 15)}';
-    final d = '${(8 + random.nextInt(2)).toRadixString(16)}${hex.substring(15, 18)}';
-    final e = hex.substring(18, 32);
-    return '$a-$b-$c-$d-$e';
   }
 
   @override
@@ -467,7 +468,7 @@ class _CustodyIssueFormState extends State<_CustodyIssueForm> {
   @override
   void initState() {
     super.initState();
-    _sourceOperationId = _generateSourceOperationId();
+    _sourceOperationId = createSourceOperationId();
     _loadTools();
   }
 
@@ -563,7 +564,7 @@ class _CustodyIssueFormState extends State<_CustodyIssueForm> {
           _destinationController.clear();
           _loanReasonController.clear();
           _notesController.clear();
-          _sourceOperationId = _generateSourceOperationId();
+          _sourceOperationId = createSourceOperationId();
         });
         return;
       }
@@ -592,17 +593,6 @@ class _CustodyIssueFormState extends State<_CustodyIssueForm> {
         setState(() => _isSubmitting = false);
       }
     }
-  }
-
-  String _generateSourceOperationId() {
-    final random = Random();
-    final hex = List<String>.generate(32, (_) => '0123456789abcdef'[random.nextInt(16)]).join();
-    final a = hex.substring(0, 8);
-    final b = hex.substring(8, 12);
-    final c = '4${hex.substring(12, 15)}';
-    final d = '${(8 + random.nextInt(2)).toRadixString(16)}${hex.substring(15, 18)}';
-    final e = hex.substring(18, 32);
-    return '$a-$b-$c-$d-$e';
   }
 
   void _showMessage(String message, {Color backgroundColor = UiPalette.primaryBlue}) {
@@ -860,7 +850,7 @@ class _OpenCustodyTabState extends State<_OpenCustodyTab> {
       'toolIssuanceId': row.toolIssuanceId,
       'returnedQuantity': quantity,
       'returnNotes': row.notesController.text.trim().isEmpty ? null : row.notesController.text.trim(),
-      'sourceOperationId': _generateSourceOperationId(),
+      'sourceOperationId': row.sourceOperationId,
     };
 
     try {
@@ -902,17 +892,6 @@ class _OpenCustodyTabState extends State<_OpenCustodyTab> {
         setState(() => _submitting = false);
       }
     }
-  }
-
-  String _generateSourceOperationId() {
-    final random = Random();
-    final hex = List<String>.generate(32, (_) => '0123456789abcdef'[random.nextInt(16)]).join();
-    final a = hex.substring(0, 8);
-    final b = hex.substring(8, 12);
-    final c = '4${hex.substring(12, 15)}';
-    final d = '${(8 + random.nextInt(2)).toRadixString(16)}${hex.substring(15, 18)}';
-    final e = hex.substring(18, 32);
-    return '$a-$b-$c-$d-$e';
   }
 
   void _showMessage(String message, {Color backgroundColor = UiPalette.primaryBlue}) {
@@ -1189,7 +1168,7 @@ class _ToolHistoryTabState extends State<_ToolHistoryTab> {
       'toolIssuanceId': row.toolIssuanceId,
       'reversalReason': reason,
       'notes': notes,
-      'sourceOperationId': _generateSourceOperationId(),
+      'sourceOperationId': row.sourceOperationId,
     };
 
     try {
@@ -1227,17 +1206,6 @@ class _ToolHistoryTabState extends State<_ToolHistoryTab> {
       if (!mounted) return;
       _showMessage('حدث خطأ أثناء إلغاء الصرف: ${error.toString()}', backgroundColor: Colors.red);
     }
-  }
-
-  String _generateSourceOperationId() {
-    final random = Random();
-    final hex = List<String>.generate(32, (_) => '0123456789abcdef'[random.nextInt(16)]).join();
-    final a = hex.substring(0, 8);
-    final b = hex.substring(8, 12);
-    final c = '4${hex.substring(12, 15)}';
-    final d = '${(8 + random.nextInt(2)).toRadixString(16)}${hex.substring(15, 18)}';
-    final e = hex.substring(18, 32);
-    return '$a-$b-$c-$d-$e';
   }
 
   void _showMessage(String message, {Color backgroundColor = UiPalette.primaryBlue}) {
@@ -1296,7 +1264,7 @@ class _ToolHistoryTabState extends State<_ToolHistoryTab> {
                     itemCount: _filteredRows.length,
                     itemBuilder: (context, index) {
                       final row = _filteredRows[index];
-                      final canReverse = row.issueType.toLowerCase().contains('operational');
+                      final canReverse = row.issueType.toLowerCase() == 'operational' && row.status.toLowerCase() == 'posted';
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
                         child: Padding(
@@ -1358,6 +1326,7 @@ class _OpenCustodyRow {
     required this.createdAt,
     required this.returnController,
     required this.notesController,
+    required this.sourceOperationId,
   });
 
   final int toolIssuanceId;
@@ -1374,6 +1343,7 @@ class _OpenCustodyRow {
   final DateTime createdAt;
   final TextEditingController returnController;
   final TextEditingController notesController;
+  final String sourceOperationId;
 
   static _OpenCustodyRow fromJson(Map<String, dynamic> json) {
     final toolIssuanceId = (json['toolIssuanceId'] ?? json['ToolIssuanceId'] ?? 0) as num?;
@@ -1381,6 +1351,7 @@ class _OpenCustodyRow {
     final quantity = (json['quantity'] ?? json['Quantity'] ?? 0) as num? ?? 0;
     final returnedQuantity = (json['returnedQuantity'] ?? json['ReturnedQuantity'] ?? 0) as num? ?? 0;
     final outstandingQuantity = (json['outstandingQuantity'] ?? json['OutstandingQuantity'] ?? 0) as num? ?? 0;
+    final sourceOperationId = (json['sourceOperationId'] ?? json['SourceOperationId'] ?? '').toString();
 
     return _OpenCustodyRow(
       toolIssuanceId: toolIssuanceId?.toInt() ?? 0,
@@ -1397,6 +1368,7 @@ class _OpenCustodyRow {
       createdAt: DateTime.tryParse((json['createdAt'] ?? json['CreatedAt'] ?? '').toString()) ?? DateTime.now(),
       returnController: TextEditingController(text: outstandingQuantity.toStringAsFixed(2)),
       notesController: TextEditingController(),
+      sourceOperationId: sourceOperationId.isEmpty ? createSourceOperationId() : sourceOperationId,
     );
   }
 }
