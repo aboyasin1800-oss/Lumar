@@ -1087,6 +1087,20 @@
 			"command": "Get-CimInstance -ClassName Win32_Process -Filter \"Name = 'LUMAR_ERP_API_V2.exe'\" | Select-Object Name,ProcessId,CommandLine | Format-List *",
 			"isBackground": false,
 			"problemMatcher": []
+		},
+		{
+			"label": "Build backend after auth update",
+			"type": "shell",
+			"command": "$buildStart=(Get-Date).ToString('o'); Write-Output \"BackendBuildTime=$buildStart\"; dotnet build Backend/LUMAR_ERP_API_V2/LUMAR_ERP_API_V2.csproj --no-restore -nologo; if ($LASTEXITCODE -ne 0) { throw \"BUILD_FAILED\" }",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Restart backend and verify live admin login",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $proc = Get-Process -Name LUMAR_ERP_API_V2 -ErrorAction SilentlyContinue; if ($proc) { Stop-Process -Id $proc.Id -Force; } $buildStart=(Get-Date).ToString('o'); Write-Output \"BackendBuildTime=$buildStart\"; dotnet build Backend/LUMAR_ERP_API_V2/LUMAR_ERP_API_V2.csproj --no-restore -nologo; if ($LASTEXITCODE -ne 0) { throw 'BUILD_FAILED' }; $p = Start-Process -FilePath 'dotnet' -ArgumentList 'run --project \"Backend/LUMAR_ERP_API_V2/LUMAR_ERP_API_V2.csproj\" --urls http://localhost:5093' -WorkingDirectory 'D:\\YASIN' -PassThru; Start-Sleep -Milliseconds 6000; $startTime = $p.StartTime.ToString('o'); Write-Output \"BackendProcessStartTime=$startTime\"; $pw='4100'; $login = Invoke-WebRequest -Uri 'http://localhost:5093/auth/login' -Method Post -ContentType 'application/json' -Body (@{ username='admin'; password=$pw } | ConvertTo-Json) -UseBasicParsing; $loginStatus = [int]$login.StatusCode; Write-Output \"LOGIN_STATUS=$loginStatus\"; $loginJson = $login.Content | ConvertFrom-Json; $tokenPresent = ($null -ne $loginJson.token) -or ($null -ne $loginJson.sessionToken); Write-Output \"TOKEN_PRESENT=$tokenPresent\"; if ($tokenPresent) { $token = if ($null -ne $loginJson.token) { $loginJson.token } else { $loginJson.sessionToken }; $me = Invoke-WebRequest -Uri 'http://localhost:5093/auth/me' -Method Get -Headers @{ Authorization = \"Bearer $token\" } -UseBasicParsing; $meStatus = [int]$me.StatusCode; Write-Output \"ME_STATUS=$meStatus\"; } else { Write-Output 'ME_STATUS=SKIP'; } $windowOpen = $false; $win = Get-Process | Where-Object { $_.MainWindowTitle -and $_.ProcessName -match 'LUMAR|Tailoring|ERP' } | Select-Object -First 1; if ($win) { $windowOpen = $true; } Write-Output \"WINDOWS_HOME_OPENED=$windowOpen\"; if ($loginStatus -ne 200 -or $meStatus -ne 200) { Write-Output 'First Failed Check=Password verification or session creation failed'; } else { Write-Output 'First Failed Check=NONE'; }",
+			"isBackground": false,
+			"problemMatcher": []
 		}
 	]
 }
