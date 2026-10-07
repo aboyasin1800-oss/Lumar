@@ -89,7 +89,6 @@ class AuthState extends ChangeNotifier {
 
   Future<String?> login(
       String username, String password, bool rememberMe) async {
-    final trimmedUsername = username.trim();
     try {
       final response = await _request('POST', '/auth/login', body: {
         'username': username,
@@ -189,7 +188,10 @@ class AuthState extends ChangeNotifier {
     try {
       final request = await client.openUrl(method, Uri.parse('$_baseUrl$path'));
       if (token != null) {
-        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer $token',
+        );
       }
       if (body != null) {
         request.headers.contentType = ContentType.json;
@@ -209,4 +211,7 @@ class ApiResponse {
   final int statusCode;
   final String body;
 }
+
+
+
 

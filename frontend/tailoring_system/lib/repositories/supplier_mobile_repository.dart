@@ -174,3 +174,5 @@ class SupplierMobileApiException implements Exception {
   @override
   String toString() => 'SupplierMobileApiException(path: $path, statusCode: $statusCode, responseBody: $responseBody)';
 }
+
+

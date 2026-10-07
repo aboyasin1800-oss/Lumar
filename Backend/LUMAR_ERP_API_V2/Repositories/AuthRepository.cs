@@ -2,6 +2,7 @@
 using System.Text;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Auth;
+using LUMAR_ERP_API_V2.Services;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
@@ -57,7 +58,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             await update.ExecuteNonQueryAsync(ct);
         }
 
-        var mobileAccount = await ResolveMobileAccountAsync(connection, username, ct);
+        var mobileAccount = await ResolveMobileAccountAsync(connection, userId, ct);
         if (mobileAccount is null)
             return null;
 
@@ -359,7 +360,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         var fullName = reader.GetString(2);
         var role = reader.IsDBNull(3) ? null : reader.GetString(3);
         DateTime? lastLoginUtc = reader.IsDBNull(5) ? null : reader.GetDateTime(5);
-        var mobileAccount = await ResolveMobileAccountAsync(connection, username, ct);
+        var mobileAccount = await ResolveMobileAccountAsync(connection, userId, ct);
         if (mobileAccount is null)
             return null;
 
@@ -411,32 +412,29 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         return new SessionDto(token, expiresAt, user with { LastLoginUtc = DateTime.UtcNow });
     }
 
-    private async Task<MobileAccountIdentity?> ResolveMobileAccountAsync(SqlConnection connection, string username, CancellationToken ct)
+    private async Task<MobileAccountIdentity?> ResolveMobileAccountAsync(SqlConnection connection, int userId, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(username))
+        if (userId <= 0)
             return null;
 
         await using var resolve = new SqlCommand(
-            "SELECT TOP 1 AccountType, CustomerId, EmployeeId, SupplierId, IsActive FROM dbo.MobileAccounts WHERE Username = @username AND IsActive = 1 ORDER BY MobileAccountId",
+            "SELECT TOP 1 AccountType, CustomerId, EmployeeId, SupplierId, IsActive FROM dbo.MobileAccounts WHERE UserId = @userId AND IsActive = 1 ORDER BY MobileAccountId",
             connection);
-        resolve.Parameters.AddWithValue("@username", username.Trim());
+        resolve.Parameters.AddWithValue("@userId", userId);
 
         await using var reader = await resolve.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct))
             return null;
 
         var accountType = reader.IsDBNull(0) ? null : reader.GetString(0);
-        if (string.IsNullOrWhiteSpace(accountType))
+        int? customerId = reader.IsDBNull(1) ? null : reader.GetInt32(1);
+        int? employeeId = reader.IsDBNull(2) ? null : reader.GetInt32(2);
+        int? supplierId = reader.IsDBNull(3) ? null : reader.GetInt32(3);
+
+        if (string.IsNullOrWhiteSpace(accountType) || !MobileAccountIdentityValidator.IsValid(accountType, customerId, employeeId, supplierId))
             return null;
 
-        if (string.Equals(accountType, "Employee", StringComparison.OrdinalIgnoreCase) && reader.IsDBNull(2))
-            return null;
-
-        return new MobileAccountIdentity(
-            accountType,
-            reader.IsDBNull(1) ? null : reader.GetInt32(1),
-            reader.IsDBNull(2) ? null : reader.GetInt32(2),
-            reader.IsDBNull(3) ? null : reader.GetInt32(3));
+        return new MobileAccountIdentity(accountType, customerId, employeeId, supplierId);
     }
 
     private static byte[] TokenHash(string token)
