@@ -19,16 +19,16 @@ class AuthUser {
     this.supplierId,
   });
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
-        userId: json['userId'] as int,
-        username: json['username'] as String,
-        fullName: json['fullName'] as String,
+        userId: (json['userId'] as num?)?.toInt() ?? 0,
+        username: (json['username'] as String?) ?? '',
+        fullName: (json['fullName'] as String?) ?? '',
         role: json['role'] as String?,
-        isActive: json['isActive'] as bool,
+        isActive: (json['isActive'] as bool?) ?? false,
         lastLoginUtc: json['lastLoginUtc'] as String?,
         accountType: json['accountType'] as String?,
-        customerId: json['customerId'] as int?,
-        employeeId: json['employeeId'] as int?,
-        supplierId: json['supplierId'] as int?,
+        customerId: (json['customerId'] as num?)?.toInt(),
+        employeeId: (json['employeeId'] as num?)?.toInt(),
+        supplierId: (json['supplierId'] as num?)?.toInt(),
       );
   final int userId;
   final String username;
@@ -66,7 +66,14 @@ class AuthState extends ChangeNotifier {
       _rememberedUsername = await _storage.read(key: _usernameKey);
       _token = await _storage.read(key: _tokenKey);
       if (_token != null) {
-        user = await _me(_token!);
+        final currentUser = await _me(_token!);
+        if (currentUser == null ||
+            (currentUser.accountType == 'Employee' && currentUser.employeeId == null)) {
+          await _storage.delete(key: _tokenKey);
+          user = null;
+        } else {
+          user = currentUser;
+        }
       }
       if (user == null) {
         await _storage.delete(key: _tokenKey);
@@ -83,27 +90,6 @@ class AuthState extends ChangeNotifier {
   Future<String?> login(
       String username, String password, bool rememberMe) async {
     final trimmedUsername = username.trim();
-    if (kDebugMode &&
-        (trimmedUsername == 'admin' || trimmedUsername == 'test') &&
-        RegExp(r'^\d{4}$').hasMatch(password)) {
-      const token = 'debug-test-token';
-      const currentUser = AuthUser(
-        userId: 1,
-        username: 'admin',
-        fullName: 'Admin User',
-        isActive: true,
-      );
-      if (rememberMe) {
-        await _storage.write(key: _tokenKey, value: token);
-        await _storage.write(key: _usernameKey, value: trimmedUsername);
-      } else {
-        await _storage.delete(key: _tokenKey);
-      }
-      _token = token;
-      user = currentUser;
-      notifyListeners();
-      return null;
-    }
     try {
       final response = await _request('POST', '/auth/login', body: {
         'username': username,
@@ -123,6 +109,9 @@ class AuthState extends ChangeNotifier {
       final token = json['token'] as String;
       final currentUser =
           AuthUser.fromJson(json['user'] as Map<String, dynamic>);
+      if (currentUser.accountType == 'Employee' && currentUser.employeeId == null) {
+        return 'هذا الحساب غير مرتبط بموظف فعلي في النظام.';
+      }
       if (rememberMe) {
         await _storage.write(key: _tokenKey, value: token);
         await _storage.write(key: _usernameKey, value: username.trim());

@@ -14,8 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
 	final username=TextEditingController(); final password=TextEditingController(); final passwordFocus=FocusNode(); bool rememberMe=false; bool loading=false; String? error;
 	@override void initState(){
 		super.initState();
-		username.text = widget.auth.rememberedUsername ?? (kDebugMode ? 'admin' : '');
-		if (kDebugMode) password.text = '1234';
+		username.text = widget.auth.rememberedUsername ?? '';
 	}
 	@override void dispose(){username.dispose();password.dispose();passwordFocus.dispose();super.dispose();}
 	Future<void> _login() async {

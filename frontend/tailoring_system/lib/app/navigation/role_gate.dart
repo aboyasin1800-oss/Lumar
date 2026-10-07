@@ -9,20 +9,20 @@ class RoleGate extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = <_RoleEntry>[
       _RoleEntry(
-        title: 'Customer Shell',
-        subtitle: 'Role placeholder for customer-facing mobile experience',
+        title: 'حساب العميل',
+        subtitle: 'واجهة العميل الشخصية فقط',
         icon: Icons.person_outline,
         route: AppRouter.customerShell,
       ),
       _RoleEntry(
-        title: 'Employee Shell',
-        subtitle: 'Role placeholder for employee workflow and tasks',
+        title: 'حساب الموظف',
+        subtitle: 'واجهة الموظف الحالية فقط',
         icon: Icons.badge_outlined,
         route: AppRouter.employeeShell,
       ),
       _RoleEntry(
-        title: 'Supplier Shell',
-        subtitle: 'Role placeholder for supplier order and payment workflow',
+        title: 'حساب المورد',
+        subtitle: 'واجهة المورد الشخصية فقط',
         icon: Icons.local_shipping_outlined,
         route: AppRouter.supplierShell,
       ),
@@ -30,7 +30,7 @@ class RoleGate extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Unified Mobile App'),
+        title: const Text('التطبيق الموحد'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -38,12 +38,12 @@ class RoleGate extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Select a shell preview',
+              'اختر نوع الحساب',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
-              'This is a UI-only foundation preview. No auth, session, or backend logic.',
+              'واجهة أولية قيد التطوير ولا تحتوي حالياً على وظائف تشغيلية.',
               style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
             const SizedBox(height: 24),

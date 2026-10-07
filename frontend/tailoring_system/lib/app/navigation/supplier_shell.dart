@@ -13,19 +13,19 @@ class _SupplierShellState extends State<SupplierShell> {
   int _selectedIndex = 0;
 
   final List<_ShellTab> _tabs = const [
-    _ShellTab(label: 'Home', icon: Icons.home_outlined),
-    _ShellTab(label: 'Orders', icon: Icons.shopping_bag_outlined),
-    _ShellTab(label: 'Payments', icon: Icons.payment_outlined),
-    _ShellTab(label: 'Messages', icon: Icons.message_outlined),
-    _ShellTab(label: 'Profile', icon: Icons.person_outline),
+    _ShellTab(label: 'الرئيسية', icon: Icons.home_outlined),
+    _ShellTab(label: 'الطلبات', icon: Icons.shopping_bag_outlined),
+    _ShellTab(label: 'المدفوعات', icon: Icons.payment_outlined),
+    _ShellTab(label: 'الرسائل', icon: Icons.message_outlined),
+    _ShellTab(label: 'الملف الشخصي', icon: Icons.person_outline),
   ];
 
   final Map<String, List<String>> _sections = const {
-    'Home': ['Dashboard', 'Orders summary', 'Alerts'],
-    'Orders': ['Open orders', 'Accepted orders', 'Delivery status'],
-    'Payments': ['Pending payment', 'Invoices', 'Settlement'],
-    'Messages': ['Supplier chat', 'Announcements', 'Support'],
-    'Profile': ['Vendor profile', 'Preferences', 'Support'],
+    'الرئيسية': ['لوحة المعلومات', 'ملخص الطلبات', 'التنبيهات'],
+    'الطلبات': ['الطلبات المفتوحة', 'الطلبات المقبولة', 'حالة التسليم'],
+    'المدفوعات': ['المدفوعات المعلقة', 'الفواتير', 'التسوية'],
+    'الرسائل': ['الدردشة', 'الإعلانات', 'الدعم'],
+    'الملف الشخصي': ['ملف المورد', 'التفضيلات', 'الدعم'],
   };
 
   void _selectTab(int index) {
@@ -42,9 +42,9 @@ class _SupplierShellState extends State<SupplierShell> {
     final items = _sections[tab.label] ?? const <String>[];
 
     return ShellPage(
-      title: 'Supplier Shell',
+      title: 'حساب المورد',
       icon: Icons.local_shipping_outlined,
-      subtitle: 'Supplier local navigation preview',
+      subtitle: 'واجهة أولية قيد التطوير',
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -56,7 +56,7 @@ class _SupplierShellState extends State<SupplierShell> {
                 children: [
                   Icon(Icons.inventory_2_rounded, size: 42, color: Colors.white),
                   SizedBox(height: 8),
-                  Text('Supplier', style: TextStyle(color: Colors.white, fontSize: 20)),
+                  Text('المورد', style: TextStyle(color: Colors.white, fontSize: 20)),
                 ],
               ),
             ),
@@ -80,13 +80,13 @@ class _SupplierShellState extends State<SupplierShell> {
         children: [
           ShellInfoCard(
             title: tab.label,
-            caption: 'Local-only shell navigation. No business logic or backend calls.',
+            caption: 'واجهة أولية قيد التطوير ولا تحتوي حالياً على وظائف تشغيلية.',
             trailing: Icon(tab.icon),
           ),
           ...items.map(
             (item) => ShellInfoCard(
               title: item,
-              caption: 'Placeholder content for the supplier flow.',
+              caption: 'محتوى مؤقت لواجهة المورد.',
             ),
           ),
         ],
