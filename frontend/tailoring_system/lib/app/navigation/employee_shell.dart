@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../screens/attendance/attendance_screen.dart';
+import '../../screens/employees_screen.dart';
+import '../../screens/payroll_screen.dart';
 import '../../shared/widgets/shell_page.dart';
 
 class EmployeeShell extends StatefulWidget {
@@ -20,13 +23,21 @@ class _EmployeeShellState extends State<EmployeeShell> {
     _ShellTab(label: 'Profile', icon: Icons.person_outline),
   ];
 
-  final Map<String, List<String>> _sections = const {
-    'Home': ['Today overview', 'Inbox', 'Recent updates'],
-    'Tasks': ['Assigned tasks', 'To do list', 'Approvals'],
-    'Attendance': ['Presence record', 'Shift summary', 'Schedule'],
-    'Payroll': ['Salary view', 'Payslips', 'Bank details'],
-    'Profile': ['Personal details', 'Shift preferences', 'Support'],
-  };
+  Widget _buildBody() {
+    switch (_selectedIndex) {
+      case 0:
+        return const EmployeesScreen(initialTab: 0);
+      case 1:
+        return const EmployeesScreen(initialTab: 0);
+      case 2:
+        return const AttendanceScreen();
+      case 3:
+        return const PayrollScreen();
+      case 4:
+      default:
+        return const EmployeesScreen(initialTab: 0);
+    }
+  }
 
   void _selectTab(int index) {
     if (index < 0 || index >= _tabs.length) {
@@ -38,13 +49,10 @@ class _EmployeeShellState extends State<EmployeeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final tab = _tabs[_selectedIndex];
-    final items = _sections[tab.label] ?? const <String>[];
-
     return ShellPage(
       title: 'Employee Shell',
       icon: Icons.badge_outlined,
-      subtitle: 'Employee local navigation preview',
+      subtitle: 'Employee operational overview',
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -75,22 +83,7 @@ class _EmployeeShellState extends State<EmployeeShell> {
           ],
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          ShellInfoCard(
-            title: tab.label,
-            caption: 'Local-only shell navigation. No business logic or backend calls.',
-            trailing: Icon(tab.icon),
-          ),
-          ...items.map(
-            (item) => ShellInfoCard(
-              title: item,
-              caption: 'Placeholder content for the employee flow.',
-            ),
-          ),
-        ],
-      ),
+      body: _buildBody(),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _selectTab,
