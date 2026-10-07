@@ -18,35 +18,25 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
 
     public async Task<SessionDto?> LoginAsync(LoginDto login, CancellationToken ct)
     {
-        var traceId = Guid.NewGuid().ToString("N");
-        var timestamp = DateTime.UtcNow.ToString("O");
-        Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + timestamp + "; EnterLogin=True");
-
         if (string.IsNullOrWhiteSpace(login.Username) || string.IsNullOrWhiteSpace(login.Password))
-        {
-            Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; UserQueryExecuted=NOT_REACHED; UserFound=NOT_REACHED; UserId=NOT_REACHED; Username=NOT_REACHED; IsActive=NOT_REACHED; PasswordHashLoaded=NOT_REACHED; PasswordCheckEntered=NOT_REACHED; PasswordMatched=NOT_REACHED; UserRoleLoaded=NOT_REACHED; IsAdministrativeRole=NOT_REACHED; ResolveMobileAccountCalled=NOT_REACHED; MobileAccountFound=NOT_REACHED; CurrentUserCreated=NOT_REACHED; CreateSessionEntered=NOT_REACHED; SessionCreated=NOT_REACHED; GenerateTokenEntered=NOT_REACHED; TokenCreated=NOT_REACHED; LoginCompleted=False; HTTPResult=401; ExitReason=INVALID_INPUT");
             return null;
-        }
 
         await using var connection = connections.Create();
         await connection.OpenAsync(ct);
 
-        Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; UserQueryExecuted=True");
         await using var command = new SqlCommand(
             "SELECT u.UserID, u.Username, u.UserPassword, u.PasswordHash, u.FullName, u.UserRole, u.IsActive, u.LastLoginUtc FROM dbo.Users u WHERE u.Username = @username",
             connection);
         command.Parameters.AddWithValue("@username", login.Username.Trim());
 
         await using var reader = await command.ExecuteReaderAsync(ct);
-        var userFound = await reader.ReadAsync(ct);
-        Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; UserFound=" + userFound);
-        if (!userFound)
-        {
-            Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; UserId=NOT_REACHED; Username=NOT_REACHED; IsActive=NOT_REACHED; PasswordHashLoaded=NOT_REACHED; PasswordCheckEntered=NOT_REACHED; PasswordMatched=NOT_REACHED; UserRoleLoaded=NOT_REACHED; IsAdministrativeRole=NOT_REACHED; ResolveMobileAccountCalled=NOT_REACHED; MobileAccountFound=NOT_REACHED; CurrentUserCreated=NOT_REACHED; CreateSessionEntered=NOT_REACHED; SessionCreated=NOT_REACHED; GenerateTokenEntered=NOT_REACHED; TokenCreated=NOT_REACHED; LoginCompleted=False; HTTPResult=401; ExitReason=USER_NOT_FOUND");
+        if (!await reader.ReadAsync(ct))
             return null;
-        }
 
         var isActive = reader.GetBoolean(6);
+        if (!isActive)
+            return null;
+
         var userId = reader.GetInt32(0);
         var username = reader.GetString(1);
         var legacyPassword = reader.IsDBNull(2) ? string.Empty : reader.GetString(2);
@@ -55,25 +45,11 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         var role = reader.IsDBNull(5) ? null : reader.GetString(5);
         DateTime? lastLoginUtc = reader.IsDBNull(7) ? null : reader.GetDateTime(7);
 
-        Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; UserId=" + userId + "; Username=" + username + "; IsActive=" + isActive + "; PasswordHashLoaded=" + (passwordHash is not null) + "; PasswordCheckEntered=True; UserRoleLoaded=" + (role ?? "NULL"));
-
-        if (!isActive)
-        {
-            Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; PasswordMatched=NOT_REACHED; IsAdministrativeRole=NOT_REACHED; ResolveMobileAccountCalled=NOT_REACHED; MobileAccountFound=NOT_REACHED; CurrentUserCreated=NOT_REACHED; CreateSessionEntered=NOT_REACHED; SessionCreated=NOT_REACHED; GenerateTokenEntered=NOT_REACHED; TokenCreated=NOT_REACHED; LoginCompleted=False; HTTPResult=401; ExitReason=USER_INACTIVE");
+        if (!PasswordsMatch(login.Password, passwordHash, legacyPassword))
             return null;
-        }
-
-        var passwordMatched = PasswordsMatch(login.Password, passwordHash, legacyPassword);
-        Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; PasswordMatched=" + passwordMatched);
-        if (!passwordMatched)
-        {
-            Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; IsAdministrativeRole=NOT_REACHED; ResolveMobileAccountCalled=NOT_REACHED; MobileAccountFound=NOT_REACHED; CurrentUserCreated=NOT_REACHED; CreateSessionEntered=NOT_REACHED; SessionCreated=NOT_REACHED; GenerateTokenEntered=NOT_REACHED; TokenCreated=NOT_REACHED; LoginCompleted=False; HTTPResult=401; ExitReason=PASSWORD_MISMATCH");
-            return null;
-        }
 
         if (string.IsNullOrWhiteSpace(passwordHash))
         {
-            Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; PasswordHashLoaded=False; PasswordCheckEntered=True; PasswordMatched=True; UserRoleLoaded=" + (role ?? "NULL") + "; IsAdministrativeRole=NOT_REACHED; ResolveMobileAccountCalled=NOT_REACHED; MobileAccountFound=NOT_REACHED; CurrentUserCreated=NOT_REACHED; CreateSessionEntered=NOT_REACHED; SessionCreated=NOT_REACHED; GenerateTokenEntered=NOT_REACHED; TokenCreated=NOT_REACHED; LoginCompleted=False; HTTPResult=401; ExitReason=LEGACY_HASH_MIGRATION");
             await using var update = new SqlCommand(
                 "UPDATE dbo.Users SET PasswordHash = @hash, UserPassword = '' WHERE UserID = @id",
                 connection);
@@ -83,14 +59,9 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         }
 
         var isAdmin = IsAdministrativeRole(role);
-        Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; IsAdministrativeRole=" + isAdmin);
         var mobileAccount = await ResolveMobileAccountAsync(connection, userId, ct);
-        Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; ResolveMobileAccountCalled=True; MobileAccountFound=" + (mobileAccount is not null));
         if (mobileAccount is null && !isAdmin)
-        {
-            Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; CurrentUserCreated=NOT_REACHED; CreateSessionEntered=NOT_REACHED; SessionCreated=NOT_REACHED; GenerateTokenEntered=NOT_REACHED; TokenCreated=NOT_REACHED; LoginCompleted=False; HTTPResult=401; ExitReason=NO_MOBILE_ACCOUNT_AND_NOT_ADMIN");
             return null;
-        }
 
         var currentUser = new CurrentUserDto(
             userId,
@@ -103,13 +74,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             mobileAccount?.CustomerId,
             mobileAccount?.EmployeeId,
             mobileAccount?.SupplierId);
-        Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; CurrentUserCreated=True");
-
-        Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; CreateSessionEntered=True");
-        var session = await CreateSessionAsync(connection, currentUser, login.RememberMe, ct);
-        Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; SessionCreated=" + (session is not null) + "; GenerateTokenEntered=True; TokenCreated=" + (session is not null));
-        Console.WriteLine("AttemptNumber=1; TraceId=" + traceId + "; Timestamp=" + DateTime.UtcNow.ToString("O") + "; LoginCompleted=" + (session is not null) + "; HTTPResult=" + (session is null ? 401 : 200) + "; ExitReason=" + (session is null ? "SESSION_CREATION_FAILED" : "LOGIN_SUCCESS"));
-        return session;
+        return await CreateSessionAsync(connection, currentUser, login.RememberMe, ct);
     }
 
     public async Task<CurrentUserDto?> GetCurrentUserAsync(string token, CancellationToken ct)
