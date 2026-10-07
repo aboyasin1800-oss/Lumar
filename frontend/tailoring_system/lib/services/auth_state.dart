@@ -189,7 +189,7 @@ class AuthState extends ChangeNotifier {
     try {
       final request = await client.openUrl(method, Uri.parse('$_baseUrl$path'));
       if (token != null) {
-        request.headers.set(HttpHeaders.authorizationHeader, '******');
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
       }
       if (body != null) {
         request.headers.contentType = ContentType.json;

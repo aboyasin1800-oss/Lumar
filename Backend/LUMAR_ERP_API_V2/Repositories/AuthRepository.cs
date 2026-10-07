@@ -9,6 +9,12 @@ namespace LUMAR_ERP_API_V2.Repositories;
 
 public sealed class AuthRepository(OperationalSqlConnectionFactory connections) : IAuthRepository
 {
+    private sealed record MobileAccountIdentity(
+        string AccountType,
+        int? CustomerId,
+        int? EmployeeId,
+        int? SupplierId);
+
     public async Task<SessionDto?> LoginAsync(LoginDto login, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(login.Username) || string.IsNullOrWhiteSpace(login.Password))
@@ -51,6 +57,10 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             await update.ExecuteNonQueryAsync(ct);
         }
 
+        var mobileAccount = await ResolveMobileAccountAsync(connection, username, ct);
+        if (mobileAccount is null)
+            return null;
+
         var currentUser = new CurrentUserDto(
             userId,
             username,
@@ -58,10 +68,10 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             role,
             true,
             lastLoginUtc,
-            null,
-            null,
-            null,
-            null);
+            mobileAccount.AccountType,
+            mobileAccount.CustomerId,
+            mobileAccount.EmployeeId,
+            mobileAccount.SupplierId);
         return await CreateSessionAsync(connection, currentUser, login.RememberMe, ct);
     }
 
@@ -324,7 +334,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         if (currentUser is null)
             return null;
 
-        return new AccountTypeDto(string.Empty, null, null, null);
+        return new AccountTypeDto(currentUser.AccountType ?? string.Empty, currentUser.CustomerId, currentUser.EmployeeId, currentUser.SupplierId);
     }
 
     private async Task<CurrentUserDto?> GetUserAsync(string token, CancellationToken ct)
@@ -344,17 +354,26 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         if (!await reader.ReadAsync(ct))
             return null;
 
+        var userId = reader.GetInt32(0);
+        var username = reader.GetString(1);
+        var fullName = reader.GetString(2);
+        var role = reader.IsDBNull(3) ? null : reader.GetString(3);
+        DateTime? lastLoginUtc = reader.IsDBNull(5) ? null : reader.GetDateTime(5);
+        var mobileAccount = await ResolveMobileAccountAsync(connection, username, ct);
+        if (mobileAccount is null)
+            return null;
+
         return new CurrentUserDto(
-            reader.GetInt32(0),
-            reader.GetString(1),
-            reader.GetString(2),
-            reader.IsDBNull(3) ? null : reader.GetString(3),
+            userId,
+            username,
+            fullName,
+            role,
             true,
-            reader.IsDBNull(5) ? null : reader.GetDateTime(5),
-            null,
-            null,
-            null,
-            null);
+            lastLoginUtc,
+            mobileAccount.AccountType,
+            mobileAccount.CustomerId,
+            mobileAccount.EmployeeId,
+            mobileAccount.SupplierId);
     }
 
     private async Task<bool> VerifyCurrentPasswordAsync(int userId, string password, CancellationToken ct)
@@ -390,6 +409,34 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         await command.ExecuteNonQueryAsync(ct);
 
         return new SessionDto(token, expiresAt, user with { LastLoginUtc = DateTime.UtcNow });
+    }
+
+    private async Task<MobileAccountIdentity?> ResolveMobileAccountAsync(SqlConnection connection, string username, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            return null;
+
+        await using var resolve = new SqlCommand(
+            "SELECT TOP 1 AccountType, CustomerId, EmployeeId, SupplierId, IsActive FROM dbo.MobileAccounts WHERE Username = @username AND IsActive = 1 ORDER BY MobileAccountId",
+            connection);
+        resolve.Parameters.AddWithValue("@username", username.Trim());
+
+        await using var reader = await resolve.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return null;
+
+        var accountType = reader.IsDBNull(0) ? null : reader.GetString(0);
+        if (string.IsNullOrWhiteSpace(accountType))
+            return null;
+
+        if (string.Equals(accountType, "Employee", StringComparison.OrdinalIgnoreCase) && reader.IsDBNull(2))
+            return null;
+
+        return new MobileAccountIdentity(
+            accountType,
+            reader.IsDBNull(1) ? null : reader.GetInt32(1),
+            reader.IsDBNull(2) ? null : reader.GetInt32(2),
+            reader.IsDBNull(3) ? null : reader.GetInt32(3));
     }
 
     private static byte[] TokenHash(string token)
