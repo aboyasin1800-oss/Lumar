@@ -1045,6 +1045,48 @@
 			"command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"D:\\YASIN\\scripts\\inspect_backend_process.ps1\"",
 			"isBackground": false,
 			"problemMatcher": []
+		},
+		{
+			"label": "Verify backend active connection",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; Write-Output '---PROCESS---'; Get-Process -Name LUMAR_ERP_API_V2 -ErrorAction SilentlyContinue | Select-Object Name,Id,Path | Format-List *; Write-Output '---CIM---'; Get-CimInstance Win32_Process -Filter \"Name = 'LUMAR_ERP_API_V2.exe'\" -ErrorAction SilentlyContinue | Select-Object Name,ProcessId,ExecutablePath,CommandLine | Format-List *; Write-Output '---ENV---'; Get-ChildItem Env: | Where-Object { $_.Name -match 'Lumar|ConnectionString|LUMAR' } | Format-Table -AutoSize",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect current env variables",
+			"type": "shell",
+			"command": "Get-ChildItem Env: | Where-Object { $_.Name -match 'Connection|Lumar|LUMAR|Database|SQL|ConnectionString' } | Sort-Object Name | Format-Table -AutoSize",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify live admin login to backend",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $uri='http://localhost:5093/auth/login'; $body = @{ username='admin'; password='1234' } | ConvertTo-Json; try { $r = Invoke-RestMethod -Uri $uri -Method Post -ContentType 'application/json' -Body $body -ErrorAction Stop; $r | ConvertTo-Json -Depth 10; } catch { $_.Exception.Message; $Error[0].ScriptStackTrace; }",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Query live admin row from LUMAR_ERP",
+			"type": "shell",
+			"command": "$cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; $cn=New-Object System.Data.SqlClient.SqlConnection $cs; $cn.Open(); try { $cmd=$cn.CreateCommand(); $cmd.CommandText='SELECT TOP (10) UserId, Username, UserRole, IsActive, CASE WHEN PasswordHash IS NULL OR PasswordHash = '''' THEN 0 ELSE 1 END AS HasPasswordHash FROM dbo.Users WHERE Username = ''admin'' ORDER BY UserId;'; $r=$cmd.ExecuteReader(); while($r.Read()){ Write-Output \"UserId=$($r[0]); Username=$($r[1]); UserRole=$($r[2]); IsActive=$($r[3]); HasPasswordHash=$($r[4])\"; } } finally { $cn.Close() }",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect backend command line",
+			"type": "shell",
+			"command": "wmic process where \"name='LUMAR_ERP_API_V2.exe'\" get ProcessId,CommandLine /value",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check process command line via CIM",
+			"type": "shell",
+			"command": "Get-CimInstance -ClassName Win32_Process -Filter \"Name = 'LUMAR_ERP_API_V2.exe'\" | Select-Object Name,ProcessId,CommandLine | Format-List *",
+			"isBackground": false,
+			"problemMatcher": []
 		}
 	]
 }
