@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/employee_models.dart';
+import '../services/auth_state.dart';
 
 class EmployeeRepository {
   EmployeeRepository({http.Client? client}) : _client = client ?? http.Client();
@@ -11,9 +12,18 @@ class EmployeeRepository {
       defaultValue: 'http://127.0.0.1:5093');
   final http.Client _client;
 
+  Map<String, String> _headers({Map<String, String>? extra}) {
+    final headers = <String, String>{if (extra != null) ...extra, 'Accept': 'application/json'};
+    final token = AuthState.instance.token;
+    if (token != null && token.trim().isNotEmpty) {
+      headers['Authorization'] = '******';
+    }
+    return headers;
+  }
+
   Future<List<T>> _list<T>(
       String path, T Function(EmployeeJson) fromJson) async {
-    final response = await _client.get(Uri.parse('$_baseUrl$path'));
+    final response = await _client.get(Uri.parse('$_baseUrl$path'), headers: _headers());
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(path, response.statusCode, _extractMessage(response));
     }
@@ -24,7 +34,7 @@ class EmployeeRepository {
   }
 
   Future<EmployeeJson> _object(String path) async {
-    final response = await _client.get(Uri.parse('$_baseUrl$path'));
+    final response = await _client.get(Uri.parse('$_baseUrl$path'), headers: _headers());
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(path, response.statusCode, _extractMessage(response));
     }
@@ -34,7 +44,7 @@ class EmployeeRepository {
   Future<EmployeeDetails> _postJson(String path, Map<String, dynamic> body) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl$path'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      headers: _headers({'Content-Type': 'application/json; charset=utf-8'}),
       body: jsonEncode(body),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -46,7 +56,7 @@ class EmployeeRepository {
   Future<EmployeeDetails> _putJson(String path, Map<String, dynamic> body) async {
     final response = await _client.put(
       Uri.parse('$_baseUrl$path'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      headers: _headers({'Content-Type': 'application/json; charset=utf-8'}),
       body: jsonEncode(body),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -65,7 +75,10 @@ class EmployeeRepository {
       _list('/employees/departments', EmployeeDepartment.fromJson);
 
   Future<List<String>> getProductionRouteOptions() async {
-    final response = await _client.get(Uri.parse('$_baseUrl/settings/production-routes/options'));
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/settings/production-routes/options'),
+      headers: _headers(),
+    );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(
         '/settings/production-routes/options',
@@ -87,6 +100,13 @@ class EmployeeRepository {
   Future<List<EmployeeDocument>> getDocuments(int employeeId) =>
       _list('/employees/$employeeId/documents', EmployeeDocument.fromJson);
 
+  Future<void> ensureCurrentEmployeeAccess() async {
+    final token = AuthState.instance.token;
+    if (token == null || token.trim().isEmpty) {
+      throw const EmployeeApiException('/auth/me', 401, 'لم يتم تسجيل الدخول.');
+    }
+  }
+
   Future<List<EmployeeContractTemplate>> getContractTemplates() =>
       _list('/employees/contract-templates', EmployeeContractTemplate.fromJson);
 
@@ -96,7 +116,7 @@ class EmployeeRepository {
   Future<EmployeeContract> generateEmployeeContract(int employeeId) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/employees/$employeeId/contract/generate'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      headers: _headers({'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(
@@ -123,7 +143,7 @@ class EmployeeRepository {
   Future<EmployeeDetails> activateEmployee(int employeeId) async {
     final response = await _client.put(
       Uri.parse('$_baseUrl/employees/$employeeId/activate'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      headers: _headers({'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(
@@ -138,7 +158,7 @@ class EmployeeRepository {
   Future<EmployeeDetails> deactivateEmployee(int employeeId) async {
     final response = await _client.put(
       Uri.parse('$_baseUrl/employees/$employeeId/deactivate'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      headers: _headers({'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(
