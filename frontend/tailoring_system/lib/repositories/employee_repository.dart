@@ -75,7 +75,10 @@ class EmployeeRepository {
       _list('/employees/departments', EmployeeDepartment.fromJson);
 
   Future<List<String>> getProductionRouteOptions() async {
-    final response = await _client.get(Uri.parse('$_baseUrl/settings/production-routes/options'));
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/settings/production-routes/options'),
+      headers: _headers(),
+    );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(
         '/settings/production-routes/options',
@@ -113,7 +116,7 @@ class EmployeeRepository {
   Future<EmployeeContract> generateEmployeeContract(int employeeId) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/employees/$employeeId/contract/generate'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      headers: _headers({'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(
@@ -140,7 +143,7 @@ class EmployeeRepository {
   Future<EmployeeDetails> activateEmployee(int employeeId) async {
     final response = await _client.put(
       Uri.parse('$_baseUrl/employees/$employeeId/activate'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      headers: _headers({'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(
@@ -155,7 +158,7 @@ class EmployeeRepository {
   Future<EmployeeDetails> deactivateEmployee(int employeeId) async {
     final response = await _client.put(
       Uri.parse('$_baseUrl/employees/$employeeId/deactivate'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      headers: _headers({'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(
