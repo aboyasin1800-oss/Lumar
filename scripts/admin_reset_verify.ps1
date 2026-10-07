@@ -1,7 +1,18 @@
 $ErrorActionPreference = 'Stop'
 
 $adminUser = 'admin'
-$newPassword = 'Admin#Reset2026!Q'
+$plainPassword = $env:LUMAR_ADMIN_PASSWORD
+
+if ([string]::IsNullOrWhiteSpace($plainPassword)) {
+    $secure = Read-Host -Prompt 'Enter the new password for admin (not stored in the repo)' -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try {
+        $plainPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    }
+    finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    }
+}
 
 function Get-Pbkdf2StoredValue {
     param(
@@ -23,7 +34,7 @@ function Get-Pbkdf2StoredValue {
 $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 $salt = New-Object byte[] 16
 $rng.GetBytes($salt)
-$storedHash = Get-Pbkdf2StoredValue -PlainText $newPassword -Salt $salt
+$storedHash = Get-Pbkdf2StoredValue -PlainText $plainPassword -Salt $salt
 
 $conn = New-Object System.Data.SqlClient.SqlConnection 'Server=YASIN-YASIN\SQLEXPRESS;Database=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'
 $conn.Open()
@@ -38,7 +49,6 @@ try {
     $conn.Close()
 }
 
-# verify DB match without exposing hash or password
 $query = @'
 SELECT TOP 1 UserId, Username, UserRole, IsActive, PasswordHash FROM dbo.Users WHERE Username='admin';
 '@
@@ -55,7 +65,7 @@ try {
         $storedFromDb = $reader.GetString(4)
         $parts = $storedFromDb.Split('$')
         $saltFromDb = [Convert]::FromBase64String($parts[2])
-        $expected = Get-Pbkdf2StoredValue -PlainText $newPassword -Salt $saltFromDb
+        $expected = Get-Pbkdf2StoredValue -PlainText $plainPassword -Salt $saltFromDb
         $matched = $storedFromDb -eq $expected
         Write-Output "ADMIN_ROLE=$role"
         Write-Output "ADMIN_ACTIVE=$isActive"
@@ -67,7 +77,7 @@ try {
 }
 
 $baseUrl = 'http://127.0.0.1:5093'
-$loginBody = @{ username = $adminUser; password = $newPassword } | ConvertTo-Json
+$loginBody = @{ username = $adminUser; password = $plainPassword } | ConvertTo-Json
 $loginStatus = 0
 $token = $null
 try {
