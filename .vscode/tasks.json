@@ -940,6 +940,111 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "test"
+		},
+		{
+			"label": "Verify shell health",
+			"type": "shell",
+			"command": "echo test",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Admin reset verify task",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $newPassword='Admin#Reset2026!Q'; $rng=[System.Security.Cryptography.RandomNumberGenerator]::Create(); $salt=$rng.GetBytes(16); $kdf=[System.Security.Cryptography.Rfc2898DeriveBytes]::new([System.Text.Encoding]::UTF8.GetBytes($newPassword), $salt, 210000, [System.Security.Cryptography.HashAlgorithmName]::SHA256); $hash=$kdf.GetBytes(32); $stored='PBKDF2$210000$' + [Convert]::ToBase64String($salt) + '$' + [Convert]::ToBase64String($hash); $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; $conn=New-Object System.Data.SqlClient.SqlConnection $cs; $conn.Open(); try { $cmd=$conn.CreateCommand(); $sql=@\" UPDATE dbo.Users SET PasswordHash=@hash, UserPassword='', SecurityStamp=NEWID() WHERE Username=@user AND UserRole='Admin' AND IsActive=1; SELECT @@ROWCOUNT; \"@; $cmd.CommandText=$sql; $cmd.Parameters.Add('@hash',[System.Data.SqlDbType]::NVarChar,4000).Value=$stored; $cmd.Parameters.Add('@user',[System.Data.SqlDbType]::NVarChar,50).Value='admin'; $rows=$cmd.ExecuteScalar(); Write-Output \"ADMIN_RESET_ROWS=$rows\"; } finally { $conn.Close(); }",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Admin password reset",
+			"type": "shell",
+			"command": "$ErrorActionPreference='Stop'; $newPassword='Admin#Reset2026!Q'; $rng=[System.Security.Cryptography.RandomNumberGenerator]::Create(); $salt=$rng.GetBytes(16); $kdf=[System.Security.Cryptography.Rfc2898DeriveBytes]::new([System.Text.Encoding]::UTF8.GetBytes($newPassword), $salt, 210000, [System.Security.Cryptography.HashAlgorithmName]::SHA256); $hash=$kdf.GetBytes(32); $stored='PBKDF2$210000$' + [Convert]::ToBase64String($salt) + '$' + [Convert]::ToBase64String($hash); $cs='Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True'; $conn=New-Object System.Data.SqlClient.SqlConnection $cs; $conn.Open(); try { $cmd=$conn.CreateCommand(); $sql=\"UPDATE dbo.Users SET PasswordHash=@hash, UserPassword='', SecurityStamp=NEWID() WHERE Username=@user AND UserRole='Admin' AND IsActive=1; SELECT @@ROWCOUNT;\"; $cmd.CommandText=$sql; $cmd.Parameters.Add('@hash',[System.Data.SqlDbType]::NVarChar,4000).Value=$stored; $cmd.Parameters.Add('@user',[System.Data.SqlDbType]::NVarChar,50).Value='admin'; $rows=$cmd.ExecuteScalar(); Write-Output \"ADMIN_RESET_ROWS=$rows\"; } finally { $conn.Close(); }",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Python smoke",
+			"type": "shell",
+			"command": "py -3 -c \"print('hello')\"",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Python smoke 2",
+			"type": "shell",
+			"command": "python -V",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check kung python commands",
+			"type": "shell",
+			"command": "where.exe python; where.exe python3; where.exe sqlcmd; where.exe psql; where.exe node",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Python version check",
+			"type": "shell",
+			"command": "python -c \"import sys; print(sys.version)\"",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Admin reset verify task v2",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"D:\\YASIN\\scripts\\admin_reset_verify.ps1\"",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check backend live endpoints",
+			"type": "shell",
+			"command": "netstat -ano | findstr 5093; tasklist | findstr dotnet; tasklist | findstr LUMAR;",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check admin row in SQL",
+			"type": "shell",
+			"command": "sqlcmd -S \"YASIN-YASIN\\SQLEXPRESS\" -d LUMAR_ERP -Q \"SELECT UserID, Username, UserRole, IsActive FROM dbo.Users WHERE Username='admin';\" -h -1 -W",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Admin reset verify task final",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"D:\\YASIN\\scripts\\admin_reset_verify.ps1\"",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check environment connection string",
+			"type": "shell",
+			"command": "set | findstr /I \"LUMAR ConnectionString\"",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check env vars",
+			"type": "shell",
+			"command": "$env:Lumar__ConnectionString; $env:ConnectionStrings__Lumar",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect running backend process",
+			"type": "shell",
+			"command": "Get-CimInstance Win32_Process -Filter \"ProcessId = 22168\" | Select-Object -ExpandProperty CommandLine",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect running backend process v2",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"D:\\YASIN\\scripts\\inspect_backend_process.ps1\"",
+			"isBackground": false,
+			"problemMatcher": []
 		}
 	]
 }

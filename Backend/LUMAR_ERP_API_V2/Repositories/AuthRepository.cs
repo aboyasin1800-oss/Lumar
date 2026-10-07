@@ -59,7 +59,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         }
 
         var mobileAccount = await ResolveMobileAccountAsync(connection, userId, ct);
-        if (mobileAccount is null)
+        if (mobileAccount is null && !IsAdministrativeRole(role))
             return null;
 
         var currentUser = new CurrentUserDto(
@@ -69,10 +69,10 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             role,
             true,
             lastLoginUtc,
-            mobileAccount.AccountType,
-            mobileAccount.CustomerId,
-            mobileAccount.EmployeeId,
-            mobileAccount.SupplierId);
+            mobileAccount?.AccountType,
+            mobileAccount?.CustomerId,
+            mobileAccount?.EmployeeId,
+            mobileAccount?.SupplierId);
         return await CreateSessionAsync(connection, currentUser, login.RememberMe, ct);
     }
 
@@ -361,7 +361,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         var role = reader.IsDBNull(3) ? null : reader.GetString(3);
         DateTime? lastLoginUtc = reader.IsDBNull(5) ? null : reader.GetDateTime(5);
         var mobileAccount = await ResolveMobileAccountAsync(connection, userId, ct);
-        if (mobileAccount is null)
+        if (mobileAccount is null && !IsAdministrativeRole(role))
             return null;
 
         return new CurrentUserDto(
@@ -371,10 +371,22 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             role,
             true,
             lastLoginUtc,
-            mobileAccount.AccountType,
-            mobileAccount.CustomerId,
-            mobileAccount.EmployeeId,
-            mobileAccount.SupplierId);
+            mobileAccount?.AccountType,
+            mobileAccount?.CustomerId,
+            mobileAccount?.EmployeeId,
+            mobileAccount?.SupplierId);
+    }
+
+    internal static bool IsAdministrativeRole(string? role)
+    {
+        if (string.IsNullOrWhiteSpace(role))
+            return false;
+
+        var normalized = role.Trim();
+        return normalized.Equals("Admin", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("System Administrator", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("Admin", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("Administrator", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<bool> VerifyCurrentPasswordAsync(int userId, string password, CancellationToken ct)
