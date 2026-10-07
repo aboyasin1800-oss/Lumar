@@ -9,6 +9,19 @@ namespace LUMAR_ERP_API_V2.Repositories;
 
 public sealed class EmployeeRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections) : IEmployeeRepository
 {
+    private static readonly string[] OfficialDepartmentNames =
+    [
+        "خياط",
+        "قصاص",
+        "محاسب",
+        "كواي",
+        "جودة",
+        "تجميع",
+        "استقبال",
+        "مدير عام",
+        "القسم العام"
+    ];
+
     public Task<IReadOnlyList<EmployeeListDto>> GetAllAsync(CancellationToken ct) => QueryAsync("SELECT EmployeeID, EmployeeCode, EmployeeName, JobTitle, PhoneNumber, IsActive, Status, DepartmentId FROM dbo.Employees ORDER BY EmployeeName, EmployeeID", null, reader => new EmployeeListDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.NullableString("JobTitle"), reader.NullableString("PhoneNumber"), reader.NullableBoolean("IsActive"), reader.GetString(6), reader.GetInt32(7)), ct);
     public async Task<EmployeeDetailsDto?> GetByIdAsync(int employeeId, CancellationToken ct) => (await QueryAsync("SELECT EmployeeID, EmployeeCode, EmployeeName, JobTitle, ScannerCode, PhoneNumber, BaseSalary, Notes, IsActive, SalaryType, FixedSalary, FullName, NationalId, Phone, Email, Address, HireDate, TerminationDate, Status, DepartmentId, BasicSalary, PieceWageRate, OvertimeHourlyRate, CreatedAt, UpdatedAt FROM dbo.Employees WHERE EmployeeID = @id", employeeId, reader => new EmployeeDetailsDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.NullableString("JobTitle"), reader.NullableString("ScannerCode"), reader.NullableString("PhoneNumber"), reader.NullableDecimal("BaseSalary"), reader.NullableString("Notes"), reader.NullableBoolean("IsActive"), reader.NullableString("SalaryType"), reader.NullableDecimal("FixedSalary"), reader.GetString(11), reader.NullableString("NationalId"), reader.NullableString("Phone"), reader.NullableString("Email"), reader.NullableString("Address"), reader.GetDateTime(16), reader.NullableDateTime("TerminationDate"), reader.GetString(18), reader.GetInt32(19), reader.GetDecimal(20), reader.GetDecimal(21), reader.GetDecimal(22), reader.GetDateTime(23), reader.NullableDateTime("UpdatedAt"), null, null, null, null, null, null, null, null, null, null), ct)).FirstOrDefault();
     public async Task<EmployeeDetailsDto?> CreateAsync(CreateEmployeeDto request, CancellationToken ct)
@@ -22,6 +35,8 @@ public sealed class EmployeeRepository(ReadOnlySqlConnectionFactory connections,
             var employeeCode = string.IsNullOrWhiteSpace(normalized.EmployeeCode)
                 ? await GenerateEmployeeCodeAsync(connection, (SqlTransaction)transaction, ct)
                 : normalized.EmployeeCode.Trim();
+
+            await EnsureDepartmentExistsAsync(connection, (SqlTransaction)transaction, normalized.DepartmentId, ct);
 
             await using (var duplicateCheck = new SqlCommand("SELECT TOP (1) EmployeeID FROM dbo.Employees WITH (UPDLOCK, HOLDLOCK) WHERE EmployeeCode = @code", connection, (SqlTransaction)transaction))
             {
@@ -65,6 +80,21 @@ VALUES (@employeeCode, @employeeName, @fullName, @departmentId, @phoneNumber, @b
         return prefix + number.ToString(CultureInfo.InvariantCulture);
     }
 
+    private static async Task EnsureDepartmentExistsAsync(SqlConnection connection, SqlTransaction transaction, int departmentId, CancellationToken ct)
+    {
+        if (departmentId <= 0)
+            throw new ArgumentException("DepartmentId is required.");
+
+        await using var command = new SqlCommand(
+            "SELECT TOP (1) DepartmentId FROM dbo.Departments WITH (UPDLOCK, HOLDLOCK) WHERE DepartmentId = @id AND IsActive = 1",
+            connection,
+            transaction);
+
+        command.Parameters.AddWithValue("@id", departmentId);
+        if (await command.ExecuteScalarAsync(ct) is null)
+            throw new ArgumentException("DepartmentId is invalid or inactive.");
+    }
+
     public async Task<EmployeeDetailsDto?> UpdateAsync(int employeeId, UpdateEmployeeDto request, CancellationToken ct)
     {
         var normalized = EmployeeWriteValidator.ValidateForUpdate(request);
@@ -80,6 +110,8 @@ VALUES (@employeeCode, @employeeName, @fullName, @departmentId, @phoneNumber, @b
         await using var transaction = await connection.BeginTransactionAsync(ct);
         try
         {
+            await EnsureDepartmentExistsAsync(connection, (SqlTransaction)transaction, normalized.DepartmentId, ct);
+
             await using (var duplicateCheck = new SqlCommand("SELECT TOP (1) EmployeeID FROM dbo.Employees WITH (UPDLOCK, HOLDLOCK) WHERE EmployeeCode = @code AND EmployeeID <> @id", connection, (SqlTransaction)transaction))
             {
                 duplicateCheck.Parameters.AddWithValue("@code", employeeCode);
@@ -153,7 +185,14 @@ WHERE EmployeeID = @id;";
         return await GetByIdAsync(employeeId, ct);
     }
 
-    public Task<IReadOnlyList<DepartmentDto>> GetDepartmentsAsync(CancellationToken ct) => QueryAsync("SELECT DepartmentId, DepartmentCode, DepartmentName, Description, IsActive, CreatedAt, UpdatedAt FROM dbo.Departments ORDER BY DepartmentName, DepartmentId", null, reader => new DepartmentDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.NullableString("Description"), reader.GetBoolean(4), reader.GetDateTime(5), reader.NullableDateTime("UpdatedAt")), ct);
+    public async Task<IReadOnlyList<DepartmentDto>> GetDepartmentsAsync(CancellationToken ct)
+    {
+        var names = OfficialDepartmentNames
+            .Select(static name => "N'" + name.Replace("'", "''") + "'")
+            .ToArray();
+        var clause = names.Length == 0 ? "1 = 0" : $"DepartmentName IN ({string.Join(", ", names)})";
+        return await QueryAsync($"SELECT DepartmentId, DepartmentCode, DepartmentName, Description, IsActive, CreatedAt, UpdatedAt FROM dbo.Departments WHERE {clause} AND IsActive = 1 ORDER BY DepartmentName, DepartmentId", null, reader => new DepartmentDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.NullableString("Description"), reader.GetBoolean(4), reader.GetDateTime(5), reader.NullableDateTime("UpdatedAt")), ct);
+    }
     public Task<IReadOnlyList<EmployeeAttendanceDto>> GetAttendanceAsync(int employeeId, CancellationToken ct) => QueryAsync("SELECT EmployeeAttendanceId, EmployeeId, AttendanceDate, CheckInTime, CheckOutTime, WorkedHours, OvertimeHours, IsAbsent, AbsenceReason, Notes, CreatedAt FROM dbo.EmployeeAttendances WHERE EmployeeId = @id ORDER BY AttendanceDate DESC, EmployeeAttendanceId DESC", employeeId, reader => new EmployeeAttendanceDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetDateTime(2), reader.NullableDateTime("CheckInTime"), reader.NullableDateTime("CheckOutTime"), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetBoolean(7), reader.NullableString("AbsenceReason"), reader.NullableString("Notes"), reader.GetDateTime(10)), ct);
     public Task<IReadOnlyList<LeaveRequestDto>> GetLeaveRequestsAsync(int employeeId, CancellationToken ct) => QueryAsync("SELECT LeaveRequestId, EmployeeId, LeaveType, StartDate, EndDate, RequestedDays, Status, Reason, ApprovedBy, ApprovedAt, CreatedAt FROM dbo.LeaveRequests WHERE EmployeeId = @id ORDER BY CreatedAt DESC, LeaveRequestId DESC", employeeId, reader => new LeaveRequestDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetDateTime(3), reader.GetDateTime(4), reader.GetDecimal(5), reader.GetString(6), reader.NullableString("Reason"), reader.NullableString("ApprovedBy"), reader.NullableDateTime("ApprovedAt"), reader.GetDateTime(10)), ct);
     public Task<IReadOnlyList<EmployeeDrawDto>> GetDrawsAsync(string employeeCode, CancellationToken ct) => QueryAsync("SELECT DrawID, EmployeeCode, DrawDate, Amount, Notes FROM dbo.Employee_Draws WHERE EmployeeCode = @code ORDER BY DrawDate DESC, DrawID DESC", employeeCode, reader => new EmployeeDrawDto(reader.GetInt32(0), reader.NullableString("EmployeeCode"), reader.NullableDateTime("DrawDate"), reader.NullableDecimal("Amount"), reader.NullableString("Notes")), ct);
