@@ -26,7 +26,7 @@ public sealed record CreateEmployeeDto
     [Required] public int DepartmentId { get; init; }
     [Range(typeof(decimal), "0", "9999999999999.99")] public decimal BasicSalary { get; init; }
     [Phone] public string? PhoneNumber { get; init; }
-    public DateTime? HireDate { get; init; }
+    [Required] public DateTime? HireDate { get; init; }
     [Required, StringLength(50)] public string? Status { get; init; } = "Active";
     public string? SalaryType { get; init; } = "BasicSalary";
     public string? ContractNumber { get; init; }
@@ -47,7 +47,7 @@ public sealed record UpdateEmployeeDto
     [Required] public int DepartmentId { get; init; }
     [Range(typeof(decimal), "0.01", "9999999999999.99")] public decimal BasicSalary { get; init; }
     [Phone] public string? PhoneNumber { get; init; }
-    public DateTime? HireDate { get; init; }
+    [Required] public DateTime? HireDate { get; init; }
     [Required, StringLength(50)] public string? Status { get; init; }
     public bool IsActive { get; init; } = true;
     public string? SalaryType { get; init; } = "BasicSalary";

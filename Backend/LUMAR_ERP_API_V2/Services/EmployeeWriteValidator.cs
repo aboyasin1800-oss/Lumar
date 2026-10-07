@@ -11,6 +11,7 @@ public static class EmployeeWriteValidator
         if (string.IsNullOrWhiteSpace(request.EmployeeCode)) throw new ArgumentException("EmployeeCode is required.");
         if (string.IsNullOrWhiteSpace(request.FullName)) throw new ArgumentException("FullName is required.");
         if (request.DepartmentId <= 0) throw new ArgumentException("DepartmentId is required.");
+        if (request.HireDate is null || request.HireDate == default) throw new ArgumentException("HireDate is required.");
         if (string.IsNullOrWhiteSpace(request.Status)) throw new ArgumentException("Status is required.");
         var salaryType = NormalizeSalaryType(request.SalaryType);
         ValidateSalary(request.BasicSalary, salaryType);
@@ -32,6 +33,7 @@ public static class EmployeeWriteValidator
         if (string.IsNullOrWhiteSpace(request.EmployeeCode)) throw new ArgumentException("EmployeeCode is required.");
         if (string.IsNullOrWhiteSpace(request.FullName)) throw new ArgumentException("FullName is required.");
         if (request.DepartmentId <= 0) throw new ArgumentException("DepartmentId is required.");
+        if (request.HireDate is null || request.HireDate == default) throw new ArgumentException("HireDate is required.");
         if (string.IsNullOrWhiteSpace(request.Status)) throw new ArgumentException("Status is required.");
         var salaryType = NormalizeSalaryType(request.SalaryType);
         ValidateSalary(request.BasicSalary, salaryType);
