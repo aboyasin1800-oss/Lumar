@@ -8,7 +8,6 @@ public static class EmployeeWriteValidator
     {
         if (request is null) throw new ArgumentException("Employee payload is required.");
 
-        if (string.IsNullOrWhiteSpace(request.EmployeeCode)) throw new ArgumentException("EmployeeCode is required.");
         if (string.IsNullOrWhiteSpace(request.FullName)) throw new ArgumentException("FullName is required.");
         if (request.DepartmentId <= 0) throw new ArgumentException("DepartmentId is required.");
         if (request.HireDate is null || request.HireDate == default) throw new ArgumentException("HireDate is required.");
@@ -18,7 +17,7 @@ public static class EmployeeWriteValidator
 
         return request with
         {
-            EmployeeCode = request.EmployeeCode.Trim(),
+            EmployeeCode = string.IsNullOrWhiteSpace(request.EmployeeCode) ? null : request.EmployeeCode.Trim(),
             FullName = request.FullName.Trim(),
             PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim(),
             Status = NormalizeStatus(request.Status),
@@ -30,7 +29,6 @@ public static class EmployeeWriteValidator
     {
         if (request is null) throw new ArgumentException("Employee payload is required.");
 
-        if (string.IsNullOrWhiteSpace(request.EmployeeCode)) throw new ArgumentException("EmployeeCode is required.");
         if (string.IsNullOrWhiteSpace(request.FullName)) throw new ArgumentException("FullName is required.");
         if (request.DepartmentId <= 0) throw new ArgumentException("DepartmentId is required.");
         if (request.HireDate is null || request.HireDate == default) throw new ArgumentException("HireDate is required.");
@@ -40,7 +38,7 @@ public static class EmployeeWriteValidator
 
         return request with
         {
-            EmployeeCode = request.EmployeeCode.Trim(),
+            EmployeeCode = string.IsNullOrWhiteSpace(request.EmployeeCode) ? null : request.EmployeeCode.Trim(),
             FullName = request.FullName.Trim(),
             PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim(),
             Status = NormalizeStatus(request.Status),

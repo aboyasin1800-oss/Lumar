@@ -1,6 +1,8 @@
+using System.Globalization;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Employees;
 using LUMAR_ERP_API_V2.Services;
+using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
 
 namespace LUMAR_ERP_API_V2.Repositories;
@@ -17,9 +19,13 @@ public sealed class EmployeeRepository(ReadOnlySqlConnectionFactory connections,
         await using var transaction = await connection.BeginTransactionAsync(ct);
         try
         {
+            var employeeCode = string.IsNullOrWhiteSpace(normalized.EmployeeCode)
+                ? await GenerateEmployeeCodeAsync(connection, (SqlTransaction)transaction, ct)
+                : normalized.EmployeeCode.Trim();
+
             await using (var duplicateCheck = new SqlCommand("SELECT TOP (1) EmployeeID FROM dbo.Employees WITH (UPDLOCK, HOLDLOCK) WHERE EmployeeCode = @code", connection, (SqlTransaction)transaction))
             {
-                duplicateCheck.Parameters.AddWithValue("@code", normalized.EmployeeCode!);
+                duplicateCheck.Parameters.AddWithValue("@code", employeeCode);
                 if (await duplicateCheck.ExecuteScalarAsync(ct) is not null)
                     throw new ArgumentException("EmployeeCode already exists.");
             }
@@ -29,7 +35,7 @@ OUTPUT INSERTED.EmployeeID
 VALUES (@employeeCode, @employeeName, @fullName, @departmentId, @phoneNumber, @basicSalary, @salaryType, @hireDate, @status, @isActive, SYSDATETIME(), SYSDATETIME());";
 
             await using var command = new SqlCommand(sql, connection, (SqlTransaction)transaction);
-            command.Parameters.AddWithValue("@employeeCode", normalized.EmployeeCode!.Trim());
+            command.Parameters.AddWithValue("@employeeCode", employeeCode);
             command.Parameters.AddWithValue("@employeeName", normalized.FullName!.Trim());
             command.Parameters.AddWithValue("@fullName", normalized.FullName.Trim());
             command.Parameters.AddWithValue("@departmentId", normalized.DepartmentId);
@@ -52,10 +58,22 @@ VALUES (@employeeCode, @employeeName, @fullName, @departmentId, @phoneNumber, @b
         }
     }
 
+    private static async Task<string> GenerateEmployeeCodeAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken ct)
+    {
+        var prefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "EmployeeCodePrefix", "MO", ct);
+        var number = await SystemCodeGenerator.GetNextNumberAsync(connection, transaction, "dbo.Employees", "EmployeeCode", "EmployeeCodePrefix", "MO", ct);
+        return prefix + number.ToString(CultureInfo.InvariantCulture);
+    }
+
     public async Task<EmployeeDetailsDto?> UpdateAsync(int employeeId, UpdateEmployeeDto request, CancellationToken ct)
     {
         var normalized = EmployeeWriteValidator.ValidateForUpdate(request);
-        if (await GetByIdAsync(employeeId, ct) is null) return null;
+        var existingEmployee = await GetByIdAsync(employeeId, ct);
+        if (existingEmployee is null) return null;
+
+        var employeeCode = string.IsNullOrWhiteSpace(normalized.EmployeeCode)
+            ? existingEmployee.EmployeeCode
+            : normalized.EmployeeCode.Trim();
 
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(ct);
@@ -64,7 +82,7 @@ VALUES (@employeeCode, @employeeName, @fullName, @departmentId, @phoneNumber, @b
         {
             await using (var duplicateCheck = new SqlCommand("SELECT TOP (1) EmployeeID FROM dbo.Employees WITH (UPDLOCK, HOLDLOCK) WHERE EmployeeCode = @code AND EmployeeID <> @id", connection, (SqlTransaction)transaction))
             {
-                duplicateCheck.Parameters.AddWithValue("@code", normalized.EmployeeCode!);
+                duplicateCheck.Parameters.AddWithValue("@code", employeeCode);
                 duplicateCheck.Parameters.AddWithValue("@id", employeeId);
                 if (await duplicateCheck.ExecuteScalarAsync(ct) is not null)
                     throw new ArgumentException("EmployeeCode already exists.");
@@ -86,7 +104,7 @@ WHERE EmployeeID = @id;";
 
             await using var command = new SqlCommand(sql, connection, (SqlTransaction)transaction);
             command.Parameters.AddWithValue("@id", employeeId);
-            command.Parameters.AddWithValue("@employeeCode", normalized.EmployeeCode!.Trim());
+            command.Parameters.AddWithValue("@employeeCode", employeeCode);
             command.Parameters.AddWithValue("@employeeName", normalized.FullName!.Trim());
             command.Parameters.AddWithValue("@fullName", normalized.FullName.Trim());
             command.Parameters.AddWithValue("@departmentId", normalized.DepartmentId);
