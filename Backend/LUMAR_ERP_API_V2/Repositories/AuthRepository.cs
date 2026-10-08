@@ -59,9 +59,13 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         }
 
         var isAdmin = IsAdministrativeRole(role);
-        var mobileAccount = await ResolveMobileAccountAsync(connection, userId, ct);
-        if (mobileAccount is null && !isAdmin)
-            return null;
+        MobileAccountIdentity? mobileAccount = null;
+        if (!isAdmin)
+        {
+            mobileAccount = await ResolveMobileAccountAsync(connection, username, ct);
+            if (mobileAccount is null)
+                return null;
+        }
 
         var currentUser = new CurrentUserDto(
             userId,
@@ -361,9 +365,14 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         var fullName = reader.GetString(2);
         var role = reader.IsDBNull(3) ? null : reader.GetString(3);
         DateTime? lastLoginUtc = reader.IsDBNull(5) ? null : reader.GetDateTime(5);
-        var mobileAccount = await ResolveMobileAccountAsync(connection, userId, ct);
-        if (mobileAccount is null && !IsAdministrativeRole(role))
-            return null;
+        var isAdmin = IsAdministrativeRole(role);
+        MobileAccountIdentity? mobileAccount = null;
+        if (!isAdmin)
+        {
+            mobileAccount = await ResolveMobileAccountAsync(connection, username, ct);
+            if (mobileAccount is null)
+                return null;
+        }
 
         return new CurrentUserDto(
             userId,
@@ -425,15 +434,22 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         return new SessionDto(token, expiresAt, user with { LastLoginUtc = DateTime.UtcNow });
     }
 
-    private async Task<MobileAccountIdentity?> ResolveMobileAccountAsync(SqlConnection connection, int userId, CancellationToken ct)
+    internal static readonly string MobileAccountLookupSql =
+        @"SELECT TOP 1 AccountType, CustomerId, EmployeeId, SupplierId, IsActive
+          FROM dbo.MobileAccounts
+          WHERE (Username = @username OR NormalizedUsername = @username OR NormalizedUsername = @normalizedUsername)
+            AND IsActive = 1
+          ORDER BY MobileAccountId";
+
+    private async Task<MobileAccountIdentity?> ResolveMobileAccountAsync(SqlConnection connection, string username, CancellationToken ct)
     {
-        if (userId <= 0)
+        if (string.IsNullOrWhiteSpace(username))
             return null;
 
-        await using var resolve = new SqlCommand(
-            "SELECT TOP 1 AccountType, CustomerId, EmployeeId, SupplierId, IsActive FROM dbo.MobileAccounts WHERE UserId = @userId AND IsActive = 1 ORDER BY MobileAccountId",
-            connection);
-        resolve.Parameters.AddWithValue("@userId", userId);
+        var normalizedUsername = username.Trim();
+        await using var resolve = new SqlCommand(MobileAccountLookupSql, connection);
+        resolve.Parameters.AddWithValue("@username", normalizedUsername);
+        resolve.Parameters.AddWithValue("@normalizedUsername", normalizedUsername.ToUpperInvariant());
 
         await using var reader = await resolve.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct))
