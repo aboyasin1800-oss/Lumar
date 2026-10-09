@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-import '../../core/app_navigation.dart';
 import '../../core/production_display_mapper.dart';
 import '../../core/ui_palette.dart';
 
