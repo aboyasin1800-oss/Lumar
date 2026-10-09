@@ -135,8 +135,9 @@ class _LoyaltyRewardsScreenState extends State<LoyaltyRewardsScreen> {
                   child: Text(RlUiText.friendlyError(snapshot.error)));
             }
             final data = snapshot.data;
-            if (data == null)
+            if (data == null) {
               return const Center(child: Text('لا توجد بيانات.'));
+            }
             final rewardTypes =
                 data.rewards.map((item) => item.source).toSet().toList();
             return RefreshIndicator(
@@ -389,8 +390,9 @@ class _LoyaltyRewardsScreenState extends State<LoyaltyRewardsScreen> {
   String _reasonLabel(LoyaltyRewardItem item) {
     final notes = item.notes;
     if (notes == null || notes.trim().isEmpty) return 'غير مسجل';
-    if (notes.startsWith('Earn points from order'))
+    if (notes.startsWith('Earn points from order')) {
       return 'نقاط مكتسبة من الطلب';
+    }
     if (notes.startsWith('Purchase points for order')) {
       return 'نقاط شراء للطلب${item.orderId == null ? '' : ' رقم ${item.orderId}'}';
     }

@@ -1956,12 +1956,10 @@ class _MeasurementCardPdfGenerator {
         build: (pw.Context context) {
           final rows = <pw.Widget>[];
 
-          if (headerWidget != null) {
-            rows.add(pw.Container(
-              padding: const pw.EdgeInsets.only(bottom: 4),
-              child: headerWidget,
-            ));
-          }
+          rows.add(pw.Container(
+            padding: const pw.EdgeInsets.only(bottom: 4),
+            child: headerWidget,
+          ));
 
           rows.add(pw.Divider(thickness: 1));
           if (copyNumber > 1) {

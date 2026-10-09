@@ -25,7 +25,7 @@ List<Map<String, dynamic>> buildUniqueProductionRouteItems({
   final routeStagesByProductTypeId = <int, List<String>>{};
 
   for (final entry in routeEntries) {
-    final map = entry is Map ? Map<String, dynamic>.from(entry as Map) : <String, dynamic>{};
+    final map = entry is Map ? Map<String, dynamic>.from(entry) : <String, dynamic>{};
     final productTypeId = int.tryParse(
           (map['productTypeId'] ?? map['ProductTypeId'] ?? 0).toString(),
         ) ??
@@ -50,7 +50,7 @@ List<Map<String, dynamic>> buildUniqueProductionRouteItems({
   final seenProductTypeIds = <int>{};
 
   for (final item in officialProductTypes) {
-    final map = item is Map ? Map<String, dynamic>.from(item as Map) : <String, dynamic>{};
+    final map = item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{};
     final productTypeId = int.tryParse((map['productTypeId'] ?? map['ProductTypeId'] ?? 0).toString()) ?? 0;
     final code = (map['code'] ?? map['Code'] ?? '').toString().trim();
     final nameAr = (map['nameAr'] ?? map['NameAr'] ?? map['name'] ?? map['Name'] ?? '').toString().trim();

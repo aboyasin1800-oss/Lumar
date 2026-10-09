@@ -1388,7 +1388,7 @@ class _RuleRow extends StatelessWidget {
               SizedBox(
                 width: 200,
                 child: DropdownButtonFormField<String>(
-                  value: selectedCategory,
+                  initialValue: selectedCategory,
                   decoration: InputDecoration(
                     labelText: categoryItems.contains(draft.name)
                         ? 'فئة القاعدة'

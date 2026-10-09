@@ -9,7 +9,7 @@ import 'attendance/attendance_report_screen.dart';
 import 'attendance/attendance_screen.dart';
 import 'employee_details_screen.dart';
 import 'employee_form_screen.dart';
-import 'payroll/piece_wage_screen.dart';
+import 'payroll/piece_rate_screen.dart';
 import 'payroll/employee_production_screen.dart';
 import 'payroll_screen.dart';
 
@@ -78,7 +78,7 @@ class EmployeesScreen extends StatelessWidget {
             AttendanceReportScreen(),
             PayrollScreen(),
             EmployeeProductionScreen(),
-            PieceWageScreen(),
+            PieceRateScreen(),
           ],
         ),
       ),
@@ -190,7 +190,7 @@ class _EmployeesListTabState extends State<_EmployeesListTab> {
                     SizedBox(
                       width: 220,
                       child: DropdownButtonFormField<int>(
-                        value: departmentId,
+                        initialValue: departmentId,
                         decoration: const InputDecoration(
                           labelText: 'القسم',
                           border: OutlineInputBorder(),
@@ -207,7 +207,7 @@ class _EmployeesListTabState extends State<_EmployeesListTab> {
                     SizedBox(
                       width: 190,
                       child: DropdownButtonFormField<String>(
-                        value: status,
+                        initialValue: status,
                         decoration: const InputDecoration(
                           labelText: 'الحالة',
                           border: OutlineInputBorder(),

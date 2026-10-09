@@ -507,7 +507,7 @@ class _SupplierPurchasingScreenState extends State<SupplierPurchasingScreen>
                               child: FocusTraversalOrder(
                                 order: const NumericFocusOrder(1),
                                 child: DropdownButtonFormField<int>(
-                                  value: supplierId,
+                                  initialValue: supplierId,
                                   isExpanded: true,
                                   decoration: const InputDecoration(labelText: 'المورد'),
                                   items: _suppliers
@@ -639,7 +639,7 @@ class _SupplierPurchasingScreenState extends State<SupplierPurchasingScreen>
                                     child: SizedBox(
                                       height: 40,
                                       child: DropdownButtonFormField<String>(
-                                        value: line.unit.isEmpty ? 'ياردة' : line.unit,
+                                        initialValue: line.unit.isEmpty ? 'ياردة' : line.unit,
                                         isExpanded: true,
                                         decoration: const InputDecoration(labelText: 'الوحدة', contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10)),
                                         items: const [
@@ -697,7 +697,7 @@ class _SupplierPurchasingScreenState extends State<SupplierPurchasingScreen>
                                       decoration: BoxDecoration(
                                         color: _screenTheme.cardColor,
                                         borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: UiPalette.borderSoft.withOpacity(0.5)),
+                                        border: Border.all(color: UiPalette.borderSoft.withValues(alpha: 0.5)),
                                       ),
                                       child: Text(
                                         _money.format(lineTotal),
@@ -846,7 +846,7 @@ class _SupplierPurchasingScreenState extends State<SupplierPurchasingScreen>
                               child: FocusTraversalOrder(
                                 order: const NumericFocusOrder(1),
                                 child: DropdownButtonFormField<int>(
-                                  value: supplierId,
+                                  initialValue: supplierId,
                                   isExpanded: true,
                                   decoration: const InputDecoration(labelText: 'المورد'),
                                   items: _suppliers
@@ -1021,7 +1021,7 @@ class _SupplierPurchasingScreenState extends State<SupplierPurchasingScreen>
                 const SizedBox(height: 12),
                 ...invoice.lineItems.map((line) => ListTile(
                       dense: true,
-                      title: Text('${line.name}'),
+                      title: Text(line.name),
                       subtitle: Text('${line.unit} • ${line.quantity} • ${_money.format(line.unitPrice)}'),
                       trailing: Text(_money.format(line.quantity * line.unitPrice)),
                     )),
@@ -1134,7 +1134,7 @@ class _SuppliersTab extends StatelessWidget {
                               selectedTileColor: screenDark ? const Color(0xFF1C2F39) : const Color(0xFFEAF5F2),
                               onTap: () => onSelect(supplier.id),
                               leading: CircleAvatar(
-                                backgroundColor: UiPalette.primaryBlue.withOpacity(0.15),
+                                backgroundColor: UiPalette.primaryBlue.withValues(alpha: 0.15),
                                 child: Text(supplier.name.substring(0, 1), style: const TextStyle(color: UiPalette.primaryBlue, fontWeight: FontWeight.bold)),
                               ),
                               title: Text(supplier.name),
@@ -1202,7 +1202,7 @@ class _SuppliersTab extends StatelessWidget {
                         ),
                         title: Text('${transaction.type} • ${transaction.title}'),
                         subtitle: Text('${dateFormat.format(transaction.date)} • ${transaction.details}'),
-                        trailing: Text('${format.format(transaction.amount)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        trailing: Text(format.format(transaction.amount), style: const TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     )),
             ],
@@ -1346,7 +1346,7 @@ class _PaymentsTab extends StatelessWidget {
                         child: ListTile(
                           title: Text('${supplier.name} • ${payment.amount}'),
                           subtitle: Text('التاريخ: ${_parseDate(payment.date)} • رقم السند: ${payment.receiptNumber} • الطريقة: ${payment.method} • المتحصل: ${payment.collector}'),
-                          trailing: Text('${format.format(payment.finalBalance)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          trailing: Text(format.format(payment.finalBalance), style: const TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       );
                     }).toList(),
@@ -1390,7 +1390,7 @@ class _SettlementTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           DropdownButtonFormField<int>(
-            value: suppliers.isEmpty ? null : selectedSupplierId,
+            initialValue: suppliers.isEmpty ? null : selectedSupplierId,
             decoration: const InputDecoration(labelText: 'اختر المورد'),
             items: suppliers.map((supplier) => DropdownMenuItem(value: supplier.id, child: Text(supplier.name))).toList(),
             onChanged: suppliers.isEmpty ? null : (value) {
@@ -1461,7 +1461,7 @@ class _SummaryBox extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: UiPalette.borderSoft.withOpacity(0.4)),
+        border: Border.all(color: UiPalette.borderSoft.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1489,7 +1489,7 @@ class _SummaryMetric extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: UiPalette.borderSoft.withOpacity(0.4)),
+        border: Border.all(color: UiPalette.borderSoft.withValues(alpha: 0.4)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

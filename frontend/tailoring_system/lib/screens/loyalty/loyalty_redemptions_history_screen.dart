@@ -104,13 +104,15 @@ class _LoyaltyRedemptionsHistoryScreenState
       body: FutureBuilder<LoyaltyRedemptionHistoryData>(
         future: _future,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(
                 child: CircularProgressIndicator(color: palette.primary));
-          if (snapshot.hasError)
+          }
+          if (snapshot.hasError) {
             return Center(
                 child: Text(RlUiText.friendlyError(snapshot.error),
                     style: TextStyle(color: palette.text)));
+          }
           final data = snapshot.data!;
           return Column(children: [
             _filters(palette, data.items),
@@ -191,7 +193,7 @@ class _LoyaltyRedemptionsHistoryScreenState
             SizedBox(
               width: 150,
               child: DropdownButtonFormField<String>(
-                value: _type,
+                initialValue: _type,
                 decoration: const InputDecoration(labelText: 'نوع العملية'),
                 items: const [
                   DropdownMenuItem(value: 'الكل', child: Text('كل العمليات')),
@@ -331,10 +333,11 @@ class _LoyaltyRedemptionsHistoryScreenState
       );
 
   Widget _items(_Palette palette, List<LoyaltyRedemptionHistoryItem> items) {
-    if (items.isEmpty)
+    if (items.isEmpty) {
       return Center(
           child: Text('لا توجد بيانات للعرض',
               style: TextStyle(color: palette.text)));
+    }
     return ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
         itemCount: items.length,
@@ -348,7 +351,7 @@ class _LoyaltyRedemptionsHistoryScreenState
                 leading: CircleAvatar(
                     backgroundColor:
                         (reversal ? Colors.orange : palette.primary)
-                            .withOpacity(.18),
+                            .withValues(alpha: .18),
                     child: Icon(reversal ? Icons.undo : Icons.stars,
                         color: reversal ? Colors.orange : palette.primary)),
                 title: Text(reversal ? 'إلغاء استبدال النقاط' : 'استبدال نقاط',

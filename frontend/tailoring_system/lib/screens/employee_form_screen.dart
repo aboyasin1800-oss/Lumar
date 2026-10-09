@@ -307,7 +307,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                               SizedBox(
                                 width: 260,
                                 child: DropdownButtonFormField<int>(
-                                  value: _departments.any((department) => department.id == _departmentId)
+                                  initialValue: _departments.any((department) => department.id == _departmentId)
                                       ? _departmentId
                                       : null,
                                   decoration: const InputDecoration(
@@ -336,7 +336,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                 width: 280,
                                 child: DropdownButtonFormField<String>(
                                   key: const ValueKey('employee_salary_type'),
-                                  value: _salaryType,
+                                  initialValue: _salaryType,
                                   isExpanded: true,
                                   decoration: const InputDecoration(
                                     labelText: 'نوع الأجر',
@@ -409,7 +409,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                               SizedBox(
                                 width: 220,
                                 child: DropdownButtonFormField<String>(
-                                  value: _status,
+                                  initialValue: _status,
                                   decoration: const InputDecoration(
                                     labelText: 'الحالة',
                                     border: OutlineInputBorder(),
@@ -482,7 +482,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                           width: 320,
                                           child: DropdownButtonFormField<String>(
                                             key: ValueKey('piece_type_${index}_dropdown'),
-                                            value: row.pieceType.isEmpty ? null : row.pieceType,
+                                            initialValue: row.pieceType.isEmpty ? null : row.pieceType,
                                             isExpanded: true,
                                             decoration: const InputDecoration(
                                               labelText: 'نوع القطعة',

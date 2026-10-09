@@ -302,7 +302,7 @@ class _ReferralTreeMap extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: UiPalette.softBlue.withOpacity(0.25),
+        color: UiPalette.softBlue.withValues(alpha: 0.25),
         borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
         border: Border.all(color: UiPalette.borderSoft),
       ),
@@ -349,7 +349,7 @@ class _ReferralTreeNode extends StatelessWidget {
             border: Border.all(color: UiPalette.borderSoft),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.12),
+                color: Colors.black.withValues(alpha: 0.12),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               ),

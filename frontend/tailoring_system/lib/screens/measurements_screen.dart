@@ -123,8 +123,9 @@ class _MeasurementEntryScreenState extends State<MeasurementEntryScreen> {
                                               ? TextInputAction.done
                                               : TextInputAction.next,
                                       onFieldSubmitted: (_) {
-                                        if (field == widget.fields.last)
+                                        if (field == widget.fields.last) {
                                           _save();
+                                        }
                                       },
                                       decoration: InputDecoration(
                                         labelText: field,
@@ -283,7 +284,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         final productName = productTypeNames[entry.key] ?? '';
         final pieceType = _normalizePieceTypeKey(productName);
         if (pieceType.isEmpty) continue;
-        nextFields[pieceType] = [...entry.value.toSet().toList()];
+        nextFields[pieceType] = [...entry.value.toSet()];
       }
 
       if (mounted && nextFields.isNotEmpty) {
@@ -360,8 +361,9 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         .toList();
     if (exactMatches.length == 1 && mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && generation == _searchGeneration)
+        if (mounted && generation == _searchGeneration) {
           _selectCustomer(exactMatches.single);
+        }
       });
     }
     return customers;
@@ -469,8 +471,9 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                 controller: controller,
                 focusNode: focusNode,
                 onChanged: (value) {
-                  if (value != _selectedCustomerLabel)
+                  if (value != _selectedCustomerLabel) {
                     _selectedCustomerId = null;
+                  }
                 },
                 onSubmitted: (_) => onSubmitted(),
                 decoration: const InputDecoration(
@@ -521,12 +524,14 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                   : FutureBuilder<List<CustomerMeasurement>>(
                       future: _measurements,
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState != ConnectionState.done)
+                        if (snapshot.connectionState != ConnectionState.done) {
                           return const Center(
                               child: CircularProgressIndicator());
-                        if (snapshot.hasError)
+                        }
+                        if (snapshot.hasError) {
                           return const Center(
                               child: Text('تعذر تحميل قياسات العميل.'));
+                        }
                         final allMeasurements = snapshot.data ?? [];
                         final measurements = _latestMeasurements(
                                 allMeasurements.where((measurement) =>
@@ -713,8 +718,9 @@ class MeasurementsApi {
       final request = await client.getUrl(uri);
       final response = await request.close();
       final body = await utf8.decoder.bind(response).join();
-      if (response.statusCode < 200 || response.statusCode >= 300)
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw HttpException('فشل البحث عن العملاء.');
+      }
       return (jsonDecode(body) as List)
           .whereType<Map<String, dynamic>>()
           .map(CustomerSearchResult.fromJson)
@@ -730,8 +736,9 @@ class MeasurementsApi {
       final request = await client
           .getUrl(Uri.parse('$baseUrl/customers/$customerId/measurements'));
       final response = await request.close();
-      if (response.statusCode < 200 || response.statusCode >= 300)
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw HttpException('فشل تحميل القياسات.');
+      }
       final body = await utf8.decoder.bind(response).join();
       return (jsonDecode(body) as List)
           .cast<Map<String, dynamic>>()
@@ -758,8 +765,9 @@ class MeasurementsApi {
       }));
       final response = await request.close();
       final body = await utf8.decoder.bind(response).join();
-      if (response.statusCode < 200 || response.statusCode >= 300)
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw HttpException(body.isEmpty ? 'فشل حفظ المقاسات.' : body);
+      }
     } finally {
       client.close();
     }

@@ -453,7 +453,6 @@ class _ProductionOrdersRootTab extends StatefulWidget {
     required this.orderItems,
     required this.routesByProductTypeId,
     required this.onRefresh,
-    super.key,
   });
 
   final List<Map<String, dynamic>> pieces;
@@ -774,7 +773,6 @@ class _OrdersListTab extends StatefulWidget {
     required this.onRefresh,
     required this.searchQuery,
     this.filter,
-    super.key,
   });
 
   final List<Map<String, dynamic>> pieces;
@@ -922,8 +920,9 @@ class _OrdersListTabState extends State<_OrdersListTab> {
             if (row.status != 'قيد الإنتاج') return false;
             break;
           case _OrderStateFilter.readyForDelivery:
-            if (row.status != 'جاهز للتسليم' && row.status != 'تم التسليم')
+            if (row.status != 'جاهز للتسليم' && row.status != 'تم التسليم') {
               return false;
+            }
             break;
         }
       }
@@ -1725,7 +1724,7 @@ class _ProductionOrderDetailScreenState
 }
 
 class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.label, required this.value, super.key});
+  const _InfoChip({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -1993,7 +1992,6 @@ class _PeriodField extends StatelessWidget {
     required this.hint,
     required this.label,
     required this.onSubmitted,
-    super.key,
   });
 
   final TextEditingController controller;
@@ -2025,7 +2023,6 @@ class _SelectedPeriodSummary extends StatelessWidget {
     required this.daily,
     required this.monthly,
     required this.yearly,
-    super.key,
   });
 
   final List<Map<String, dynamic>> pieces;
@@ -2155,7 +2152,7 @@ class _SelectedPeriodSummary extends StatelessWidget {
 }
 
 class _PieceSectionHeader extends StatelessWidget {
-  const _PieceSectionHeader({required this.title, super.key});
+  const _PieceSectionHeader({required this.title});
 
   final String title;
 
@@ -2178,7 +2175,7 @@ class _PieceTypeCardData {
 }
 
 class _PieceCountCard extends StatelessWidget {
-  const _PieceCountCard({required this.title, required this.value, super.key});
+  const _PieceCountCard({required this.title, required this.value});
 
   final String title;
   final int value;
@@ -2542,9 +2539,10 @@ class _ProductionPieceDetailsScreenState
       body: FutureBuilder<_PieceDetailData>(
           future: future,
           builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done)
+            if (snapshot.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
-            if (snapshot.hasError)
+            }
+            if (snapshot.hasError) {
               return ProductionError(
                   onRetry: reload,
                   message: snapshot.error is ProductionApiException &&
@@ -2553,6 +2551,7 @@ class _ProductionPieceDetailsScreenState
                               404)
                       ? 'خادم الإنتاج الحالي لا يوفر تفاصيل بطاقة القطعة. يلزم تشغيل إصدار Backend المطابق للكود الحالي.'
                       : 'تعذر تحميل تفاصيل القطعة.');
+            }
 
             final data = snapshot.data!;
             final card = data.card;
@@ -3353,8 +3352,9 @@ class _ProductionScanningTabState extends State<ProductionScanningTab> {
                                             '-')))
                                 .toList(),
                             onChanged: (value) {
-                              if (value != null)
+                              if (value != null) {
                                 scannerCodeController.text = value;
+                              }
                             },
                           ),
                         ),
@@ -3642,11 +3642,13 @@ class ReadyMadeDetailsScreen extends StatelessWidget {
           ? Future<List<Map<String, dynamic>>>.value(knownPieces)
           : api.readyPieces(itemId),
           builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done)
+            if (snapshot.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
-            if (snapshot.hasError)
+            }
+            if (snapshot.hasError) {
               return const ProductionError(
                   message: 'تعذر تحميل قطع الإنتاج الجاهز.');
+            }
             final pieces = snapshot.data!;
             return ListView.separated(
                 padding: const EdgeInsets.all(20),
@@ -4172,8 +4174,9 @@ class ProductionApi {
 
   Future<dynamic> get(String path) async {
     final response = await _withTimeout(http.get(Uri.parse('$baseUrl$path')));
-    if (response.statusCode < 200 || response.statusCode >= 300)
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ProductionApiException(response.statusCode);
+    }
     return jsonDecode(response.body);
   }
 

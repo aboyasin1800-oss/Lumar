@@ -47,8 +47,9 @@ class _PricingScreenState extends State<PricingScreen> {
       http.get(Uri.parse('$_baseUrl/pricing-engine/profit-settings')),
     ]);
     for (final response in responses) {
-      if (response.statusCode < 200 || response.statusCode >= 300)
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('HTTP ${response.statusCode}');
+      }
     }
     final costs = (jsonDecode(responses[0].body) as List)
         .cast<Map<String, dynamic>>()
@@ -60,8 +61,9 @@ class _PricingScreenState extends State<PricingScreen> {
     final productProfits = <int, double>{};
     for (final entry in rawProductProfits.entries) {
       final id = int.tryParse(entry.key.toString());
-      if (id != null && entry.value is num)
+      if (id != null && entry.value is num) {
         productProfits[id] = (entry.value as num).toDouble();
+      }
     }
     final global =
         (profitJson['globalProfitPercentage'] as num?)?.toDouble() ?? 0;
@@ -90,9 +92,10 @@ class _PricingScreenState extends State<PricingScreen> {
       await _refresh();
       await _calculate();
     } catch (exception) {
-      if (mounted)
+      if (mounted) {
         setState(() =>
             _error = exception.toString().replaceFirst('Exception: ', ''));
+      }
     }
   }
 
@@ -154,8 +157,9 @@ class _PricingScreenState extends State<PricingScreen> {
         setState(() {});
       }
     } finally {
-      if (mounted && version == _calculationVersion)
+      if (mounted && version == _calculationVersion) {
         setState(() => _calculating = false);
+      }
     }
   }
 
@@ -169,9 +173,10 @@ class _PricingScreenState extends State<PricingScreen> {
     try {
       await _saveProductProfit(item, value);
     } catch (exception) {
-      if (mounted)
+      if (mounted) {
         setState(() =>
             _error = exception.toString().replaceFirst('Exception: ', ''));
+      }
     }
   }
 
@@ -179,8 +184,9 @@ class _PricingScreenState extends State<PricingScreen> {
   Widget build(BuildContext context) => FutureBuilder<_PricingData>(
         future: _dataFuture,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done)
+          if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
+          }
           if (snapshot.hasError) return _LoadError(onRetry: _refresh);
           final data = snapshot.data!;
           return Column(
@@ -395,9 +401,10 @@ class _ResultView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!result.ready)
+    if (!result.ready) {
       return Text(result.reason ?? 'تعذر إصدار سعر نهائي.',
           style: TextStyle(color: Theme.of(context).colorScheme.error));
+    }
     return Wrap(spacing: 20, runSpacing: 10, children: [
       _Value(label: 'تكلفة القماش', value: result.fabricCost),
       _Value(label: 'التكلفة الكاملة', value: result.fullCost),
@@ -465,8 +472,9 @@ class _ProfitDialogState extends State<_ProfitDialog> {
             FilledButton(onPressed: _submit, child: const Text('حفظ'))
           ]);
   void _submit() {
-    if (formKey.currentState?.validate() ?? false)
+    if (formKey.currentState?.validate() ?? false) {
       Navigator.pop(context, double.parse(controller.text.trim()));
+    }
   }
 }
 

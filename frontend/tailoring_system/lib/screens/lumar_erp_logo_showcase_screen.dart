@@ -439,7 +439,7 @@ class _TemplateEditorCardState extends State<_TemplateEditorCard> {
                     final field = fields[index];
                     if (field.type == _FieldType.dropdown) {
                       return DropdownButtonFormField<String>(
-                        value: field.options.contains(field.value) ? field.value : field.options.first,
+                        initialValue: field.options.contains(field.value) ? field.value : field.options.first,
                         decoration: InputDecoration(
                           labelText: field.label,
                           border: const OutlineInputBorder(),

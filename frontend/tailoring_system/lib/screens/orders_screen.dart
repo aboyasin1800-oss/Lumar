@@ -154,8 +154,9 @@ class _OrdersScreenState extends State<OrdersScreen>
             child: FutureBuilder<List<OrderSummary>>(
               future: _orders,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done)
+                if (snapshot.connectionState != ConnectionState.done) {
                   return const Center(child: CircularProgressIndicator());
+                }
                 if (snapshot.hasError) return _OrdersError(onRetry: _refresh);
                 final orders = _filterOrders(snapshot.data ?? const []);
                 return TabBarView(
