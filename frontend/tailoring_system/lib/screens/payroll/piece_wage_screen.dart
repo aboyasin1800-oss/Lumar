@@ -88,9 +88,9 @@ class _PieceWageScreenState extends State<PieceWageScreen> {
       );
     } catch (_) {
       return _OrderContext(
-        orderNumber: orderId > 0 ? 'ORD-$orderId' : '—',
+        orderNumber: orderId > 0 ? 'طلب-$orderId' : '—',
         customerName: 'غير محدد',
-        trackingCode: pieceId > 0 ? 'PT-$pieceId' : '—',
+        trackingCode: pieceId > 0 ? 'قطعة-$pieceId' : '—',
       );
     }
   }
@@ -169,7 +169,7 @@ class _PieceWageScreenState extends State<PieceWageScreen> {
                                 DataColumn(label: Text('الموظف')),
                                 DataColumn(label: Text('العميل')),
                                 DataColumn(label: Text('الطلب')),
-                                DataColumn(label: Text('TrackingCode')),
+                                DataColumn(label: Text('رمز التتبع')),
                                 DataColumn(label: Text('النوع')),
                                 DataColumn(label: Text('المرحلة')),
                                 DataColumn(label: Text('الكمية')),
