@@ -23,7 +23,7 @@ class EmployeePieceRateRow {
 
 class EmployeeWritePayload {
   const EmployeeWritePayload({
-    required this.employeeCode,
+    this.employeeCode = '',
     required this.fullName,
     required this.departmentId,
     required this.basicSalary,
@@ -45,7 +45,7 @@ class EmployeeWritePayload {
   final List<EmployeePieceRateRow> pieceRates;
 
   Map<String, dynamic> toJson() => {
-        'employeeCode': employeeCode.trim(),
+        'employeeCode': employeeCode.trim().isEmpty ? null : employeeCode.trim(),
         'fullName': fullName.trim(),
         'departmentId': departmentId,
         'basicSalary': basicSalary,

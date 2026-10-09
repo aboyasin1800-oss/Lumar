@@ -181,14 +181,47 @@ class EmployeeRepository {
     );
   }
 
-  Future<List<EmployeeDepartment>> getDepartments() =>
-      _list('/employees/departments', (json) => EmployeeDepartment(
+  Future<List<EmployeeDepartment>> getDepartments() async {
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/employees/departments'),
+      headers: _headers(),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw EmployeeApiException(
+        '/employees/departments',
+        response.statusCode,
+        _extractMessage(response),
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    List<dynamic> items;
+    if (decoded is List) {
+      items = decoded;
+    } else if (decoded is Map<String, dynamic>) {
+      final maybe = decoded['data'] ??
+          decoded['items'] ??
+          decoded['departments'] ??
+          decoded['result'] ??
+          decoded['results'];
+      items = maybe is List ? maybe : const <dynamic>[];
+    } else {
+      items = const <dynamic>[];
+    }
+
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (json) => EmployeeDepartment(
             id: json['departmentId'] as int,
             code: json['departmentCode'] as String,
             name: json['departmentName'] as String,
             description: json['description'] as String?,
             isActive: json['isActive'] as bool,
-          ));
+          ),
+        )
+        .toList();
+  }
 
   Future<List<String>> getProductionRouteOptions() async {
     final response = await _client.get(

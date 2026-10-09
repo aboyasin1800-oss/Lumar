@@ -30,14 +30,6 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   final _basicSalary = TextEditingController();
   final _hireDate = TextEditingController();
 
-  static const Map<String, String> _statusLabels = {
-    'Active': 'نشط',
-    'Inactive': 'غير نشط',
-    'Suspended': 'موقوف',
-    'Terminated': 'منتهي الخدمة',
-    'OnLeave': 'في إجازة',
-  };
-
   static const String _salaryTypeBasic = 'BasicSalary';
   static const String _salaryTypePiece = 'PieceWage';
 
@@ -52,8 +44,6 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   bool _saving = false;
   bool _loadingDepartments = true;
   bool _loadingProductionOptions = true;
-
-  String _labelForStatus(String value) => _statusLabels[value] ?? value;
 
   @override
   void initState() {
@@ -109,7 +99,9 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       if (!mounted) return;
       setState(() {
         _departments = departments;
-        if (_departmentId == null && departments.isNotEmpty) {
+        if (departments.isEmpty) {
+          _departmentId = null;
+        } else if (_departmentId == null || !departments.any((d) => d.id == _departmentId)) {
           _departmentId = departments.first.id;
         }
         if (widget.employee != null && departments.any((d) => d.id == widget.employee!.departmentId)) {
@@ -119,7 +111,11 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loadingDepartments = false);
+      setState(() {
+        _departments = const [];
+        _departmentId = null;
+        _loadingDepartments = false;
+      });
       _showMessage('تعذر تحميل أقسام الموظفين.', isError: true);
     }
   }
@@ -283,15 +279,14 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                 width: 320,
                                 child: TextFormField(
                                   controller: _employeeCode,
+                                  readOnly: true,
+                                  enabled: false,
                                   textInputAction: TextInputAction.next,
                                   decoration: const InputDecoration(
                                     labelText: 'رمز الموظف',
+                                    hintText: 'سيتم توليده تلقائياً من النظام',
                                     border: OutlineInputBorder(),
                                   ),
-                                  validator: (value) =>
-                                      (value == null || value.trim().isEmpty)
-                                          ? 'رمز الموظف مطلوب.'
-                                          : null,
                                 ),
                               ),
                               SizedBox(
@@ -312,11 +307,14 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                               SizedBox(
                                 width: 260,
                                 child: DropdownButtonFormField<int>(
-                                  value: _departmentId,
+                                  value: _departments.any((department) => department.id == _departmentId)
+                                      ? _departmentId
+                                      : null,
                                   decoration: const InputDecoration(
                                     labelText: 'القسم',
                                     border: OutlineInputBorder(),
                                   ),
+                                  hint: _departments.isEmpty ? const Text('لا توجد أقسام متاحة') : null,
                                   items: _departments
                                       .map(
                                         (department) => DropdownMenuItem<int>(
@@ -325,7 +323,9 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                         ),
                                       )
                                       .toList(),
-                                  onChanged: (value) => setState(() => _departmentId = value),
+                                  onChanged: _departments.isEmpty
+                                      ? null
+                                      : (value) => setState(() => _departmentId = value),
                                   validator: (value) =>
                                       value == null || value <= 0
                                           ? 'القسم مطلوب.'
