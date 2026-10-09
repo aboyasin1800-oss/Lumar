@@ -21,23 +21,37 @@ class UiScaleState extends ChangeNotifier {
   final _storage = const FlutterSecureStorage();
   double _scale = 1;
   bool initialized = false;
+  bool _disposed = false;
 
   double get scale => _scale;
   int get levelIndex => levels.indexOf(_scale);
 
+  void _notifyIfActive() {
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   Future<void> initialize() async {
     final storedValue = await _storage.read(key: _storageKey);
+    if (_disposed) return;
     final storedScale = double.tryParse(storedValue ?? '');
     _scale = levels.contains(storedScale) ? storedScale! : 1;
     initialized = true;
-    notifyListeners();
+    _notifyIfActive();
   }
 
   Future<void> setScale(double value) async {
-    if (!levels.contains(value) || _scale == value) return;
+    if (_disposed || !levels.contains(value) || _scale == value) return;
     _scale = value;
     await _storage.write(key: _storageKey, value: value.toString());
-    notifyListeners();
+    _notifyIfActive();
   }
 
   Future<void> increase() async {

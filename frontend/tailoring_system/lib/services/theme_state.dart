@@ -8,6 +8,7 @@ class ThemeState extends ChangeNotifier {
   final _storage = const FlutterSecureStorage();
   AppThemePreference _preference = AppThemePreference.system;
   bool initialized = false;
+  bool _disposed = false;
 
   AppThemePreference get preference => _preference;
   ThemeMode get themeMode => switch (_preference) {
@@ -16,21 +17,34 @@ class ThemeState extends ChangeNotifier {
     AppThemePreference.system => ThemeMode.system,
   };
 
+  void _notifyIfActive() {
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   Future<void> initialize() async {
     final savedValue = await _storage.read(key: _storageKey);
+    if (_disposed) return;
     _preference = switch (savedValue) {
       'light' => AppThemePreference.light,
       'dark' => AppThemePreference.dark,
       _ => AppThemePreference.system,
     };
     initialized = true;
-    notifyListeners();
+    _notifyIfActive();
   }
 
   Future<void> setPreference(AppThemePreference value) async {
-    if (_preference == value) return;
+    if (_disposed || _preference == value) return;
     _preference = value;
     await _storage.write(key: _storageKey, value: value.name);
-    notifyListeners();
+    _notifyIfActive();
   }
 }

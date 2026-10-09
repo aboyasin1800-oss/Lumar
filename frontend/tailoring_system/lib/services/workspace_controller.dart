@@ -134,6 +134,7 @@ class WorkspaceController extends ChangeNotifier {
   final UiScaleState uiScale;
   final WorkspacePreferences _preferences;
   final List<WorkspaceTask> _tasks = [];
+  bool _disposed = false;
 
   late final Map<String, WorkspaceRouteDefinition> _definitions = {
     for (final definition in registry) definition.routeId: definition,
@@ -157,6 +158,12 @@ class WorkspaceController extends ChangeNotifier {
         _tasks.where((task) => task.isPinned).map((task) => task.definition.routeId),
       );
 
+  void _notifyIfActive() {
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
   WorkspaceRouteDefinition? definitionFor(String routeId) => _definitions[routeId];
 
   WorkspaceTask? taskFor(String routeId) {
@@ -177,8 +184,9 @@ class WorkspaceController extends ChangeNotifier {
     _taskbarSize = WorkspaceTaskbarSizeValues.fromStorage(
       await _preferences.read(taskbarSizeKey),
     );
+    if (_disposed) return;
     initialized = true;
-    notifyListeners();
+    _notifyIfActive();
   }
 
   Widget buildTask(WorkspaceTask task) {
@@ -193,10 +201,11 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void open(String routeId) {
+    if (_disposed) return;
     if (routeId == '/dashboard') {
       _minimizeActiveWithoutNotification();
       _activeRouteId = null;
-      notifyListeners();
+      _notifyIfActive();
       return;
     }
 
@@ -212,7 +221,7 @@ class WorkspaceController extends ChangeNotifier {
     task.state = WorkspaceTaskState.openActive;
     task.stateBeforeClosing = null;
     _activeRouteId = routeId;
-    notifyListeners();
+    _notifyIfActive();
   }
 
   void toggle(String routeId) {
@@ -225,54 +234,55 @@ class WorkspaceController extends ChangeNotifier {
 
   void minimize(String routeId) {
     final task = taskFor(routeId);
-    if (task == null || _activeRouteId != routeId) return;
+    if (_disposed || task == null || _activeRouteId != routeId) return;
     task.state = WorkspaceTaskState.minimized;
     _activeRouteId = null;
-    notifyListeners();
+    _notifyIfActive();
   }
 
   bool beginClose(String routeId) {
     final task = taskFor(routeId);
-    if (task == null || !task.isDirty) return false;
+    if (task == null || !task.isDirty || _disposed) return false;
     if (task.state == WorkspaceTaskState.closingPending) return true;
     task.stateBeforeClosing = task.state;
     task.state = WorkspaceTaskState.closingPending;
-    notifyListeners();
+    _notifyIfActive();
     return true;
   }
 
   void cancelClose(String routeId) {
     final task = taskFor(routeId);
-    if (task == null || task.state != WorkspaceTaskState.closingPending) return;
+    if (_disposed || task == null || task.state != WorkspaceTaskState.closingPending) return;
     task.state = task.stateBeforeClosing ?? WorkspaceTaskState.openInactive;
     task.stateBeforeClosing = null;
-    notifyListeners();
+    _notifyIfActive();
   }
 
   void close(String routeId) {
     final task = taskFor(routeId);
-    if (task == null) return;
+    if (_disposed || task == null) return;
     if (task.isDirty) return;
     _removeTask(task);
-    notifyListeners();
+    _notifyIfActive();
   }
 
   void closeAfterConfirmation(String routeId) {
     final task = taskFor(routeId);
-    if (task == null) return;
+    if (_disposed || task == null) return;
     task.isDirty = false;
     _removeTask(task);
-    notifyListeners();
+    _notifyIfActive();
   }
 
   void markDirty(String routeId, bool value) {
     final task = taskFor(routeId);
-    if (task == null || task.isDirty == value) return;
+    if (_disposed || task == null || task.isDirty == value) return;
     task.isDirty = value;
-    notifyListeners();
+    _notifyIfActive();
   }
 
   Future<void> pin(String routeId) async {
+    if (_disposed) return;
     final task = taskFor(routeId) ?? _createTask(_definitions[routeId]);
     if (task == null || task.isPinned) return;
     task.isPinned = true;
@@ -280,10 +290,11 @@ class WorkspaceController extends ChangeNotifier {
       task.state = WorkspaceTaskState.pinnedClosed;
     }
     await _persistPins();
-    notifyListeners();
+    _notifyIfActive();
   }
 
   Future<void> unpin(String routeId) async {
+    if (_disposed) return;
     final task = taskFor(routeId);
     if (task == null || !task.isPinned) return;
     task.isPinned = false;
@@ -291,17 +302,18 @@ class WorkspaceController extends ChangeNotifier {
       _tasks.remove(task);
     }
     await _persistPins();
-    notifyListeners();
+    _notifyIfActive();
   }
 
   Future<void> setTaskbarSize(WorkspaceTaskbarSize size) async {
-    if (_taskbarSize == size) return;
+    if (_disposed || _taskbarSize == size) return;
     _taskbarSize = size;
     await _preferences.write(taskbarSizeKey, size.storageValue);
-    notifyListeners();
+    _notifyIfActive();
   }
 
   Future<void> reorderPinned(List<String> routeIds) async {
+    if (_disposed) return;
     final ordered = <WorkspaceTask>[];
     for (final routeId in routeIds) {
       final task = taskFor(routeId);
@@ -316,11 +328,12 @@ class WorkspaceController extends ChangeNotifier {
       ..addAll(ordered)
       ..addAll(nonPinned);
     await _persistPins();
-    notifyListeners();
+    _notifyIfActive();
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _tasks.clear();
     super.dispose();
   }

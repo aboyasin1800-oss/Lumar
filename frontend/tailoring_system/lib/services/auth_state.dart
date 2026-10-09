@@ -56,10 +56,23 @@ class AuthState extends ChangeNotifier {
   AuthUser? user;
   String? _token;
   bool initialized = false;
+  bool _disposed = false;
   bool get signedIn => user != null;
   String? get token => _token;
   String? get rememberedUsername => _rememberedUsername;
   String? _rememberedUsername;
+
+  void _notifyIfActive() {
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   Future<void> initialize() async {
     try {
@@ -82,8 +95,9 @@ class AuthState extends ChangeNotifier {
       user = null;
       _token = null;
     } finally {
+      if (_disposed) return;
       initialized = true;
-      notifyListeners();
+      _notifyIfActive();
     }
   }
 
@@ -119,7 +133,7 @@ class AuthState extends ChangeNotifier {
       }
       _token = token;
       user = currentUser;
-      notifyListeners();
+      _notifyIfActive();
       return null;
     } on TimeoutException {
       return 'انتهت مهلة تسجيل الدخول. تأكد من تشغيل الخادم ثم أعد المحاولة.';
@@ -133,16 +147,18 @@ class AuthState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    if (_disposed) return;
     if (_token != null) {
       await _request('POST', '/auth/logout', token: _token);
     }
     await _storage.delete(key: _tokenKey);
     _token = null;
     user = null;
-    notifyListeners();
+    _notifyIfActive();
   }
 
   Future<String?> changeUsername(String password, String username) async {
+    if (_disposed) return null;
     final response = await _request('PUT', '/auth/username',
         token: _token,
         body: {'currentPassword': password, 'username': username});
@@ -156,12 +172,13 @@ class AuthState extends ChangeNotifier {
     user = AuthUser.fromJson(json['user'] as Map<String, dynamic>);
     await _storage.write(key: _tokenKey, value: _token);
     await _storage.write(key: _usernameKey, value: user!.username);
-    notifyListeners();
+    _notifyIfActive();
     return null;
   }
 
   Future<String?> changePassword(String currentPassword, String newPassword,
       String confirmPassword) async {
+    if (_disposed) return 'تعذر تغيير كلمة المرور.';
     final response =
         await _request('PUT', '/auth/password', token: _token, body: {
       'currentPassword': currentPassword,

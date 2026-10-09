@@ -186,4 +186,16 @@ void main() {
     expect(controller.tasks, hasLength(1));
     expect(controller.taskFor('/customers')!.state, WorkspaceTaskState.minimized);
   });
+
+  test('state notifies no listeners after disposal', () async {
+    final controller = _controller(_MemoryPreferences());
+    var callbackCount = 0;
+    controller.addListener(() => callbackCount++);
+    await controller.initialize();
+    controller.dispose();
+    controller.open('/customers');
+    controller.markDirty('/customers', true);
+
+    expect(callbackCount, 1);
+  });
 }
