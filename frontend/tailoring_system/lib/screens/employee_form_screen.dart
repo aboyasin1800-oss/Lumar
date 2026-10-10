@@ -8,6 +8,17 @@ import '../core/ui_palette.dart';
 import '../models/employee_models.dart';
 import '../repositories/employee_repository.dart';
 
+DateTime? parseHireDateFromDisplay(String value) {
+  final text = value.trim();
+  if (text.isEmpty) return null;
+
+  try {
+    return DateFormat('yyyy/MM/dd').parseStrict(text);
+  } catch (_) {
+    return null;
+  }
+}
+
 class EmployeeFormScreen extends StatefulWidget {
   const EmployeeFormScreen({
     super.key,
@@ -53,6 +64,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   final _phoneNumber = TextEditingController();
   final _basicSalary = TextEditingController();
   final _hireDate = TextEditingController();
+  DateTime? _hireDateValue;
 
   static const String _salaryTypeBasic = 'BasicSalary';
   static const String _salaryTypePiece = 'PieceWage';
@@ -138,7 +150,8 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
     if (employee == null) {
       _status = 'Active';
       _salaryType = _salaryTypeBasic;
-      _hireDate.text = DateFormat('yyyy/MM/dd').format(DateTime.now());
+      _hireDateValue = DateTime.now();
+      _hireDate.text = DateFormat('yyyy/MM/dd').format(_hireDateValue!);
       return;
     }
 
@@ -146,7 +159,8 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
     _fullName.text = employee.fullName;
     _phoneNumber.text = employee.phoneNumber ?? '';
     _basicSalary.text = employee.basicSalary.toStringAsFixed(2);
-    _hireDate.text = DateFormat('yyyy/MM/dd').format(employee.hireDate);
+    _hireDateValue = employee.hireDate;
+    _hireDate.text = DateFormat('yyyy/MM/dd').format(_hireDateValue!);
     _departmentId = employee.departmentId;
     _status = employee.status;
     _salaryType = employee.salaryType == _salaryTypePiece ? _salaryTypePiece : _salaryTypeBasic;
@@ -259,15 +273,17 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
 
   Future<void> _pickHireDate() async {
     final now = DateTime.now();
+    final parsedInitial = _hireDateValue ?? parseHireDateFromDisplay(_hireDate.text) ?? now;
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.tryParse(_hireDate.text) ?? now,
+      initialDate: parsedInitial,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
 
     if (picked == null) return;
     setState(() {
+      _hireDateValue = picked;
       _hireDate.text = DateFormat('yyyy/MM/dd').format(picked);
     });
   }
@@ -320,13 +336,19 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       return;
     }
 
+    final parsedHireDate = _hireDateValue ?? parseHireDateFromDisplay(_hireDate.text);
+    if (parsedHireDate == null) {
+      _showMessage('تاريخ التوظيف غير صحيح.', isError: true);
+      return;
+    }
+
     final payload = EmployeeWritePayload(
       employeeCode: _employeeCode.text,
       fullName: _fullName.text,
       departmentId: _departmentId!,
       basicSalary: salaryValue,
       phoneNumber: _phoneNumber.text,
-      hireDate: DateTime.tryParse(_hireDate.text),
+      hireDate: parsedHireDate,
       status: _status,
       salaryType: _salaryType,
       pieceRates: _salaryType == _salaryTypePiece
