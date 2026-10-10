@@ -13,6 +13,26 @@ const String _baseUrl = String.fromEnvironment(
   defaultValue: 'http://127.0.0.1:5093',
 );
 
+String _displayOfficialLabel(String value) {
+  final raw = value.trim();
+  if (raw.isEmpty) return '';
+
+  const translations = <String, String>{
+    'printing': 'طباعة',
+    'cutting': 'قطع',
+    'sewing': 'خياطة',
+    'embroidery': 'طباعة/تطريز',
+    'washing': 'غسيل',
+    'finishing': 'تجهيز',
+    'packing': 'تغليف',
+    'quality': 'جودة',
+    'delivery': 'تسليم',
+    'assembly': 'تجميع',
+  };
+
+  return translations[raw.toLowerCase()] ?? raw;
+}
+
 class _OfficialProductType {
   const _OfficialProductType({
     required this.productTypeId,
@@ -391,7 +411,7 @@ class _PieceRateScreenState extends State<PieceRateScreen> {
                               color: item.isActive
                                   ? UiPalette.primaryBlue
                                   : UiPalette.textSoft),
-                          title: Text('${item.pieceType} • ${item.stage}',
+                          title: Text('${_displayOfficialLabel(item.pieceType)} • ${_displayOfficialLabel(item.stage)}',
                               style: TextStyle(color: UiPalette.textMain)),
                           subtitle: item.notes == null ||
                                   item.notes!.trim().isEmpty
@@ -576,7 +596,7 @@ class _RateEditorDialogState extends State<_RateEditorDialog> {
                       .map(
                         (type) => DropdownMenuItem<int>(
                           value: type.productTypeId,
-                          child: Text(type.displayName),
+                          child: Text(_displayOfficialLabel(type.displayName)),
                         ),
                       )
                       .toList(),
@@ -607,7 +627,7 @@ class _RateEditorDialogState extends State<_RateEditorDialog> {
                       .map(
                         (stage) => DropdownMenuItem<String>(
                           value: stage,
-                          child: Text(stage),
+                          child: Text(_displayOfficialLabel(stage)),
                         ),
                       )
                       .toList(),

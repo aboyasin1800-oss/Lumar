@@ -57,38 +57,7 @@ class EmployeeRepository {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(path, response.statusCode, _extractMessage(response));
     }
-    final json = jsonDecode(response.body) as Map<String, dynamic>;
-    return EmployeeDetails(
-      id: json['employeeId'] as int,
-      code: json['employeeCode'] as String,
-      name: json['employeeName'] as String,
-      fullName: json['fullName'] as String,
-      jobTitle: json['jobTitle'] as String?,
-      scannerCode: json['scannerCode'] as String?,
-      phoneNumber: json['phoneNumber'] as String?,
-      baseSalary: (json['baseSalary'] as num?)?.toDouble(),
-      notes: json['notes'] as String?,
-      isActive: json['isActive'] as bool?,
-      salaryType: json['salaryType'] as String?,
-      fixedSalary: (json['fixedSalary'] as num?)?.toDouble(),
-      nationalId: json['nationalId'] as String?,
-      phone: json['phone'] as String?,
-      email: json['email'] as String?,
-      address: json['address'] as String?,
-      hireDate: DateTime.parse(json['hireDate'] as String),
-      terminationDate: json['terminationDate'] == null
-          ? null
-          : DateTime.parse(json['terminationDate'] as String),
-      status: json['status'] as String,
-      departmentId: json['departmentId'] as int,
-      basicSalary: (json['basicSalary'] as num).toDouble(),
-      pieceWageRate: (json['pieceWageRate'] as num).toDouble(),
-      overtimeHourlyRate: (json['overtimeHourlyRate'] as num).toDouble(),
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: json['updatedAt'] == null
-          ? null
-          : DateTime.parse(json['updatedAt'] as String),
-    );
+    return EmployeeDetails.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<EmployeeDetails> _putJson(String path, Map<String, dynamic> body) async {
@@ -100,38 +69,7 @@ class EmployeeRepository {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(path, response.statusCode, _extractMessage(response));
     }
-    final json = jsonDecode(response.body) as Map<String, dynamic>;
-    return EmployeeDetails(
-      id: json['employeeId'] as int,
-      code: json['employeeCode'] as String,
-      name: json['employeeName'] as String,
-      fullName: json['fullName'] as String,
-      jobTitle: json['jobTitle'] as String?,
-      scannerCode: json['scannerCode'] as String?,
-      phoneNumber: json['phoneNumber'] as String?,
-      baseSalary: (json['baseSalary'] as num?)?.toDouble(),
-      notes: json['notes'] as String?,
-      isActive: json['isActive'] as bool?,
-      salaryType: json['salaryType'] as String?,
-      fixedSalary: (json['fixedSalary'] as num?)?.toDouble(),
-      nationalId: json['nationalId'] as String?,
-      phone: json['phone'] as String?,
-      email: json['email'] as String?,
-      address: json['address'] as String?,
-      hireDate: DateTime.parse(json['hireDate'] as String),
-      terminationDate: json['terminationDate'] == null
-          ? null
-          : DateTime.parse(json['terminationDate'] as String),
-      status: json['status'] as String,
-      departmentId: json['departmentId'] as int,
-      basicSalary: (json['basicSalary'] as num).toDouble(),
-      pieceWageRate: (json['pieceWageRate'] as num).toDouble(),
-      overtimeHourlyRate: (json['overtimeHourlyRate'] as num).toDouble(),
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: json['updatedAt'] == null
-          ? null
-          : DateTime.parse(json['updatedAt'] as String),
-    );
+    return EmployeeDetails.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<List<EmployeeSummary>> getEmployees() =>
@@ -148,37 +86,7 @@ class EmployeeRepository {
 
   Future<EmployeeDetails> getEmployee(int employeeId) async {
     final json = await _object('/employees/$employeeId');
-    return EmployeeDetails(
-      id: json['employeeId'] as int,
-      code: json['employeeCode'] as String,
-      name: json['employeeName'] as String,
-      fullName: json['fullName'] as String,
-      jobTitle: json['jobTitle'] as String?,
-      scannerCode: json['scannerCode'] as String?,
-      phoneNumber: json['phoneNumber'] as String?,
-      baseSalary: (json['baseSalary'] as num?)?.toDouble(),
-      notes: json['notes'] as String?,
-      isActive: json['isActive'] as bool?,
-      salaryType: json['salaryType'] as String?,
-      fixedSalary: (json['fixedSalary'] as num?)?.toDouble(),
-      nationalId: json['nationalId'] as String?,
-      phone: json['phone'] as String?,
-      email: json['email'] as String?,
-      address: json['address'] as String?,
-      hireDate: DateTime.parse(json['hireDate'] as String),
-      terminationDate: json['terminationDate'] == null
-          ? null
-          : DateTime.parse(json['terminationDate'] as String),
-      status: json['status'] as String,
-      departmentId: json['departmentId'] as int,
-      basicSalary: (json['basicSalary'] as num).toDouble(),
-      pieceWageRate: (json['pieceWageRate'] as num).toDouble(),
-      overtimeHourlyRate: (json['overtimeHourlyRate'] as num).toDouble(),
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: json['updatedAt'] == null
-          ? null
-          : DateTime.parse(json['updatedAt'] as String),
-    );
+    return EmployeeDetails.fromJson(json);
   }
 
   Future<List<EmployeeDepartment>> getDepartments() async {

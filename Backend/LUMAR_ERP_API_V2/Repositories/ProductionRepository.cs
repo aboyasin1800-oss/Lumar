@@ -507,16 +507,18 @@ public sealed class ProductionRepository(
     private static async Task<PieceWageInsertOutcome> CreatePieceWageRecordAsync(SqlConnection connection, SqlTransaction transaction, PieceContext pieceContext, int trackingEventId, string stage, string pieceTypeCode, string? employeeCode, CancellationToken ct)
     {
         var rateList = await LoadPieceWageRatesAsync(connection, transaction, ct);
-        var rateResolution = PieceWageEngine.ResolveRate(pieceTypeCode, stage, rateList);
-        if (!rateResolution.IsValid)
-        {
-            return new PieceWageInsertOutcome(false, rateResolution.Message);
-        }
 
         var employeeId = await ResolveEmployeeIdAsync(connection, transaction, employeeCode, ct);
         if (!employeeId.HasValue)
         {
             return new PieceWageInsertOutcome(false, "The employee linked to the tracking event could not be resolved for piece wage creation.");
+        }
+
+        var employeeExtra = await LoadEmployeePieceRateExtraAsync(connection, transaction, employeeId.Value, pieceTypeCode, stage, ct);
+        var rateResolution = PieceWageEngine.ResolveRate(pieceTypeCode, stage, rateList, employeeExtra);
+        if (!rateResolution.IsValid)
+        {
+            return new PieceWageInsertOutcome(false, rateResolution.Message);
         }
 
         var existingWages = await CountPieceWageRecordsForTrackingEventAsync(connection, transaction, trackingEventId, ct);
@@ -526,8 +528,9 @@ public sealed class ProductionRepository(
         }
 
         var quantity = 1m;
-        var totalWage = PieceWageEngine.CalculateTotalWage(quantity, rateResolution.WageRate!.Value);
-        var validation = PieceWageEngine.ValidateRecord(pieceTypeCode, stage, rateResolution.WageRate.Value, employeeCode, quantity, existingWages);
+        var finalRate = rateResolution.WageRate!.Value;
+        var totalWage = PieceWageEngine.CalculateTotalWage(quantity, finalRate);
+        var validation = PieceWageEngine.ValidateRecord(pieceTypeCode, stage, finalRate, employeeCode, quantity, existingWages);
         if (!validation.IsValid)
         {
             return new PieceWageInsertOutcome(false, validation.Message);
@@ -548,7 +551,7 @@ public sealed class ProductionRepository(
         command.Parameters.AddWithValue("@pieceType", pieceTypeCode);
         command.Parameters.AddWithValue("@stage", stage);
         command.Parameters.AddWithValue("@quantity", quantity);
-        command.Parameters.AddWithValue("@wageRate", rateResolution.WageRate.Value);
+        command.Parameters.AddWithValue("@wageRate", finalRate);
         command.Parameters.AddWithValue("@totalWage", validation.TotalWage);
         command.Parameters.AddWithValue("@status", "PendingPayroll");
         command.Parameters.AddWithValue("@notes", $"Auto-created from TrackingEvent {trackingEventId}");
@@ -577,6 +580,25 @@ public sealed class ProductionRepository(
         }
 
         return results;
+    }
+
+    private static async Task<decimal> LoadEmployeePieceRateExtraAsync(SqlConnection connection, SqlTransaction transaction, int employeeId, string pieceType, string stage, CancellationToken ct)
+    {
+        const string sql = @"SELECT TOP 1 Rate
+            FROM dbo.EmployeePieceRateAssignments WITH (NOLOCK)
+            WHERE EmployeeId = @employeeId
+              AND PieceType = @pieceType
+              AND Stage = @stage
+              AND IsActive = 1
+            ORDER BY EffectiveFrom DESC, EmployeePieceRateAssignmentId DESC;";
+
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@employeeId", employeeId);
+        command.Parameters.AddWithValue("@pieceType", pieceType.Trim());
+        command.Parameters.AddWithValue("@stage", stage.Trim());
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return 0m;
+        return reader.IsDBNull(0) ? 0m : reader.GetDecimal(0);
     }
 
     private static async Task<int> CountPieceWageRecordsForTrackingEventAsync(SqlConnection connection, SqlTransaction transaction, int trackingEventId, CancellationToken ct)

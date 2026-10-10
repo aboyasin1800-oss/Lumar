@@ -3,22 +3,31 @@ typedef EmployeeJson = Map<String, dynamic>;
 class EmployeePieceRateRow {
   const EmployeePieceRateRow({
     this.pieceType = '',
+    this.stage = '',
     this.rateText = '',
   });
 
   final String pieceType;
+  final String stage;
   final String rateText;
 
-  EmployeePieceRateRow copyWith({String? pieceType, String? rateText}) =>
+  EmployeePieceRateRow copyWith({String? pieceType, String? stage, String? rateText}) =>
       EmployeePieceRateRow(
         pieceType: pieceType ?? this.pieceType,
+        stage: stage ?? this.stage,
         rateText: rateText ?? this.rateText,
       );
 
-  Map<String, dynamic> toJson() => {
-        'pieceType': pieceType.trim(),
-        'rate': rateText.trim(),
-      };
+  double? get parsedRate => double.tryParse(rateText.trim());
+
+  Map<String, dynamic> toJson() {
+    final rateValue = rateText.trim();
+    return {
+      'pieceType': pieceType.trim(),
+      'stage': stage.trim(),
+      'rate': rateValue.isEmpty ? 0.0 : (double.tryParse(rateValue) ?? 0.0),
+    };
+  }
 }
 
 class EmployeeWritePayload {
@@ -125,7 +134,23 @@ class EmployeeDetails {
       required this.pieceWageRate,
       required this.overtimeHourlyRate,
       required this.createdAt,
-      required this.updatedAt});
+      required this.updatedAt,
+      this.pieceRates = const <EmployeePieceRateRow>[]});
+
+  static List<EmployeePieceRateRow> _parsePieceRates(dynamic raw) {
+    final values = raw is List ? raw : const <dynamic>[];
+    return values
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (entry) => EmployeePieceRateRow(
+            pieceType: (entry['pieceType'] ?? entry['piece_type'] ?? '').toString(),
+            stage: (entry['stage'] ?? entry['stageName'] ?? '').toString(),
+            rateText: (entry['rate'] ?? entry['wageRate'] ?? entry['pieceRate'] ?? '')
+                .toString(),
+          ),
+        )
+        .toList();
+  }
 
   factory EmployeeDetails.fromJson(EmployeeJson json) => EmployeeDetails(
         id: json['employeeId'] as int,
@@ -153,6 +178,7 @@ class EmployeeDetails {
         overtimeHourlyRate: _amount(json, 'overtimeHourlyRate'),
         createdAt: _date(json, 'createdAt'),
         updatedAt: _nullableDate(json, 'updatedAt'),
+        pieceRates: _parsePieceRates(json['pieceRates']),
       );
 
   final int id;
@@ -180,6 +206,7 @@ class EmployeeDetails {
   final double overtimeHourlyRate;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  final List<EmployeePieceRateRow> pieceRates;
 }
 
 class EmployeeDepartment {

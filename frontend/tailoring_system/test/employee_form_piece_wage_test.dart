@@ -174,7 +174,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('نوع القطعة'), findsWidgets);
-    expect(find.text('السعر'), findsWidgets);
+    expect(find.text('السعر العام'), findsWidgets);
+    expect(find.text('إضافي'), findsWidgets);
     expect(find.text('إضافة سطر'), findsOneWidget);
 
     expect(find.text('بيانات العقد'), findsOneWidget);
@@ -202,5 +203,25 @@ void main() {
     expect(find.text('Active'), findsOneWidget);
     expect(find.textContaining('عبد القادر امين'), findsWidgets);
     expect(find.text('طباعة العقد'), findsOneWidget);
+  });
+
+  test('piece wage payload sends zero basic salary and stage in each rate row', () {
+    const payload = EmployeeWritePayload(
+      fullName: 'عبد الله أحمد',
+      departmentId: 1,
+      basicSalary: 0,
+      hireDate: null,
+      status: 'Active',
+      salaryType: 'PieceWage',
+      pieceRates: [
+        EmployeePieceRateRow(pieceType: 'بنطلون', stage: 'Cutting', rateText: '15.50'),
+      ],
+    );
+
+    final json = payload.toJson();
+    expect(json['basicSalary'], 0);
+    expect(json['pieceRates'], isA<List>());
+    expect((json['pieceRates'] as List).first['stage'], 'Cutting');
+    expect((json['pieceRates'] as List).first['rate'], 15.5);
   });
 }

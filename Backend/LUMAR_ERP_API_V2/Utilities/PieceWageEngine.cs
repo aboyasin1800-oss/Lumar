@@ -10,10 +10,18 @@ public static class PieceWageEngine
         => quantity * wageRate;
 
     public static PieceWageResolution ResolveRate(string? pieceType, string? stage, IReadOnlyList<PieceWageRateDto> rates)
+        => ResolveRate(pieceType, stage, rates, 0m);
+
+    public static PieceWageResolution ResolveRate(string? pieceType, string? stage, IReadOnlyList<PieceWageRateDto> rates, decimal employeeExtra)
     {
         if (string.IsNullOrWhiteSpace(pieceType) || string.IsNullOrWhiteSpace(stage))
         {
             return new PieceWageResolution(false, "Piece type and stage are required to resolve the wage rate.");
+        }
+
+        if (employeeExtra < 0m)
+        {
+            return new PieceWageResolution(false, "Employee extra amount cannot be negative.");
         }
 
         var normalizedPieceType = NormalizePieceType(pieceType);
@@ -26,7 +34,8 @@ public static class PieceWageEngine
 
         if (exact is not null)
         {
-            return ValidateWageRate(exact.WageRate, exact.PieceType, exact.Stage, normalizedPieceType, normalizedStage);
+            var resolved = ValidateWageRate(exact.WageRate, exact.PieceType, exact.Stage, normalizedPieceType, normalizedStage);
+            return resolved.IsValid ? new PieceWageResolution(true, resolved.Message, ApplyEmployeeExtra(resolved.WageRate!.Value, employeeExtra)) : resolved;
         }
 
         var wildcard = rates.FirstOrDefault(r =>
@@ -36,11 +45,15 @@ public static class PieceWageEngine
 
         if (wildcard is not null)
         {
-            return ValidateWageRate(wildcard.WageRate, wildcard.PieceType, wildcard.Stage, normalizedPieceType, normalizedStage);
+            var resolved = ValidateWageRate(wildcard.WageRate, wildcard.PieceType, wildcard.Stage, normalizedPieceType, normalizedStage);
+            return resolved.IsValid ? new PieceWageResolution(true, resolved.Message, ApplyEmployeeExtra(resolved.WageRate!.Value, employeeExtra)) : resolved;
         }
 
         return new PieceWageResolution(false, $"No valid wage rate exists for piece type '{normalizedPieceType}' at stage '{normalizedStage}'.");
     }
+
+    public static decimal ApplyEmployeeExtra(decimal baseRate, decimal employeeExtra)
+        => baseRate + employeeExtra;
 
     public static PieceWageValidation ValidateRecord(string? pieceType, string? stage, decimal wageRate, string? employeeCode, decimal quantity, int existingWageRecords)
     {

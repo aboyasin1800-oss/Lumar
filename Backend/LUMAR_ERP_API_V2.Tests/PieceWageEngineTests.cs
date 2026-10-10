@@ -85,6 +85,15 @@ public class PieceWageEngineTests
     }
 
     [Fact]
+    public void ShouldAddEmployeeExtraToGeneralRate()
+    {
+        var resolution = PieceWageEngine.ResolveRate("PANTS", "Cutting", Rates, 2.50m);
+
+        Assert.True(resolution.IsValid);
+        Assert.Equal(15.00m, resolution.WageRate);
+    }
+
+    [Fact]
     public void ShouldValidateTotalWageFormula()
     {
         var total = PieceWageEngine.CalculateTotalWage(4m, 13.25m);

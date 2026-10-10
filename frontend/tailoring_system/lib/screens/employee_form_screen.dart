@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 import '../core/ui_palette.dart';
@@ -21,6 +24,27 @@ class EmployeeFormScreen extends StatefulWidget {
   State<EmployeeFormScreen> createState() => _EmployeeFormScreenState();
 }
 
+String _displayProductionLabel(String value) {
+  final raw = value.trim();
+  if (raw.isEmpty) return '';
+
+  const translations = <String, String>{
+    'printing': 'طباعة',
+    'cutting': 'قطع',
+    'sewing': 'خياطة',
+    'embroidery': 'طباعة/تطريز',
+    'washing': 'غسيل',
+    'finishing': 'تجهيز',
+    'packing': 'تغليف',
+    'quality': 'جودة',
+    'delivery': 'تسليم',
+    'assembly': 'تجميع',
+  };
+
+  final lower = raw.toLowerCase();
+  return translations[lower] ?? raw;
+}
+
 class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   late final EmployeeRepository repository;
   final _formKey = GlobalKey<FormState>();
@@ -32,9 +56,12 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
 
   static const String _salaryTypeBasic = 'BasicSalary';
   static const String _salaryTypePiece = 'PieceWage';
+  static const String _officialPieceWageRatesUrl = 'http://127.0.0.1:5093/payroll/piece-wage-rates';
 
   late List<EmployeeDepartment> _departments;
   List<String> _productionOptions = const <String>[];
+  final Map<String, List<String>> _stageOptionsByPieceType = <String, List<String>>{};
+  final Map<String, Map<String, double>> _officialPieceWageRatesByType = <String, Map<String, double>>{};
   final List<EmployeePieceRateRow> _pieceRateRows = <EmployeePieceRateRow>[
     const EmployeePieceRateRow(),
   ];
@@ -53,6 +80,57 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
     _seedFromEmployee();
     _loadDepartments();
     _loadProductionRouteOptions();
+    _loadOfficialPieceWageRates();
+  }
+
+  Future<void> _loadOfficialPieceWageRates() async {
+    try {
+      final response = await http
+          .get(Uri.parse(_officialPieceWageRatesUrl))
+          .timeout(const Duration(seconds: 5));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return;
+      }
+
+      final payload = jsonDecode(response.body);
+      if (payload is! List) {
+        return;
+      }
+
+      final nextRates = <String, Map<String, double>>{};
+      for (final item in payload) {
+        if (item is! Map<String, dynamic>) continue;
+
+        final pieceType = (item['pieceType'] ?? item['PieceType'] ?? '').toString().trim();
+        final stage = (item['stage'] ?? item['Stage'] ?? '').toString().trim();
+        final wageRate = (item['wageRate'] ?? item['WageRate'] ?? 0).toString();
+        final parsedRate = double.tryParse(wageRate) ?? 0.0;
+
+        if (pieceType.isEmpty || stage.isEmpty) {
+          continue;
+        }
+
+        nextRates.putIfAbsent(pieceType, () => <String, double>{});
+        nextRates[pieceType]![stage] = parsedRate;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _officialPieceWageRatesByType.clear();
+        _officialPieceWageRatesByType.addAll(nextRates);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      // The official rate source is optional for the employee form; it should not block the contract flow.
+    }
+  }
+
+  String _displayOfficialPieceRate(String pieceType, String stage) {
+    final rate = _officialPieceWageRatesByType[pieceType.trim()]?[stage.trim()];
+    if (rate == null) {
+      return 'غير متاح';
+    }
+    return '${NumberFormat('#,##0.00').format(rate)} ر.س';
   }
 
   void _seedFromEmployee() {
@@ -72,16 +150,29 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
     _departmentId = employee.departmentId;
     _status = employee.status;
     _salaryType = employee.salaryType == _salaryTypePiece ? _salaryTypePiece : _salaryTypeBasic;
+
+    if (_salaryType == _salaryTypePiece) {
+      _pieceRateRows
+        ..clear()
+        ..addAll(
+          employee.pieceRates.isNotEmpty
+              ? employee.pieceRates
+              : const <EmployeePieceRateRow>[EmployeePieceRateRow()],
+        );
+    }
   }
 
   Future<void> _loadProductionRouteOptions() async {
     try {
       final options = await repository.getProductionRouteOptions();
+      final stageMap = await _loadOfficialStageMap(options);
       if (!mounted) return;
       setState(() {
         _productionOptions = options;
+        _stageOptionsByPieceType.clear();
+        _stageOptionsByPieceType.addAll(stageMap);
         _loadingProductionOptions = false;
-        if (_pieceRateRows.isEmpty || _pieceRateRows.every((row) => row.pieceType.isEmpty && row.rateText.isEmpty)) {
+        if (_pieceRateRows.isEmpty || _pieceRateRows.every((row) => row.pieceType.isEmpty && row.stage.isEmpty && row.rateText.isEmpty)) {
           _pieceRateRows.clear();
           _pieceRateRows.add(const EmployeePieceRateRow());
         }
@@ -91,6 +182,52 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       setState(() => _loadingProductionOptions = false);
       _showMessage('تعذر تحميل أنواع القطع المتاحة.', isError: true);
     }
+  }
+
+  Future<Map<String, List<String>>> _loadOfficialStageMap(List<String> fallbackOptions) async {
+    final routeResponse = await http
+        .get(Uri.parse('http://localhost:5093/settings/production-routes'))
+        .timeout(const Duration(seconds: 5));
+    if (routeResponse.statusCode < 200 || routeResponse.statusCode >= 300) {
+      final result = <String, List<String>>{};
+      for (final type in fallbackOptions.where((option) => option.trim().isNotEmpty)) {
+        result.putIfAbsent(type, () => const <String>[]);
+      }
+      return result;
+    }
+
+    final payload = jsonDecode(routeResponse.body);
+    final routes = payload is Map<String, dynamic> ? (payload['routes'] as List<dynamic>? ?? const <dynamic>[]) : const <dynamic>[];
+    final result = <String, List<String>>{};
+
+    for (final route in routes) {
+      if (route is! Map<String, dynamic>) continue;
+
+      final productTypeName = (route['productTypeNameAr'] ?? route['ProductTypeNameAr'] ?? route['nameAr'] ?? route['NameAr'] ?? route['name'] ?? route['Name'] ?? route['productTypeCode'] ?? route['ProductTypeCode'] ?? '').toString().trim();
+      final productTypeCode = (route['productTypeCode'] ?? route['ProductTypeCode'] ?? route['code'] ?? route['Code'] ?? '').toString().trim();
+      final displayName = productTypeName.isNotEmpty ? productTypeName : productTypeCode;
+      final rawStages = route['stages'] as List<dynamic>? ?? const <dynamic>[];
+      final stages = rawStages
+          .map((value) => value.toString().trim())
+          .where((value) => value.isNotEmpty)
+          .toList();
+
+      if (displayName.isNotEmpty && stages.isNotEmpty) {
+        result[displayName] = stages;
+      }
+      if (productTypeCode.isNotEmpty && stages.isNotEmpty) {
+        result[productTypeCode] = stages;
+      }
+    }
+
+    for (final type in fallbackOptions.where((option) => option.trim().isNotEmpty)) {
+      result.putIfAbsent(type, () => const <String>[]);
+      if (result[type] == null || result[type]!.isEmpty) {
+        result[type] = const <String>[];
+      }
+    }
+
+    return result;
   }
 
   Future<void> _loadDepartments() async {
@@ -144,7 +281,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
 
     if (_salaryType == _salaryTypePiece) {
       final validRows = _pieceRateRows
-          .where((row) => row.pieceType.trim().isNotEmpty || row.rateText.trim().isNotEmpty)
+          .where((row) => row.pieceType.trim().isNotEmpty || row.stage.trim().isNotEmpty || row.rateText.trim().isNotEmpty)
           .toList();
 
       if (validRows.isEmpty) {
@@ -157,20 +294,29 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
           _showMessage('نوع القطعة مطلوب في كل سطر.', isError: true);
           return;
         }
-        final rate = double.tryParse(row.rateText.trim());
-        if (rate == null || rate <= 0) {
-          _showMessage('السعر لكل نوع قطعة يجب أن يكون أكبر من صفر.', isError: true);
+        if (row.stage.trim().isEmpty) {
+          _showMessage('مرحلة العمل مطلوبة في كل سطر.', isError: true);
+          return;
+        }
+        final extra = row.parsedRate ?? 0.0;
+        if (extra < 0) {
+          _showMessage('الإضافي لا يمكن أن يكون سالباً.', isError: true);
           return;
         }
       }
     }
 
     final salaryValue = _salaryType == _salaryTypePiece
-        ? 0.01
+        ? 0.0
         : (double.tryParse(_basicSalary.text.trim()) ?? 0.0);
 
-    if (salaryValue <= 0) {
+    if (_salaryType == _salaryTypeBasic && salaryValue <= 0) {
       _showMessage('يجب أن يكون الراتب الأساسي أكبر من صفر.', isError: true);
+      return;
+    }
+
+    if (_salaryType == _salaryTypePiece && salaryValue != 0) {
+      _showMessage('لأجر القطعة يجب أن يكون الراتب الأساسي صفرًا.', isError: true);
       return;
     }
 
@@ -185,7 +331,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       salaryType: _salaryType,
       pieceRates: _salaryType == _salaryTypePiece
           ? _pieceRateRows
-              .where((row) => row.pieceType.trim().isNotEmpty || row.rateText.trim().isNotEmpty)
+              .where((row) => row.pieceType.trim().isNotEmpty || row.stage.trim().isNotEmpty || row.rateText.trim().isNotEmpty)
               .toList()
           : const <EmployeePieceRateRow>[],
     );
@@ -479,7 +625,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                       crossAxisAlignment: WrapCrossAlignment.center,
                                       children: [
                                         SizedBox(
-                                          width: 320,
+                                          width: 280,
                                           child: DropdownButtonFormField<String>(
                                             key: ValueKey('piece_type_${index}_dropdown'),
                                             initialValue: row.pieceType.isEmpty ? null : row.pieceType,
@@ -492,13 +638,16 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                                 .map(
                                                   (option) => DropdownMenuItem<String>(
                                                     value: option,
-                                                    child: Text(option),
+                                                    child: Text(_displayProductionLabel(option)),
                                                   ),
                                                 )
                                                 .toList(),
                                             onChanged: (value) {
                                               setState(() {
-                                                _pieceRateRows[index] = row.copyWith(pieceType: value ?? '');
+                                                final nextType = value ?? '';
+                                                final nextStages = _stageOptionsByPieceType[nextType] ?? const <String>[];
+                                                final nextStage = nextStages.contains(row.stage) ? row.stage : (nextStages.isNotEmpty ? nextStages.first : '');
+                                                _pieceRateRows[index] = row.copyWith(pieceType: nextType, stage: nextStage);
                                               });
                                             },
                                             validator: (value) =>
@@ -508,18 +657,72 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                           ),
                                         ),
                                         SizedBox(
+                                          width: 220,
+                                          child: DropdownButtonFormField<String>(
+                                            key: ValueKey('piece_stage_${index}_dropdown'),
+                                            initialValue: row.stage.isEmpty ? null : row.stage,
+                                            isExpanded: true,
+                                            decoration: const InputDecoration(
+                                              labelText: 'المرحلة',
+                                              border: OutlineInputBorder(),
+                                            ),
+                                            items: (_stageOptionsByPieceType[row.pieceType] ?? const <String>[])
+                                                .map(
+                                                  (option) => DropdownMenuItem<String>(
+                                                    value: option,
+                                                    child: Text(_displayProductionLabel(option)),
+                                                  ),
+                                                )
+                                                .toList(),
+                                            onChanged: (value) {
+                                              setState(() {
+                                                _pieceRateRows[index] = row.copyWith(stage: value ?? '');
+                                              });
+                                            },
+                                            validator: (value) =>
+                                                (value == null || value.trim().isEmpty)
+                                                    ? 'المرحلة مطلوبة.'
+                                                    : null,
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 190,
+                                          child: TextFormField(
+                                            readOnly: true,
+                                            initialValue: row.pieceType.isEmpty || row.stage.isEmpty
+                                                ? ''
+                                                : _displayOfficialPieceRate(row.pieceType, row.stage),
+                                            decoration: const InputDecoration(
+                                              labelText: 'السعر العام',
+                                              border: OutlineInputBorder(),
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(
                                           width: 170,
                                           child: TextFormField(
                                             initialValue: row.rateText,
                                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                             decoration: const InputDecoration(
-                                              labelText: 'السعر',
+                                              labelText: 'إضافي',
+                                              hintText: 'اختياري',
                                               border: OutlineInputBorder(),
                                             ),
                                             onChanged: (value) {
                                               setState(() {
                                                 _pieceRateRows[index] = row.copyWith(rateText: value);
                                               });
+                                            },
+                                            validator: (value) {
+                                              final trimmed = (value ?? '').trim();
+                                              if (trimmed.isEmpty) {
+                                                return null;
+                                              }
+                                              final parsed = double.tryParse(trimmed);
+                                              if (parsed == null || parsed < 0) {
+                                                return 'الإضافي لا يمكن أن يكون سالباً.';
+                                              }
+                                              return null;
                                             },
                                           ),
                                         ),

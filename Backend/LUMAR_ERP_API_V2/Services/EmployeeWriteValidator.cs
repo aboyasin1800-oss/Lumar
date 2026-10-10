@@ -14,6 +14,7 @@ public static class EmployeeWriteValidator
         if (string.IsNullOrWhiteSpace(request.Status)) throw new ArgumentException("Status is required.");
         var salaryType = NormalizeSalaryType(request.SalaryType);
         ValidateSalary(request.BasicSalary, salaryType);
+        ValidatePieceRates(request.PieceRates, salaryType);
 
         return request with
         {
@@ -35,6 +36,7 @@ public static class EmployeeWriteValidator
         if (string.IsNullOrWhiteSpace(request.Status)) throw new ArgumentException("Status is required.");
         var salaryType = NormalizeSalaryType(request.SalaryType);
         ValidateSalary(request.BasicSalary, salaryType);
+        ValidatePieceRates(request.PieceRates, salaryType);
 
         return request with
         {
@@ -74,6 +76,27 @@ public static class EmployeeWriteValidator
             throw new ArgumentException("BasicSalary must be greater than zero for BasicSalary employees.");
         if (salaryType == "PieceWage" && basicSalary != 0m)
             throw new ArgumentException("BasicSalary must be zero for PieceWage employees.");
+    }
+
+    private static void ValidatePieceRates(IReadOnlyList<EmployeePieceRateAssignmentInputDto>? pieceRates, string salaryType)
+    {
+        if (salaryType != "PieceWage")
+            return;
+
+        if (pieceRates is null || pieceRates.Count == 0)
+            throw new ArgumentException("At least one valid piece rate is required for PieceWage employees.");
+
+        foreach (var item in pieceRates)
+        {
+            if (item is null)
+                throw new ArgumentException("Each piece rate row must contain a value.");
+            if (string.IsNullOrWhiteSpace(item.PieceType))
+                throw new ArgumentException("PieceType is required for each piece rate.");
+            if (string.IsNullOrWhiteSpace(item.Stage))
+                throw new ArgumentException("Stage is required for each piece rate.");
+            if (item.Rate <= 0m)
+                throw new ArgumentException("Piece rate amount must be greater than zero.");
+        }
     }
 
     public static void EnsureUniqueCode(string? employeeCode, IEnumerable<string>? existingCodes, string? currentEmployeeCode = null)

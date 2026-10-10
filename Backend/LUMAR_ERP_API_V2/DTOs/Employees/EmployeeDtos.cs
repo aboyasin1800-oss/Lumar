@@ -45,7 +45,7 @@ public sealed record UpdateEmployeeDto
     [StringLength(50)] public string? EmployeeCode { get; init; }
     [Required, StringLength(200)] public string? FullName { get; init; }
     [Required] public int DepartmentId { get; init; }
-    [Range(typeof(decimal), "0.01", "9999999999999.99")] public decimal BasicSalary { get; init; }
+    [Range(typeof(decimal), "0", "9999999999999.99")] public decimal BasicSalary { get; init; }
     [Phone] public string? PhoneNumber { get; init; }
     [Required] public DateTime? HireDate { get; init; }
     [Required, StringLength(50)] public string? Status { get; init; }
