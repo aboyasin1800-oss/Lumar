@@ -1,4 +1,5 @@
 using LUMAR_ERP_API_V2.DTOs.Customers;
+using Microsoft.Data.SqlClient;
 
 namespace LUMAR_ERP_API_V2.Repositories;
 
@@ -13,6 +14,7 @@ public interface ICustomerRepository
     Task<CustomerReferralDto?> GetReferralsAsync(int customerId, CancellationToken cancellationToken);
     Task<CustomerDetailsDto> CreateAsync(CreateCustomerDto customer, CancellationToken cancellationToken);
     Task<CustomerCreationResultDto> CreateWithReferralAsync(CreateCustomerWithReferralDto customer, CancellationToken cancellationToken);
+    Task<CustomerCreationResultDto> CreateWithReferralInTransactionAsync(SqlConnection connection, SqlTransaction transaction, CreateCustomerWithReferralDto customer, CancellationToken cancellationToken);
     Task<CustomerDetailsDto?> UpdateAsync(int customerId, UpdateCustomerDto customer, CancellationToken cancellationToken);
     Task<IReadOnlyList<CustomerListDto>> SearchAsync(string term, CancellationToken cancellationToken);
     Task<IReadOnlyList<CustomerReferralCandidateDto>> SearchReferralCandidatesAsync(string term, CancellationToken cancellationToken);

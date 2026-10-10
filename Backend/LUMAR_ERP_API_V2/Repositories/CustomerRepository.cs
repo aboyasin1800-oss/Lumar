@@ -106,101 +106,109 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
 
     public async Task<CustomerCreationResultDto> CreateWithReferralAsync(CreateCustomerWithReferralDto customer, CancellationToken cancellationToken)
     {
-        var phone = NormalizeCustomerPhone(customer.PhoneNumber)!;
-        var name = NormalizeCustomerName(customer.CustomerName!);
-        var relationship = customer.RelationshipType?.Trim();
-
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(cancellationToken);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
-
         try
         {
-            await EnsureNoDuplicateCustomerAsync(name, phone, connection, transaction, cancellationToken);
-            CustomerReferralCandidateDto? referrer = null;
-            ReferralCodeRow? referrerCode = null;
-            if (customer.ReferrerCustomerId.HasValue)
-            {
-                referrer = await GetReferralCandidateAsync(customer.ReferrerCustomerId.Value, connection, transaction, cancellationToken)
-                    ?? throw new ArgumentException("المحيل المحدد غير موجود أو غير فعال.");
-                referrerCode = await EnsureReferralCodeAsync(referrer.CustomerId, connection, transaction, cancellationToken);
-                referrer = referrer with { ReferralCode = referrerCode.Code };
-            }
-
-            var customerPrefix = await SystemCodeGenerator.ResolvePrefixAsync(
-                connection,
-                transaction,
-                "CustomerCodePrefix",
-                "C",
-                cancellationToken);
-            var customerNumber = await SystemCodeGenerator.GetNextNumberAsync(
-                connection,
-                transaction,
-                "dbo.Customers",
-                "CustomerCode",
-                "CustomerCodePrefix",
-                "C",
-                cancellationToken);
-            var customerCode = customerPrefix + customerNumber.ToString(CultureInfo.InvariantCulture);
-
-            const string customerSql = @"INSERT INTO dbo.Customers
-                (CustomerCode, CustomerName, PhoneNumber, Address, Notes, IsActive, ParentCustomerId, RelationshipType)
-                OUTPUT INSERTED.CustomerID
-                VALUES (@customerCode, @customerName, @phoneNumber, @address, @notes, 1, @parentCustomerId, @relationshipType);";
-            await using var customerCommand = new SqlCommand(customerSql, connection, transaction);
-            customerCommand.Parameters.AddWithValue("@customerCode", customerCode);
-            customerCommand.Parameters.AddWithValue("@customerName", name);
-            customerCommand.Parameters.AddWithValue("@phoneNumber", phone);
-            AddNullable(customerCommand, "@address", customer.Address?.Trim());
-            AddNullable(customerCommand, "@notes", customer.Notes?.Trim());
-            AddNullable(customerCommand, "@parentCustomerId", customer.ReferrerCustomerId);
-            AddNullable(customerCommand, "@relationshipType", relationship);
-            var customerId = Convert.ToInt32(await customerCommand.ExecuteScalarAsync(cancellationToken));
-
-            var customerReferralCode = await EnsureReferralCodeAsync(customerId, connection, transaction, cancellationToken);
-            await InsertReferralAccountAsync(customerId, customerReferralCode.ReferralCodeId, connection, transaction, cancellationToken);
-
-            long? registrationTransactionId = null;
-            if (referrer is not null && referrerCode is not null)
-            {
-                var registrationNotes = string.IsNullOrWhiteSpace(relationship)
-                    ? "تسجيل عميل جديد."
-                    : $"تسجيل عميل جديد؛ صلة القرابة: {relationship}";
-                registrationTransactionId = await InsertRegistrationAsync(
-                    referrer.CustomerId,
-                    customerId,
-                    referrerCode.ReferralCodeId,
-                    registrationNotes,
-                    connection,
-                    transaction,
-                    cancellationToken);
-                await IncrementReferralAccountAsync(
-                    referrer.CustomerId,
-                    referrerCode.ReferralCodeId,
-                    connection,
-                    transaction,
-                    cancellationToken);
-                await UpdateReferralCodeLastUsedAsync(
-                    referrerCode.ReferralCodeId,
-                    connection,
-                    transaction,
-                    cancellationToken);
-            }
-
-            var result = await ReadCreationResultAsync(
-                customerId,
-                registrationTransactionId,
-                connection,
-                transaction,
-                cancellationToken);
+            var created = await CreateWithReferralInTransactionAsync(connection, transaction, customer, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return result;
+            return created;
         }
         catch
         {
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    public async Task<CustomerCreationResultDto> CreateWithReferralInTransactionAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        CreateCustomerWithReferralDto customer,
+        CancellationToken cancellationToken)
+    {
+        var phone = NormalizeCustomerPhone(customer.PhoneNumber)!;
+        var name = NormalizeCustomerName(customer.CustomerName!);
+        var relationship = customer.RelationshipType?.Trim();
+
+        await EnsureNoDuplicateCustomerAsync(name, phone, connection, transaction, cancellationToken);
+        CustomerReferralCandidateDto? referrer = null;
+        ReferralCodeRow? referrerCode = null;
+        if (customer.ReferrerCustomerId.HasValue)
+        {
+            referrer = await GetReferralCandidateAsync(customer.ReferrerCustomerId.Value, connection, transaction, cancellationToken)
+                ?? throw new ArgumentException("المحيل المحدد غير موجود أو غير فعال.");
+            referrerCode = await EnsureReferralCodeAsync(referrer.CustomerId, connection, transaction, cancellationToken);
+            referrer = referrer with { ReferralCode = referrerCode.Code };
+        }
+
+        var customerPrefix = await SystemCodeGenerator.ResolvePrefixAsync(
+            connection,
+            transaction,
+            "CustomerCodePrefix",
+            "C",
+            cancellationToken);
+        var customerNumber = await SystemCodeGenerator.GetNextNumberAsync(
+            connection,
+            transaction,
+            "dbo.Customers",
+            "CustomerCode",
+            "CustomerCodePrefix",
+            "C",
+            cancellationToken);
+        var customerCode = customerPrefix + customerNumber.ToString(CultureInfo.InvariantCulture);
+
+        const string customerSql = @"INSERT INTO dbo.Customers
+                (CustomerCode, CustomerName, PhoneNumber, Address, Notes, IsActive, ParentCustomerId, RelationshipType)
+                OUTPUT INSERTED.CustomerID
+                VALUES (@customerCode, @customerName, @phoneNumber, @address, @notes, 1, @parentCustomerId, @relationshipType);";
+        await using var customerCommand = new SqlCommand(customerSql, connection, transaction);
+        customerCommand.Parameters.AddWithValue("@customerCode", customerCode);
+        customerCommand.Parameters.AddWithValue("@customerName", name);
+        customerCommand.Parameters.AddWithValue("@phoneNumber", phone);
+        AddNullable(customerCommand, "@address", customer.Address?.Trim());
+        AddNullable(customerCommand, "@notes", customer.Notes?.Trim());
+        AddNullable(customerCommand, "@parentCustomerId", customer.ReferrerCustomerId);
+        AddNullable(customerCommand, "@relationshipType", relationship);
+        var customerId = Convert.ToInt32(await customerCommand.ExecuteScalarAsync(cancellationToken));
+
+        var customerReferralCode = await EnsureReferralCodeAsync(customerId, connection, transaction, cancellationToken);
+        await InsertReferralAccountAsync(customerId, customerReferralCode.ReferralCodeId, connection, transaction, cancellationToken);
+
+        long? registrationTransactionId = null;
+        if (referrer is not null && referrerCode is not null)
+        {
+            var registrationNotes = string.IsNullOrWhiteSpace(relationship)
+                ? "تسجيل عميل جديد."
+                : $"تسجيل عميل جديد؛ صلة القرابة: {relationship}";
+            registrationTransactionId = await InsertRegistrationAsync(
+                referrer.CustomerId,
+                customerId,
+                referrerCode.ReferralCodeId,
+                registrationNotes,
+                connection,
+                transaction,
+                cancellationToken);
+            await IncrementReferralAccountAsync(
+                referrer.CustomerId,
+                referrerCode.ReferralCodeId,
+                connection,
+                transaction,
+                cancellationToken);
+            await UpdateReferralCodeLastUsedAsync(
+                referrerCode.ReferralCodeId,
+                connection,
+                transaction,
+                cancellationToken);
+        }
+
+        return await ReadCreationResultAsync(
+            customerId,
+            registrationTransactionId,
+            connection,
+            transaction,
+            cancellationToken);
     }
 
     public async Task<CustomerDetailsDto?> UpdateAsync(int customerId, UpdateCustomerDto customer, CancellationToken cancellationToken)

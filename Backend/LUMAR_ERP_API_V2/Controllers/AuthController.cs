@@ -6,6 +6,7 @@ namespace LUMAR_ERP_API_V2.Controllers;
 public sealed class AuthController(IAuthService service) : ControllerBase
 {
     [HttpPost("login")] public async Task<ActionResult<SessionDto>> Login(LoginDto request,CancellationToken ct){var result=await service.LoginAsync(request,ct);return result is null?Unauthorized("Invalid username or password."):Ok(result);}
+    [HttpPost("mobile/customer/register")] public async Task<ActionResult<SessionDto>> RegisterMobileCustomer(MobileCustomerRegistrationDto request,CancellationToken ct){try{var result=await service.RegisterMobileCustomerAsync(request,ct);return Ok(result);}catch(ArgumentException ex){return BadRequest(ex.Message);}catch(Microsoft.Data.SqlClient.SqlException ex) when(ex.Number is 2601 or 2627){return Conflict("Username or customer already exists.");}}
     [HttpGet("me")] public async Task<ActionResult<CurrentUserDto>> Me(CancellationToken ct){var user=await service.GetCurrentUserAsync(Token,ct);return user is null?Unauthorized():Ok(user);}
     [HttpGet("account-type")] public async Task<ActionResult<AccountTypeDto>> AccountType(CancellationToken ct){var account=await service.GetAccountTypeAsync(Token,ct);return account is null?Unauthorized():Ok(account);}
     [HttpPost("logout")] public async Task<IActionResult> Logout(CancellationToken ct)=>await service.LogoutAsync(Token,ct)?NoContent():Unauthorized();

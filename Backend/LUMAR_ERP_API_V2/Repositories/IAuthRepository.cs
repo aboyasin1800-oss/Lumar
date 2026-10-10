@@ -3,6 +3,7 @@ namespace LUMAR_ERP_API_V2.Repositories;
 public interface IAuthRepository
 {
     Task<SessionDto?> LoginAsync(LoginDto login, CancellationToken ct);
+    Task<SessionDto> RegisterMobileCustomerAsync(MobileCustomerRegistrationDto request, CancellationToken ct);
     Task<CurrentUserDto?> GetCurrentUserAsync(string token, CancellationToken ct);
     Task<bool> LogoutAsync(string token, CancellationToken ct);
     Task<SessionDto?> ChangeUsernameAsync(string token, ChangeUsernameDto request, CancellationToken ct);

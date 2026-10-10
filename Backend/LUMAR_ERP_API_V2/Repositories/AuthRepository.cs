@@ -2,19 +2,104 @@
 using System.Text;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Auth;
+using LUMAR_ERP_API_V2.DTOs.Customers;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
 namespace LUMAR_ERP_API_V2.Repositories;
 
-public sealed class AuthRepository(OperationalSqlConnectionFactory connections) : IAuthRepository
+public sealed class AuthRepository(OperationalSqlConnectionFactory connections, ICustomerRepository customerRepository) : IAuthRepository
 {
     private sealed record MobileAccountIdentity(
         string AccountType,
         int? CustomerId,
         int? EmployeeId,
         int? SupplierId);
+
+    public async Task<SessionDto> RegisterMobileCustomerAsync(MobileCustomerRegistrationDto request, CancellationToken ct)
+    {
+        if (request is null)
+            throw new ArgumentException("Registration request is required.");
+
+        if (!ValidateMobileCustomerRegistrationRequest(request.Username, request.Password, request.ConfirmPassword, request.FullName, request.CustomerName, request.PhoneNumber))
+            throw new ArgumentException("Invalid customer registration request.");
+
+        var username = NormalizeUsername(request.Username);
+        var normalizedUsername = username.ToUpperInvariant();
+        var fullName = request.FullName.Trim();
+        var customerName = request.CustomerName.Trim();
+        var phoneNumber = NormalizeCustomerPhone(request.PhoneNumber);
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+
+        try
+        {
+            await using (var usernameCheck = new SqlCommand("SELECT TOP (1) UserID FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE Username = @username", connection, transaction))
+            {
+                usernameCheck.Parameters.AddWithValue("@username", username);
+                if (await usernameCheck.ExecuteScalarAsync(ct) is not null)
+                    throw new ArgumentException("Username already exists.");
+            }
+
+            await using (var mobileUsernameCheck = new SqlCommand("SELECT TOP (1) MobileAccountId FROM dbo.MobileAccounts WITH (UPDLOCK, HOLDLOCK) WHERE Username = @username OR NormalizedUsername = @normalizedUsername", connection, transaction))
+            {
+                mobileUsernameCheck.Parameters.AddWithValue("@username", username);
+                mobileUsernameCheck.Parameters.AddWithValue("@normalizedUsername", normalizedUsername);
+                if (await mobileUsernameCheck.ExecuteScalarAsync(ct) is not null)
+                    throw new ArgumentException("Username already exists.");
+            }
+
+            var officialCustomer = await customerRepository.CreateWithReferralInTransactionAsync(
+                connection,
+                transaction,
+                new CreateCustomerWithReferralDto
+                {
+                    CustomerName = customerName,
+                    PhoneNumber = phoneNumber,
+                    Address = string.IsNullOrWhiteSpace(request.Address) ? null : request.Address.Trim(),
+                    Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
+                    ReferrerCustomerId = request.ReferrerCustomerId,
+                    RelationshipType = string.IsNullOrWhiteSpace(request.RelationshipType) ? null : request.RelationshipType.Trim()
+                },
+                ct);
+
+            var customerId = officialCustomer.CustomerId;
+            var passwordHash = HashPassword(request.Password);
+            int userId;
+            const string createUserSql = "INSERT INTO dbo.Users (Username, FullName, UserRole, IsActive, PasswordHash, UserPassword, SecurityStamp, LastLoginUtc) OUTPUT INSERTED.UserID VALUES (@username, @fullName, 'Customer', 1, @passwordHash, '', NEWID(), SYSUTCDATETIME())";
+            await using (var createUser = new SqlCommand(createUserSql, connection, transaction))
+            {
+                createUser.Parameters.AddWithValue("@username", username);
+                createUser.Parameters.AddWithValue("@fullName", fullName);
+                createUser.Parameters.AddWithValue("@passwordHash", passwordHash);
+                userId = (int)(await createUser.ExecuteScalarAsync(ct))!;
+            }
+
+            const string createMobileAccountSql = "INSERT INTO dbo.MobileAccounts (AccountType, CustomerId, EmployeeId, SupplierId, Username, NormalizedUsername, PasswordHash, IsActive, FailedLoginAttempts, LockoutEndUtc, SecurityStamp, TokenVersion, CreatedAtUtc, UpdatedAtUtc) VALUES (@accountType, @customerId, NULL, NULL, @username, @normalizedUsername, @passwordHash, 1, 0, NULL, CAST(NEWID() AS nvarchar(128)), 0, SYSUTCDATETIME(), SYSUTCDATETIME())";
+            await using (var createMobileAccount = new SqlCommand(createMobileAccountSql, connection, transaction))
+            {
+                createMobileAccount.Parameters.AddWithValue("@accountType", "Customer");
+                createMobileAccount.Parameters.AddWithValue("@customerId", customerId);
+                createMobileAccount.Parameters.AddWithValue("@username", username);
+                createMobileAccount.Parameters.AddWithValue("@normalizedUsername", normalizedUsername);
+                createMobileAccount.Parameters.AddWithValue("@passwordHash", passwordHash);
+                await createMobileAccount.ExecuteNonQueryAsync(ct);
+            }
+
+            var currentUser = new CurrentUserDto(userId, username, fullName, "Customer", true, DateTime.UtcNow, "Customer", customerId, null, null);
+            var session = await CreateSessionAsync(connection, currentUser, request.RememberMe, transaction, ct);
+            await transaction.CommitAsync(ct);
+            return session;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
 
     public async Task<SessionDto?> LoginAsync(LoginDto login, CancellationToken ct)
     {
@@ -78,7 +163,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             mobileAccount?.CustomerId,
             mobileAccount?.EmployeeId,
             mobileAccount?.SupplierId);
-        return await CreateSessionAsync(connection, currentUser, login.RememberMe, ct);
+        return await CreateSessionAsync(connection, currentUser, login.RememberMe, null, ct);
     }
 
     public async Task<CurrentUserDto?> GetCurrentUserAsync(string token, CancellationToken ct)
@@ -127,7 +212,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
 
             await LogoutAsync(token, ct);
             var updatedUser = currentUser with { Username = request.Username.Trim() };
-            return await CreateSessionAsync(connection, updatedUser, true, ct);
+            return await CreateSessionAsync(connection, updatedUser, true, null, ct);
         }
         catch (SqlException ex) when (ex.Number is 2601 or 2627)
         {
@@ -418,19 +503,28 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
         return PasswordsMatch(password, hash, legacy);
     }
 
-    private static async Task<SessionDto> CreateSessionAsync(SqlConnection connection, CurrentUserDto user, bool rememberMe, CancellationToken ct)
+    internal static SqlCommand BuildSessionCommand(SqlConnection connection, SqlTransaction? transaction, CurrentUserDto user, bool rememberMe, string token)
     {
-        var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         var expiresAt = DateTime.UtcNow.Add(rememberMe ? TimeSpan.FromDays(30) : TimeSpan.FromHours(8));
+        var sql = "INSERT INTO dbo.UserSessions (SessionId, UserId, TokenHash, CreatedAtUtc, ExpiresAtUtc) VALUES (NEWID(), @id, @hash, SYSUTCDATETIME(), @expiry); UPDATE dbo.Users SET LastLoginUtc = SYSUTCDATETIME() WHERE UserID = @id";
 
-        await using var command = new SqlCommand(
-            "INSERT INTO dbo.UserSessions (SessionId, UserId, TokenHash, CreatedAtUtc, ExpiresAtUtc) VALUES (NEWID(), @id, @hash, SYSUTCDATETIME(), @expiry); UPDATE dbo.Users SET LastLoginUtc = SYSUTCDATETIME() WHERE UserID = @id",
-            connection);
+        var command = transaction is null
+            ? new SqlCommand(sql, connection)
+            : new SqlCommand(sql, connection, transaction);
+
         command.Parameters.AddWithValue("@id", user.UserId);
         command.Parameters.Add("@hash", System.Data.SqlDbType.VarBinary, 32).Value = TokenHash(token);
         command.Parameters.AddWithValue("@expiry", expiresAt);
+        return command;
+    }
+
+    private static async Task<SessionDto> CreateSessionAsync(SqlConnection connection, CurrentUserDto user, bool rememberMe, SqlTransaction? transaction, CancellationToken ct)
+    {
+        var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        await using var command = BuildSessionCommand(connection, transaction, user, rememberMe, token);
         await command.ExecuteNonQueryAsync(ct);
 
+        var expiresAt = DateTime.UtcNow.Add(rememberMe ? TimeSpan.FromDays(30) : TimeSpan.FromHours(8));
         return new SessionDto(token, expiresAt, user with { LastLoginUtc = DateTime.UtcNow });
     }
 
@@ -464,6 +558,52 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections) 
             return null;
 
         return new MobileAccountIdentity(accountType, customerId, employeeId, supplierId);
+    }
+
+    internal static string NormalizeUsername(string? username)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            throw new ArgumentException("Username is required.");
+
+        return username.Trim().ToUpperInvariant();
+    }
+
+    internal static bool ValidateMobileCustomerRegistrationRequest(string? username, string? password, string? confirmPassword, string? fullName, string? customerName, string? phoneNumber)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(confirmPassword) || !string.Equals(password, confirmPassword, StringComparison.Ordinal))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(fullName))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(customerName))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(phoneNumber))
+            return false;
+
+        return true;
+    }
+
+    private static string GenerateCustomerCode()
+    {
+        var stamp = DateTime.UtcNow.ToString("yyMMddHHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
+        var suffix = RandomNumberGenerator.GetInt32(100, 999);
+        return $"C{stamp}{suffix}";
+    }
+
+    private static string? NormalizeCustomerPhone(string? phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone))
+            return null;
+
+        return new string(phone.Where(char.IsDigit).ToArray());
     }
 
     private static byte[] TokenHash(string token)
