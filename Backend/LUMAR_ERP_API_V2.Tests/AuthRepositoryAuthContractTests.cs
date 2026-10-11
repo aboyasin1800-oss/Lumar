@@ -87,6 +87,23 @@ public sealed class AuthRepositoryAuthContractTests
         Assert.Equal("Parent", request.RelationshipType);
     }
 
+    [Theory]
+    [InlineData("EMP-001", null, "EMP-001")]
+    [InlineData("EMP-001", "  staff-alias  ", "STAFF-ALIAS")]
+    public void ResolveEmployeeProvisioningUsername_Uses_Official_Employee_Code_Then_Explicit_Override(string employeeCode, string? requestedUsername, string expected)
+    {
+        Assert.Equal(expected, AuthRepository.ResolveEmployeeProvisioningUsername(employeeCode, requestedUsername));
+    }
+
+    [Theory]
+    [InlineData(0, "EMP-001", "P@ssword1", false)]
+    [InlineData(7, "EMP-001", "short", false)]
+    [InlineData(7, "EMP-001", "P@ssword1", true)]
+    public void ValidateEmployeeProvisioningRequest_Requires_Valid_Employee_And_Password(int employeeId, string employeeCode, string password, bool expected)
+    {
+        Assert.Equal(expected, AuthRepository.ValidateEmployeeProvisioningRequest(employeeId, employeeCode, password));
+    }
+
     [Fact]
     public void BuildSessionCommand_Uses_Active_Transaction_When_Present()
     {

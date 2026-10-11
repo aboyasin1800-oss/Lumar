@@ -112,7 +112,20 @@ class _EmployeesListTabState extends State<_EmployeesListTab> {
     super.dispose();
   }
 
-  void reload() => setState(() => future = repository.getOverview());
+  Future<void> reload() async {
+    try {
+      final next = await repository.getOverview();
+      if (!mounted) return;
+      setState(() {
+        future = Future.value(next);
+      });
+    } catch (error, stackTrace) {
+      if (!mounted) return;
+      setState(() {
+        future = Future.error(error, stackTrace);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) =>

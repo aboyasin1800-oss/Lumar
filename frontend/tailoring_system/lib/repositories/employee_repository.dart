@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/employee_models.dart';
@@ -49,15 +50,20 @@ class EmployeeRepository {
   }
 
   Future<EmployeeDetails> _postJson(String path, Map<String, dynamic> body) async {
+    final jsonBody = jsonEncode(body);
+
     final response = await _client.post(
       Uri.parse('$_baseUrl$path'),
       headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
-      body: jsonEncode(body),
+      body: jsonBody,
     );
+
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(path, response.statusCode, _extractMessage(response));
     }
-    return EmployeeDetails.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+
+    final decoded = jsonDecode(response.body);
+    return EmployeeDetails.fromJson(decoded as Map<String, dynamic>);
   }
 
   Future<EmployeeDetails> _putJson(String path, Map<String, dynamic> body) async {
