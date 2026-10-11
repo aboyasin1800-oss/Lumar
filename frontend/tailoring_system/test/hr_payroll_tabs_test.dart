@@ -11,6 +11,7 @@ import 'package:tailoring_system/repositories/payroll_repository.dart';
 import 'package:tailoring_system/screens/employee_draws_screen.dart';
 import 'package:tailoring_system/screens/factory_monitor_screen.dart';
 import 'package:tailoring_system/screens/payroll/employee_production_screen.dart';
+import 'package:tailoring_system/screens/payroll/piece_rate_screen.dart';
 import 'package:tailoring_system/screens/payroll/piece_wage_screen.dart';
 import 'package:tailoring_system/screens/production_screen.dart';
 
@@ -416,5 +417,27 @@ void main() {
     expect(controller.offset, greaterThanOrEqualTo(0));
     expect(find.text('قص'), findsWidgets);
     expect(find.text('خياطة'), findsWidgets);
+  });
+
+  test('piece rate screen ignores official product types without stages', () {
+    final entries = [
+      const OfficialProductType(
+        productTypeId: 14,
+        productTypeCode: 'MC015151',
+        productTypeNameAr: 'Micro Closure Test Updated',
+        stages: <String>[],
+      ),
+      const OfficialProductType(
+        productTypeId: 7,
+        productTypeCode: 'PANTS',
+        productTypeNameAr: 'بنطلون',
+        stages: <String>['Cutting', 'Sewing'],
+      ),
+    ];
+
+    final filtered = PieceRateScreen.filterUsableOfficialTypes(entries);
+
+    expect(filtered, hasLength(1));
+    expect(filtered.single.productTypeCode, 'PANTS');
   });
 }

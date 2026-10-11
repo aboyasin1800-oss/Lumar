@@ -400,15 +400,52 @@ class EmployeeRepository {
       for (final department in results[1] as List<EmployeeDepartment>)
         department.id: department
     };
-    final details = await Future.wait(
-        employees.map((employee) => getEmployee(employee.id)));
-    return [
-      for (var index = 0; index < employees.length; index++)
+
+    final rows = <EmployeeOverviewRow>[];
+    for (final employee in employees) {
+      EmployeeDetails details;
+      try {
+        details = await getEmployee(employee.id);
+      } catch (_) {
+        details = EmployeeDetails(
+          id: employee.id,
+          code: employee.code,
+          name: employee.name,
+          fullName: employee.name,
+          jobTitle: employee.jobTitle,
+          scannerCode: null,
+          phoneNumber: employee.phoneNumber,
+          baseSalary: 0,
+          notes: null,
+          isActive: employee.isActive ?? true,
+          salaryType: null,
+          fixedSalary: 0,
+          nationalId: null,
+          phone: employee.phoneNumber,
+          email: null,
+          address: null,
+          hireDate: DateTime.now(),
+          terminationDate: null,
+          status: employee.status,
+          departmentId: employee.departmentId,
+          basicSalary: 0,
+          pieceWageRate: 0,
+          overtimeHourlyRate: 0,
+          createdAt: DateTime.now(),
+          updatedAt: null,
+        );
+      }
+
+      rows.add(
         EmployeeOverviewRow(
-            summary: employees[index],
-            details: details[index],
-            department: departments[employees[index].departmentId]),
-    ];
+          summary: employee,
+          details: details,
+          department: departments[employee.departmentId],
+        ),
+      );
+    }
+
+    return rows;
   }
 
   Future<EmployeeDetailsData> getDetails(int employeeId) async {

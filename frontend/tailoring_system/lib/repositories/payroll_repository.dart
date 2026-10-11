@@ -100,16 +100,39 @@ class PayrollRepository {
 		final results = await Future.wait([getPeriods(), getRecords(), getEmployees(), getDepartments(), getPieceWages()]);
 		final records = results[1] as List<PayrollRecord>;
 		final employees = results[2] as List<PayrollEmployee>;
-		final itemLists = await Future.wait(records.map((record) => getItems(record.id)));
-		final drawLists = await Future.wait(employees.map((employee) => getDraws(employee.id)));
+
+		final itemLists = <List<PayrollItem>>[];
+		for (final record in records) {
+			try {
+				itemLists.add(await getItems(record.id));
+			} catch (_) {
+				itemLists.add(const <PayrollItem>[]);
+			}
+		}
+
+		final drawLists = <List<EmployeeDraw>>[];
+		for (final employee in employees) {
+			try {
+				drawLists.add(await getDraws(employee.id));
+			} catch (_) {
+				drawLists.add(const <EmployeeDraw>[]);
+			}
+		}
+
 		return PayrollOverview(
 			periods: results[0] as List<PayrollPeriod>,
 			records: records,
 			employees: employees,
 			departments: results[3] as List<PayrollDepartment>,
 			pieceWages: results[4] as List<PieceWageRecord>,
-			itemsByRecord: {for (var index = 0; index < records.length; index++) records[index].id: itemLists[index]},
-			drawsByEmployee: {for (var index = 0; index < employees.length; index++) employees[index].id: drawLists[index]},
+			itemsByRecord: {
+				for (var index = 0; index < records.length; index++)
+					records[index].id: itemLists[index],
+			},
+			drawsByEmployee: {
+				for (var index = 0; index < employees.length; index++)
+					employees[index].id: drawLists[index],
+			},
 		);
 	}
 

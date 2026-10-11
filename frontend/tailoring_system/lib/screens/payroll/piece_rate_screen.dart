@@ -33,8 +33,8 @@ String _displayOfficialLabel(String value) {
   return translations[raw.toLowerCase()] ?? raw;
 }
 
-class _OfficialProductType {
-  const _OfficialProductType({
+class OfficialProductType {
+  const OfficialProductType({
     required this.productTypeId,
     required this.productTypeCode,
     required this.productTypeNameAr,
@@ -49,7 +49,7 @@ class _OfficialProductType {
   String get displayName =>
       productTypeNameAr.trim().isNotEmpty ? productTypeNameAr : productTypeCode;
 
-  factory _OfficialProductType.fromJson(Map<String, dynamic> json) {
+  factory OfficialProductType.fromJson(Map<String, dynamic> json) {
     final productTypeId = int.tryParse(
           (json['productTypeId'] ?? json['ProductTypeId'] ?? 0).toString(),
         ) ??
@@ -81,7 +81,7 @@ class _OfficialProductType {
         .where((value) => value.isNotEmpty)
         .toList();
 
-    return _OfficialProductType(
+    return OfficialProductType(
       productTypeId: productTypeId,
       productTypeCode: productTypeCode,
       productTypeNameAr: productTypeNameAr,
@@ -93,7 +93,7 @@ class _OfficialProductType {
 class _PieceRateCatalog {
   const _PieceRateCatalog({required this.productTypes, required this.stageMap});
 
-  final List<_OfficialProductType> productTypes;
+  final List<OfficialProductType> productTypes;
   final Map<int, List<String>> stageMap;
 }
 
@@ -108,6 +108,11 @@ class PieceRateScreen extends StatefulWidget {
   const PieceRateScreen({super.key, this.repository});
 
   final PayrollRepository? repository;
+
+  static List<OfficialProductType> filterUsableOfficialTypes(
+    List<OfficialProductType> productTypes,
+  ) =>
+      productTypes.where((entry) => entry.stages.isNotEmpty).toList();
 
   @override
   State<PieceRateScreen> createState() => _PieceRateScreenState();
@@ -140,17 +145,17 @@ class _PieceRateScreenState extends State<PieceRateScreen> {
 
     final payload = jsonDecode(response.body) as Map<String, dynamic>;
     final entries = (payload['routes'] as List<dynamic>? ?? const <dynamic>[])
-        .map((value) =>
-            _OfficialProductType.fromJson(value as Map<String, dynamic>))
+        .map((value) => OfficialProductType.fromJson(value as Map<String, dynamic>))
         .where((entry) => entry.productTypeId > 0)
         .toList();
+    final usableEntries = PieceRateScreen.filterUsableOfficialTypes(entries);
 
     final stageMap = <int, List<String>>{};
-    for (final entry in entries) {
+    for (final entry in usableEntries) {
       stageMap[entry.productTypeId] = entry.stages;
     }
 
-    if (entries.isEmpty) {
+    if (usableEntries.isEmpty) {
       final fallbackResponse =
           await http.get(Uri.parse('$_baseUrl/consumption-rules'));
       if (fallbackResponse.statusCode < 200 ||
@@ -170,7 +175,7 @@ class _PieceRateScreenState extends State<PieceRateScreen> {
                 0;
             return productTypeId > 0;
           })
-          .map((value) => _OfficialProductType(
+          .map((value) => OfficialProductType(
                 productTypeId: int.tryParse(
                         (value['productTypeId'] ?? value['ProductTypeId'] ?? 0)
                             .toString()) ??
@@ -188,10 +193,16 @@ class _PieceRateScreenState extends State<PieceRateScreen> {
               ))
           .toList();
 
-      return _PieceRateCatalog(productTypes: productTypes, stageMap: const {});
+      return _PieceRateCatalog(
+        productTypes: PieceRateScreen.filterUsableOfficialTypes(productTypes),
+        stageMap: const {},
+      );
     }
 
-    return _PieceRateCatalog(productTypes: entries, stageMap: stageMap);
+    return _PieceRateCatalog(
+      productTypes: usableEntries,
+      stageMap: stageMap,
+    );
   }
 
   void _reload() => setState(() => _future = _loadData());
@@ -199,11 +210,12 @@ class _PieceRateScreenState extends State<PieceRateScreen> {
   Future<void> _create() async {
     final catalog = (await _future).catalog;
     if (!mounted) return;
-    if (catalog.productTypes.isEmpty) {
+    final usableTypes = PieceRateScreen.filterUsableOfficialTypes(catalog.productTypes);
+    if (usableTypes.isEmpty) {
       final messenger = ScaffoldMessenger.maybeOf(context);
       if (messenger != null) {
         messenger.showSnackBar(
-          const SnackBar(content: Text('لا توجد أنواع قطع رسمية متاحة حاليًا.')),
+          const SnackBar(content: Text('لا توجد أنواع قطع رسمية ذات مراحل متاحة حاليًا.')),
         );
       }
       return;
@@ -211,8 +223,7 @@ class _PieceRateScreenState extends State<PieceRateScreen> {
 
     final result = await showDialog<_RateDraft>(
       context: context,
-      builder: (_) =>
-          _RateEditorDialog(officialProductTypes: catalog.productTypes),
+      builder: (_) => _RateEditorDialog(officialProductTypes: usableTypes),
     );
     if (result == null || !mounted) return;
     try {
@@ -241,10 +252,18 @@ class _PieceRateScreenState extends State<PieceRateScreen> {
   Future<void> _edit(PieceWageRate rate) async {
     final catalog = (await _future).catalog;
     if (!mounted) return;
+    final usableTypes = PieceRateScreen.filterUsableOfficialTypes(catalog.productTypes);
+    if (usableTypes.isEmpty) {
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      messenger?.showSnackBar(
+        const SnackBar(content: Text('لا توجد أنواع قطع رسمية ذات مراحل متاحة حاليًا.')),
+      );
+      return;
+    }
     final result = await showDialog<_RateDraft>(
       context: context,
       builder: (_) => _RateEditorDialog(
-        officialProductTypes: catalog.productTypes,
+        officialProductTypes: usableTypes,
         initial: rate,
       ),
     );
@@ -471,7 +490,7 @@ class _RateEditorDialog extends StatefulWidget {
     this.initial,
   });
 
-  final List<_OfficialProductType> officialProductTypes;
+  final List<OfficialProductType> officialProductTypes;
   final PieceWageRate? initial;
 
   @override
@@ -514,7 +533,7 @@ class _RateEditorDialogState extends State<_RateEditorDialog> {
     }
   }
 
-  _OfficialProductType? get _selectedType {
+  OfficialProductType? get _selectedType {
     if (_selectedProductTypeId == null) return null;
     for (final type in widget.officialProductTypes) {
       if (type.productTypeId == _selectedProductTypeId) {

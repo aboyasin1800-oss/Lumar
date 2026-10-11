@@ -25,19 +25,32 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<List<_AttendanceRow>> _load() async {
     final employees = await _repository.getEmployees();
-    final rows = await Future.wait(employees.map((employee) async {
-      final attendance = await _repository.getAttendance(employee.id);
-      final present = attendance.where((item) => !item.isAbsent).length;
-      final absent = attendance.where((item) => item.isAbsent).length;
-      final overtime = attendance.fold<double>(0, (sum, item) => sum + item.overtimeHours);
-      return _AttendanceRow(
-        employee: employee,
-        present: present,
-        absent: absent,
-        overtimeHours: overtime,
-      );
-    }));
-    return rows..sort((a, b) => a.employee.name.compareTo(b.employee.name));
+    final rows = <_AttendanceRow>[];
+
+    for (final employee in employees) {
+      try {
+        final attendance = await _repository.getAttendance(employee.id);
+        final present = attendance.where((item) => !item.isAbsent).length;
+        final absent = attendance.where((item) => item.isAbsent).length;
+        final overtime = attendance.fold<double>(0, (sum, item) => sum + item.overtimeHours);
+        rows.add(_AttendanceRow(
+          employee: employee,
+          present: present,
+          absent: absent,
+          overtimeHours: overtime,
+        ));
+      } catch (_) {
+        rows.add(_AttendanceRow(
+          employee: employee,
+          present: 0,
+          absent: 0,
+          overtimeHours: 0,
+        ));
+      }
+    }
+
+    rows.sort((a, b) => a.employee.name.compareTo(b.employee.name));
+    return rows;
   }
 
   void _reload() => setState(() => _future = _load());

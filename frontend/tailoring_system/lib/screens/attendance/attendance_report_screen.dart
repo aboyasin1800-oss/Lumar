@@ -25,18 +25,30 @@ class _AttendanceReportScreenState extends State<AttendanceReportScreen> {
 
   Future<List<_AttendanceReportRow>> _load() async {
     final employees = await _repository.getEmployees();
-    final rows = await Future.wait(employees.map((employee) async {
-      final attendance = await _repository.getAttendance(employee.id);
-      final present = attendance.where((item) => !item.isAbsent).length;
-      final absent = attendance.where((item) => item.isAbsent).length;
-      final hours = attendance.fold<double>(0, (sum, item) => sum + item.workedHours + item.overtimeHours);
-      return _AttendanceReportRow(
-        employee: employee,
-        present: present,
-        absent: absent,
-        totalHours: hours,
-      );
-    }));
+    final rows = <_AttendanceReportRow>[];
+
+    for (final employee in employees) {
+      try {
+        final attendance = await _repository.getAttendance(employee.id);
+        final present = attendance.where((item) => !item.isAbsent).length;
+        final absent = attendance.where((item) => item.isAbsent).length;
+        final hours = attendance.fold<double>(0, (sum, item) => sum + item.workedHours + item.overtimeHours);
+        rows.add(_AttendanceReportRow(
+          employee: employee,
+          present: present,
+          absent: absent,
+          totalHours: hours,
+        ));
+      } catch (_) {
+        rows.add(_AttendanceReportRow(
+          employee: employee,
+          present: 0,
+          absent: 0,
+          totalHours: 0,
+        ));
+      }
+    }
+
     rows.sort((a, b) => b.totalHours.compareTo(a.totalHours));
     return rows;
   }

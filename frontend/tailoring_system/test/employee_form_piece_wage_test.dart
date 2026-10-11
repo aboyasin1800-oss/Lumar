@@ -6,6 +6,9 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tailoring_system/models/employee_models.dart';
 import 'package:tailoring_system/repositories/employee_repository.dart';
+import 'package:tailoring_system/repositories/payroll_repository.dart';
+import 'package:tailoring_system/screens/attendance/attendance_report_screen.dart';
+import 'package:tailoring_system/screens/attendance/attendance_screen.dart';
 import 'package:tailoring_system/screens/employee_details_screen.dart';
 import 'package:tailoring_system/screens/employee_form_screen.dart';
 
@@ -205,6 +208,161 @@ void main() {
     expect(find.text('طباعة العقد'), findsOneWidget);
   });
 
+  test('employee overview keeps rows even when one employee details fetch fails', () async {
+    final client = MockClient((request) async {
+      switch (request.url.path) {
+        case '/employees':
+          return http.Response(
+            jsonEncode([
+              {'employeeId': 1, 'employeeCode': 'EMP-001', 'employeeName': 'Alice', 'jobTitle': 'Tailor', 'phoneNumber': '0501111111', 'isActive': true, 'status': 'Active', 'departmentId': 7},
+              {'employeeId': 2, 'employeeCode': 'EMP-002', 'employeeName': 'Sara', 'jobTitle': 'Supervisor', 'phoneNumber': '0502222222', 'isActive': true, 'status': 'Active', 'departmentId': 7},
+            ]),
+            200,
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+          );
+        case '/employees/departments':
+          return http.Response(
+            jsonEncode([
+              {'departmentId': 7, 'departmentCode': 'D-07', 'departmentName': 'Sewing', 'description': null, 'isActive': true},
+            ]),
+            200,
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+          );
+        case '/employees/1':
+          return http.Response(
+            jsonEncode({
+              'employeeId': 1,
+              'employeeCode': 'EMP-001',
+              'employeeName': 'Alice',
+              'fullName': 'Alice',
+              'jobTitle': 'Tailor',
+              'scannerCode': 'SC-1',
+              'phoneNumber': '0501111111',
+              'baseSalary': 0,
+              'notes': null,
+              'isActive': true,
+              'salaryType': 'BasicSalary',
+              'fixedSalary': 0,
+              'nationalId': '111',
+              'phone': '0501111111',
+              'email': null,
+              'address': null,
+              'hireDate': '2024-01-01T00:00:00.000',
+              'terminationDate': null,
+              'status': 'Active',
+              'departmentId': 7,
+              'basicSalary': 2000,
+              'pieceWageRate': 0,
+              'overtimeHourlyRate': 0,
+              'createdAt': '2024-01-01T00:00:00.000',
+              'updatedAt': null,
+              'pieceRates': const [],
+            }),
+            200,
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+          );
+        case '/employees/2':
+          return http.Response('server error', 500);
+        default:
+          throw StateError('Unexpected request: ${request.url.path}');
+      }
+    });
+
+    final repository = EmployeeRepository(client: client);
+    final rows = await repository.getOverview();
+
+    expect(rows, hasLength(2));
+    expect(rows[0].summary.name, 'Alice');
+    expect(rows[1].details.code, 'EMP-002');
+    expect(rows[1].details.hireDate, isNotNull);
+  });
+
+  testWidgets('attendance screen keeps other employees when one attendance request fails', (tester) async {
+    final repo = _PartialAttendanceEmployeeRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AttendanceScreen(repository: repo),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Alice'), findsOneWidget);
+    expect(find.textContaining('تعذر تحميل الحضور'), findsNothing);
+  });
+
+  testWidgets('attendance report keeps other employees when one attendance request fails', (tester) async {
+    final repo = _PartialAttendanceEmployeeRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AttendanceReportScreen(repository: repo),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Alice'), findsOneWidget);
+    expect(find.textContaining('تعذر تحميل تقرير الحضور'), findsNothing);
+  });
+
+  test('payroll overview keeps rows when one employee draw request fails', () async {
+    final client = MockClient((request) async {
+      switch (request.url.path) {
+        case '/payroll/periods':
+          return http.Response(
+            jsonEncode([
+              {'payrollPeriodId': 10, 'periodCode': 'P-10', 'periodStatus': 'Generated', 'startDate': '2026-10-01T00:00:00.000', 'endDate': '2026-10-15T00:00:00.000', 'generatedAt': '2026-10-01T00:00:00.000', 'approvedAt': null, 'notes': null},
+            ]),
+            200,
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+          );
+        case '/payroll/records':
+          return http.Response(
+            jsonEncode([
+              {'payrollRecordId': 20, 'payrollPeriodId': 10, 'employeeId': 1, 'status': 'Generated', 'baseSalary': 1000, 'netSalary': 1000, 'grossSalary': 1000, 'totalAllowances': 0, 'totalDraws': 0, 'paidAt': null, 'createdAt': '2026-10-01T00:00:00.000'},
+            ]),
+            200,
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+          );
+        case '/employees':
+          return http.Response(
+            jsonEncode([
+              {'employeeId': 1, 'employeeCode': 'EMP-001', 'employeeName': 'Alice', 'jobTitle': 'Tailor', 'phoneNumber': '0501111111', 'isActive': true, 'status': 'Active', 'departmentId': 7},
+              {'employeeId': 2, 'employeeCode': 'EMP-002', 'employeeName': 'Sara', 'jobTitle': 'Supervisor', 'phoneNumber': '0502222222', 'isActive': true, 'status': 'Active', 'departmentId': 7},
+            ]),
+            200,
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+          );
+        case '/employees/departments':
+          return http.Response(
+            jsonEncode([
+              {'departmentId': 7, 'departmentCode': 'D-07', 'departmentName': 'Sewing', 'description': null, 'isActive': true},
+            ]),
+            200,
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+          );
+        case '/payroll/piece-wages':
+          return http.Response('[]', 200, headers: {'Content-Type': 'application/json; charset=utf-8'});
+        case '/payroll/records/20/items':
+          return http.Response('[]', 200, headers: {'Content-Type': 'application/json; charset=utf-8'});
+        case '/employees/1/draws':
+          return http.Response('[]', 200, headers: {'Content-Type': 'application/json; charset=utf-8'});
+        case '/employees/2/draws':
+          return http.Response('server error', 500);
+        default:
+          throw StateError('Unexpected request: ${request.url.path}');
+      }
+    });
+
+    final overview = await PayrollRepository(client: client).getOverview();
+
+    expect(overview.employees, hasLength(2));
+    expect(overview.drawsByEmployee[1], isEmpty);
+    expect(overview.drawsByEmployee[2], isEmpty);
+  });
+
   test('piece wage payload sends zero basic salary and stage in each rate row', () {
     const payload = EmployeeWritePayload(
       fullName: 'عبد الله أحمد',
@@ -225,3 +383,52 @@ void main() {
     expect((json['pieceRates'] as List).first['rate'], 15.5);
   });
 }
+
+class _PartialAttendanceEmployeeRepository extends EmployeeRepository {
+  @override
+  Future<List<EmployeeSummary>> getEmployees() async => const [
+    EmployeeSummary(
+      id: 1,
+      code: 'EMP-001',
+      name: 'Alice',
+      jobTitle: 'Tailor',
+      phoneNumber: '0501111111',
+      isActive: true,
+      status: 'Active',
+      departmentId: 7,
+    ),
+    EmployeeSummary(
+      id: 2,
+      code: 'EMP-002',
+      name: 'Sara',
+      jobTitle: 'Supervisor',
+      phoneNumber: '0502222222',
+      isActive: true,
+      status: 'Active',
+      departmentId: 7,
+    ),
+  ];
+
+  @override
+  Future<List<EmployeeAttendanceRecord>> getAttendance(int employeeId) async {
+    if (employeeId == 2) {
+      throw EmployeeApiException('/employees/$employeeId/attendance', 401, 'unauthorized');
+    }
+
+    return [
+      EmployeeAttendanceRecord(
+        id: 101,
+        employeeId: employeeId,
+        attendanceDate: DateTime(2026, 10, 11),
+        checkInTime: DateTime(2026, 10, 11, 8, 0),
+        checkOutTime: DateTime(2026, 10, 11, 16, 0),
+        workedHours: 8,
+        overtimeHours: 0,
+        isAbsent: false,
+        absenceReason: null,
+        notes: null,
+      ),
+    ];
+  }
+}
+
