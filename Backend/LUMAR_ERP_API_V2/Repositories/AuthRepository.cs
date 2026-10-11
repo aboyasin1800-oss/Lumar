@@ -176,6 +176,8 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
             throw new ArgumentException("EmployeeCode is required.");
 
         var phoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim();
+        if (string.IsNullOrWhiteSpace(phoneNumber))
+            throw new ArgumentException("رقم الهاتف مطلوب للتحقق من هوية الموظف.");
 
         await using var connection = connections.Create();
         await connection.OpenAsync(ct);
@@ -183,31 +185,35 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
 
         try
         {
-            await using var employeeQuery = new SqlCommand(
+            int employeeId;
+            string? officialEmployeeCode;
+            string fullName;
+            string? employeePhone;
+            bool isActive;
+
+            await using (var employeeQuery = new SqlCommand(
                 "SELECT EmployeeID, EmployeeCode, FullName, PhoneNumber, IsActive FROM dbo.Employees WITH (UPDLOCK, HOLDLOCK) WHERE EmployeeCode = @employeeCode",
                 connection,
-                transaction);
-            employeeQuery.Parameters.AddWithValue("@employeeCode", employeeCode);
+                transaction))
+            {
+                employeeQuery.Parameters.AddWithValue("@employeeCode", employeeCode);
 
-            await using var employeeReader = await employeeQuery.ExecuteReaderAsync(ct);
-            if (!await employeeReader.ReadAsync(ct))
-                throw new KeyNotFoundException("Employee code was not found.");
+                await using var employeeReader = await employeeQuery.ExecuteReaderAsync(ct);
+                if (!await employeeReader.ReadAsync(ct))
+                    throw new KeyNotFoundException("Employee code was not found.");
 
-            var employeeId = employeeReader.GetInt32(0);
-            var officialEmployeeCode = employeeReader.IsDBNull(1) ? null : employeeReader.GetString(1);
-            var fullName = employeeReader.IsDBNull(2) ? string.Empty : employeeReader.GetString(2);
-            var employeePhone = employeeReader.IsDBNull(3) ? null : employeeReader.GetString(3);
-            var isActive = employeeReader.GetBoolean(4);
+                employeeId = employeeReader.GetInt32(0);
+                officialEmployeeCode = employeeReader.IsDBNull(1) ? null : employeeReader.GetString(1);
+                fullName = employeeReader.IsDBNull(2) ? string.Empty : employeeReader.GetString(2);
+                employeePhone = employeeReader.IsDBNull(3) ? null : employeeReader.GetString(3);
+                isActive = employeeReader.GetBoolean(4);
+            }
+
             if (!isActive)
                 throw new ArgumentException("Employee is inactive.");
 
-            if (!string.IsNullOrWhiteSpace(phoneNumber))
-            {
-                var normalizedProvidedPhone = NormalizeCustomerPhone(phoneNumber);
-                var normalizedEmployeePhone = NormalizeCustomerPhone(employeePhone);
-                if (!string.Equals(normalizedProvidedPhone, normalizedEmployeePhone, StringComparison.OrdinalIgnoreCase))
-                    throw new ArgumentException("Phone number does not match the official employee record.");
-            }
+            if (!ValidateEmployeeProvisioningPhone(phoneNumber, employeePhone))
+                throw new ArgumentException("رقم الهاتف لا يطابق سجل الموظف الرسمي.");
 
             var username = ResolveEmployeeProvisioningUsername(officialEmployeeCode ?? employeeCode, request.PreferredUsername, fullName);
             if (!ValidateEmployeeProvisioningRequest(employeeId, officialEmployeeCode ?? employeeCode, username))
@@ -232,7 +238,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
             {
                 mobileAccountCheck.Parameters.AddWithValue("@employeeId", employeeId);
                 if (await mobileAccountCheck.ExecuteScalarAsync(ct) is not null)
-                    throw new ArgumentException("This employee already has an official mobile account.");
+                    throw new ArgumentException("لدى هذا الموظف حساب مسبقاً. استخدم تسجيل الدخول.");
             }
 
             var normalizedUsername = username.ToUpperInvariant();
@@ -274,7 +280,124 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         }
     }
 
+    public async Task<SupplierProvisioningResult?> ProvisionOfficialSupplierAccountAsync(SupplierProvisioningRequest request, CancellationToken ct)
+    {
+        if (request is null)
+            throw new ArgumentException("Provisioning request is required.");
+
+        var supplierCode = string.IsNullOrWhiteSpace(request.SupplierCode) ? null : request.SupplierCode.Trim();
+        if (string.IsNullOrWhiteSpace(supplierCode))
+            throw new ArgumentException("SupplierCode is required.");
+
+        var phoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim();
+        if (string.IsNullOrWhiteSpace(phoneNumber))
+            throw new ArgumentException("رقم الهاتف مطلوب للتحقق من هوية المورد.");
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+
+        try
+        {
+            int supplierId;
+            string? officialSupplierCode;
+            string officialSupplierName;
+            string? officialPhone;
+            bool isActive;
+
+            await using (var supplierQuery = new SqlCommand(
+                "SELECT SupplierId, SupplierCode, SupplierName, Phone, IsActive FROM dbo.Suppliers WITH (UPDLOCK, HOLDLOCK) WHERE SupplierCode = @supplierCode",
+                connection,
+                transaction))
+            {
+                supplierQuery.Parameters.AddWithValue("@supplierCode", supplierCode);
+
+                await using var supplierReader = await supplierQuery.ExecuteReaderAsync(ct);
+                if (!await supplierReader.ReadAsync(ct))
+                    throw new KeyNotFoundException("Supplier code was not found.");
+
+                supplierId = supplierReader.GetInt32(0);
+                officialSupplierCode = supplierReader.IsDBNull(1) ? null : supplierReader.GetString(1);
+                officialSupplierName = supplierReader.IsDBNull(2) ? string.Empty : supplierReader.GetString(2);
+                officialPhone = supplierReader.IsDBNull(3) ? null : supplierReader.GetString(3);
+                isActive = supplierReader.GetBoolean(4);
+            }
+
+            if (!isActive)
+                throw new ArgumentException("حساب المورد غير نشط في المؤسسة.");
+
+            if (!ValidateSupplierProvisioningPhone(phoneNumber, officialPhone))
+                throw new ArgumentException("رقم الهاتف لا يطابق سجل المورد الرسمي.");
+
+            var username = ResolveSupplierProvisioningUsername(officialSupplierCode ?? supplierCode, request.PreferredUsername, officialSupplierName);
+            if (!ValidateSupplierProvisioningRequest(supplierId, officialSupplierCode ?? supplierCode, username))
+                throw new ArgumentException("Supplier provisioning request is invalid.");
+
+            await using (var userCheck = new SqlCommand("SELECT TOP (1) UserID FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE Username = @username", connection, transaction))
+            {
+                userCheck.Parameters.AddWithValue("@username", username);
+                if (await userCheck.ExecuteScalarAsync(ct) is not null)
+                    throw new ArgumentException("اسم المستخدم مستخدم مسبقاً. اختر اسماً آخر.");
+            }
+
+            await using (var mobileUsernameCheck = new SqlCommand("SELECT TOP (1) MobileAccountId FROM dbo.MobileAccounts WITH (UPDLOCK, HOLDLOCK) WHERE Username = @username OR NormalizedUsername = @normalizedUsername", connection, transaction))
+            {
+                mobileUsernameCheck.Parameters.AddWithValue("@username", username);
+                mobileUsernameCheck.Parameters.AddWithValue("@normalizedUsername", username.ToUpperInvariant());
+                if (await mobileUsernameCheck.ExecuteScalarAsync(ct) is not null)
+                    throw new ArgumentException("اسم المستخدم مستخدم مسبقاً. اختر اسماً آخر.");
+            }
+
+            await using (var existingSupplierAccount = new SqlCommand("SELECT TOP (1) MobileAccountId FROM dbo.MobileAccounts WITH (UPDLOCK, HOLDLOCK) WHERE SupplierId = @supplierId AND AccountType = 'Supplier'", connection, transaction))
+            {
+                existingSupplierAccount.Parameters.AddWithValue("@supplierId", supplierId);
+                if (await existingSupplierAccount.ExecuteScalarAsync(ct) is not null)
+                    throw new ArgumentException("لدى هذا المورد حساب مسبقاً. استخدم تسجيل الدخول.");
+            }
+
+            var userId = await CreateUserRecordAsync(connection, transaction, username, officialSupplierName, "Supplier", ct);
+            var mobileAccountId = await CreateSupplierMobileAccountAsync(connection, transaction, supplierId, username, username.ToUpperInvariant(), ct);
+
+            var setupToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+            var setupExpiresAtUtc = DateTime.UtcNow.AddHours(24);
+            await using (var setupTokenInsert = new SqlCommand(
+                "INSERT INTO dbo.UserSessions (SessionId, UserId, TokenHash, CreatedAtUtc, ExpiresAtUtc, RevocationReason) VALUES (NEWID(), @userId, @tokenHash, SYSUTCDATETIME(), @expiresAt, 'PasswordSetup')",
+                connection,
+                transaction))
+            {
+                setupTokenInsert.Parameters.AddWithValue("@userId", userId);
+                setupTokenInsert.Parameters.Add("@tokenHash", System.Data.SqlDbType.VarBinary, 32).Value = TokenHash(setupToken);
+                setupTokenInsert.Parameters.AddWithValue("@expiresAt", setupExpiresAtUtc);
+                await setupTokenInsert.ExecuteNonQueryAsync(ct);
+            }
+
+            await transaction.CommitAsync(ct);
+            return new SupplierProvisioningResult(supplierId, userId, mobileAccountId, username, "Supplier", setupToken, setupExpiresAtUtc, true);
+        }
+        catch
+        {
+            try
+            {
+                if (transaction.Connection is not null && transaction.Connection.State == System.Data.ConnectionState.Open)
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            throw;
+        }
+    }
+
     public async Task<bool> CompleteEmployeePasswordSetupAsync(string setupToken, string newPassword, string confirmPassword, CancellationToken ct)
+        => await CompletePasswordSetupAsync(setupToken, newPassword, confirmPassword, "Employee", ct);
+
+    public async Task<bool> CompleteSupplierPasswordSetupAsync(string setupToken, string newPassword, string confirmPassword, CancellationToken ct)
+        => await CompletePasswordSetupAsync(setupToken, newPassword, confirmPassword, "Supplier", ct);
+
+    private async Task<bool> CompletePasswordSetupAsync(string setupToken, string newPassword, string confirmPassword, string expectedRole, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(setupToken) || string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8 || !string.Equals(newPassword, confirmPassword, StringComparison.Ordinal))
             return false;
@@ -283,43 +406,45 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         await connection.OpenAsync(ct);
 
         var tokenHash = TokenHash(setupToken);
-        await using var query = new SqlCommand(
-            EmployeePasswordSetupJoinSql,
-            connection);
-        query.Parameters.Add("@hash", System.Data.SqlDbType.VarBinary, 32).Value = tokenHash;
-
-        await using var reader = await query.ExecuteReaderAsync(ct);
-        if (!await reader.ReadAsync(ct))
-            return false;
-
-        var userId = reader.GetInt32(0);
-        var username = reader.GetString(1);
-        var fullName = reader.GetString(2);
-        var role = reader.IsDBNull(3) ? null : reader.GetString(3);
-        var accountType = reader.IsDBNull(4) ? null : reader.GetString(4);
-        var employeeId = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5);
-        var customerId = reader.IsDBNull(6) ? (int?)null : reader.GetInt32(6);
-        var supplierId = reader.IsDBNull(7) ? (int?)null : reader.GetInt32(7);
-
-        if (!string.Equals(role, "Employee", StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(accountType, "Employee", StringComparison.OrdinalIgnoreCase)
-            || employeeId is null)
+        await using (var query = new SqlCommand(
+            PasswordSetupJoinSql,
+            connection))
         {
-            return false;
+            query.Parameters.Add("@hash", System.Data.SqlDbType.VarBinary, 32).Value = tokenHash;
+
+            await using var reader = await query.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct))
+                return false;
+
+            var userId = reader.GetInt32(0);
+            var role = reader.IsDBNull(3) ? null : reader.GetString(3);
+            var accountType = reader.IsDBNull(4) ? null : reader.GetString(4);
+            var employeeId = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5);
+            var supplierId = reader.IsDBNull(7) ? (int?)null : reader.GetInt32(7);
+
+            if (!string.Equals(role, expectedRole, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(accountType, expectedRole, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (expectedRole.Equals("Employee", StringComparison.OrdinalIgnoreCase) && employeeId is null)
+                return false;
+
+            if (expectedRole.Equals("Supplier", StringComparison.OrdinalIgnoreCase) && supplierId is null)
+                return false;
+
+            await using var update = new SqlCommand(
+                "UPDATE dbo.Users SET PasswordHash = @passwordHash, UserPassword = '', SecurityStamp = NEWID() WHERE UserID = @id; UPDATE dbo.UserSessions SET RevokedAtUtc = SYSUTCDATETIME(), RevocationReason = 'PasswordSetupCompleted' WHERE TokenHash = @tokenHash AND RevokedAtUtc IS NULL",
+                connection);
+            update.Parameters.AddWithValue("@passwordHash", HashPassword(newPassword));
+            update.Parameters.AddWithValue("@id", userId);
+            update.Parameters.Add("@tokenHash", System.Data.SqlDbType.VarBinary, 32).Value = tokenHash;
+
+            await update.ExecuteNonQueryAsync(ct);
+
+            return true;
         }
-
-        await using var update = new SqlCommand(
-            "UPDATE dbo.Users SET PasswordHash = @passwordHash, UserPassword = '', SecurityStamp = NEWID() WHERE UserID = @id; UPDATE dbo.UserSessions SET RevokedAtUtc = SYSUTCDATETIME(), RevocationReason = 'PasswordSetupCompleted' WHERE TokenHash = @tokenHash AND RevokedAtUtc IS NULL",
-            connection);
-        update.Parameters.AddWithValue("@passwordHash", HashPassword(newPassword));
-        update.Parameters.AddWithValue("@id", userId);
-        update.Parameters.Add("@tokenHash", System.Data.SqlDbType.VarBinary, 32).Value = tokenHash;
-
-        await update.ExecuteNonQueryAsync(ct);
-
-        var currentUser = new CurrentUserDto(userId, username, fullName, role, true, null, accountType, customerId, employeeId, supplierId);
-        await CreateSessionAsync(connection, currentUser, true, null, ct);
-        return true;
     }
 
     public async Task<CurrentUserDto?> GetCurrentUserAsync(string token, CancellationToken ct)
@@ -759,7 +884,16 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         if (string.IsNullOrWhiteSpace(phone))
             return null;
 
-        return new string(phone.Where(char.IsDigit).ToArray());
+        var digits = new string(phone.Where(char.IsDigit).ToArray());
+        if (string.IsNullOrWhiteSpace(digits))
+            return null;
+
+        if (digits.StartsWith("00966", StringComparison.Ordinal))
+            digits = "0" + digits.Substring(5);
+        else if (digits.StartsWith("966", StringComparison.Ordinal) && digits.Length > 9)
+            digits = "0" + digits.Substring(3);
+
+        return digits;
     }
 
     private static async Task<int> CreateUserRecordAsync(SqlConnection connection, SqlTransaction transaction, string username, string fullName, string role, CancellationToken ct)
@@ -775,14 +909,27 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
     internal const string EmployeeMobileAccountInsertSql =
         "INSERT INTO dbo.MobileAccounts (AccountType, CustomerId, EmployeeId, SupplierId, Username, NormalizedUsername, PasswordHash, IsActive, FailedLoginAttempts, LockoutEndUtc, SecurityStamp, TokenVersion, CreatedAtUtc, UpdatedAtUtc) OUTPUT INSERTED.MobileAccountId VALUES (@accountType, NULL, @employeeId, NULL, @username, @normalizedUsername, '', 1, 0, NULL, CAST(NEWID() AS nvarchar(128)), 0, SYSUTCDATETIME(), SYSUTCDATETIME())";
 
-    internal const string EmployeePasswordSetupJoinSql =
+    internal const string PasswordSetupJoinSql =
         "SELECT s.UserId, u.Username, u.FullName, u.UserRole, ma.AccountType, ma.EmployeeId, ma.CustomerId, ma.SupplierId FROM dbo.UserSessions s JOIN dbo.Users u ON u.UserID = s.UserId LEFT JOIN dbo.MobileAccounts ma ON (ma.Username = u.Username OR ma.NormalizedUsername = u.Username) WHERE s.TokenHash = @hash AND s.RevokedAtUtc IS NULL AND s.ExpiresAtUtc > SYSUTCDATETIME() AND s.RevocationReason = 'PasswordSetup' AND u.IsActive = 1";
+
+    internal const string EmployeePasswordSetupJoinSql = PasswordSetupJoinSql;
 
     private static async Task<int> CreateEmployeeMobileAccountAsync(SqlConnection connection, SqlTransaction transaction, int employeeId, string username, string normalizedUsername, CancellationToken ct)
     {
         await using var createMobileAccount = new SqlCommand(EmployeeMobileAccountInsertSql, connection, transaction);
         createMobileAccount.Parameters.AddWithValue("@accountType", "Employee");
         createMobileAccount.Parameters.AddWithValue("@employeeId", employeeId);
+        createMobileAccount.Parameters.AddWithValue("@username", username);
+        createMobileAccount.Parameters.AddWithValue("@normalizedUsername", normalizedUsername);
+        return (int)(await createMobileAccount.ExecuteScalarAsync(ct))!;
+    }
+
+    private static async Task<int> CreateSupplierMobileAccountAsync(SqlConnection connection, SqlTransaction transaction, int supplierId, string username, string normalizedUsername, CancellationToken ct)
+    {
+        const string insertSql = "INSERT INTO dbo.MobileAccounts (AccountType, CustomerId, EmployeeId, SupplierId, Username, NormalizedUsername, PasswordHash, IsActive, FailedLoginAttempts, LockoutEndUtc, SecurityStamp, TokenVersion, CreatedAtUtc, UpdatedAtUtc) OUTPUT INSERTED.MobileAccountId VALUES (@accountType, NULL, NULL, @supplierId, @username, @normalizedUsername, '', 1, 0, NULL, CAST(NEWID() AS nvarchar(128)), 0, SYSUTCDATETIME(), SYSUTCDATETIME())";
+        await using var createMobileAccount = new SqlCommand(insertSql, connection, transaction);
+        createMobileAccount.Parameters.AddWithValue("@accountType", "Supplier");
+        createMobileAccount.Parameters.AddWithValue("@supplierId", supplierId);
         createMobileAccount.Parameters.AddWithValue("@username", username);
         createMobileAccount.Parameters.AddWithValue("@normalizedUsername", normalizedUsername);
         return (int)(await createMobileAccount.ExecuteScalarAsync(ct))!;
@@ -815,6 +962,47 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         }
     }
 
+    internal static string ResolveSupplierProvisioningUsername(string? supplierCode, string? preferredUsername, string? officialSupplierName = null)
+    {
+        if (!string.IsNullOrWhiteSpace(preferredUsername))
+            return NormalizeSupplierProvisioningUsername(preferredUsername);
+
+        if (!string.IsNullOrWhiteSpace(officialSupplierName))
+            return NormalizeSupplierProvisioningUsername(officialSupplierName);
+
+        throw new ArgumentException("The supplier username could not be resolved from the official supplier name.");
+    }
+
+    internal static bool ValidateSupplierProvisioningRequest(int supplierId, string? supplierCode, string? username)
+    {
+        if (supplierId <= 0 || string.IsNullOrWhiteSpace(supplierCode) || string.IsNullOrWhiteSpace(username))
+            return false;
+
+        try
+        {
+            var normalizedUsername = NormalizeSupplierProvisioningUsername(username);
+            return normalizedUsername.Length >= 3;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    internal static bool ValidateEmployeeProvisioningPhone(string? providedPhoneNumber, string? officialPhoneNumber)
+    {
+        if (string.IsNullOrWhiteSpace(providedPhoneNumber))
+            return false;
+
+        var normalizedProvidedPhone = NormalizeCustomerPhone(providedPhoneNumber);
+        var normalizedOfficialPhone = NormalizeCustomerPhone(officialPhoneNumber);
+
+        if (string.IsNullOrWhiteSpace(normalizedProvidedPhone) || string.IsNullOrWhiteSpace(normalizedOfficialPhone))
+            return false;
+
+        return string.Equals(normalizedProvidedPhone, normalizedOfficialPhone, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string NormalizeEmployeeProvisioningUsername(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -828,6 +1016,35 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
             throw new ArgumentException("Employee username must contain at least four characters.");
 
         return normalized;
+    }
+
+    private static string NormalizeSupplierProvisioningUsername(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException("Supplier username is required.");
+
+        var normalized = string.Join(" ", value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        if (string.IsNullOrWhiteSpace(normalized))
+            throw new ArgumentException("Supplier username is required.");
+
+        if (normalized.Length < 3)
+            throw new ArgumentException("Supplier username must contain at least three characters.");
+
+        return normalized;
+    }
+
+    internal static bool ValidateSupplierProvisioningPhone(string? providedPhoneNumber, string? officialPhoneNumber)
+    {
+        if (string.IsNullOrWhiteSpace(providedPhoneNumber))
+            return false;
+
+        var normalizedProvidedPhone = NormalizeCustomerPhone(providedPhoneNumber);
+        var normalizedOfficialPhone = NormalizeCustomerPhone(officialPhoneNumber);
+
+        if (string.IsNullOrWhiteSpace(normalizedProvidedPhone) || string.IsNullOrWhiteSpace(normalizedOfficialPhone))
+            return false;
+
+        return string.Equals(normalizedProvidedPhone, normalizedOfficialPhone, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string DeriveEmployeeProvisioningUsernameFromFullName(string fullName)

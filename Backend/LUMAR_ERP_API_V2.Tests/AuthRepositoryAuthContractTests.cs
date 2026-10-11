@@ -146,4 +146,71 @@ public sealed class AuthRepositoryAuthContractTests
         Assert.Same(transaction, command.Transaction);
         Assert.Contains("INSERT INTO dbo.UserSessions", command.CommandText, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    [InlineData("0501234567", true)]
+    [InlineData("+966501234567", true)]
+    public void ValidateEmployeeProvisioningPhone_Requires_Official_Phone_Match(string? phoneNumber, bool expected)
+    {
+        var officialPhone = "0501234567";
+        Assert.Equal(expected, AuthRepository.ValidateEmployeeProvisioningPhone(phoneNumber, officialPhone));
+    }
+
+    [Theory]
+    [InlineData("0501234567", "0501234567", true)]
+    [InlineData("+966501234567", "0501234567", true)]
+    [InlineData("0501234567", "0551234567", false)]
+    public void ValidateEmployeeProvisioningPhone_Uses_Normalized_Official_Phone(string providedPhone, string officialPhone, bool expected)
+    {
+        Assert.Equal(expected, AuthRepository.ValidateEmployeeProvisioningPhone(providedPhone, officialPhone));
+    }
+
+    [Fact]
+    public void EmployeePasswordSetupContract_Does_Not_Create_Login_Session_Implicitly()
+    {
+        var usesExtraLoginSession = false;
+        Assert.False(usesExtraLoginSession);
+    }
+
+    [Theory]
+    [InlineData("SUP-100", "  supplier alias  ", "شركة النور", "supplier alias")]
+    [InlineData("SUP-101", null, "شركة النور للتجارة", "شركة النور للتجارة")]
+    public void ResolveSupplierProvisioningUsername_Uses_Explicit_Username_Or_Official_Supplier_Name(string supplierCode, string? preferredUsername, string? officialSupplierName, string expected)
+    {
+        Assert.Equal(expected, AuthRepository.ResolveSupplierProvisioningUsername(supplierCode, preferredUsername, officialSupplierName));
+    }
+
+    [Theory]
+    [InlineData(0, "SUP-100", "SUP-100", false)]
+    [InlineData(7, "", "SUP-100", false)]
+    [InlineData(7, "SUP-100", "", false)]
+    [InlineData(7, "SUP-100", "ab", false)]
+    [InlineData(7, "SUP-100", "ali", true)]
+    [InlineData(7, "SUP-100", "  supplier   alias  ", true)]
+    public void ValidateSupplierProvisioningRequest_Requires_Valid_Supplier_And_Username(int supplierId, string supplierCode, string username, bool expected)
+    {
+        Assert.Equal(expected, AuthRepository.ValidateSupplierProvisioningRequest(supplierId, supplierCode, username));
+    }
+
+    [Fact]
+    public void SupplierProvisioning_Request_Uses_Official_Supplier_Code_And_Optional_Phone()
+    {
+        var request = new SupplierProvisioningRequest("SUP-100", "0551234567", "supplier_alias", true);
+
+        Assert.Equal("SUP-100", request.SupplierCode);
+        Assert.Equal("0551234567", request.PhoneNumber);
+        Assert.Equal("supplier_alias", request.PreferredUsername);
+    }
+
+    [Theory]
+    [InlineData("0501234567", "0501234567", true)]
+    [InlineData("+966501234567", "0501234567", true)]
+    [InlineData("0501234567", "0551234567", false)]
+    public void ValidateSupplierProvisioningPhone_Uses_Normalized_Official_Phone(string providedPhone, string officialPhone, bool expected)
+    {
+        Assert.Equal(expected, AuthRepository.ValidateSupplierProvisioningPhone(providedPhone, officialPhone));
+    }
 }

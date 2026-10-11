@@ -6,7 +6,9 @@ public sealed class AuthService(IAuthRepository repository) : IAuthService
     public Task<SessionDto?> LoginAsync(LoginDto login, CancellationToken ct) => repository.LoginAsync(login, ct);
     public Task<SessionDto> RegisterMobileCustomerAsync(MobileCustomerRegistrationDto request, CancellationToken ct) => repository.RegisterMobileCustomerAsync(request, ct);
     public Task<EmployeeProvisioningResult?> ProvisionOfficialEmployeeAccountAsync(EmployeeProvisioningRequest request, CancellationToken ct) => repository.ProvisionOfficialEmployeeAccountAsync(request, ct);
+    public Task<SupplierProvisioningResult?> ProvisionOfficialSupplierAccountAsync(SupplierProvisioningRequest request, CancellationToken ct) => repository.ProvisionOfficialSupplierAccountAsync(request, ct);
     public Task<bool> CompleteEmployeePasswordSetupAsync(string setupToken, string newPassword, string confirmPassword, CancellationToken ct) => repository.CompleteEmployeePasswordSetupAsync(setupToken, newPassword, confirmPassword, ct);
+    public Task<bool> CompleteSupplierPasswordSetupAsync(string setupToken, string newPassword, string confirmPassword, CancellationToken ct) => repository.CompleteSupplierPasswordSetupAsync(setupToken, newPassword, confirmPassword, ct);
     public Task<CurrentUserDto?> GetCurrentUserAsync(string token, CancellationToken ct) => repository.GetCurrentUserAsync(token, ct);
     public Task<bool> LogoutAsync(string token, CancellationToken ct) => repository.LogoutAsync(token, ct);
     public Task<SessionDto?> ChangeUsernameAsync(string token, ChangeUsernameDto request, CancellationToken ct) => repository.ChangeUsernameAsync(token, request, ct);

@@ -18,6 +18,8 @@ public sealed record ChangePasswordDto(string CurrentPassword, string NewPasswor
 public sealed record PasswordSetupDto(string SetupToken, string NewPassword, string ConfirmPassword);
 public sealed record EmployeeProvisioningRequest(string EmployeeCode, string? PhoneNumber = null, string? PreferredUsername = null, bool RememberMe = true);
 public sealed record EmployeeProvisioningResult(int EmployeeId, int UserId, int MobileAccountId, string Username, string AccountType, string? SetupToken, DateTime ExpiresAtUtc, bool PasswordSetupReady);
+public sealed record SupplierProvisioningRequest(string SupplierCode, string? PhoneNumber = null, string? PreferredUsername = null, bool RememberMe = true);
+public sealed record SupplierProvisioningResult(int SupplierId, int UserId, int MobileAccountId, string Username, string AccountType, string? SetupToken, DateTime ExpiresAtUtc, bool PasswordSetupReady);
 public sealed record CurrentUserDto(
     int UserId,
     string Username,
