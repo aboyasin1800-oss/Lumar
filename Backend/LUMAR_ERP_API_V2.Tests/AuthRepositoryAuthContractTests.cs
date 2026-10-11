@@ -88,11 +88,11 @@ public sealed class AuthRepositoryAuthContractTests
     }
 
     [Theory]
-    [InlineData("EMP-001", null, "EMP-001")]
-    [InlineData("EMP-001", "  staff-alias  ", "STAFF-ALIAS")]
-    public void ResolveEmployeeProvisioningUsername_Uses_Official_Employee_Code_Then_Explicit_Override(string employeeCode, string? requestedUsername, string expected)
+    [InlineData("MO10", "  staff alias  ", "Mohammed Ali", "staff alias")]
+    [InlineData("MO11", null, "عبد العزيز الفقيه", "عبد الفقيه")]
+    public void ResolveEmployeeProvisioningUsername_Uses_Normalized_Explicit_Username_Or_Official_Full_Name(string employeeCode, string? requestedUsername, string? officialFullName, string expected)
     {
-        Assert.Equal(expected, AuthRepository.ResolveEmployeeProvisioningUsername(employeeCode, requestedUsername));
+        Assert.Equal(expected, AuthRepository.ResolveEmployeeProvisioningUsername(employeeCode, requestedUsername, officialFullName));
     }
 
     [Theory]
@@ -100,8 +100,9 @@ public sealed class AuthRepositoryAuthContractTests
     [InlineData(7, "", "MO10", false)]
     [InlineData(7, "MO10", "", false)]
     [InlineData(7, "MO10", "sh", false)]
+    [InlineData(7, "MO10", "ali ahmed", true)]
+    [InlineData(7, "MO10", "  ali   ahmed  ", true)]
     [InlineData(7, "MO10", "MO10", true)]
-    [InlineData(7, "EMP-001", "EMP-001", true)]
     public void ValidateEmployeeProvisioningRequest_Requires_Valid_Employee_And_Username(int employeeId, string employeeCode, string username, bool expected)
     {
         Assert.Equal(expected, AuthRepository.ValidateEmployeeProvisioningRequest(employeeId, employeeCode, username));

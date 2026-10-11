@@ -209,7 +209,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
                     throw new ArgumentException("Phone number does not match the official employee record.");
             }
 
-            var username = ResolveEmployeeProvisioningUsername(officialEmployeeCode ?? employeeCode, request.PreferredUsername);
+            var username = ResolveEmployeeProvisioningUsername(officialEmployeeCode ?? employeeCode, request.PreferredUsername, fullName);
             if (!ValidateEmployeeProvisioningRequest(employeeId, officialEmployeeCode ?? employeeCode, username))
                 throw new ArgumentException("Employee provisioning request is invalid.");
 
@@ -217,6 +217,14 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
             {
                 userCheck.Parameters.AddWithValue("@username", username);
                 if (await userCheck.ExecuteScalarAsync(ct) is not null)
+                    throw new ArgumentException("Username already exists.");
+            }
+
+            await using (var mobileUsernameCheck = new SqlCommand("SELECT TOP (1) MobileAccountId FROM dbo.MobileAccounts WITH (UPDLOCK, HOLDLOCK) WHERE Username = @username OR NormalizedUsername = @normalizedUsername", connection, transaction))
+            {
+                mobileUsernameCheck.Parameters.AddWithValue("@username", username);
+                mobileUsernameCheck.Parameters.AddWithValue("@normalizedUsername", username.ToUpperInvariant());
+                if (await mobileUsernameCheck.ExecuteScalarAsync(ct) is not null)
                     throw new ArgumentException("Username already exists.");
             }
 
@@ -780,20 +788,15 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         return (int)(await createMobileAccount.ExecuteScalarAsync(ct))!;
     }
 
-    internal static string ResolveEmployeeProvisioningUsername(string? employeeCode, string? preferredUsername)
+    internal static string ResolveEmployeeProvisioningUsername(string? employeeCode, string? preferredUsername, string? officialFullName = null)
     {
-        var baseValue = !string.IsNullOrWhiteSpace(preferredUsername)
-            ? preferredUsername
-            : employeeCode;
+        if (!string.IsNullOrWhiteSpace(preferredUsername))
+            return NormalizeEmployeeProvisioningUsername(preferredUsername);
 
-        if (string.IsNullOrWhiteSpace(baseValue))
-            throw new ArgumentException("The employee username could not be resolved.");
+        if (!string.IsNullOrWhiteSpace(officialFullName))
+            return DeriveEmployeeProvisioningUsernameFromFullName(officialFullName);
 
-        var sanitized = baseValue.Trim();
-        if (sanitized.Length < 4)
-            throw new ArgumentException("Employee username must contain at least four characters.");
-
-        return sanitized.ToUpperInvariant();
+        throw new ArgumentException("The employee username could not be resolved from the official full name.");
     }
 
     internal static bool ValidateEmployeeProvisioningRequest(int employeeId, string? employeeCode, string? username)
@@ -801,8 +804,45 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         if (employeeId <= 0 || string.IsNullOrWhiteSpace(employeeCode) || string.IsNullOrWhiteSpace(username))
             return false;
 
-        var normalizedUsername = username.Trim();
-        return normalizedUsername.Length >= 4 && !normalizedUsername.Contains(' ');
+        try
+        {
+            var normalizedUsername = NormalizeEmployeeProvisioningUsername(username);
+            return normalizedUsername.Length >= 4;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static string NormalizeEmployeeProvisioningUsername(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException("Employee username is required.");
+
+        var normalized = string.Join(" ", value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        if (string.IsNullOrWhiteSpace(normalized))
+            throw new ArgumentException("Employee username is required.");
+
+        if (normalized.Length < 4)
+            throw new ArgumentException("Employee username must contain at least four characters.");
+
+        return normalized;
+    }
+
+    private static string DeriveEmployeeProvisioningUsernameFromFullName(string fullName)
+    {
+        var parts = fullName
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .ToArray();
+
+        if (parts.Length == 0)
+            throw new ArgumentException("Official employee full name is required to derive the default username.");
+
+        return parts.Length == 1
+            ? parts[0]
+            : $"{parts[0]} {parts[^1]}";
     }
 
     private static byte[] TokenHash(string token)
