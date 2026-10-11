@@ -96,12 +96,40 @@ public sealed class AuthRepositoryAuthContractTests
     }
 
     [Theory]
-    [InlineData(0, "EMP-001", "P@ssword1", false)]
-    [InlineData(7, "EMP-001", "short", false)]
-    [InlineData(7, "EMP-001", "P@ssword1", true)]
-    public void ValidateEmployeeProvisioningRequest_Requires_Valid_Employee_And_Password(int employeeId, string employeeCode, string password, bool expected)
+    [InlineData(0, "EMP-001", "EMP-001", false)]
+    [InlineData(7, "", "MO10", false)]
+    [InlineData(7, "MO10", "", false)]
+    [InlineData(7, "MO10", "sh", false)]
+    [InlineData(7, "MO10", "MO10", true)]
+    [InlineData(7, "EMP-001", "EMP-001", true)]
+    public void ValidateEmployeeProvisioningRequest_Requires_Valid_Employee_And_Username(int employeeId, string employeeCode, string username, bool expected)
     {
-        Assert.Equal(expected, AuthRepository.ValidateEmployeeProvisioningRequest(employeeId, employeeCode, password));
+        Assert.Equal(expected, AuthRepository.ValidateEmployeeProvisioningRequest(employeeId, employeeCode, username));
+    }
+
+    [Fact]
+    public void Provisioning_Request_Uses_Official_Employee_Code_And_Optional_Phone()
+    {
+        var request = new EmployeeProvisioningRequest("MO10", "0551234567", "MO10");
+
+        Assert.Equal("MO10", request.EmployeeCode);
+        Assert.Equal("0551234567", request.PhoneNumber);
+        Assert.Equal("MO10", request.PreferredUsername);
+    }
+
+    [Fact]
+    public void EmployeeMobileAccountSchema_Uses_Username_Not_UserId()
+    {
+        Assert.DoesNotContain("UserId", AuthRepository.EmployeeMobileAccountInsertSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("dbo.MobileAccounts", AuthRepository.EmployeeMobileAccountInsertSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("NormalizedUsername", AuthRepository.EmployeeMobileAccountInsertSql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EmployeePasswordSetupJoin_Uses_Username_Lookup_Not_UserId()
+    {
+        Assert.DoesNotContain("ma.UserId", AuthRepository.EmployeePasswordSetupJoinSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ma.Username = u.Username", AuthRepository.EmployeePasswordSetupJoinSql, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

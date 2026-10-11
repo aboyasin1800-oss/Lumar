@@ -208,38 +208,42 @@ class AuthState extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> provisionEmployeeAccount({
-    required int employeeId,
+    required String employeeCode,
     required String fullName,
+    String? phoneNumber,
     String? preferredUsername,
     bool rememberMe = true,
   }) async {
     try {
       final response = await _request('POST', '/auth/mobile/employee/provision', body: {
-        'employeeId': employeeId,
+        'employeeCode': employeeCode.trim(),
+        if ((phoneNumber ?? '').trim().isNotEmpty) 'phoneNumber': phoneNumber!.trim(),
         'preferredUsername': preferredUsername?.trim(),
         'rememberMe': rememberMe,
       }).timeout(const Duration(seconds: 12));
 
-      if (response.statusCode != 200) {
-        if (response.statusCode == 400) {
-          throw HttpException('بيانات موظف غير صالحة.');
-        }
-        if (response.statusCode == 409) {
-          throw HttpException('هذا الموظف أو حسابه موجود بالفعل.');
-        }
-        throw HttpException('تعذر إنشاء حساب الموظف الرسمي.');
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        return json;
       }
 
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
-      return json;
+      final statusCode = response.statusCode;
+      final message = switch (statusCode) {
+        400 => 'بيانات الموظف غير صالحة.',
+        404 => 'لم يتم العثور على الموظف الرسمي.',
+        409 => 'هذا الموظف أو حسابه موجود بالفعل.',
+        _ => 'تعذر إنشاء حساب الموظف الرسمي.',
+      };
+
+      return {'statusCode': statusCode, 'message': message};
     } on TimeoutException {
-      return null;
+      return {'statusCode': 500, 'message': 'انتهت مهلة الاتصال بالخادم أثناء إنشاء حساب الموظف.'};
     } on SocketException {
-      return null;
+      return {'statusCode': 500, 'message': 'تعذر الاتصال بالخادم أثناء إنشاء حساب الموظف.'};
     } on HttpException {
-      return null;
+      return {'statusCode': 500, 'message': 'تعذر الاتصال بالخادم أثناء إنشاء حساب الموظف.'};
     } catch (_) {
-      return null;
+      return {'statusCode': 500, 'message': 'تعذر إنشاء حساب الموظف الرسمي.'};
     }
   }
 

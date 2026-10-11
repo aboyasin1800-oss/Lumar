@@ -171,8 +171,11 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         if (request is null)
             throw new ArgumentException("Provisioning request is required.");
 
-        if (request.EmployeeId <= 0)
-            throw new ArgumentException("EmployeeId is required.");
+        var employeeCode = string.IsNullOrWhiteSpace(request.EmployeeCode) ? null : request.EmployeeCode.Trim();
+        if (string.IsNullOrWhiteSpace(employeeCode))
+            throw new ArgumentException("EmployeeCode is required.");
+
+        var phoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim();
 
         await using var connection = connections.Create();
         await connection.OpenAsync(ct);
@@ -181,24 +184,33 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         try
         {
             await using var employeeQuery = new SqlCommand(
-                "SELECT EmployeeID, EmployeeCode, FullName, IsActive FROM dbo.Employees WITH (UPDLOCK, HOLDLOCK) WHERE EmployeeID = @employeeId",
+                "SELECT EmployeeID, EmployeeCode, FullName, PhoneNumber, IsActive FROM dbo.Employees WITH (UPDLOCK, HOLDLOCK) WHERE EmployeeCode = @employeeCode",
                 connection,
                 transaction);
-            employeeQuery.Parameters.AddWithValue("@employeeId", request.EmployeeId);
+            employeeQuery.Parameters.AddWithValue("@employeeCode", employeeCode);
 
             await using var employeeReader = await employeeQuery.ExecuteReaderAsync(ct);
             if (!await employeeReader.ReadAsync(ct))
-                throw new ArgumentException("Employee was not found.");
+                throw new KeyNotFoundException("Employee code was not found.");
 
             var employeeId = employeeReader.GetInt32(0);
-            var employeeCode = employeeReader.IsDBNull(1) ? null : employeeReader.GetString(1);
+            var officialEmployeeCode = employeeReader.IsDBNull(1) ? null : employeeReader.GetString(1);
             var fullName = employeeReader.IsDBNull(2) ? string.Empty : employeeReader.GetString(2);
-            var isActive = employeeReader.GetBoolean(3);
+            var employeePhone = employeeReader.IsDBNull(3) ? null : employeeReader.GetString(3);
+            var isActive = employeeReader.GetBoolean(4);
             if (!isActive)
                 throw new ArgumentException("Employee is inactive.");
 
-            var username = ResolveEmployeeProvisioningUsername(employeeCode, request.PreferredUsername);
-            if (!ValidateEmployeeProvisioningRequest(employeeId, employeeCode, username))
+            if (!string.IsNullOrWhiteSpace(phoneNumber))
+            {
+                var normalizedProvidedPhone = NormalizeCustomerPhone(phoneNumber);
+                var normalizedEmployeePhone = NormalizeCustomerPhone(employeePhone);
+                if (!string.Equals(normalizedProvidedPhone, normalizedEmployeePhone, StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException("Phone number does not match the official employee record.");
+            }
+
+            var username = ResolveEmployeeProvisioningUsername(officialEmployeeCode ?? employeeCode, request.PreferredUsername);
+            if (!ValidateEmployeeProvisioningRequest(employeeId, officialEmployeeCode ?? employeeCode, username))
                 throw new ArgumentException("Employee provisioning request is invalid.");
 
             await using (var userCheck = new SqlCommand("SELECT TOP (1) UserID FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE Username = @username", connection, transaction))
@@ -217,7 +229,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
 
             var normalizedUsername = username.ToUpperInvariant();
             var userId = await CreateUserRecordAsync(connection, transaction, username, fullName, "Employee", ct);
-            var mobileAccountId = await CreateEmployeeMobileAccountAsync(connection, transaction, employeeId, userId, username, normalizedUsername, ct);
+            var mobileAccountId = await CreateEmployeeMobileAccountAsync(connection, transaction, employeeId, username, normalizedUsername, ct);
 
             var setupToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
             var setupExpiresAtUtc = DateTime.UtcNow.AddHours(24);
@@ -237,7 +249,19 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         }
         catch
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            try
+            {
+                if (transaction.Connection is not null && transaction.Connection.State == System.Data.ConnectionState.Open)
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // The transaction may already be completed by the underlying DB operation.
+                // Preserve the original exception and do not mask it with a second rollback failure.
+            }
+
             throw;
         }
     }
@@ -252,7 +276,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
 
         var tokenHash = TokenHash(setupToken);
         await using var query = new SqlCommand(
-            "SELECT s.UserId, u.Username, u.FullName, u.UserRole, ma.AccountType, ma.EmployeeId, ma.CustomerId, ma.SupplierId FROM dbo.UserSessions s JOIN dbo.Users u ON u.UserID = s.UserId LEFT JOIN dbo.MobileAccounts ma ON ma.UserId = s.UserId WHERE s.TokenHash = @hash AND s.RevokedAtUtc IS NULL AND s.ExpiresAtUtc > SYSUTCDATETIME() AND s.RevocationReason = 'PasswordSetup' AND u.IsActive = 1",
+            EmployeePasswordSetupJoinSql,
             connection);
         query.Parameters.Add("@hash", System.Data.SqlDbType.VarBinary, 32).Value = tokenHash;
 
@@ -740,13 +764,17 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         return (int)(await createUser.ExecuteScalarAsync(ct))!;
     }
 
-    private static async Task<int> CreateEmployeeMobileAccountAsync(SqlConnection connection, SqlTransaction transaction, int employeeId, int userId, string username, string normalizedUsername, CancellationToken ct)
+    internal const string EmployeeMobileAccountInsertSql =
+        "INSERT INTO dbo.MobileAccounts (AccountType, CustomerId, EmployeeId, SupplierId, Username, NormalizedUsername, PasswordHash, IsActive, FailedLoginAttempts, LockoutEndUtc, SecurityStamp, TokenVersion, CreatedAtUtc, UpdatedAtUtc) OUTPUT INSERTED.MobileAccountId VALUES (@accountType, NULL, @employeeId, NULL, @username, @normalizedUsername, '', 1, 0, NULL, CAST(NEWID() AS nvarchar(128)), 0, SYSUTCDATETIME(), SYSUTCDATETIME())";
+
+    internal const string EmployeePasswordSetupJoinSql =
+        "SELECT s.UserId, u.Username, u.FullName, u.UserRole, ma.AccountType, ma.EmployeeId, ma.CustomerId, ma.SupplierId FROM dbo.UserSessions s JOIN dbo.Users u ON u.UserID = s.UserId LEFT JOIN dbo.MobileAccounts ma ON (ma.Username = u.Username OR ma.NormalizedUsername = u.Username) WHERE s.TokenHash = @hash AND s.RevokedAtUtc IS NULL AND s.ExpiresAtUtc > SYSUTCDATETIME() AND s.RevocationReason = 'PasswordSetup' AND u.IsActive = 1";
+
+    private static async Task<int> CreateEmployeeMobileAccountAsync(SqlConnection connection, SqlTransaction transaction, int employeeId, string username, string normalizedUsername, CancellationToken ct)
     {
-        const string createMobileAccountSql = "INSERT INTO dbo.MobileAccounts (AccountType, CustomerId, EmployeeId, SupplierId, UserId, Username, NormalizedUsername, PasswordHash, IsActive, FailedLoginAttempts, LockoutEndUtc, SecurityStamp, TokenVersion, CreatedAtUtc, UpdatedAtUtc) OUTPUT INSERTED.MobileAccountId VALUES (@accountType, NULL, @employeeId, NULL, @userId, @username, @normalizedUsername, '', 1, 0, NULL, CAST(NEWID() AS nvarchar(128)), 0, SYSUTCDATETIME(), SYSUTCDATETIME())";
-        await using var createMobileAccount = new SqlCommand(createMobileAccountSql, connection, transaction);
+        await using var createMobileAccount = new SqlCommand(EmployeeMobileAccountInsertSql, connection, transaction);
         createMobileAccount.Parameters.AddWithValue("@accountType", "Employee");
         createMobileAccount.Parameters.AddWithValue("@employeeId", employeeId);
-        createMobileAccount.Parameters.AddWithValue("@userId", userId);
         createMobileAccount.Parameters.AddWithValue("@username", username);
         createMobileAccount.Parameters.AddWithValue("@normalizedUsername", normalizedUsername);
         return (int)(await createMobileAccount.ExecuteScalarAsync(ct))!;
@@ -768,12 +796,13 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         return sanitized.ToUpperInvariant();
     }
 
-    internal static bool ValidateEmployeeProvisioningRequest(int employeeId, string? employeeCode, string? password)
+    internal static bool ValidateEmployeeProvisioningRequest(int employeeId, string? employeeCode, string? username)
     {
-        return employeeId > 0
-            && !string.IsNullOrWhiteSpace(employeeCode)
-            && !string.IsNullOrWhiteSpace(password)
-            && password.Length >= 8;
+        if (employeeId <= 0 || string.IsNullOrWhiteSpace(employeeCode) || string.IsNullOrWhiteSpace(username))
+            return false;
+
+        var normalizedUsername = username.Trim();
+        return normalizedUsername.Length >= 4 && !normalizedUsername.Contains(' ');
     }
 
     private static byte[] TokenHash(string token)

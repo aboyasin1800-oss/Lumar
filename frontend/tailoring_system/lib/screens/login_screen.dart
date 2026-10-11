@@ -81,7 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 8),
             _AccountTypeTile(
               title: 'موظف',
-              subtitle: 'يرتبط بالحساب الرسمي للموظف وربطه بـ EmployeeId.',
+              subtitle: 'يرتبط بالحساب الرسمي للموظف عبر كود الموظف الرسمي.',
               icon: Icons.badge,
               value: _AccountTypeSelection.employee,
             ),
@@ -116,7 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final fullNameController = TextEditingController();
     final customerNameController = TextEditingController();
     final phoneController = TextEditingController();
-    final employeeIdController = TextEditingController();
+    final employeeCodeController = TextEditingController();
     final preferredUsernameController = TextEditingController();
     final passwordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
@@ -148,9 +148,9 @@ class _LoginScreenState extends State<LoginScreen> {
               }
 
               if (isEmployee) {
-                final employeeId = int.tryParse(employeeIdController.text.trim());
-                if (employeeId == null || employeeId <= 0) {
-                  setDialogState(() => localError = 'رقم الموظف الرسمي غير صالح.');
+                final trimmedEmployeeCode = employeeCodeController.text.trim();
+                if (trimmedEmployeeCode.isEmpty) {
+                  setDialogState(() => localError = 'كود الموظف الرسمي مطلوب.');
                   return;
                 }
                 if (trimmedPassword.length < 8 || trimmedPassword != trimmedConfirmPassword) {
@@ -165,26 +165,34 @@ class _LoginScreenState extends State<LoginScreen> {
               });
 
               if (isEmployee) {
-                final employeeId = int.tryParse(employeeIdController.text.trim());
-                if (employeeId == null) {
+                final trimmedEmployeeCode = employeeCodeController.text.trim();
+                if (trimmedEmployeeCode.isEmpty) {
                   setDialogState(() {
                     busy = false;
-                    localError = 'رقم الموظف الرسمي غير صالح.';
+                    localError = 'كود الموظف الرسمي مطلوب.';
                   });
                   return;
                 }
 
                 final created = await widget.auth.provisionEmployeeAccount(
-                  employeeId: employeeId,
+                  employeeCode: trimmedEmployeeCode,
                   fullName: trimmedFullName,
+                  phoneNumber: phoneController.text.trim().isEmpty ? null : phoneController.text.trim(),
                   preferredUsername: preferredUsernameController.text.trim().isEmpty ? null : preferredUsernameController.text.trim(),
                   rememberMe: rememberMe,
                 );
 
-                if (created == null) {
+                if (created == null || (created['statusCode'] as int?) != null) {
+                  final statusCode = (created?['statusCode'] as int?) ?? 500;
+                  final message = (created?['message'] as String?) ?? 'تعذر إنشاء حساب الموظف الرسمي.';
                   setDialogState(() {
                     busy = false;
-                    localError = 'تعذر إنشاء حساب الموظف الرسمي. تأكد من صلاحية رقم الموظف والاسم.';
+                    localError = switch (statusCode) {
+                      400 => 'بيانات الموظف غير صالحة.',
+                      404 => 'لم يتم العثور على الموظف الرسمي.',
+                      409 => 'هذا الموظف أو حسابه موجود بالفعل.',
+                      _ => message,
+                    };
                   });
                   return;
                 }
@@ -302,10 +310,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ] else ...[
                           TextFormField(
-                            controller: employeeIdController,
-                            keyboardType: const TextInputType.numberWithOptions(signed: false),
-                            decoration: const InputDecoration(labelText: 'رقم الموظف الرسمي', border: OutlineInputBorder()),
-                            validator: (value) => (value == null || value.trim().isEmpty) ? 'رقم الموظف الرسمي مطلوب.' : null,
+                            controller: employeeCodeController,
+                            decoration: const InputDecoration(labelText: 'كود الموظف الرسمي', border: OutlineInputBorder()),
+                            validator: (value) => (value == null || value.trim().isEmpty) ? 'كود الموظف الرسمي مطلوب.' : null,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: phoneController,
+                            keyboardType: TextInputType.phone,
+                            decoration: const InputDecoration(labelText: 'رقم الهاتف (اختياري)', border: OutlineInputBorder()),
                           ),
                           const SizedBox(height: 12),
                           TextFormField(

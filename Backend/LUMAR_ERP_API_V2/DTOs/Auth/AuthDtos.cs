@@ -16,7 +16,7 @@ public sealed record MobileCustomerRegistrationDto(
 public sealed record ChangeUsernameDto(string CurrentPassword, string Username);
 public sealed record ChangePasswordDto(string CurrentPassword, string NewPassword, string ConfirmPassword);
 public sealed record PasswordSetupDto(string SetupToken, string NewPassword, string ConfirmPassword);
-public sealed record EmployeeProvisioningRequest(int EmployeeId, string? PreferredUsername = null, bool RememberMe = true);
+public sealed record EmployeeProvisioningRequest(string EmployeeCode, string? PhoneNumber = null, string? PreferredUsername = null, bool RememberMe = true);
 public sealed record EmployeeProvisioningResult(int EmployeeId, int UserId, int MobileAccountId, string Username, string AccountType, string? SetupToken, DateTime ExpiresAtUtc, bool PasswordSetupReady);
 public sealed record CurrentUserDto(
     int UserId,
