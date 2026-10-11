@@ -95,9 +95,10 @@ class AuthState extends ChangeNotifier {
       user = null;
       _token = null;
     } finally {
-      if (_disposed) return;
-      initialized = true;
-      _notifyIfActive();
+      if (!_disposed) {
+        initialized = true;
+        _notifyIfActive();
+      }
     }
   }
 
@@ -143,6 +144,132 @@ class AuthState extends ChangeNotifier {
       return 'تعذر الاتصال بالخادم. تأكد من تشغيل الخادم ثم أعد المحاولة.';
     } catch (_) {
       return 'تعذر إكمال تسجيل الدخول. أعد المحاولة.';
+    }
+  }
+
+  Future<String?> registerCustomer({
+    required String username,
+    required String password,
+    required String confirmPassword,
+    required String fullName,
+    required String customerName,
+    required String phoneNumber,
+    String? address,
+    String? notes,
+    int? referrerCustomerId,
+    String? relationshipType,
+    bool rememberMe = true,
+  }) async {
+    try {
+      final response = await _request('POST', '/auth/mobile/customer/register', body: {
+        'username': username.trim(),
+        'password': password,
+        'confirmPassword': confirmPassword,
+        'fullName': fullName.trim(),
+        'customerName': customerName.trim(),
+        'phoneNumber': phoneNumber.trim(),
+        'address': address?.trim(),
+        'notes': notes?.trim(),
+        'rememberMe': rememberMe,
+        'referrerCustomerId': referrerCustomerId,
+        'relationshipType': relationshipType?.trim(),
+      }).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        final token = json['token'] as String;
+        final currentUser = AuthUser.fromJson(json['user'] as Map<String, dynamic>);
+        if (rememberMe) {
+          await _storage.write(key: _tokenKey, value: token);
+          await _storage.write(key: _usernameKey, value: username.trim());
+        }
+        _token = token;
+        user = currentUser;
+        _notifyIfActive();
+        return null;
+      }
+
+      if (response.statusCode == 409) {
+        return 'اسم المستخدم أو العميل موجود بالفعل.';
+      }
+      if (response.statusCode == 400) {
+        return 'بيانات إنشاء حساب العميل غير صالحة.';
+      }
+      return 'تعذر إنشاء حساب العميل.';
+    } on TimeoutException {
+      return 'انتهت مهلة إنشاء حساب العميل.';
+    } on SocketException {
+      return 'تعذر الاتصال بالخادم أثناء إنشاء حساب العميل.';
+    } on HttpException {
+      return 'تعذر الاتصال بالخادم أثناء إنشاء حساب العميل.';
+    } catch (_) {
+      return 'تعذر إنشاء حساب العميل.';
+    }
+  }
+
+  Future<Map<String, dynamic>?> provisionEmployeeAccount({
+    required int employeeId,
+    required String fullName,
+    String? preferredUsername,
+    bool rememberMe = true,
+  }) async {
+    try {
+      final response = await _request('POST', '/auth/mobile/employee/provision', body: {
+        'employeeId': employeeId,
+        'preferredUsername': preferredUsername?.trim(),
+        'rememberMe': rememberMe,
+      }).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode != 200) {
+        if (response.statusCode == 400) {
+          throw HttpException('بيانات موظف غير صالحة.');
+        }
+        if (response.statusCode == 409) {
+          throw HttpException('هذا الموظف أو حسابه موجود بالفعل.');
+        }
+        throw HttpException('تعذر إنشاء حساب الموظف الرسمي.');
+      }
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return json;
+    } on TimeoutException {
+      return null;
+    } on SocketException {
+      return null;
+    } on HttpException {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> completeEmployeePasswordSetup({
+    required String setupToken,
+    required String newPassword,
+    required String confirmPassword,
+  }) async {
+    try {
+      final response = await _request('POST', '/auth/mobile/employee/password-setup', body: {
+        'setupToken': setupToken,
+        'newPassword': newPassword,
+        'confirmPassword': confirmPassword,
+      }).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return null;
+      }
+      if (response.statusCode == 400) {
+        return 'رمز إعداد كلمة المرور غير صالح أو كلمة المرور غير متطابقة.';
+      }
+      return 'تعذر إعداد كلمة المرور لهذا الموظف.';
+    } on TimeoutException {
+      return 'انتهت مهلة إعداد كلمة المرور.';
+    } on SocketException {
+      return 'تعذر الاتصال بالخادم أثناء إعداد كلمة المرور.';
+    } on HttpException {
+      return 'تعذر الاتصال بالخادم أثناء إعداد كلمة المرور.';
+    } catch (_) {
+      return 'تعذر إعداد كلمة المرور.';
     }
   }
 

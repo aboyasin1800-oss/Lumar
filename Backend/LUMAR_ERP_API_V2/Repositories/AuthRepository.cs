@@ -242,6 +242,54 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         }
     }
 
+    public async Task<bool> CompleteEmployeePasswordSetupAsync(string setupToken, string newPassword, string confirmPassword, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(setupToken) || string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8 || !string.Equals(newPassword, confirmPassword, StringComparison.Ordinal))
+            return false;
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+
+        var tokenHash = TokenHash(setupToken);
+        await using var query = new SqlCommand(
+            "SELECT s.UserId, u.Username, u.FullName, u.UserRole, ma.AccountType, ma.EmployeeId, ma.CustomerId, ma.SupplierId FROM dbo.UserSessions s JOIN dbo.Users u ON u.UserID = s.UserId LEFT JOIN dbo.MobileAccounts ma ON ma.UserId = s.UserId WHERE s.TokenHash = @hash AND s.RevokedAtUtc IS NULL AND s.ExpiresAtUtc > SYSUTCDATETIME() AND s.RevocationReason = 'PasswordSetup' AND u.IsActive = 1",
+            connection);
+        query.Parameters.Add("@hash", System.Data.SqlDbType.VarBinary, 32).Value = tokenHash;
+
+        await using var reader = await query.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return false;
+
+        var userId = reader.GetInt32(0);
+        var username = reader.GetString(1);
+        var fullName = reader.GetString(2);
+        var role = reader.IsDBNull(3) ? null : reader.GetString(3);
+        var accountType = reader.IsDBNull(4) ? null : reader.GetString(4);
+        var employeeId = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5);
+        var customerId = reader.IsDBNull(6) ? (int?)null : reader.GetInt32(6);
+        var supplierId = reader.IsDBNull(7) ? (int?)null : reader.GetInt32(7);
+
+        if (!string.Equals(role, "Employee", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(accountType, "Employee", StringComparison.OrdinalIgnoreCase)
+            || employeeId is null)
+        {
+            return false;
+        }
+
+        await using var update = new SqlCommand(
+            "UPDATE dbo.Users SET PasswordHash = @passwordHash, UserPassword = '', SecurityStamp = NEWID() WHERE UserID = @id; UPDATE dbo.UserSessions SET RevokedAtUtc = SYSUTCDATETIME(), RevocationReason = 'PasswordSetupCompleted' WHERE TokenHash = @tokenHash AND RevokedAtUtc IS NULL",
+            connection);
+        update.Parameters.AddWithValue("@passwordHash", HashPassword(newPassword));
+        update.Parameters.AddWithValue("@id", userId);
+        update.Parameters.Add("@tokenHash", System.Data.SqlDbType.VarBinary, 32).Value = tokenHash;
+
+        await update.ExecuteNonQueryAsync(ct);
+
+        var currentUser = new CurrentUserDto(userId, username, fullName, role, true, null, accountType, customerId, employeeId, supplierId);
+        await CreateSessionAsync(connection, currentUser, true, null, ct);
+        return true;
+    }
+
     public async Task<CurrentUserDto?> GetCurrentUserAsync(string token, CancellationToken ct)
     {
         return await GetUserAsync(token, ct);
