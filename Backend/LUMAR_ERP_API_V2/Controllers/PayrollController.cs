@@ -1,6 +1,7 @@
+using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.DTOs.Payroll; using LUMAR_ERP_API_V2.Services; using Microsoft.AspNetCore.Mvc;
 namespace LUMAR_ERP_API_V2.Controllers;
-[ApiController] [Route("payroll")] public sealed class PayrollController(IPayrollService payroll) : ControllerBase
+[ApiController] [Route("payroll")] public sealed class PayrollController(IPayrollService payroll, IAuthenticatedUserContext userContext) : ControllerBase
 {
     [HttpGet("periods")] public async Task<ActionResult<IReadOnlyList<PayrollPeriodDto>>> GetPeriods(CancellationToken ct) => Ok(await payroll.GetPeriodsAsync(ct));
     [HttpGet("periods/{id:int}")] public async Task<ActionResult<PayrollPeriodDto>> GetPeriod(int id, CancellationToken ct) { if (id <= 0) return BadRequest("Payroll period id must be positive."); var item = await payroll.GetPeriodAsync(id, ct); return item is null ? NotFound() : Ok(item); }
@@ -8,7 +9,7 @@ namespace LUMAR_ERP_API_V2.Controllers;
     [HttpGet("records")] public async Task<ActionResult<IReadOnlyList<PayrollRecordDto>>> GetRecords(CancellationToken ct) => Ok(await payroll.GetRecordsAsync(ct));
     [HttpGet("records/{id:int}")] public async Task<ActionResult<PayrollRecordDto>> GetRecord(int id, CancellationToken ct) { if (id <= 0) return BadRequest("Payroll record id must be positive."); var item = await payroll.GetRecordAsync(id, ct); return item is null ? NotFound() : Ok(item); }
     [HttpGet("records/{id:int}/items")] public async Task<ActionResult<IReadOnlyList<PayrollItemDto>>> GetItems(int id, CancellationToken ct) { if (id <= 0) return BadRequest("Payroll record id must be positive."); if (await payroll.GetRecordAsync(id, ct) is null) return NotFound(); return Ok(await payroll.GetItemsAsync(id, ct)); }
-    [HttpGet("employees/{employeeId:int}/settlements")] public async Task<ActionResult<IReadOnlyList<PayrollSettlementDto>>> GetSettlements(int employeeId, CancellationToken ct) { if (employeeId <= 0) return BadRequest("Employee id must be positive."); return Ok(await payroll.GetSettlementsAsync(employeeId, ct)); }
+    [HttpGet("employees/{employeeId:int}/settlements")] public async Task<ActionResult<IReadOnlyList<PayrollSettlementDto>>> GetSettlements(int employeeId, CancellationToken ct) { if (employeeId <= 0) return BadRequest("Employee id must be positive."); var user = await userContext.GetCurrentUserAsync(ct); if (user is not null && string.Equals(user.AccountType, "Employee", StringComparison.OrdinalIgnoreCase)) { if (!user.EmployeeId.HasValue) return StatusCode(StatusCodes.Status403Forbidden, "Employee account is not mapped to a valid employee record."); if (user.EmployeeId.Value != employeeId) return StatusCode(StatusCodes.Status403Forbidden, "Employee accounts can only access their own settlement history."); } return Ok(await payroll.GetSettlementsAsync(employeeId, ct)); }
     [HttpGet("piece-wages")] public async Task<ActionResult<IReadOnlyList<PieceWageRecordDto>>> GetPieceWages(CancellationToken ct) => Ok(await payroll.GetPieceWagesAsync(ct));
     [HttpGet("piece-wage-rates")] public async Task<ActionResult<IReadOnlyList<PieceWageRateDto>>> GetPieceWageRates(CancellationToken ct) => Ok(await payroll.GetPieceWageRatesAsync(ct));
     [HttpPost("piece-wage-rates")] public async Task<ActionResult<PieceWageRateDto>> CreatePieceWageRate([FromBody] CreatePieceWageRateDto request, CancellationToken ct)

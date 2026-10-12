@@ -1,5 +1,6 @@
 using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.Services;
+using Xunit;
 
 namespace LUMAR_ERP_API_V2.Tests;
 
