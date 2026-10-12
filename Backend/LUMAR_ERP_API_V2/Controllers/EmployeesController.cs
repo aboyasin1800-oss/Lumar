@@ -1,6 +1,8 @@
 using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Employees;
+using LUMAR_ERP_API_V2.DTOs.Payroll;
+using LUMAR_ERP_API_V2.DTOs.Production;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -176,6 +178,20 @@ public sealed class EmployeesController(IEmployeeService employees, IAuthenticat
     [HttpGet("{id:int}/attendance")] public async Task<ActionResult<IReadOnlyList<EmployeeAttendanceDto>>> GetAttendance(int id, CancellationToken ct) { var authError = await EnsureCurrentEmployeeAccessAsync(id, ct); if (authError is not null) return authError; var employee = await GetEmployeeOrError(id, ct); return employee.Error ?? Ok(await employees.GetAttendanceAsync(id, ct)); }
     [HttpGet("{id:int}/leave-requests")] public async Task<ActionResult<IReadOnlyList<LeaveRequestDto>>> GetLeaveRequests(int id, CancellationToken ct) { var authError = await EnsureCurrentEmployeeAccessAsync(id, ct); if (authError is not null) return authError; var employee = await GetEmployeeOrError(id, ct); return employee.Error ?? Ok(await employees.GetLeaveRequestsAsync(id, ct)); }
     [HttpGet("{id:int}/draws")] public async Task<ActionResult<IReadOnlyList<EmployeeDrawDto>>> GetDraws(int id, CancellationToken ct) { var authError = await EnsureCurrentEmployeeAccessAsync(id, ct); if (authError is not null) return authError; var employee = await GetEmployeeOrError(id, ct); return employee.Error ?? Ok(await employees.GetDrawsAsync(employee.Value!.EmployeeCode, ct)); }
+    [HttpGet("me/production")] public async Task<ActionResult<IReadOnlyList<TrackingEventDto>>> GetCurrentEmployeeProduction(CancellationToken ct) { var currentEmployeeId = await GetCurrentEmployeeIdOrErrorAsync(ct); if (currentEmployeeId.Error is not null) return currentEmployeeId.Error; return Ok(await employees.GetSelfProductionAsync(currentEmployeeId.Value!.Value, ct)); }
+    [HttpGet("me/piece-wages")] public async Task<ActionResult<IReadOnlyList<PieceWageRecordDto>>> GetCurrentEmployeePieceWages(CancellationToken ct) { var currentEmployeeId = await GetCurrentEmployeeIdOrErrorAsync(ct); if (currentEmployeeId.Error is not null) return currentEmployeeId.Error; return Ok(await employees.GetSelfPieceWagesAsync(currentEmployeeId.Value!.Value, ct)); }
+    [HttpGet("me/draws")] public async Task<ActionResult<IReadOnlyList<EmployeeDrawDto>>> GetCurrentEmployeeDraws(CancellationToken ct) { var currentEmployeeId = await GetCurrentEmployeeIdOrErrorAsync(ct); if (currentEmployeeId.Error is not null) return currentEmployeeId.Error; return Ok(await employees.GetSelfDrawsAsync(currentEmployeeId.Value!.Value, ct)); }
+    [HttpGet("me/settlements")] public async Task<ActionResult<IReadOnlyList<PayrollSettlementDto>>> GetCurrentEmployeeSettlements(CancellationToken ct) { var currentEmployeeId = await GetCurrentEmployeeIdOrErrorAsync(ct); if (currentEmployeeId.Error is not null) return currentEmployeeId.Error; return Ok(await employees.GetSelfSettlementsAsync(currentEmployeeId.Value!.Value, ct)); }
+    [HttpGet("me/financial-summary")] public async Task<ActionResult<EmployeeSelfFinancialSummaryDto>> GetCurrentEmployeeFinancialSummary([FromQuery] int? periodId, CancellationToken ct) { var currentEmployeeId = await GetCurrentEmployeeIdOrErrorAsync(ct); if (currentEmployeeId.Error is not null) return currentEmployeeId.Error; var summary = await employees.GetSelfFinancialSummaryAsync(currentEmployeeId.Value!.Value, periodId, ct); return summary is null ? NotFound() : Ok(summary); }
+    [HttpGet("me/monthly-statement")]
+    public async Task<ActionResult<EmployeeSelfMonthlyStatementDto>> GetCurrentEmployeeMonthlyStatement([FromQuery] int periodId, CancellationToken ct)
+    {
+        if (periodId <= 0) return BadRequest("Payroll period id must be positive.");
+        var currentEmployeeId = await GetCurrentEmployeeIdOrErrorAsync(ct);
+        if (currentEmployeeId.Error is not null) return currentEmployeeId.Error;
+        var statement = await employees.GetSelfMonthlyStatementAsync(currentEmployeeId.Value!.Value, periodId, ct);
+        return statement is null ? NotFound() : Ok(statement);
+    }
     [HttpGet("{id:int}/documents")] public async Task<ActionResult<IReadOnlyList<EmployeeDocumentDto>>> GetDocuments(int id, CancellationToken ct) { var authError = await EnsureCurrentEmployeeAccessAsync(id, ct); if (authError is not null) return authError; var employee = await GetEmployeeOrError(id, ct); return employee.Error ?? Ok(await employees.GetDocumentsAsync(id, ct)); }
     [HttpGet("{id:int}/workflow")] public async Task<ActionResult<IReadOnlyList<EmployeeWorkflowDto>>> GetWorkflow(int id, CancellationToken ct) { var authError = await EnsureCurrentEmployeeAccessAsync(id, ct); if (authError is not null) return authError; var employee = await GetEmployeeOrError(id, ct); return employee.Error ?? Ok(await employees.GetWorkflowAsync(employee.Value!.EmployeeCode, ct)); }
 
@@ -196,6 +212,20 @@ public sealed class EmployeesController(IEmployeeService employees, IAuthenticat
             return StatusCode(StatusCodes.Status403Forbidden, "Employee accounts can only access their own data.");
 
         return null;
+    }
+
+    private async Task<(int? Value, ActionResult? Error)> GetCurrentEmployeeIdOrErrorAsync(CancellationToken ct)
+    {
+        var user = await userContext.GetCurrentUserAsync(ct);
+        if (user is null) return (null, Unauthorized());
+
+        if (!string.Equals(user.AccountType, "Employee", StringComparison.OrdinalIgnoreCase))
+            return (null, StatusCode(StatusCodes.Status403Forbidden, "This endpoint is only for employee accounts."));
+
+        if (!user.EmployeeId.HasValue)
+            return (null, StatusCode(StatusCodes.Status403Forbidden, "Employee account is not mapped to a valid employee record."));
+
+        return (user.EmployeeId.Value, null);
     }
 
     private async Task<(EmployeeDetailsDto? Value, ActionResult? Error)> GetEmployeeOrError(int id, CancellationToken ct)

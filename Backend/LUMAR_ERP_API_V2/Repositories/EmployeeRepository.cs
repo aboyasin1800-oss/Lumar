@@ -1,6 +1,8 @@
 using System.Globalization;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Employees;
+using LUMAR_ERP_API_V2.DTOs.Payroll;
+using LUMAR_ERP_API_V2.DTOs.Production;
 using LUMAR_ERP_API_V2.Services;
 using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
@@ -202,6 +204,45 @@ WHERE EmployeeID = @id;";
     public Task<IReadOnlyList<EmployeeAttendanceDto>> GetAttendanceAsync(int employeeId, CancellationToken ct) => QueryAsync("SELECT EmployeeAttendanceId, EmployeeId, AttendanceDate, CheckInTime, CheckOutTime, WorkedHours, OvertimeHours, IsAbsent, AbsenceReason, Notes, CreatedAt FROM dbo.EmployeeAttendances WHERE EmployeeId = @id ORDER BY AttendanceDate DESC, EmployeeAttendanceId DESC", employeeId, reader => new EmployeeAttendanceDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetDateTime(2), reader.NullableDateTime("CheckInTime"), reader.NullableDateTime("CheckOutTime"), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetBoolean(7), reader.NullableString("AbsenceReason"), reader.NullableString("Notes"), reader.GetDateTime(10)), ct);
     public Task<IReadOnlyList<LeaveRequestDto>> GetLeaveRequestsAsync(int employeeId, CancellationToken ct) => QueryAsync("SELECT LeaveRequestId, EmployeeId, LeaveType, StartDate, EndDate, RequestedDays, Status, Reason, ApprovedBy, ApprovedAt, CreatedAt FROM dbo.LeaveRequests WHERE EmployeeId = @id ORDER BY CreatedAt DESC, LeaveRequestId DESC", employeeId, reader => new LeaveRequestDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetDateTime(3), reader.GetDateTime(4), reader.GetDecimal(5), reader.GetString(6), reader.NullableString("Reason"), reader.NullableString("ApprovedBy"), reader.NullableDateTime("ApprovedAt"), reader.GetDateTime(10)), ct);
     public Task<IReadOnlyList<EmployeeDrawDto>> GetDrawsAsync(string employeeCode, CancellationToken ct) => QueryAsync("SELECT DrawID, EmployeeCode, DrawDate, Amount, Notes FROM dbo.Employee_Draws WHERE EmployeeCode = @code ORDER BY DrawDate DESC, DrawID DESC", employeeCode, reader => new EmployeeDrawDto(reader.GetInt32(0), reader.NullableString("EmployeeCode"), reader.NullableDateTime("DrawDate"), reader.NullableDecimal("Amount"), reader.NullableString("Notes")), ct);
+    public Task<IReadOnlyList<TrackingEventDto>> GetSelfProductionAsync(int employeeId, CancellationToken ct) => QueryAsync(
+        "SELECT te.TrackingEventID, te.OrderItemID, te.OrderID, te.TrackingCode, te.Stage, te.Status, te.EventTime, te.EmployeeCode, te.Notes, te.IsReverted, te.RevertedAt, te.PieceID, te.ReadyMadeProductionOrderPieceInstanceId FROM dbo.TrackingEvents te INNER JOIN dbo.Employees e ON e.EmployeeCode = te.EmployeeCode WHERE e.EmployeeId = @id ORDER BY te.EventTime DESC, te.TrackingEventID DESC",
+        employeeId,
+        reader => new TrackingEventDto(reader.GetInt32(0), reader.NullableInt32("OrderItemID"), reader.NullableInt32("OrderID"), reader.NullableString("TrackingCode"), reader.GetString(4), reader.GetString(5), reader.GetDateTime(6), reader.NullableString("EmployeeCode"), reader.NullableString("Notes"), reader.GetBoolean(9), reader.NullableDateTime("RevertedAt"), reader.NullableInt32("PieceID"), reader.NullableInt32("ReadyMadeProductionOrderPieceInstanceId")),
+        ct);
+    public Task<IReadOnlyList<PieceWageRecordDto>> GetSelfPieceWagesAsync(int employeeId, CancellationToken ct) => QueryAsync(
+        "SELECT PieceWageRecordID, OrderID, OrderItemID, PieceID, TrackingEventID, EmployeeId, EmployeeCode, PieceType, Stage, Quantity, WageRate, TotalWage, PayrollPeriodId, PayrollRecordId, Status, Notes, CreatedAt FROM dbo.PieceWageRecords WHERE EmployeeId = @id ORDER BY CreatedAt DESC, PieceWageRecordID DESC",
+        employeeId,
+        reader => new PieceWageRecordDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.NullableInt32("EmployeeId"), reader.NullableString("EmployeeCode"), reader.GetString(7), reader.GetString(8), reader.GetDecimal(9), reader.GetDecimal(10), reader.GetDecimal(11), reader.NullableInt32("PayrollPeriodId"), reader.NullableInt32("PayrollRecordId"), reader.GetString(14), reader.NullableString("Notes"), reader.GetDateTime(16)),
+        ct);
+    public Task<IReadOnlyList<EmployeeDrawDto>> GetSelfDrawsAsync(int employeeId, CancellationToken ct) => QueryAsync(
+        "SELECT d.DrawID, d.EmployeeCode, d.DrawDate, d.Amount, d.Notes FROM dbo.Employee_Draws d INNER JOIN dbo.Employees e ON e.EmployeeCode = d.EmployeeCode WHERE e.EmployeeId = @id ORDER BY d.DrawDate DESC, d.DrawID DESC",
+        employeeId,
+        reader => new EmployeeDrawDto(reader.GetInt32(0), reader.NullableString("EmployeeCode"), reader.NullableDateTime("DrawDate"), reader.NullableDecimal("Amount"), reader.NullableString("Notes")),
+        ct);
+    public Task<IReadOnlyList<PayrollSettlementDto>> GetSelfSettlementsAsync(int employeeId, CancellationToken ct) => QueryAsync(
+        "SELECT s.SettlementId, s.DrawId, d.EmployeeCode, s.SettlementDate, s.Amount, s.Notes, s.JournalEntryId FROM dbo.EmployeeDrawSettlements s INNER JOIN dbo.Employee_Draws d ON d.DrawID = s.DrawId INNER JOIN dbo.Employees e ON e.EmployeeCode = d.EmployeeCode WHERE e.EmployeeId = @id ORDER BY s.SettlementDate DESC, s.SettlementId DESC",
+        employeeId,
+        reader => new PayrollSettlementDto(reader.GetInt32(0), reader.GetInt32(1), reader.NullableString("EmployeeCode"), reader.GetDateTime(3), reader.GetDecimal(4), reader.NullableString("Notes"), reader.NullableInt32("JournalEntryId")),
+        ct);
+    public async Task<EmployeeSelfFinancialSummaryDto?> GetSelfFinancialSummaryAsync(int employeeId, int? periodId, CancellationToken ct)
+    {
+        var sql = periodId.HasValue
+            ? "SELECT TOP (1) EmployeeId, PayrollPeriodId, BasicSalaryAmount, PieceWageAmount, OvertimeAmount, GrossAmount, DeductionsAmount, NetAmount, Status, CreatedAt FROM dbo.PayrollRecords WHERE EmployeeId = @id AND PayrollPeriodId = @periodId ORDER BY PayrollPeriodId DESC, CreatedAt DESC"
+            : "SELECT TOP (1) EmployeeId, PayrollPeriodId, BasicSalaryAmount, PieceWageAmount, OvertimeAmount, GrossAmount, DeductionsAmount, NetAmount, Status, CreatedAt FROM dbo.PayrollRecords WHERE EmployeeId = @id ORDER BY PayrollPeriodId DESC, CreatedAt DESC";
+
+        var parameters = new { id = employeeId, periodId = periodId ?? 0 };
+        var rows = await QueryAsync(sql, parameters, reader => new EmployeeSelfFinancialSummaryDto(reader.GetInt32(0), reader.NullableInt32("PayrollPeriodId"), reader.GetDecimal(2), reader.GetDecimal(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.NullableString("Status"), reader.NullableDateTime("CreatedAt")), ct);
+        return rows.FirstOrDefault();
+    }
+    public async Task<EmployeeSelfMonthlyStatementDto?> GetSelfMonthlyStatementAsync(int employeeId, int periodId, CancellationToken ct)
+    {
+        var rows = await QueryAsync(
+            "SELECT p.PayrollPeriodId, p.PeriodCode, p.StartDate, p.EndDate, p.Status, r.BasicSalaryAmount, r.PieceWageAmount, r.OvertimeAmount, r.GrossAmount, r.DeductionsAmount, ISNULL((SELECT SUM(d.Amount) FROM dbo.Employee_Draws d INNER JOIN dbo.Employees e ON e.EmployeeCode = d.EmployeeCode WHERE e.EmployeeId = @id AND d.DrawDate >= p.StartDate AND d.DrawDate < DATEADD(day, 1, p.EndDate)), 0) AS DrawAmount, ISNULL((SELECT SUM(s.Amount) FROM dbo.EmployeeDrawSettlements s INNER JOIN dbo.Employee_Draws d ON d.DrawID = s.DrawId INNER JOIN dbo.Employees e ON e.EmployeeCode = d.EmployeeCode WHERE e.EmployeeId = @id AND s.SettlementDate >= p.StartDate AND s.SettlementDate < DATEADD(day, 1, p.EndDate)), 0) AS SettlementAmount, r.NetAmount, p.GeneratedAt, p.ApprovedAt FROM dbo.PayrollPeriods p LEFT JOIN dbo.PayrollRecords r ON r.PayrollPeriodId = p.PayrollPeriodId AND r.EmployeeId = @id WHERE p.PayrollPeriodId = @periodId",
+            new { id = employeeId, periodId },
+            reader => new EmployeeSelfMonthlyStatementDto(reader.GetInt32(0), reader.GetString(1), reader.GetDateTime(2), reader.GetDateTime(3), reader.GetString(4), reader.NullableDecimal("BasicSalaryAmount"), reader.NullableDecimal("PieceWageAmount"), reader.NullableDecimal("OvertimeAmount"), reader.NullableDecimal("GrossAmount"), reader.NullableDecimal("DeductionsAmount"), reader.NullableDecimal("DrawAmount"), reader.NullableDecimal("SettlementAmount"), reader.NullableDecimal("NetAmount"), reader.NullableDateTime("GeneratedAt"), reader.NullableDateTime("ApprovedAt")),
+            ct);
+        return rows.FirstOrDefault();
+    }
     public Task<IReadOnlyList<EmployeeDocumentDto>> GetDocumentsAsync(int employeeId, CancellationToken ct) => QueryAsync("SELECT EmployeeDocumentId, EmployeeId, DocumentType, DocumentNumber, IssueDate, ExpiryDate, FilePath, Notes, CreatedAt FROM dbo.EmployeeDocuments WHERE EmployeeId = @id ORDER BY CreatedAt DESC, EmployeeDocumentId DESC", employeeId, reader => new EmployeeDocumentDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.NullableString("DocumentNumber"), reader.NullableDateTime("IssueDate"), reader.NullableDateTime("ExpiryDate"), reader.NullableString("FilePath"), reader.NullableString("Notes"), reader.GetDateTime(8)), ct);
     public Task<IReadOnlyList<EmployeeWorkflowDto>> GetWorkflowAsync(string employeeCode, CancellationToken ct) => QueryAsync("SELECT EmployeeCode, WorkStage FROM dbo.Employee_Workflow WHERE EmployeeCode = @code", employeeCode, reader => new EmployeeWorkflowDto(reader.GetString(0), reader.NullableString("WorkStage")), ct);
     public Task<IReadOnlyList<EmployeePieceRateAssignmentDto>> GetPieceRateAssignmentsAsync(int employeeId, CancellationToken ct) => QueryAsync("SELECT EmployeePieceRateAssignmentId, EmployeeId, PieceType, Stage, Rate, EffectiveFrom, EffectiveTo, IsActive, CreatedAt FROM dbo.EmployeePieceRateAssignments WHERE EmployeeId = @id ORDER BY IsActive DESC, EffectiveFrom DESC, EmployeePieceRateAssignmentId DESC", employeeId, reader => new EmployeePieceRateAssignmentDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetString(3), reader.GetDecimal(4), reader.NullableDateTime("EffectiveFrom"), reader.NullableDateTime("EffectiveTo"), reader.GetBoolean(7), reader.GetDateTime(8)), ct);

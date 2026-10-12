@@ -1585,64 +1585,116 @@ class _LedgerLookupState<T> extends State<_LedgerLookup<T>> {
   Widget build(BuildContext context) => _Page(
       title: widget.title,
       embedded: widget.embedded,
-      child: Column(children: [
-        Wrap(spacing: 10, runSpacing: 10, children: [
+      child: LayoutBuilder(builder: (context, constraints) {
+        final isWide = constraints.maxWidth > 700;
+        final controls = <Widget>[
           if (!widget.autoLoad) ...[
-            SizedBox(
-                width: 240,
-                child: TextField(
-                    controller: controller,
-                    keyboardType: TextInputType.number,
-                    onSubmitted: (_) => search(),
-                    decoration: InputDecoration(
-                        labelText: widget.partyLabel,
-                        border: const OutlineInputBorder()))),
+            Expanded(
+              child: TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  onSubmitted: (_) => search(),
+                  decoration: InputDecoration(
+                      labelText: widget.partyLabel,
+                      border: const OutlineInputBorder())),
+            ),
+            const SizedBox(width: 10),
             FilledButton.icon(
                 onPressed: search,
                 icon: const Icon(Icons.search),
                 label: const Text('عرض الكشف')),
           ],
-          SizedBox(
-              width: 260,
-              child: TextField(
-                  controller: filter,
-                  onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.filter_alt_outlined),
-                      labelText: 'تصفية بالمرجع أو القيمة',
-                      border: OutlineInputBorder()))),
-        ]),
-        const SizedBox(height: 12),
-        Expanded(
-            child: future == null
-                ? const Center(child: Text('أدخل الرقم لعرض كشف الحساب.'))
-                : FutureBuilder<List<T>>(
-                    future: future,
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState != ConnectionState.done)
-                        return const Center(child: CircularProgressIndicator());
-                      if (snapshot.hasError)
-                        return _ErrorPanel(onRetry: search);
-                      final query = filter.text.trim().toLowerCase();
-                      final rows = snapshot.data!
-                          .map(widget.row)
-                          .where((row) =>
-                              query.isEmpty ||
-                              row.any((value) =>
-                                  value.toLowerCase().contains(query)))
-                          .toList();
-                      return _Table(
-                          columns: const [
-                            'المرجع',
-                            'مدين',
-                            'دائن',
-                            'الرصيد',
-                            'التاريخ'
-                          ],
-                          rows: rows,
-                          empty: 'لا توجد حركات مطابقة لهذا الحساب.');
-                    }))
-      ]));
+          Expanded(
+            child: TextField(
+                controller: filter,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.filter_alt_outlined),
+                    labelText: 'تصفية بالمرجع أو القيمة',
+                    border: OutlineInputBorder()))),
+        ];
+
+        return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (isWide)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: controls,
+                )
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (!widget.autoLoad) ...[
+                      TextField(
+                          controller: controller,
+                          keyboardType: TextInputType.number,
+                          onSubmitted: (_) => search(),
+                          decoration: InputDecoration(
+                              labelText: widget.partyLabel,
+                              border: const OutlineInputBorder())),
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                          onPressed: search,
+                          icon: const Icon(Icons.search),
+                          label: const Text('عرض الكشف')),
+                      const SizedBox(height: 10),
+                    ],
+                    TextField(
+                        controller: filter,
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.filter_alt_outlined),
+                            labelText: 'تصفية بالمرجع أو القيمة',
+                            border: OutlineInputBorder())),
+                  ],
+                ),
+              const SizedBox(height: 12),
+              Expanded(
+                  child: future == null
+                      ? const Center(child: Text('أدخل الرقم لعرض كشف الحساب.'))
+                      : FutureBuilder<List<T>>(
+                          future: future,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState !=
+                                ConnectionState.done)
+                              return const Center(
+                                  child: CircularProgressIndicator());
+                            if (snapshot.hasError)
+                              return _ErrorPanel(onRetry: search);
+                            final query = filter.text.trim().toLowerCase();
+                            final rows = snapshot.data!
+                                .map(widget.row)
+                                .where((row) =>
+                                    query.isEmpty ||
+                                    row.any((value) =>
+                                        value.toLowerCase().contains(query)))
+                                .toList();
+                            return LayoutBuilder(
+                              builder: (context, constraints) => SizedBox(
+                                width: constraints.maxWidth,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minWidth: constraints.maxWidth,
+                                  ),
+                                  child: _Table(
+                                    columns: const [
+                                      'المرجع',
+                                      'مدين',
+                                      'دائن',
+                                      'الرصيد',
+                                      'التاريخ'
+                                    ],
+                                    rows: rows,
+                                    empty: 'لا توجد حركات مطابقة لهذا الحساب.',
+                                  ),
+                                ),
+                              ),
+                            );
+                          }))
+            ]);
+      }));
 }
 
 class _SimpleListPage<T> extends StatefulWidget {

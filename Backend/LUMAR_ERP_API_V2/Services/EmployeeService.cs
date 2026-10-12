@@ -1,4 +1,6 @@
 using LUMAR_ERP_API_V2.DTOs.Employees;
+using LUMAR_ERP_API_V2.DTOs.Payroll;
+using LUMAR_ERP_API_V2.DTOs.Production;
 using LUMAR_ERP_API_V2.Repositories;
 namespace LUMAR_ERP_API_V2.Services;
 public sealed class EmployeeService(IEmployeeRepository repository) : IEmployeeService
@@ -13,6 +15,12 @@ public sealed class EmployeeService(IEmployeeRepository repository) : IEmployeeS
     public Task<IReadOnlyList<EmployeeAttendanceDto>> GetAttendanceAsync(int id, CancellationToken ct) => repository.GetAttendanceAsync(id, ct);
     public Task<IReadOnlyList<LeaveRequestDto>> GetLeaveRequestsAsync(int id, CancellationToken ct) => repository.GetLeaveRequestsAsync(id, ct);
     public Task<IReadOnlyList<EmployeeDrawDto>> GetDrawsAsync(string code, CancellationToken ct) => repository.GetDrawsAsync(code, ct);
+    public Task<IReadOnlyList<TrackingEventDto>> GetSelfProductionAsync(int employeeId, CancellationToken ct) => repository.GetSelfProductionAsync(employeeId, ct);
+    public Task<IReadOnlyList<PieceWageRecordDto>> GetSelfPieceWagesAsync(int employeeId, CancellationToken ct) => repository.GetSelfPieceWagesAsync(employeeId, ct);
+    public Task<IReadOnlyList<EmployeeDrawDto>> GetSelfDrawsAsync(int employeeId, CancellationToken ct) => repository.GetSelfDrawsAsync(employeeId, ct);
+    public Task<IReadOnlyList<PayrollSettlementDto>> GetSelfSettlementsAsync(int employeeId, CancellationToken ct) => repository.GetSelfSettlementsAsync(employeeId, ct);
+    public Task<EmployeeSelfFinancialSummaryDto?> GetSelfFinancialSummaryAsync(int employeeId, int? periodId, CancellationToken ct) => repository.GetSelfFinancialSummaryAsync(employeeId, periodId, ct);
+    public Task<EmployeeSelfMonthlyStatementDto?> GetSelfMonthlyStatementAsync(int employeeId, int periodId, CancellationToken ct) => repository.GetSelfMonthlyStatementAsync(employeeId, periodId, ct);
     public Task<IReadOnlyList<EmployeeDocumentDto>> GetDocumentsAsync(int id, CancellationToken ct) => repository.GetDocumentsAsync(id, ct);
     public Task<IReadOnlyList<EmployeeWorkflowDto>> GetWorkflowAsync(string code, CancellationToken ct) => repository.GetWorkflowAsync(code, ct);
     public Task<IReadOnlyList<EmployeePieceRateAssignmentDto>> GetPieceRateAssignmentsAsync(int employeeId, CancellationToken ct) => repository.GetPieceRateAssignmentsAsync(employeeId, ct);

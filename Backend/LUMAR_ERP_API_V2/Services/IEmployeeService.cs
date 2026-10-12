@@ -1,4 +1,6 @@
 using LUMAR_ERP_API_V2.DTOs.Employees;
+using LUMAR_ERP_API_V2.DTOs.Payroll;
+using LUMAR_ERP_API_V2.DTOs.Production;
 namespace LUMAR_ERP_API_V2.Services;
 public interface IEmployeeService
 {
@@ -12,6 +14,12 @@ public interface IEmployeeService
     Task<IReadOnlyList<EmployeeAttendanceDto>> GetAttendanceAsync(int id, CancellationToken ct);
     Task<IReadOnlyList<LeaveRequestDto>> GetLeaveRequestsAsync(int id, CancellationToken ct);
     Task<IReadOnlyList<EmployeeDrawDto>> GetDrawsAsync(string code, CancellationToken ct);
+    Task<IReadOnlyList<TrackingEventDto>> GetSelfProductionAsync(int employeeId, CancellationToken ct);
+    Task<IReadOnlyList<PieceWageRecordDto>> GetSelfPieceWagesAsync(int employeeId, CancellationToken ct);
+    Task<IReadOnlyList<EmployeeDrawDto>> GetSelfDrawsAsync(int employeeId, CancellationToken ct);
+    Task<IReadOnlyList<PayrollSettlementDto>> GetSelfSettlementsAsync(int employeeId, CancellationToken ct);
+    Task<EmployeeSelfFinancialSummaryDto?> GetSelfFinancialSummaryAsync(int employeeId, int? periodId, CancellationToken ct);
+    Task<EmployeeSelfMonthlyStatementDto?> GetSelfMonthlyStatementAsync(int employeeId, int periodId, CancellationToken ct);
     Task<IReadOnlyList<EmployeeDocumentDto>> GetDocumentsAsync(int id, CancellationToken ct);
     Task<IReadOnlyList<EmployeeWorkflowDto>> GetWorkflowAsync(string code, CancellationToken ct);
     Task<IReadOnlyList<EmployeePieceRateAssignmentDto>> GetPieceRateAssignmentsAsync(int employeeId, CancellationToken ct);

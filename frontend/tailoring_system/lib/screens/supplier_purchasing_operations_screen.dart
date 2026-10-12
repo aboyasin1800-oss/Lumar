@@ -3,11 +3,110 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../core/app_navigation.dart';
 import '../core/authenticated_api_client.dart';
 import '../models/supplier_purchasing_models.dart';
 import '../repositories/supplier_purchasing_repository.dart';
 import '../services/auth_state.dart';
 import 'financial/finance_views.dart';
+
+class _SupplierDetailsScreen extends StatelessWidget {
+  const _SupplierDetailsScreen({
+    required this.supplier,
+  });
+
+  final SupplierPurchasingSupplier supplier;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(supplier.name),
+      ),
+      body: SafeArea(
+        child: DefaultTabController(
+          length: 3,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        supplier.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text('رمز المورد: ${supplier.code}'),
+                      if (supplier.phone != null && supplier.phone!.trim().isNotEmpty)
+                        Text('الهاتف: ${supplier.phone!}'),
+                      if (supplier.email != null && supplier.email!.trim().isNotEmpty)
+                        Text('البريد: ${supplier.email!}'),
+                    ],
+                  ),
+                ),
+              ),
+              const TabBar(
+                tabs: [
+                  Tab(
+                    icon: Icon(Icons.account_balance_wallet_outlined),
+                    text: 'كشف الحساب',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.receipt_long_outlined),
+                    text: 'الفواتير',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.payments_outlined),
+                    text: 'المدفوعات',
+                  ),
+                ],
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: SupplierLedgerScreen(
+                        supplierId: supplier.id,
+                        embedded: true,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: SupplierInvoicesScreen(
+                        supplierId: supplier.id,
+                        embedded: true,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: SupplierPaymentsScreen(
+                        supplierId: supplier.id,
+                        embedded: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class SupplierPurchasingOperationsScreen extends StatefulWidget {
   const SupplierPurchasingOperationsScreen({super.key, required this.auth});
@@ -224,96 +323,10 @@ class _SupplierPurchasingOperationsScreenState
     );
   }
 
-  SupplierPurchasingSupplier? _selectedSupplierRecord() {
-    if (_selectedSupplierId == null) return null;
-    for (final supplier in _suppliers) {
-      if (supplier.id == _selectedSupplierId) return supplier;
-    }
-    return null;
+  Future<void> _openSupplierDetails(SupplierPurchasingSupplier supplier) async {
+    setState(() => _selectedSupplierId = supplier.id);
+    await AppNavigation.push<void>(context, (_) => _SupplierDetailsScreen(supplier: supplier));
   }
-
-  Widget _selectedSupplierProfile(SupplierPurchasingSupplier supplier) =>
-      LayoutBuilder(
-        builder: (context, constraints) {
-          final availableHeight = constraints.maxHeight > 0
-              ? constraints.maxHeight
-              : MediaQuery.sizeOf(context).height;
-          final panelHeight = (availableHeight * 0.58).clamp(260.0, 520.0);
-
-          return Container(
-            margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: DefaultTabController(
-              length: 3,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    supplier.name,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'رمز المورد: ${supplier.code} • الهاتف: ${supplier.phone ?? 'غير موجود'}',
-                  ),
-                  const SizedBox(height: 12),
-                  const TabBar(
-                    tabs: [
-                      Tab(
-                        icon: Icon(Icons.account_balance_wallet_outlined),
-                        text: 'كشف الحساب',
-                      ),
-                      Tab(
-                        icon: Icon(Icons.receipt_long_outlined),
-                        text: 'الفواتير',
-                      ),
-                      Tab(
-                        icon: Icon(Icons.payments_outlined),
-                        text: 'المدفوعات',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: panelHeight,
-                    child: TabBarView(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: SupplierLedgerScreen(
-                            supplierId: supplier.id,
-                            embedded: true,
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: SupplierInvoicesScreen(
-                            supplierId: supplier.id,
-                            embedded: true,
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: SupplierPaymentsScreen(
-                            supplierId: supplier.id,
-                            embedded: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      );
 
   Widget _suppliersView() {
     final query = _supplierQuery.trim().toLowerCase();
@@ -325,7 +338,6 @@ class _SupplierPurchasingOperationsScreenState
                 supplier.code.toLowerCase().contains(query) ||
                 (supplier.phone ?? '').toLowerCase().contains(query))
             .toList();
-    final selectedSupplier = _selectedSupplierRecord();
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
@@ -346,7 +358,6 @@ class _SupplierPurchasingOperationsScreenState
           ]
         ]),
       ),
-      if (selectedSupplier != null) _selectedSupplierProfile(selectedSupplier),
       Expanded(
         child: _listOrEmpty(
           suppliers,
@@ -355,7 +366,7 @@ class _SupplierPurchasingOperationsScreenState
             title: Text(supplier.name),
             subtitle: Text(
                 '${supplier.code}  •  ${supplier.phone ?? 'لا يوجد هاتف'}'),
-            onTap: () => setState(() => _selectedSupplierId = supplier.id),
+            onTap: () => _openSupplierDetails(supplier),
             trailing: _selectedSupplierId == supplier.id
                 ? const Icon(Icons.check_circle, color: Colors.green)
                 : null,
