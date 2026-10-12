@@ -19,7 +19,7 @@ String _displayOfficialLabel(String value) {
 
   const translations = <String, String>{
     'printing': 'طباعة',
-    'cutting': 'قطع',
+    'cutting': 'قص',
     'sewing': 'خياطة',
     'embroidery': 'طباعة/تطريز',
     'washing': 'غسيل',

@@ -2,10 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../screens/inventory/bulk_fabric_entry_screen.dart';
 import '../screens/login_screen.dart';
-import '../screens/supplier_mobile/supplier_announcements_list_screen.dart';
-import '../screens/supplier_mobile/supplier_messages_list_screen.dart';
-import '../screens/supplier_mobile/supplier_mobile_home_screen.dart';
-import '../screens/supplier_mobile/supplier_notifications_list_screen.dart';
 import '../services/auth_state.dart';
 import '../services/theme_state.dart';
 import '../services/ui_scale_state.dart';
@@ -19,10 +15,6 @@ class AppRoutes {
   static const login = WorkspaceRouteIds.login;
   static const dashboard = WorkspaceRouteIds.dashboard;
   static const designSystemDemo = WorkspaceRouteIds.designSystemDemo;
-  static const supplierHome = WorkspaceRouteIds.supplierHome;
-  static const supplierMessages = WorkspaceRouteIds.supplierMessages;
-  static const supplierNotifications = WorkspaceRouteIds.supplierNotifications;
-  static const supplierAnnouncements = WorkspaceRouteIds.supplierAnnouncements;
   static const referralDashboard = WorkspaceRouteIds.referralDashboard;
   static const referralTree = WorkspaceRouteIds.referralTree;
   static const referralHistory = WorkspaceRouteIds.referralHistory;
@@ -32,14 +24,17 @@ class AppRoutes {
   static const loyaltyDashboard = WorkspaceRouteIds.loyaltyDashboard;
   static const loyaltyTransactions = WorkspaceRouteIds.loyaltyTransactions;
   static const loyaltyRedemption = WorkspaceRouteIds.loyaltyRedemption;
-  static const loyaltyRedemptionsHistory = WorkspaceRouteIds.loyaltyRedemptionsHistory;
+  static const loyaltyRedemptionsHistory =
+      WorkspaceRouteIds.loyaltyRedemptionsHistory;
   static const loyaltyRewards = WorkspaceRouteIds.loyaltyRewards;
   static const loyaltyRules = WorkspaceRouteIds.loyaltyRules;
   static const vipLevels = WorkspaceRouteIds.vipLevels;
   static const pointsSettings = WorkspaceRouteIds.pointsSettings;
   static const piecePointSettings = WorkspaceRouteIds.piecePointSettings;
-  static const importedProductPointSettings = WorkspaceRouteIds.importedProductPointSettings;
-  static const readyMadeProductPointSettings = WorkspaceRouteIds.readyMadeProductPointSettings;
+  static const importedProductPointSettings =
+      WorkspaceRouteIds.importedProductPointSettings;
+  static const readyMadeProductPointSettings =
+      WorkspaceRouteIds.readyMadeProductPointSettings;
 
   static List<WorkspaceRouteDefinition> get destinations => workspaceRegistry;
 
@@ -77,34 +72,6 @@ class AppRoutes {
       );
     }
 
-    if (settings.name == supplierHome) {
-      return MaterialPageRoute(
-        builder: (_) => SupplierMobileHomeScreen(auth: auth),
-        settings: settings,
-      );
-    }
-
-    if (settings.name == supplierMessages) {
-      return MaterialPageRoute(
-        builder: (_) => SupplierMessagesListScreen(auth: auth),
-        settings: settings,
-      );
-    }
-
-    if (settings.name == supplierNotifications) {
-      return MaterialPageRoute(
-        builder: (_) => SupplierNotificationsListScreen(auth: auth),
-        settings: settings,
-      );
-    }
-
-    if (settings.name == supplierAnnouncements) {
-      return MaterialPageRoute(
-        builder: (_) => SupplierAnnouncementsListScreen(auth: auth),
-        settings: settings,
-      );
-    }
-
     if (settings.name == '/structure/إدخال الأقمشة بالجملة' ||
         settings.name == '/inventory/bulk-entry') {
       return MaterialPageRoute(
@@ -126,9 +93,8 @@ class AppRoutes {
       );
     }
 
-    final definition = settings.name == null
-        ? null
-        : workspace.definitionFor(settings.name!);
+    final definition =
+        settings.name == null ? null : workspace.definitionFor(settings.name!);
     if (definition != null) {
       return MaterialPageRoute(
         builder: (_) => _WorkspaceRedirectScreen(
@@ -152,13 +118,15 @@ class AppRoutes {
 }
 
 class _WorkspaceRedirectScreen extends StatefulWidget {
-  const _WorkspaceRedirectScreen({required this.routeId, required this.workspace});
+  const _WorkspaceRedirectScreen(
+      {required this.routeId, required this.workspace});
 
   final String routeId;
   final WorkspaceController workspace;
 
   @override
-  State<_WorkspaceRedirectScreen> createState() => _WorkspaceRedirectScreenState();
+  State<_WorkspaceRedirectScreen> createState() =>
+      _WorkspaceRedirectScreenState();
 }
 
 class _WorkspaceRedirectScreenState extends State<_WorkspaceRedirectScreen> {
@@ -167,7 +135,8 @@ class _WorkspaceRedirectScreenState extends State<_WorkspaceRedirectScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.workspace.open(widget.routeId);
-      if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
+      if (mounted && Navigator.of(context).canPop())
+        Navigator.of(context).pop();
     });
   }
 
