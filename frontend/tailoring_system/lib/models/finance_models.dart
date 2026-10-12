@@ -116,10 +116,22 @@ class SupplierPayment {
 
 class SupplierInvoice {
 	const SupplierInvoice({required this.id, required this.supplierId, required this.purchaseOrderId, required this.invoiceNumber, required this.invoiceDate, required this.dueDate, required this.totalAmount, required this.amountPaid, required this.status, required this.notes, required this.createdAt});
-	factory SupplierInvoice.fromJson(JsonMap json) => SupplierInvoice(id: json['supplierInvoiceId'] as int, supplierId: json['supplierId'] as int, purchaseOrderId: json['purchaseOrderId'] as int, invoiceNumber: json['invoiceNumber'] as String, invoiceDate: _date(json, 'invoiceDate'), dueDate: _date(json, 'dueDate'), totalAmount: _amount(json, 'totalAmount'), amountPaid: _amount(json, 'amountPaid'), status: json['status'] as String, notes: json['notes'] as String?, createdAt: _date(json, 'createdAt'));
+	factory SupplierInvoice.fromJson(JsonMap json) => SupplierInvoice(
+		id: json['supplierInvoiceId'] as int? ?? 0,
+		supplierId: json['supplierId'] as int? ?? 0,
+		purchaseOrderId: (json['purchaseOrderId'] as num?)?.toInt(),
+		invoiceNumber: json['invoiceNumber'] as String? ?? '',
+		invoiceDate: _date(json, 'invoiceDate'),
+		dueDate: _date(json, 'dueDate'),
+		totalAmount: _amount(json, 'totalAmount'),
+		amountPaid: _amount(json, 'amountPaid'),
+		status: json['status'] as String? ?? '',
+		notes: json['notes'] as String?,
+		createdAt: _date(json, 'createdAt'),
+	);
 	final int id;
 	final int supplierId;
-	final int purchaseOrderId;
+	final int? purchaseOrderId;
 	final String invoiceNumber;
 	final DateTime invoiceDate;
 	final DateTime dueDate;

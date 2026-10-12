@@ -7,6 +7,7 @@ import '../core/authenticated_api_client.dart';
 import '../models/supplier_purchasing_models.dart';
 import '../repositories/supplier_purchasing_repository.dart';
 import '../services/auth_state.dart';
+import 'financial/finance_views.dart';
 
 class SupplierPurchasingOperationsScreen extends StatefulWidget {
   const SupplierPurchasingOperationsScreen({super.key, required this.auth});
@@ -38,6 +39,7 @@ class _SupplierPurchasingOperationsScreenState
   List<SupplierPurchasingReceipt> _receipts = const [];
   List<SupplierPurchasingCashAccount> _cashAccounts = const [];
   String _supplierQuery = '';
+  int? _selectedSupplierId;
 
   AuthUser? get _user => widget.auth.user;
   String get _normalizedRole =>
@@ -222,6 +224,97 @@ class _SupplierPurchasingOperationsScreenState
     );
   }
 
+  SupplierPurchasingSupplier? _selectedSupplierRecord() {
+    if (_selectedSupplierId == null) return null;
+    for (final supplier in _suppliers) {
+      if (supplier.id == _selectedSupplierId) return supplier;
+    }
+    return null;
+  }
+
+  Widget _selectedSupplierProfile(SupplierPurchasingSupplier supplier) =>
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final availableHeight = constraints.maxHeight > 0
+              ? constraints.maxHeight
+              : MediaQuery.sizeOf(context).height;
+          final panelHeight = (availableHeight * 0.58).clamp(260.0, 520.0);
+
+          return Container(
+            margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: DefaultTabController(
+              length: 3,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    supplier.name,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'رمز المورد: ${supplier.code} • الهاتف: ${supplier.phone ?? 'غير موجود'}',
+                  ),
+                  const SizedBox(height: 12),
+                  const TabBar(
+                    tabs: [
+                      Tab(
+                        icon: Icon(Icons.account_balance_wallet_outlined),
+                        text: 'كشف الحساب',
+                      ),
+                      Tab(
+                        icon: Icon(Icons.receipt_long_outlined),
+                        text: 'الفواتير',
+                      ),
+                      Tab(
+                        icon: Icon(Icons.payments_outlined),
+                        text: 'المدفوعات',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: panelHeight,
+                    child: TabBarView(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: SupplierLedgerScreen(
+                            supplierId: supplier.id,
+                            embedded: true,
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: SupplierInvoicesScreen(
+                            supplierId: supplier.id,
+                            embedded: true,
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: SupplierPaymentsScreen(
+                            supplierId: supplier.id,
+                            embedded: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+
   Widget _suppliersView() {
     final query = _supplierQuery.trim().toLowerCase();
     final suppliers = query.isEmpty
@@ -232,6 +325,7 @@ class _SupplierPurchasingOperationsScreenState
                 supplier.code.toLowerCase().contains(query) ||
                 (supplier.phone ?? '').toLowerCase().contains(query))
             .toList();
+    final selectedSupplier = _selectedSupplierRecord();
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
@@ -252,6 +346,7 @@ class _SupplierPurchasingOperationsScreenState
           ]
         ]),
       ),
+      if (selectedSupplier != null) _selectedSupplierProfile(selectedSupplier),
       Expanded(
         child: _listOrEmpty(
           suppliers,
@@ -260,6 +355,10 @@ class _SupplierPurchasingOperationsScreenState
             title: Text(supplier.name),
             subtitle: Text(
                 '${supplier.code}  •  ${supplier.phone ?? 'لا يوجد هاتف'}'),
+            onTap: () => setState(() => _selectedSupplierId = supplier.id),
+            trailing: _selectedSupplierId == supplier.id
+                ? const Icon(Icons.check_circle, color: Colors.green)
+                : null,
           ),
           empty: query.isEmpty
               ? 'لا يوجد موردون مسجلون.'
@@ -489,18 +588,23 @@ class _SupplierPurchasingOperationsScreenState
                 (double.tryParse(line.quantity.text.trim()) ?? 0) *
                     (double.tryParse(line.cost.text.trim()) ?? 0))
         .toStringAsFixed(6));
-    bool validLines() => lines.isNotEmpty && lines.every((line) {
-      final quantity = double.tryParse(line.quantity.text.trim()) ?? 0;
-      final cost = double.tryParse(line.cost.text.trim()) ?? 0;
-      final itemCount = double.tryParse(line.itemCount.text.trim()) ?? 0;
-      final hasName = line.description.text.trim().isNotEmpty;
-      final isImported = invoiceType == 'imported';
-      final productTypeOk = !isImported || line.productType.text.trim().isNotEmpty;
-      final unitOk = !isImported || _isApprovedImportedUnit(line.unitCode.text.trim());
-      if (!hasName || quantity <= 0 || cost <= 0) return false;
-      if (isImported) return productTypeOk && unitOk && itemCount > 0;
-      return line.rollCount.text.trim().isEmpty || (int.tryParse(line.rollCount.text.trim()) ?? 0) > 0;
-    });
+    bool validLines() =>
+        lines.isNotEmpty &&
+        lines.every((line) {
+          final quantity = double.tryParse(line.quantity.text.trim()) ?? 0;
+          final cost = double.tryParse(line.cost.text.trim()) ?? 0;
+          final itemCount = double.tryParse(line.itemCount.text.trim()) ?? 0;
+          final hasName = line.description.text.trim().isNotEmpty;
+          final isImported = invoiceType == 'imported';
+          final productTypeOk =
+              !isImported || line.productType.text.trim().isNotEmpty;
+          final unitOk =
+              !isImported || _isApprovedImportedUnit(line.unitCode.text.trim());
+          if (!hasName || quantity <= 0 || cost <= 0) return false;
+          if (isImported) return productTypeOk && unitOk && itemCount > 0;
+          return line.rollCount.text.trim().isEmpty ||
+              (int.tryParse(line.rollCount.text.trim()) ?? 0) > 0;
+        });
     final save = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -569,7 +673,9 @@ class _SupplierPurchasingOperationsScreenState
                           }
                           if (line.itemCount.text.trim().isEmpty) {
                             line.itemCount.text =
-                                line.quantity.text.trim().isEmpty ? '1' : line.quantity.text.trim();
+                                line.quantity.text.trim().isEmpty
+                                    ? '1'
+                                    : line.quantity.text.trim();
                           }
                         }
                       }
@@ -687,10 +793,13 @@ class _SupplierPurchasingOperationsScreenState
                               ? 'ياردة'
                               : invoiceType == 'tools'
                                   ? 'قطعة'
-                                  : (line.unitCode.text.trim().isNotEmpty ? line.unitCode.text.trim() : 'قطعة'),
+                                  : (line.unitCode.text.trim().isNotEmpty
+                                      ? line.unitCode.text.trim()
+                                      : 'قطعة'),
                           'quantity': double.parse(line.quantity.text.trim()),
                           'itemCount': double.parse(line.itemCount.text.trim()),
-                          'receivedItemCount': double.parse(line.itemCount.text.trim()),
+                          'receivedItemCount':
+                              double.parse(line.itemCount.text.trim()),
                           'unitCost': double.parse(line.cost.text.trim()),
                           'rollCount': line.rollCount.text.trim().isEmpty
                               ? null
@@ -889,7 +998,7 @@ class _SupplierPurchasingOperationsScreenState
 
           final containsDirectly =
               normalizedLineName.contains(normalizedTarget) ||
-              normalizedTarget.contains(normalizedLineName);
+                  normalizedTarget.contains(normalizedLineName);
           if (!containsDirectly) continue;
 
           final score = normalizedLineName.length + normalizedTarget.length;
@@ -972,7 +1081,8 @@ class _SupplierPurchasingOperationsScreenState
                             matchedLine?.productType,
                             matchedLine?.itemType ?? 'ImportedProduct');
                         final unitCode = matchedLine?.unitCode ?? 'غير محدد';
-                        final itemQuantity = matchedLine?.quantity ?? item.quantity;
+                        final itemQuantity =
+                            matchedLine?.quantity ?? item.quantity;
                         final unitCost = matchedLine?.unitCost ?? item.unitCost;
                         final lineTotal = itemQuantity * unitCost;
                         return Container(
@@ -981,14 +1091,16 @@ class _SupplierPurchasingOperationsScreenState
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: Theme.of(context).colorScheme.outlineVariant,
+                              color:
+                                  Theme.of(context).colorScheme.outlineVariant,
                             ),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Expanded(
                                       child: Text(item.itemName,
@@ -1003,8 +1115,11 @@ class _SupplierPurchasingOperationsScreenState
                               Text(
                                   'النوع: $productType • الوحدة: $unitCode • الكمية: $itemQuantity • تكلفة الوحدة: ${unitCost.toStringAsFixed(2)} • الإجمالي: ${lineTotal.toStringAsFixed(2)}'),
                               if (matchedLine?.supplierItemCode != null &&
-                                  matchedLine!.supplierItemCode!.trim().isNotEmpty)
-                                Text('كود المورد: ${matchedLine.supplierItemCode}'),
+                                  matchedLine!.supplierItemCode!
+                                      .trim()
+                                      .isNotEmpty)
+                                Text(
+                                    'كود المورد: ${matchedLine.supplierItemCode}'),
                             ],
                           ),
                         );
@@ -1546,24 +1661,35 @@ class _SupplierPurchasingOperationsScreenState
                                       if (!dialogContext.mounted) return;
                                       setDialogState(() {
                                         invoiceLines = loaded
-                                            .where(
-                                                (line) => line.status == 'Posted')
+                                            .where((line) =>
+                                                line.status == 'Posted')
                                             .toList();
                                         lines.clear();
-                                        for (final invoiceLine in invoiceLines) {
+                                        for (final invoiceLine
+                                            in invoiceLines) {
                                           final draft = _ReceiptDraftLine();
                                           draft.invoiceLine = invoiceLine;
-                                          draft.description.text = invoiceLine.itemName;
-                                          draft.productType.text =
-                                              invoiceLine.productType?.trim().isNotEmpty == true
-                                                  ? invoiceLine.productType!
-                                                  : invoiceLine.itemType;
-                                          draft.unitCode.text = invoiceLine.unitCode ??
-                                              _defaultUnitForType(invoiceLine.itemType);
-                                          draft.quantity.text = invoiceLine.quantity.toString();
-                                          draft.cost.text = invoiceLine.unitCost.toString();
+                                          draft.description.text =
+                                              invoiceLine.itemName;
+                                          draft.productType.text = invoiceLine
+                                                      .productType
+                                                      ?.trim()
+                                                      .isNotEmpty ==
+                                                  true
+                                              ? invoiceLine.productType!
+                                              : invoiceLine.itemType;
+                                          draft.unitCode.text =
+                                              invoiceLine.unitCode ??
+                                                  _defaultUnitForType(
+                                                      invoiceLine.itemType);
+                                          draft.quantity.text =
+                                              invoiceLine.quantity.toString();
+                                          draft.cost.text =
+                                              invoiceLine.unitCost.toString();
                                           draft.itemCount.text =
-                                              (invoiceLine.itemCount ?? invoiceLine.quantity).toString();
+                                              (invoiceLine.itemCount ??
+                                                      invoiceLine.quantity)
+                                                  .toString();
                                           lines.add(draft);
                                         }
                                       });
@@ -1644,8 +1770,13 @@ class _SupplierPurchasingOperationsScreenState
                                             (double.tryParse(line.cost.text) ??
                                                     0) >
                                                 0 &&
-                                            ((line.itemType ?? '') != 'Fabric' ||
-                                                (int.tryParse(line.rollCount.text.trim()) ?? 0) > 0))) {
+                                            ((line.itemType ?? '') !=
+                                                    'Fabric' ||
+                                                (int.tryParse(line
+                                                            .rollCount.text
+                                                            .trim()) ??
+                                                        0) >
+                                                    0))) {
                                       Navigator.pop(dialogContext, true);
                                     }
                                   }),
@@ -1668,7 +1799,10 @@ class _SupplierPurchasingOperationsScreenState
                                     (double.tryParse(line.cost.text) ?? 0) <=
                                         0 ||
                                     ((line.itemType ?? '') == 'Fabric' &&
-                                        (int.tryParse(line.rollCount.text.trim()) ?? 0) <= 0))) {
+                                        (int.tryParse(line.rollCount.text
+                                                    .trim()) ??
+                                                0) <=
+                                            0))) {
                               _showMessage(
                                   'راجع البنود والربط بالفاتورة والكميات والتكاليف وعدد اللفات للقماش.');
                               return;
@@ -1702,16 +1836,31 @@ class _SupplierPurchasingOperationsScreenState
                     .map((line) => {
                           'inventoryItemId': null,
                           'itemDescription': line.description.text.trim(),
-                          'itemType': line.itemType ?? (line.invoiceLine?.itemType ?? 'ImportedProduct'),
+                          'itemType': line.itemType ??
+                              (line.invoiceLine?.itemType ?? 'ImportedProduct'),
                           'productType': line.productType.text.trim().isNotEmpty
                               ? line.productType.text.trim()
                               : line.invoiceLine?.productType,
                           'unitCode': line.unitCode.text.trim().isNotEmpty
                               ? line.unitCode.text.trim()
-                              : (line.invoiceLine?.unitCode ?? _defaultUnitForType(line.itemType ?? line.invoiceLine?.itemType ?? 'ImportedProduct')),
+                              : (line.invoiceLine?.unitCode ??
+                                  _defaultUnitForType(line.itemType ??
+                                      line.invoiceLine?.itemType ??
+                                      'ImportedProduct')),
                           'quantity': double.parse(line.quantity.text),
-                          'itemCount': double.parse(line.itemCount.text.trim().isNotEmpty ? line.itemCount.text.trim() : (line.invoiceLine?.itemCount ?? line.quantity.text).toString()),
-                          'receivedItemCount': double.parse(line.itemCount.text.trim().isNotEmpty ? line.itemCount.text.trim() : (line.invoiceLine?.receivedItemCount ?? line.invoiceLine?.itemCount ?? line.quantity.text).toString()),
+                          'itemCount': double.parse(
+                              line.itemCount.text.trim().isNotEmpty
+                                  ? line.itemCount.text.trim()
+                                  : (line.invoiceLine?.itemCount ??
+                                          line.quantity.text)
+                                      .toString()),
+                          'receivedItemCount': double.parse(
+                              line.itemCount.text.trim().isNotEmpty
+                                  ? line.itemCount.text.trim()
+                                  : (line.invoiceLine?.receivedItemCount ??
+                                          line.invoiceLine?.itemCount ??
+                                          line.quantity.text)
+                                      .toString()),
                           'unitCost': double.parse(line.cost.text),
                           'supplierInvoiceLineId': line.invoiceLine?.id,
                           'rollCount': line.rollCount.text.trim().isEmpty
@@ -1897,10 +2046,12 @@ class _SupplierPurchasingOperationsScreenState
                   if (value != null) {
                     line.description.text = value.itemName;
                     line.productType.text = value.productType ?? value.itemType;
-                    line.unitCode.text = value.unitCode ?? _defaultUnitForType(value.itemType);
+                    line.unitCode.text =
+                        value.unitCode ?? _defaultUnitForType(value.itemType);
                     line.quantity.text = value.quantity.toString();
                     line.cost.text = value.unitCost.toString();
-                    line.itemCount.text = (value.itemCount ?? value.quantity).toString();
+                    line.itemCount.text =
+                        (value.itemCount ?? value.quantity).toString();
                     line.rollCount.text = value.rollCount?.toString() ?? '';
                   }
                   onChanged();
@@ -1922,17 +2073,17 @@ class _SupplierPurchasingOperationsScreenState
             Row(children: [
               Expanded(
                   child: TextFormField(
-                    controller: line.productType,
-                    decoration: const InputDecoration(labelText: 'نوع المنتج'),
-                    onChanged: (_) => onChanged(),
-                  )),
+                controller: line.productType,
+                decoration: const InputDecoration(labelText: 'نوع المنتج'),
+                onChanged: (_) => onChanged(),
+              )),
               const SizedBox(width: 10),
               Expanded(
                   child: TextFormField(
-                    controller: line.unitCode,
-                    decoration: const InputDecoration(labelText: 'الوحدة'),
-                    onChanged: (_) => onChanged(),
-                  )),
+                controller: line.unitCode,
+                decoration: const InputDecoration(labelText: 'الوحدة'),
+                onChanged: (_) => onChanged(),
+              )),
             ]),
             const SizedBox(height: 10),
             Row(children: [
@@ -1948,25 +2099,29 @@ class _SupplierPurchasingOperationsScreenState
             Row(children: [
               Expanded(
                   child: TextFormField(
-                    controller: line.itemCount,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'العدد المستلم'),
-                    onChanged: (_) => onChanged(),
-                    validator: (value) =>
-                        (double.tryParse(value?.trim() ?? '') ?? 0) <= 0 ? 'أدخل عددًا صحيحًا.' : null,
-                  )),
+                controller: line.itemCount,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'العدد المستلم'),
+                onChanged: (_) => onChanged(),
+                validator: (value) =>
+                    (double.tryParse(value?.trim() ?? '') ?? 0) <= 0
+                        ? 'أدخل عددًا صحيحًا.'
+                        : null,
+              )),
               const SizedBox(width: 10),
               Expanded(
                   child: TextFormField(
-                    controller: line.rollCount,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'عدد اللفات (للقماش)'),
-                    validator: (value) {
-                      if ((line.itemType ?? '') != 'Fabric') return null;
-                      final parsed = int.tryParse(value?.trim() ?? '') ?? 0;
-                      return parsed > 0 ? null : 'أدخل عدد لفات صحيحًا.';
-                    },
-                  )),
+                controller: line.rollCount,
+                keyboardType: TextInputType.number,
+                decoration:
+                    const InputDecoration(labelText: 'عدد اللفات (للقماش)'),
+                validator: (value) {
+                  if ((line.itemType ?? '') != 'Fabric') return null;
+                  final parsed = int.tryParse(value?.trim() ?? '') ?? 0;
+                  return parsed > 0 ? null : 'أدخل عدد لفات صحيحًا.';
+                },
+              )),
             ]),
             _field(line.rollCode, 'رمز اللفة (عند استلام القماش)'),
           ]),
@@ -2003,7 +2158,8 @@ class _SupplierPurchasingOperationsScreenState
             TextFormField(
               controller: line.supplierItemCode,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(labelText: 'كود المورد (اختياري)'),
+              decoration:
+                  const InputDecoration(labelText: 'كود المورد (اختياري)'),
               onChanged: (_) => onChanged(),
             ),
             const SizedBox(height: 10),
@@ -2057,7 +2213,7 @@ class _SupplierPurchasingOperationsScreenState
                   controller: line.description,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    labelText: isTools ? 'اسم المنتج' : 'اسم المنتج'),
+                      labelText: isTools ? 'اسم المنتج' : 'اسم المنتج'),
                   onChanged: (_) => onChanged(),
                   validator: (value) =>
                       value?.trim().isEmpty ?? true ? 'أدخل اسم المنتج.' : null,
@@ -2069,7 +2225,7 @@ class _SupplierPurchasingOperationsScreenState
                   controller: line.productType,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    labelText: isTools ? 'نوع الأداة' : 'نوع المنتج'),
+                      labelText: isTools ? 'نوع الأداة' : 'نوع المنتج'),
                   onChanged: (_) => onChanged(),
                   validator: (value) =>
                       (value?.trim().isEmpty ?? true) ? 'الحقل مطلوب.' : null,
@@ -2117,7 +2273,8 @@ class _SupplierPurchasingOperationsScreenState
             const SizedBox(height: 10),
             TextFormField(
               controller: line.itemCount,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(labelText: 'العدد'),
               onChanged: (_) => onChanged(),
@@ -2132,9 +2289,11 @@ class _SupplierPurchasingOperationsScreenState
     );
   }
 
-  bool _isApprovedImportedUnit(String value) => const {'حبة', 'قطعة', 'متر', 'ياردة'}.contains(value.trim());
+  bool _isApprovedImportedUnit(String value) =>
+      const {'حبة', 'قطعة', 'متر', 'ياردة'}.contains(value.trim());
 
-  String _defaultUnitForType(String? itemType) => switch ((itemType ?? '').trim()) {
+  String _defaultUnitForType(String? itemType) =>
+      switch ((itemType ?? '').trim()) {
         'Fabric' => 'ياردة',
         'UsedTool' => 'قطعة',
         _ => 'حبة',
@@ -2142,7 +2301,8 @@ class _SupplierPurchasingOperationsScreenState
 
   String _resolvedProductType(String? productType, String fallbackType) {
     final raw = productType?.trim();
-    if (raw != null && raw.isNotEmpty &&
+    if (raw != null &&
+        raw.isNotEmpty &&
         raw != 'Fabric' &&
         raw != 'UsedTool' &&
         raw != 'ImportedProduct') {
