@@ -5,6 +5,14 @@ applyTo: "frontend/tailoring_system/lib/**/*.dart"
 
 # Flutter Navigation Policies
 
+## Mandatory status
+
+This instruction is MANDATORY 100% for all current and future navigable screens where central navigation applies. It does not create a separate routing policy; it enforces the project-approved navigation behavior and the designated source-of-truth rules.
+
+## Source of truth
+
+This file is implementation guidance only. It does not replace the specialized design and UI policy documents. The governing principle is that navigation behavior must remain consistent with the central project policy set and the specialized screen rules.
+
 Every new navigable Flutter screen must follow both project policies below.
 
 ## Mouse Navigation Policy

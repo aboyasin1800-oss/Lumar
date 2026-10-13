@@ -10,7 +10,7 @@ import '../repositories/supplier_purchasing_repository.dart';
 import '../services/auth_state.dart';
 import 'financial/finance_views.dart';
 
-class _SupplierDetailsScreen extends StatelessWidget {
+class _SupplierDetailsScreen extends StatefulWidget {
   const _SupplierDetailsScreen({
     required this.supplier,
   });
@@ -18,90 +18,123 @@ class _SupplierDetailsScreen extends StatelessWidget {
   final SupplierPurchasingSupplier supplier;
 
   @override
+  State<_SupplierDetailsScreen> createState() => _SupplierDetailsScreenState();
+}
+
+class _SupplierDetailsScreenState extends State<_SupplierDetailsScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_handleTabChanged);
+  }
+
+  @override
+  void dispose() {
+    _tabController.removeListener(_handleTabChanged);
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _handleTabChanged() {
+    if (!_tabController.indexIsChanging) {
+      setState(() {});
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final selectedIndex = _tabController.index;
     return Scaffold(
       appBar: AppBar(
-        title: Text(supplier.name),
+        title: Text(widget.supplier.name),
       ),
       body: SafeArea(
-        child: DefaultTabController(
-          length: 3,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        supplier.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text('رمز المورد: ${supplier.code}'),
-                      if (supplier.phone != null && supplier.phone!.trim().isNotEmpty)
-                        Text('الهاتف: ${supplier.phone!}'),
-                      if (supplier.email != null && supplier.email!.trim().isNotEmpty)
-                        Text('البريد: ${supplier.email!}'),
-                    ],
-                  ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 ),
-              ),
-              const TabBar(
-                tabs: [
-                  Tab(
-                    icon: Icon(Icons.account_balance_wallet_outlined),
-                    text: 'كشف الحساب',
-                  ),
-                  Tab(
-                    icon: Icon(Icons.receipt_long_outlined),
-                    text: 'الفواتير',
-                  ),
-                  Tab(
-                    icon: Icon(Icons.payments_outlined),
-                    text: 'المدفوعات',
-                  ),
-                ],
-              ),
-              Expanded(
-                child: TabBarView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: SupplierLedgerScreen(
-                        supplierId: supplier.id,
-                        embedded: true,
+                    Text(
+                      widget.supplier.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: SupplierInvoicesScreen(
-                        supplierId: supplier.id,
-                        embedded: true,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: SupplierPaymentsScreen(
-                        supplierId: supplier.id,
-                        embedded: true,
-                      ),
-                    ),
+                    const SizedBox(height: 6),
+                    Text('رمز المورد: ${widget.supplier.code}'),
+                    if (widget.supplier.phone != null &&
+                        widget.supplier.phone!.trim().isNotEmpty)
+                      Text('الهاتف: ${widget.supplier.phone!}'),
+                    if (widget.supplier.email != null &&
+                        widget.supplier.email!.trim().isNotEmpty)
+                      Text('البريد: ${widget.supplier.email!}'),
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+            TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(
+                  icon: Icon(Icons.account_balance_wallet_outlined),
+                  text: 'كشف الحساب',
+                ),
+                Tab(
+                  icon: Icon(Icons.receipt_long_outlined),
+                  text: 'الفواتير',
+                ),
+                Tab(
+                  icon: Icon(Icons.payments_outlined),
+                  text: 'المدفوعات',
+                ),
+              ],
+            ),
+            Expanded(
+              child: IndexedStack(
+                index: selectedIndex,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: SupplierLedgerScreen(
+                      supplierId: widget.supplier.id,
+                      embedded: true,
+                      autoLoad: selectedIndex == 0,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: SupplierInvoicesScreen(
+                      supplierId: widget.supplier.id,
+                      embedded: true,
+                      autoLoad: selectedIndex == 1,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: SupplierPaymentsScreen(
+                      supplierId: widget.supplier.id,
+                      embedded: true,
+                      autoLoad: selectedIndex == 2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

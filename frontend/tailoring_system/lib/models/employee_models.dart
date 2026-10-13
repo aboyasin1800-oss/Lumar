@@ -11,7 +11,8 @@ class EmployeePieceRateRow {
   final String stage;
   final String rateText;
 
-  EmployeePieceRateRow copyWith({String? pieceType, String? stage, String? rateText}) =>
+  EmployeePieceRateRow copyWith(
+          {String? pieceType, String? stage, String? rateText}) =>
       EmployeePieceRateRow(
         pieceType: pieceType ?? this.pieceType,
         stage: stage ?? this.stage,
@@ -54,7 +55,8 @@ class EmployeeWritePayload {
   final List<EmployeePieceRateRow> pieceRates;
 
   Map<String, dynamic> toJson() => {
-        'employeeCode': employeeCode.trim().isEmpty ? null : employeeCode.trim(),
+        'employeeCode':
+            employeeCode.trim().isEmpty ? null : employeeCode.trim(),
         'fullName': fullName.trim(),
         'departmentId': departmentId,
         'basicSalary': basicSalary,
@@ -68,13 +70,58 @@ class EmployeeWritePayload {
       };
 }
 
-DateTime _date(EmployeeJson json, String key) =>
-    DateTime.parse(json[key] as String);
-DateTime? _nullableDate(EmployeeJson json, String key) =>
-    json[key] == null ? null : DateTime.parse(json[key] as String);
-double _amount(EmployeeJson json, String key) => (json[key] as num).toDouble();
-double? _nullableAmount(EmployeeJson json, String key) =>
-    (json[key] as num?)?.toDouble();
+String _stringValue(EmployeeJson json, String key, {String fallback = ''}) {
+  final value = json[key];
+  if (value == null) return fallback;
+  final text = value.toString().trim();
+  return text.isEmpty ? fallback : text;
+}
+
+String _firstNonEmpty(EmployeeJson json, List<String> keys,
+    {String fallback = ''}) {
+  for (final key in keys) {
+    final text = _stringValue(json, key);
+    if (text.isNotEmpty) return text;
+  }
+  return fallback;
+}
+
+DateTime _date(EmployeeJson json, String key, {DateTime? fallback}) {
+  final raw = json[key];
+  if (raw == null || raw.toString().trim().isEmpty) {
+    return fallback ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }
+  return DateTime.tryParse(raw.toString()) ??
+      (fallback ?? DateTime.fromMillisecondsSinceEpoch(0));
+}
+
+DateTime? _nullableDate(EmployeeJson json, String key) {
+  final raw = json[key];
+  if (raw == null || raw.toString().trim().isEmpty) return null;
+  return DateTime.tryParse(raw.toString());
+}
+
+double _amount(EmployeeJson json, String key, {double fallback = 0}) {
+  final raw = json[key];
+  if (raw == null) return fallback;
+  if (raw is num) return raw.toDouble();
+  return double.tryParse(raw.toString()) ?? fallback;
+}
+
+double? _nullableAmount(EmployeeJson json, String key) {
+  final raw = json[key];
+  if (raw == null) return null;
+  if (raw is num) return raw.toDouble();
+  return double.tryParse(raw.toString());
+}
+
+int _intValue(EmployeeJson json, String key, {int fallback = 0}) {
+  final raw = json[key];
+  if (raw == null) return fallback;
+  if (raw is int) return raw;
+  if (raw is num) return raw.toInt();
+  return int.tryParse(raw.toString()) ?? fallback;
+}
 
 class EmployeeSummary {
   const EmployeeSummary(
@@ -88,14 +135,21 @@ class EmployeeSummary {
       required this.departmentId});
 
   factory EmployeeSummary.fromJson(EmployeeJson json) => EmployeeSummary(
-        id: json['employeeId'] as int,
-        code: json['employeeCode'] as String,
-        name: json['employeeName'] as String,
-        jobTitle: json['jobTitle'] as String?,
-        phoneNumber: json['phoneNumber'] as String?,
-        isActive: json['isActive'] as bool?,
-        status: json['status'] as String,
-        departmentId: json['departmentId'] as int,
+        id: _intValue(json, 'employeeId', fallback: _intValue(json, 'id')),
+        code:
+            _firstNonEmpty(json, ['employeeCode', 'code'], fallback: 'UNKNOWN'),
+        name: _firstNonEmpty(json, ['employeeName', 'name', 'fullName'],
+            fallback: 'UNKNOWN'),
+        jobTitle: _stringValue(json, 'jobTitle').isEmpty
+            ? null
+            : _stringValue(json, 'jobTitle'),
+        phoneNumber: _stringValue(json, 'phoneNumber').isEmpty
+            ? null
+            : _stringValue(json, 'phoneNumber'),
+        isActive: json['isActive'] is bool ? json['isActive'] as bool : null,
+        status: _firstNonEmpty(json, ['status'], fallback: 'Active'),
+        departmentId: _intValue(json, 'departmentId',
+            fallback: _intValue(json, 'department_id')),
       );
 
   final int id;
@@ -143,40 +197,67 @@ class EmployeeDetails {
         .whereType<Map<String, dynamic>>()
         .map(
           (entry) => EmployeePieceRateRow(
-            pieceType: (entry['pieceType'] ?? entry['piece_type'] ?? '').toString(),
+            pieceType:
+                (entry['pieceType'] ?? entry['piece_type'] ?? '').toString(),
             stage: (entry['stage'] ?? entry['stageName'] ?? '').toString(),
-            rateText: (entry['rate'] ?? entry['wageRate'] ?? entry['pieceRate'] ?? '')
-                .toString(),
+            rateText:
+                (entry['rate'] ?? entry['wageRate'] ?? entry['pieceRate'] ?? '')
+                    .toString(),
           ),
         )
         .toList();
   }
 
   factory EmployeeDetails.fromJson(EmployeeJson json) => EmployeeDetails(
-        id: json['employeeId'] as int,
-        code: json['employeeCode'] as String,
-        name: json['employeeName'] as String,
-        fullName: json['fullName'] as String,
-        jobTitle: json['jobTitle'] as String?,
-        scannerCode: json['scannerCode'] as String?,
-        phoneNumber: json['phoneNumber'] as String?,
+        id: _intValue(json, 'employeeId', fallback: _intValue(json, 'id')),
+        code:
+            _firstNonEmpty(json, ['employeeCode', 'code'], fallback: 'UNKNOWN'),
+        name: _firstNonEmpty(json, ['employeeName', 'name', 'fullName'],
+            fallback: 'UNKNOWN'),
+        fullName: _firstNonEmpty(json, ['fullName', 'employeeName', 'name'],
+            fallback: _firstNonEmpty(json, ['employeeName', 'name'],
+                fallback: 'UNKNOWN')),
+        jobTitle: _stringValue(json, 'jobTitle').isEmpty
+            ? null
+            : _stringValue(json, 'jobTitle'),
+        scannerCode: _stringValue(json, 'scannerCode').isEmpty
+            ? null
+            : _stringValue(json, 'scannerCode'),
+        phoneNumber: _stringValue(json, 'phoneNumber').isEmpty
+            ? null
+            : _stringValue(json, 'phoneNumber'),
         baseSalary: _nullableAmount(json, 'baseSalary'),
-        notes: json['notes'] as String?,
-        isActive: json['isActive'] as bool?,
-        salaryType: json['salaryType'] as String?,
+        notes: _stringValue(json, 'notes').isEmpty
+            ? null
+            : _stringValue(json, 'notes'),
+        isActive: json['isActive'] is bool ? json['isActive'] as bool : null,
+        salaryType: _stringValue(json, 'salaryType').isEmpty
+            ? null
+            : _stringValue(json, 'salaryType'),
         fixedSalary: _nullableAmount(json, 'fixedSalary'),
-        nationalId: json['nationalId'] as String?,
-        phone: json['phone'] as String?,
-        email: json['email'] as String?,
-        address: json['address'] as String?,
-        hireDate: _date(json, 'hireDate'),
+        nationalId: _stringValue(json, 'nationalId').isEmpty
+            ? null
+            : _stringValue(json, 'nationalId'),
+        phone: _stringValue(json, 'phone').isEmpty
+            ? null
+            : _stringValue(json, 'phone'),
+        email: _stringValue(json, 'email').isEmpty
+            ? null
+            : _stringValue(json, 'email'),
+        address: _stringValue(json, 'address').isEmpty
+            ? null
+            : _stringValue(json, 'address'),
+        hireDate: _date(json, 'hireDate',
+            fallback: DateTime.fromMillisecondsSinceEpoch(0)),
         terminationDate: _nullableDate(json, 'terminationDate'),
-        status: json['status'] as String,
-        departmentId: json['departmentId'] as int,
-        basicSalary: _amount(json, 'basicSalary'),
-        pieceWageRate: _amount(json, 'pieceWageRate'),
-        overtimeHourlyRate: _amount(json, 'overtimeHourlyRate'),
-        createdAt: _date(json, 'createdAt'),
+        status: _firstNonEmpty(json, ['status'], fallback: 'Active'),
+        departmentId: _intValue(json, 'departmentId',
+            fallback: _intValue(json, 'department_id')),
+        basicSalary: _amount(json, 'basicSalary', fallback: 0),
+        pieceWageRate: _amount(json, 'pieceWageRate', fallback: 0),
+        overtimeHourlyRate: _amount(json, 'overtimeHourlyRate', fallback: 0),
+        createdAt: _date(json, 'createdAt',
+            fallback: DateTime.fromMillisecondsSinceEpoch(0)),
         updatedAt: _nullableDate(json, 'updatedAt'),
         pieceRates: _parsePieceRates(json['pieceRates']),
       );

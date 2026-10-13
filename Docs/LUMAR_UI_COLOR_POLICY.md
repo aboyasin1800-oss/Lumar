@@ -1,5 +1,13 @@
 # LUMAR UI COLOR POLICY v1.0
 
+## Mandatory status
+
+This policy is MANDATORY 100% for all LUMAR screens and for any screen using the central LUMAR visual identity. No screen may create a separate color system outside the authorized LUMAR palette and central design policy.
+
+## Source of truth
+
+This file is the authoritative policy for colors, palette, contrast, and semantic color usage in LUMAR ERP. Other files must not duplicate this rule set in full; they may reference it when needed for implementation details.
+
 ## الهدف
 
 تحديد سياسة إلزامية لاستخدام الألوان في جميع الشاشات الجديدة، مع ضمان:

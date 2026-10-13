@@ -1,5 +1,13 @@
 # LUMAR MATERIAL 3 DESIGN POLICY v2.1
 
+## Mandatory status
+
+This policy is MANDATORY 100% for all LUMAR screens and UI surfaces that use the central design system, including responsive behavior, Material 3 standards, typography, spacing, layout, and visual hierarchy.
+
+## Source of truth
+
+This document is the authoritative source for Material 3, central design system, typography, spacing, responsiveness, and visual foundation rules. Other policy files must not duplicate this rule set; they should reference it instead.
+
 ## الحالة
 
 - معتمدة

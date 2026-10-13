@@ -1209,10 +1209,15 @@ class _SelectedCustomerPanel extends StatelessWidget {
 }
 
 class SupplierLedgerScreen extends StatelessWidget {
-  const SupplierLedgerScreen(
-      {super.key, this.supplierId, this.embedded = false});
+  const SupplierLedgerScreen({
+    super.key,
+    this.supplierId,
+    this.embedded = false,
+    this.autoLoad = true,
+  });
   final int? supplierId;
   final bool embedded;
+  final bool autoLoad;
   @override
   Widget build(BuildContext context) {
     final load = supplierId == null
@@ -1225,7 +1230,7 @@ class SupplierLedgerScreen extends StatelessWidget {
             : 'كشف حساب المورد #$supplierId',
         partyLabel: 'رقم المورد',
         embedded: embedded,
-        autoLoad: supplierId != null,
+        autoLoad: autoLoad && supplierId != null,
         initialValue: supplierId?.toString(),
         load: load,
         row: (item) => [
@@ -1263,29 +1268,50 @@ class _LedgerActions extends StatelessWidget {
 }
 
 class SupplierInvoicesScreen extends StatefulWidget {
-  const SupplierInvoicesScreen(
-      {super.key, this.supplierId, this.embedded = false});
+  const SupplierInvoicesScreen({
+    super.key,
+    this.supplierId,
+    this.embedded = false,
+    this.autoLoad = true,
+  });
   final int? supplierId;
   final bool embedded;
+  final bool autoLoad;
   @override
   State<SupplierInvoicesScreen> createState() => _SupplierInvoicesScreenState();
 }
 
 class _SupplierInvoicesScreenState extends State<SupplierInvoicesScreen> {
   final _search = TextEditingController();
-  late Future<List<SupplierInvoice>> _future;
+  Future<List<SupplierInvoice>>? _future;
+  bool _hasLoadedOnce = false;
 
   @override
   void initState() {
     super.initState();
-    _future = _load();
+    if (widget.autoLoad) {
+      _future = _load();
+      _hasLoadedOnce = true;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant SupplierInvoicesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.autoLoad && !_hasLoadedOnce && _future == null) {
+      _future = _load();
+      _hasLoadedOnce = true;
+    }
   }
 
   Future<List<SupplierInvoice>> _load() => widget.supplierId == null
       ? FinanceRepository().getSupplierInvoices()
       : FinanceRepository().getSupplierInvoicesBySupplierId(widget.supplierId!);
 
-  void _reload() => setState(() => _future = _load());
+  void _reload() => setState(() {
+        _future = _load();
+        _hasLoadedOnce = true;
+      });
 
   @override
   void dispose() {
@@ -1314,54 +1340,80 @@ class _SupplierInvoicesScreenState extends State<SupplierInvoicesScreen> {
           ),
           const SizedBox(height: 10),
           Expanded(
-            child: FutureBuilder<List<SupplierInvoice>>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) return _ErrorPanel(onRetry: _reload);
+            child: _future == null && !widget.autoLoad
+                ? const Center(
+                    child: SizedBox(
+                      width: 180,
+                      child: Card(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text('جارٍ تجهيز تبويب الفواتير...'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : FutureBuilder<List<SupplierInvoice>>(
+                    future: _future,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (snapshot.hasError) return _ErrorPanel(onRetry: _reload);
 
-                final rows = snapshot.data!
-                    .where((item) =>
-                        query.isEmpty ||
-                        item.invoiceNumber.toLowerCase().contains(query))
-                    .map((item) => [
-                          '${item.id}',
-                          item.invoiceNumber,
-                          '${item.supplierId}',
-                          '${item.purchaseOrderId ?? '-'}',
-                          _date.format(item.invoiceDate),
-                          _date.format(item.dueDate),
-                          _money.format(item.totalAmount),
-                          _money.format(item.amountPaid),
-                          item.status,
-                          _text(item.notes),
-                          _date.format(item.createdAt),
-                        ])
-                    .toList();
+                      final rows = snapshot.data!
+                          .where((item) =>
+                              query.isEmpty ||
+                              item.invoiceNumber.toLowerCase().contains(query))
+                          .map((item) => [
+                                '${item.id}',
+                                item.invoiceNumber,
+                                '${item.supplierId}',
+                                '${item.purchaseOrderId ?? '-'}',
+                                _date.format(item.invoiceDate),
+                                _date.format(item.dueDate),
+                                _money.format(item.totalAmount),
+                                _money.format(item.amountPaid),
+                                item.status,
+                                _text(item.notes),
+                                _date.format(item.createdAt),
+                              ])
+                          .toList();
 
-                return _Table(
-                  columns: const [
-                    'المعرف',
-                    'رقم الفاتورة',
-                    'المورد',
-                    'أمر الشراء',
-                    'التاريخ',
-                    'الاستحقاق',
-                    'الإجمالي',
-                    'المدفوع',
-                    'الحالة',
-                    'ملاحظات',
-                    'تاريخ الإنشاء',
-                  ],
-                  rows: rows,
-                  empty: query.isEmpty
-                      ? 'لا توجد فواتير متاحة.'
-                      : 'لا توجد فواتير مطابقة لرقم الفاتورة.',
-                );
-              },
-            ),
+                      return _Table(
+                        columns: const [
+                          'المعرف',
+                          'رقم الفاتورة',
+                          'المورد',
+                          'أمر الشراء',
+                          'التاريخ',
+                          'الاستحقاق',
+                          'الإجمالي',
+                          'المدفوع',
+                          'الحالة',
+                          'ملاحظات',
+                          'تاريخ الإنشاء',
+                        ],
+                        rows: rows,
+                        empty: query.isEmpty
+                            ? 'لا توجد فواتير متاحة.'
+                            : 'لا توجد فواتير مطابقة لرقم الفاتورة.',
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -1370,29 +1422,50 @@ class _SupplierInvoicesScreenState extends State<SupplierInvoicesScreen> {
 }
 
 class SupplierPaymentsScreen extends StatefulWidget {
-  const SupplierPaymentsScreen(
-      {super.key, this.supplierId, this.embedded = false});
+  const SupplierPaymentsScreen({
+    super.key,
+    this.supplierId,
+    this.embedded = false,
+    this.autoLoad = true,
+  });
   final int? supplierId;
   final bool embedded;
+  final bool autoLoad;
   @override
   State<SupplierPaymentsScreen> createState() => _SupplierPaymentsScreenState();
 }
 
 class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen> {
   final _search = TextEditingController();
-  late Future<List<SupplierPayment>> _future;
+  Future<List<SupplierPayment>>? _future;
+  bool _hasLoadedOnce = false;
 
   @override
   void initState() {
     super.initState();
-    _future = _load();
+    if (widget.autoLoad) {
+      _future = _load();
+      _hasLoadedOnce = true;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant SupplierPaymentsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.autoLoad && !_hasLoadedOnce && _future == null) {
+      _future = _load();
+      _hasLoadedOnce = true;
+    }
   }
 
   Future<List<SupplierPayment>> _load() => widget.supplierId == null
       ? FinanceRepository().getSupplierPayments()
       : FinanceRepository().getSupplierPaymentsBySupplierId(widget.supplierId!);
 
-  void _reload() => setState(() => _future = _load());
+  void _reload() => setState(() {
+        _future = _load();
+        _hasLoadedOnce = true;
+      });
 
   @override
   void dispose() {
@@ -1421,53 +1494,81 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen> {
           ),
           const SizedBox(height: 10),
           Expanded(
-            child: FutureBuilder<List<SupplierPayment>>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) return _ErrorPanel(onRetry: _reload);
+            child: _future == null && !widget.autoLoad
+                ? const Center(
+                    child: SizedBox(
+                      width: 180,
+                      child: Card(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text('جارٍ تجهيز تبويب المدفوعات...'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : FutureBuilder<List<SupplierPayment>>(
+                    future: _future,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (snapshot.hasError) return _ErrorPanel(onRetry: _reload);
 
-                final rows = snapshot.data!
-                    .where((item) =>
-                        query.isEmpty ||
-                        item.paymentNumber.toLowerCase().contains(query) ||
-                        (item.referenceNumber ?? '').toLowerCase().contains(query))
-                    .map((item) => [
-                          '${item.id}',
-                          item.paymentNumber,
-                          '${item.supplierId}',
-                          _date.format(item.paymentDate),
-                          _money.format(item.amount),
-                          _text(item.paymentMethod),
-                          _text(item.referenceNumber),
-                          _text(item.notes),
-                          _date.format(item.createdAt),
-                          item.journalEntryId?.toString() ?? '-',
-                        ])
-                    .toList();
+                      final rows = snapshot.data!
+                          .where((item) =>
+                              query.isEmpty ||
+                              item.paymentNumber.toLowerCase().contains(query) ||
+                              (item.referenceNumber ?? '')
+                                  .toLowerCase()
+                                  .contains(query))
+                          .map((item) => [
+                                '${item.id}',
+                                item.paymentNumber,
+                                '${item.supplierId}',
+                                _date.format(item.paymentDate),
+                                _money.format(item.amount),
+                                _text(item.paymentMethod),
+                                _text(item.referenceNumber),
+                                _text(item.notes),
+                                _date.format(item.createdAt),
+                                item.journalEntryId?.toString() ?? '-',
+                              ])
+                          .toList();
 
-                return _Table(
-                  columns: const [
-                    'المعرف',
-                    'رقم الدفعة',
-                    'المورد',
-                    'التاريخ',
-                    'المبلغ',
-                    'الطريقة',
-                    'المرجع',
-                    'ملاحظات',
-                    'تاريخ الإنشاء',
-                    'القيد',
-                  ],
-                  rows: rows,
-                  empty: query.isEmpty
-                      ? 'لا توجد دفعات متاحة.'
-                      : 'لا توجد دفعات مطابقة للبحث.',
-                );
-              },
-            ),
+                      return _Table(
+                        columns: const [
+                          'المعرف',
+                          'رقم الدفعة',
+                          'المورد',
+                          'التاريخ',
+                          'المبلغ',
+                          'الطريقة',
+                          'المرجع',
+                          'ملاحظات',
+                          'تاريخ الإنشاء',
+                          'القيد',
+                        ],
+                        rows: rows,
+                        empty: query.isEmpty
+                            ? 'لا توجد دفعات متاحة.'
+                            : 'لا توجد دفعات مطابقة للبحث.',
+                      );
+                    },
+                  ),
           ),
         ],
       ),

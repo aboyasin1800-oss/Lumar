@@ -13,7 +13,10 @@ class EmployeeRepository {
   final http.Client _client;
 
   Map<String, String> _headers({Map<String, String>? extra}) {
-    final headers = <String, String>{if (extra != null) ...extra, 'Accept': 'application/json'};
+    final headers = <String, String>{
+      if (extra != null) ...extra,
+      'Accept': 'application/json'
+    };
     final token = AuthState.instance.token;
     if (token != null && token.trim().isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
@@ -21,25 +24,27 @@ class EmployeeRepository {
     return headers;
   }
 
-  Future<List<T>> _list<T>(String path, T Function(Map<String, dynamic>) fromJson) async {
-    final response = await _client.get(Uri.parse('$_baseUrl$path'), headers: _headers());
+  Future<List<T>> _list<T>(
+      String path, T Function(Map<String, dynamic>) fromJson) async {
+    final response =
+        await _client.get(Uri.parse('$_baseUrl$path'), headers: _headers());
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw EmployeeApiException(path, response.statusCode, _extractMessage(response));
+      throw EmployeeApiException(
+          path, response.statusCode, _extractMessage(response));
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! List) {
       return <T>[];
     }
-    return decoded
-        .whereType<Map<String, dynamic>>()
-        .map(fromJson)
-        .toList();
+    return decoded.whereType<Map<String, dynamic>>().map(fromJson).toList();
   }
 
   Future<Map<String, dynamic>> _object(String path) async {
-    final response = await _client.get(Uri.parse('$_baseUrl$path'), headers: _headers());
+    final response =
+        await _client.get(Uri.parse('$_baseUrl$path'), headers: _headers());
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw EmployeeApiException(path, response.statusCode, _extractMessage(response));
+      throw EmployeeApiException(
+          path, response.statusCode, _extractMessage(response));
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) {
@@ -48,37 +53,45 @@ class EmployeeRepository {
     return decoded;
   }
 
-  Future<EmployeeDetails> _postJson(String path, Map<String, dynamic> body) async {
+  Future<EmployeeDetails> _postJson(
+      String path, Map<String, dynamic> body) async {
     final jsonBody = jsonEncode(body);
 
     final response = await _client.post(
       Uri.parse('$_baseUrl$path'),
-      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
+      headers:
+          _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
       body: jsonBody,
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw EmployeeApiException(path, response.statusCode, _extractMessage(response));
+      throw EmployeeApiException(
+          path, response.statusCode, _extractMessage(response));
     }
 
     final decoded = jsonDecode(response.body);
     return EmployeeDetails.fromJson(decoded as Map<String, dynamic>);
   }
 
-  Future<EmployeeDetails> _putJson(String path, Map<String, dynamic> body) async {
+  Future<EmployeeDetails> _putJson(
+      String path, Map<String, dynamic> body) async {
     final response = await _client.put(
       Uri.parse('$_baseUrl$path'),
-      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
+      headers:
+          _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
       body: jsonEncode(body),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw EmployeeApiException(path, response.statusCode, _extractMessage(response));
+      throw EmployeeApiException(
+          path, response.statusCode, _extractMessage(response));
     }
-    return EmployeeDetails.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return EmployeeDetails.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
   }
 
-  Future<List<EmployeeSummary>> getEmployees() =>
-      _list('/employees', (json) => EmployeeSummary(
+  Future<List<EmployeeSummary>> getEmployees() => _list(
+      '/employees',
+      (json) => EmployeeSummary(
             id: json['employeeId'] as int,
             code: json['employeeCode'] as String,
             name: json['employeeName'] as String,
@@ -91,7 +104,14 @@ class EmployeeRepository {
 
   Future<EmployeeDetails> getEmployee(int employeeId) async {
     final json = await _object('/employees/$employeeId');
-    return EmployeeDetails.fromJson(json);
+    final payload = json['data'] is Map<String, dynamic>
+        ? Map<String, dynamic>.from(json['data'])
+        : json;
+    if (payload['employeeId'] == null && payload['id'] == null) {
+      throw EmployeeApiException('/employees/$employeeId', 500,
+          'استجابة الموظف غير متوافقة مع العقد المتوقع.');
+    }
+    return EmployeeDetails.fromJson(payload);
   }
 
   Future<List<EmployeeDepartment>> getDepartments() async {
@@ -159,8 +179,9 @@ class EmployeeRepository {
         .toList();
   }
 
-  Future<List<EmployeeDocument>> getDocuments(int employeeId) =>
-      _list('/employees/$employeeId/documents', (json) => EmployeeDocument(
+  Future<List<EmployeeDocument>> getDocuments(int employeeId) => _list(
+      '/employees/$employeeId/documents',
+      (json) => EmployeeDocument(
             id: json['employeeDocumentId'] as int,
             employeeId: json['employeeId'] as int,
             type: json['documentType'] as String,
@@ -183,8 +204,9 @@ class EmployeeRepository {
     }
   }
 
-  Future<List<EmployeeContractTemplate>> getContractTemplates() =>
-      _list('/employees/contract-templates', (json) => EmployeeContractTemplate(
+  Future<List<EmployeeContractTemplate>> getContractTemplates() => _list(
+      '/employees/contract-templates',
+      (json) => EmployeeContractTemplate(
             id: json['contractTemplateId'] as int,
             templateName: json['templateName'] as String,
             contractType: json['contractType'] as String,
@@ -227,7 +249,8 @@ class EmployeeRepository {
   Future<EmployeeContract> generateEmployeeContract(int employeeId) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/employees/$employeeId/contract/generate'),
-      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
+      headers:
+          _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(
@@ -266,50 +289,52 @@ class EmployeeRepository {
   Future<List<EmployeeAttendanceRecord>> getAttendance(int employeeId) => _list(
       '/employees/$employeeId/attendance',
       (json) => EmployeeAttendanceRecord(
-        id: json['employeeAttendanceId'] as int,
-        employeeId: json['employeeId'] as int,
-        attendanceDate: DateTime.parse(json['attendanceDate'] as String),
-        checkInTime: json['checkInTime'] == null
-            ? null
-            : DateTime.parse(json['checkInTime'] as String),
-        checkOutTime: json['checkOutTime'] == null
-            ? null
-            : DateTime.parse(json['checkOutTime'] as String),
-        workedHours: (json['workedHours'] as num).toDouble(),
-        overtimeHours: (json['overtimeHours'] as num).toDouble(),
-        isAbsent: json['isAbsent'] as bool,
-        absenceReason: json['absenceReason'] as String?,
-        notes: json['notes'] as String?,
-      ));
+            id: json['employeeAttendanceId'] as int,
+            employeeId: json['employeeId'] as int,
+            attendanceDate: DateTime.parse(json['attendanceDate'] as String),
+            checkInTime: json['checkInTime'] == null
+                ? null
+                : DateTime.parse(json['checkInTime'] as String),
+            checkOutTime: json['checkOutTime'] == null
+                ? null
+                : DateTime.parse(json['checkOutTime'] as String),
+            workedHours: (json['workedHours'] as num).toDouble(),
+            overtimeHours: (json['overtimeHours'] as num).toDouble(),
+            isAbsent: json['isAbsent'] as bool,
+            absenceReason: json['absenceReason'] as String?,
+            notes: json['notes'] as String?,
+          ));
 
   Future<List<EmployeeLeaveRequest>> getLeaveRequests(int employeeId) => _list(
       '/employees/$employeeId/leave-requests',
       (json) => EmployeeLeaveRequest(
-        id: json['leaveRequestId'] as int,
-        employeeId: json['employeeId'] as int,
-        type: json['leaveType'] as String,
-        startDate: DateTime.parse(json['startDate'] as String),
-        endDate: DateTime.parse(json['endDate'] as String),
-        requestedDays: (json['requestedDays'] as num).toDouble(),
-        status: json['status'] as String,
-        reason: json['reason'] as String?,
-        approvedBy: json['approvedBy'] as String?,
-        approvedAt: json['approvedAt'] == null
-            ? null
-            : DateTime.parse(json['approvedAt'] as String),
-        createdAt: DateTime.parse(json['createdAt'] as String),
-      ));
+            id: json['leaveRequestId'] as int,
+            employeeId: json['employeeId'] as int,
+            type: json['leaveType'] as String,
+            startDate: DateTime.parse(json['startDate'] as String),
+            endDate: DateTime.parse(json['endDate'] as String),
+            requestedDays: (json['requestedDays'] as num).toDouble(),
+            status: json['status'] as String,
+            reason: json['reason'] as String?,
+            approvedBy: json['approvedBy'] as String?,
+            approvedAt: json['approvedAt'] == null
+                ? null
+                : DateTime.parse(json['approvedAt'] as String),
+            createdAt: DateTime.parse(json['createdAt'] as String),
+          ));
 
   Future<EmployeeDetails> createEmployee(EmployeeWritePayload payload) =>
       _postJson('/employees', payload.toJson());
 
-  Future<EmployeeDetails> updateEmployee(int employeeId, EmployeeWritePayload payload) =>
+  Future<EmployeeDetails> updateEmployee(
+          int employeeId, EmployeeWritePayload payload) =>
       _putJson('/employees/$employeeId', payload.toJson());
 
   Future<EmployeeDetails> activateEmployee(int employeeId) async {
     final response = await _client.put(
       Uri.parse('$_baseUrl/employees/$employeeId/activate'),
-      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
+      headers:
+          _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(
@@ -355,7 +380,8 @@ class EmployeeRepository {
   Future<EmployeeDetails> deactivateEmployee(int employeeId) async {
     final response = await _client.put(
       Uri.parse('$_baseUrl/employees/$employeeId/deactivate'),
-      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
+      headers:
+          _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw EmployeeApiException(
@@ -457,9 +483,9 @@ class EmployeeRepository {
     final results = await Future.wait([
       getEmployee(employeeId),
       getDepartments(),
-      getDocuments(employeeId),
-      getAttendance(employeeId),
-      getLeaveRequests(employeeId)
+      getDocuments(employeeId).catchError((_) => const <EmployeeDocument>[]),
+      getAttendance(employeeId).catchError((_) => const <EmployeeAttendanceRecord>[]),
+      getLeaveRequests(employeeId).catchError((_) => const <EmployeeLeaveRequest>[]),
     ]);
     final employee = results[0] as EmployeeDetails;
     final departments = {
@@ -501,5 +527,6 @@ class EmployeeApiException implements Exception {
   final String message;
 
   @override
-  String toString() => 'EmployeeApiException(path: $path, statusCode: $statusCode, message: $message)';
+  String toString() =>
+      'EmployeeApiException(path: $path, statusCode: $statusCode, message: $message)';
 }

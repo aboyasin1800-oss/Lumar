@@ -1,5 +1,13 @@
 # LUMAR ERP OFFICIAL DATABASE POLICY
 
+## Mandatory status
+
+This policy is MANDATORY 100% for all database ownership, validation, write protection, and validation baseline decisions in LUMAR ERP. No other database policy or operational shortcut may override it without an explicit decision from the owner.
+
+## Source of truth
+
+This is the single authoritative policy for database ownership, validation, and write protection in LUMAR ERP. All other database-related references must point back to this policy rather than restating its decision in parallel.
+
 ## الحالة
 
 هذه الوثيقة سياسة رسمية ومعتمدة من مالك المشروع: ياسين.
