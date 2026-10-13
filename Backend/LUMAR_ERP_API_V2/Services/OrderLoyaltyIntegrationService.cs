@@ -1,4 +1,5 @@
 using LUMAR_ERP_API_V2.DTOs.Loyalty;
+using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.Referral;
 using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Utilities;
@@ -34,7 +35,8 @@ public sealed class OrderLoyaltyIntegrationService(
     IReferralRepository referralRepository,
     ILoyaltyRepository loyaltyRepository,
     ILoyaltyAccountLifecycleService? lifecycleService = null,
-    IVipLevelEvaluationService? vipLevelEvaluationService = null) : IOrderLoyaltyIntegrationService
+    IVipLevelEvaluationService? vipLevelEvaluationService = null,
+    IMessageWriteService? messageWriteService = null) : IOrderLoyaltyIntegrationService
 {
     private const string EngineVersion = "RL3-R1";
 
@@ -159,6 +161,23 @@ public sealed class OrderLoyaltyIntegrationService(
             cancellationToken,
             allowFrozenQualifyingPurchase: buyerWasFrozen);
 
+        await TrySendMessageAsync(
+            buyerCustomerId,
+            orderId,
+            "LoyaltyPointsEarned",
+            "LoyaltyPointsEarned",
+            order.CustomerName,
+            order.OrderNumber,
+            order.PhoneNumber ?? string.Empty,
+            new Dictionary<string, object?>
+            {
+                ["CustomerName"] = order.CustomerName ?? "Customer",
+                ["OrderNumber"] = order.OrderNumber,
+                ["OrderId"] = orderId,
+                ["PointsEarned"] = buyerDelta,
+            },
+            cancellationToken);
+
         var rewards = new List<OrderReferralRewardResult>();
         var rewardTransactions = new List<ReferralTransactionDto>();
         var loyaltyAdjustments = new List<LoyaltyTransactionDto> { buyerTransactionResult.Transaction };
@@ -268,6 +287,25 @@ public sealed class OrderLoyaltyIntegrationService(
             loyaltyAdjustments.Add(adjustResult.Transaction);
             loyaltyAccountUpdates.Add(adjustResult.Account);
 
+            await TrySendMessageAsync(
+                levelEntry.ReferrerCustomerId,
+                orderId,
+                "ReferralPointsEarned",
+                "ReferralPointsEarned",
+                null,
+                order.OrderNumber,
+                string.Empty,
+                new Dictionary<string, object?>
+                {
+                    ["CustomerName"] = "Referrer",
+                    ["OrderNumber"] = order.OrderNumber,
+                    ["OrderId"] = orderId,
+                    ["PointsEarned"] = deltaPoints,
+                    ["ReferrerCustomerId"] = levelEntry.ReferrerCustomerId,
+                },
+                cancellationToken,
+                $"RewardGranted:{rewardRecord.ReferralTransactionId}");
+
             rewards.Add(new OrderReferralRewardResult(levelEntry.Level, levelEntry.ReferrerCustomerId, buyerCustomerId, percentage, points, deltaPoints, false, fingerprint));
         }
 
@@ -303,6 +341,36 @@ public sealed class OrderLoyaltyIntegrationService(
             referralAccountUpdates.DistinctBy(x => x.CustomerId).ToList(),
             loyaltyAdjustments,
             rewardTransactions);
+    }
+
+    private async Task TrySendMessageAsync(int customerId, int orderId, string eventType, string templateKey, string? customerName, string orderNumber, string phoneNumber, IReadOnlyDictionary<string, object?> context, CancellationToken cancellationToken, string? referenceIdOverride = null)
+    {
+        if (messageWriteService is null || customerId <= 0)
+            return;
+
+        try
+        {
+            var referenceId = string.IsNullOrWhiteSpace(referenceIdOverride) ? orderNumber : referenceIdOverride.Trim();
+
+            await messageWriteService.TryCreateAsync(new MessageWriteRequest(
+                customerId,
+                orderId,
+                eventType,
+                templateKey,
+                phoneNumber,
+                referenceId,
+                "Order",
+                new Dictionary<string, object?>(context, StringComparer.OrdinalIgnoreCase)
+                {
+                    ["CustomerName"] = customerName ?? "Customer",
+                    ["OrderNumber"] = orderNumber,
+                    ["OrderId"] = orderId,
+                }), cancellationToken);
+        }
+        catch
+        {
+            // Intentionally ignore internal message-side failures so the business result stays durable.
+        }
     }
 
     private static string CreateBuyerFingerprint(int orderId, int buyerCustomerId, string orderItemsFingerprint) =>

@@ -1,4 +1,5 @@
 using LUMAR_ERP_API_V2.DTOs.Loyalty;
+using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.Orders;
 using LUMAR_ERP_API_V2.DTOs.Referral;
 using LUMAR_ERP_API_V2.Repositories;
@@ -202,6 +203,72 @@ public sealed class OrderLoyaltyIntegrationServiceTests
     }
 
     [Fact]
+    public async Task ProcessOrderAsync_MultipleReferralBeneficiaries_UseUniqueRewardIdentity_ForMessageIdempotency()
+    {
+        var order = new OrderDetailsDto(
+            303,
+            "ORD-303",
+            5,
+            "E",
+            "0500000303",
+            DateTime.UtcNow,
+            null,
+            0m,
+            0m,
+            0m,
+            0m,
+            "Normal",
+            "Confirmed",
+            "Multi-beneficiary referral order",
+            DateTime.UtcNow,
+            null,
+            null,
+            null,
+            null,
+            "TailoringOrder",
+            false,
+            null,
+            false,
+            null);
+
+        var orderItems = new List<OrderItemDto>
+        {
+            new(3, 303, "YALAQ", 1, null, null, null, null, null, null, null, null, null, "T-303", "New", DateTime.UtcNow, 10),
+        };
+
+        var loyaltyRepository = new FakeLoyaltyRepository();
+        var referralRepository = new FakeReferralRepository();
+        referralRepository.RegisterRegistration(4, 5, DateTime.UtcNow.AddDays(-5));
+        referralRepository.RegisterRegistration(3, 4, DateTime.UtcNow.AddDays(-4));
+        referralRepository.RegisterRegistration(2, 3, DateTime.UtcNow.AddDays(-3));
+        referralRepository.RegisterRegistration(1, 2, DateTime.UtcNow.AddDays(-2));
+
+        var messageWriteService = new RecordingMessageWriteService();
+        var service = new OrderLoyaltyIntegrationService(
+            new FakeOrderRepository(order, orderItems),
+            new FakePiecePointSettingsRepository(),
+            referralRepository,
+            loyaltyRepository,
+            messageWriteService: messageWriteService);
+
+        await service.ProcessOrderAsync(303, CancellationToken.None);
+
+        var referralRequests = messageWriteService.Requests
+            .Where(x => x.EventType == "ReferralPointsEarned")
+            .ToList();
+
+        Assert.Equal(4, referralRequests.Count);
+        Assert.All(referralRequests, request =>
+        {
+            Assert.StartsWith("RewardGranted:", request.ReferenceId);
+            Assert.Equal("Order", request.ReferenceType);
+        });
+
+        Assert.Equal(4, referralRequests.Select(x => x.ReferenceId).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(4, referralRequests.Select(x => x.CustomerId).Distinct().Count());
+    }
+
+    [Fact]
     public void ReferralTreeBuilder_BuildsHierarchyFromRegistrationTransactionsOnly()
     {
         var customers = new Dictionary<int, CustomerIdentity>
@@ -310,6 +377,17 @@ public sealed class OrderLoyaltyIntegrationServiceTests
         Assert.Equal(100m, reconciled.BuyerDelta);
         Assert.Equal(50m, reconciled.ReferralRewards.Single(x => x.Level == 1).Delta);
         Assert.Equal(25m, reconciled.ReferralRewards.Single(x => x.Level == 2).Delta);
+    }
+
+    private sealed class RecordingMessageWriteService : IMessageWriteService
+    {
+        public List<MessageWriteRequest> Requests { get; } = new();
+
+        public Task<MessageWriteResult> TryCreateAsync(MessageWriteRequest request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            return Task.FromResult(new MessageWriteResult(true, 1, 1, request.TemplateKey, request.TemplateKey, request.ReferenceId));
+        }
     }
 
     private sealed class FakeOrderRepository(OrderDetailsDto order, IReadOnlyList<OrderItemDto> items) : IOrderRepository

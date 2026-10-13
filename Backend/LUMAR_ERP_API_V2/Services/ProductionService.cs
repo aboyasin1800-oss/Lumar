@@ -1,3 +1,4 @@
+using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.Production;
 using LUMAR_ERP_API_V2.Repositories;
 
@@ -5,7 +6,9 @@ namespace LUMAR_ERP_API_V2.Services;
 
 public sealed class ProductionService(
     IProductionRepository repository,
-    IOrderLoyaltyIntegrationService orderLoyaltyIntegrationService) : IProductionService
+    IOrderLoyaltyIntegrationService orderLoyaltyIntegrationService,
+    IOrderRepository orderRepository,
+    IMessageWriteService? messageWriteService = null) : IProductionService
 {
     public Task<IReadOnlyList<PieceDto>> GetPiecesAsync(CancellationToken ct) => repository.GetPiecesAsync(ct);
     public Task<IReadOnlyList<PieceDto>> GetReadyMadePiecesAsync(CancellationToken ct) => repository.GetReadyMadePiecesAsync(ct);
@@ -37,9 +40,50 @@ public sealed class ProductionService(
             if (piece is not null)
             {
                 await orderLoyaltyIntegrationService.ProcessIfEligibleAsync(piece.OrderId, ct);
+                if (result.Message.Contains("ready for delivery", StringComparison.OrdinalIgnoreCase))
+                {
+                    var order = await orderRepository.GetByIdAsync(piece.OrderId, ct);
+                    await TrySendMessageAsync(
+                        order?.CustomerId ?? 0,
+                        piece.OrderId,
+                        "OrderReady",
+                        "OrderReady",
+                        order?.CustomerName,
+                        order?.OrderNumber ?? piece.OrderNumber,
+                        order?.PhoneNumber ?? string.Empty,
+                        ct);
+                }
             }
         }
 
         return result;
+    }
+
+    private async Task TrySendMessageAsync(int customerId, int orderId, string eventType, string templateKey, string? customerName, string orderNumber, string phoneNumber, CancellationToken cancellationToken)
+    {
+        if (messageWriteService is null || customerId <= 0)
+            return;
+
+        try
+        {
+            await messageWriteService.TryCreateAsync(new MessageWriteRequest(
+                customerId,
+                orderId,
+                eventType,
+                templateKey,
+                phoneNumber,
+                orderNumber,
+                "Order",
+                new Dictionary<string, object?>
+                {
+                    ["CustomerName"] = customerName ?? "Customer",
+                    ["OrderNumber"] = orderNumber,
+                    ["OrderId"] = orderId,
+                }), cancellationToken);
+        }
+        catch
+        {
+            // Ignore message-side failure so production flow remains durable.
+        }
     }
 }

@@ -1,11 +1,13 @@
 using LUMAR_ERP_API_V2.DTOs.Loyalty;
+using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.Repositories;
 
 namespace LUMAR_ERP_API_V2.Services;
 
 public sealed class LoyaltyAccountLifecycleService(
     ILoyaltyRepository loyaltyRepository,
-    ILoyaltyManagementSettingsRepository settingsRepository) : ILoyaltyAccountLifecycleService
+    ILoyaltyManagementSettingsRepository settingsRepository,
+    IMessageWriteService? messageWriteService = null) : ILoyaltyAccountLifecycleService
 {
     public async Task<LoyaltyAccountDto?> EvaluateAsync(int customerId, CancellationToken cancellationToken)
     {
@@ -25,7 +27,7 @@ public sealed class LoyaltyAccountLifecycleService(
         if (settings?.PurchaseReactivationEnabled != true) return account;
 
         var now = DateTime.UtcNow;
-        return account with
+        var reactivated = account with
         {
             LoyaltyAccountStatus = "Active",
             WarningStartedAtUtc = null,
@@ -33,6 +35,9 @@ public sealed class LoyaltyAccountLifecycleService(
             ReactivatedAtUtc = now,
             FreezeReason = null,
         };
+
+        await TrySendActivationMessageAsync(customerId, account.LoyaltyAccountStatus, reactivated.LoyaltyAccountStatus, cancellationToken);
+        return reactivated;
     }
 
     public async Task<LoyaltyAccountDto?> MarkQualifyingPurchaseAsync(int customerId, CancellationToken cancellationToken)
@@ -41,7 +46,7 @@ public sealed class LoyaltyAccountLifecycleService(
         if (account is null) return null;
 
         var now = DateTime.UtcNow;
-        return await loyaltyRepository.UpdateAccountLifecycleAsync(
+        var updated = await loyaltyRepository.UpdateAccountLifecycleAsync(
             customerId,
             "Active",
             null,
@@ -50,6 +55,9 @@ public sealed class LoyaltyAccountLifecycleService(
             null,
             now,
             cancellationToken);
+
+        await TrySendActivationMessageAsync(customerId, account.LoyaltyAccountStatus, updated?.LoyaltyAccountStatus ?? account.LoyaltyAccountStatus, cancellationToken);
+        return updated;
     }
 
     public async Task<LoyaltyAccountDto?> ReactivateManuallyAsync(int customerId, CancellationToken cancellationToken)
@@ -63,7 +71,7 @@ public sealed class LoyaltyAccountLifecycleService(
             throw new InvalidOperationException("Manual loyalty account reactivation is disabled.");
 
         var now = DateTime.UtcNow;
-        return await loyaltyRepository.UpdateAccountLifecycleAsync(
+        var updated = await loyaltyRepository.UpdateAccountLifecycleAsync(
             customerId,
             "Active",
             null,
@@ -72,6 +80,9 @@ public sealed class LoyaltyAccountLifecycleService(
             null,
             account.LastQualifyingActivityAtUtc,
             cancellationToken);
+
+        await TrySendActivationMessageAsync(customerId, account.LoyaltyAccountStatus, updated?.LoyaltyAccountStatus ?? account.LoyaltyAccountStatus, cancellationToken);
+        return updated;
     }
 
     public async Task<int> EvaluateAllAsync(CancellationToken cancellationToken)
@@ -91,6 +102,62 @@ public sealed class LoyaltyAccountLifecycleService(
         }
 
         return changed;
+    }
+
+    private async Task TrySendActivationMessageAsync(int customerId, string previousStatus, string currentStatus, CancellationToken cancellationToken)
+    {
+        if (messageWriteService is null || customerId <= 0 || !string.Equals(previousStatus, "Active", StringComparison.OrdinalIgnoreCase))
+        {
+            if (messageWriteService is not null && customerId > 0 && string.Equals(currentStatus, "Active", StringComparison.OrdinalIgnoreCase) && !string.Equals(previousStatus, "Active", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    await messageWriteService.TryCreateAsync(new MessageWriteRequest(
+                        customerId,
+                        null,
+                        "LoyaltyActivated",
+                        "LoyaltyActivated",
+                        string.Empty,
+                        customerId.ToString(),
+                        "Customer",
+                        new Dictionary<string, object?>
+                        {
+                            ["CustomerId"] = customerId,
+                            ["Status"] = currentStatus,
+                        }), cancellationToken);
+                }
+                catch
+                {
+                    // ignore message-side failures to preserve the loyalty state change.
+                }
+            }
+
+            return;
+        }
+
+        if (!string.Equals(currentStatus, "Active", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            await messageWriteService.TryCreateAsync(new MessageWriteRequest(
+                customerId,
+                null,
+                "LoyaltyActivated",
+                "LoyaltyActivated",
+                string.Empty,
+                customerId.ToString(),
+                "Customer",
+                new Dictionary<string, object?>
+                {
+                    ["CustomerId"] = customerId,
+                    ["Status"] = currentStatus,
+                }), cancellationToken);
+        }
+        catch
+        {
+            // ignore message-side failures to preserve the loyalty state change.
+        }
     }
 
     private async Task<LoyaltyAccountDto> EvaluateAccountAsync(

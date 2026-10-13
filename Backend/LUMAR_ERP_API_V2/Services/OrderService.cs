@@ -1,3 +1,4 @@
+using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.Orders;
 using LUMAR_ERP_API_V2.Repositories;
 
@@ -6,7 +7,8 @@ namespace LUMAR_ERP_API_V2.Services;
 public sealed class OrderService(
     IOrderRepository repository,
     IVipLevelEvaluationService vipLevelEvaluationService,
-    IOrderLoyaltyIntegrationService orderLoyaltyIntegrationService) : IOrderService
+    IOrderLoyaltyIntegrationService orderLoyaltyIntegrationService,
+    IMessageWriteService? messageWriteService = null) : IOrderService
 {
     public Task<IReadOnlyList<OrderListDto>> GetListAsync(CancellationToken cancellationToken) => repository.GetListAsync(cancellationToken);
     public Task<OrderDetailsDto?> GetByIdAsync(int orderId, CancellationToken cancellationToken) => repository.GetByIdAsync(orderId, cancellationToken);
@@ -20,6 +22,35 @@ public sealed class OrderService(
         {
             await vipLevelEvaluationService.EvaluateNetworkAsync(created.CustomerId, cancellationToken);
             await orderLoyaltyIntegrationService.ProcessIfEligibleAsync(created.OrderId, cancellationToken);
+
+            if (messageWriteService is not null)
+            {
+                try
+                {
+                    var messageRequest = new MessageWriteRequest(
+                        created.CustomerId,
+                        created.OrderId,
+                        "OrderCreated",
+                        "OrderCreated",
+                        created.PhoneNumber ?? string.Empty,
+                        created.OrderNumber,
+                        "Order",
+                        new Dictionary<string, object?>
+                        {
+                            ["CustomerName"] = created.CustomerName,
+                            ["OrderNumber"] = created.OrderNumber,
+                            ["OrderId"] = created.OrderId,
+                            ["Amount"] = created.TotalAmount,
+                            ["PhoneNumber"] = created.PhoneNumber
+                        });
+
+                    await messageWriteService.TryCreateAsync(messageRequest, cancellationToken);
+                }
+                catch
+                {
+                    // The order commit remains valid even when the internal message side is unavailable.
+                }
+            }
         }
 
         return created;
@@ -52,7 +83,36 @@ public sealed class OrderService(
     }
     public Task<OrderDeliveryDto?> GetDeliveryAsync(int orderId, CancellationToken cancellationToken) => repository.GetDeliveryAsync(orderId, cancellationToken);
     public async Task<OrderDetailsDto?> DeliverAsync(int orderId, CancellationToken cancellationToken)
-        => await repository.DeliverAsync(orderId, cancellationToken);
+    {
+        var delivered = await repository.DeliverAsync(orderId, cancellationToken);
+        if (delivered is not null && messageWriteService is not null)
+        {
+            try
+            {
+                await messageWriteService.TryCreateAsync(new MessageWriteRequest(
+                    delivered.CustomerId,
+                    delivered.OrderId,
+                    "OrderDelivered",
+                    "OrderDelivered",
+                    delivered.PhoneNumber ?? string.Empty,
+                    delivered.OrderNumber,
+                    "Order",
+                    new Dictionary<string, object?>
+                    {
+                        ["CustomerName"] = delivered.CustomerName ?? "Customer",
+                        ["OrderNumber"] = delivered.OrderNumber,
+                        ["OrderId"] = delivered.OrderId,
+                        ["Amount"] = delivered.TotalAmount,
+                    }), cancellationToken);
+            }
+            catch
+            {
+                // Order completion remains valid even if the internal message side is unavailable.
+            }
+        }
+
+        return delivered;
+    }
     public Task<OrderDetailsDto?> WaiveRemainingBalanceAsync(int orderId, CancellationToken cancellationToken) => repository.WaiveRemainingBalanceAsync(orderId, cancellationToken);
     public Task<OrderDetailsDto?> RecognizeDeliveryRevenueAsync(int orderId, CancellationToken cancellationToken) => repository.RecognizeDeliveryRevenueAsync(orderId, cancellationToken);
     public async Task<OrderDetailsDto?> CancelOrderAsync(int orderId, string? reason, string? cancelledBy, CancellationToken cancellationToken)

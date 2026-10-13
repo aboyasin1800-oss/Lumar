@@ -42,6 +42,8 @@ builder.Services.AddScoped<ISupplierPaymentResponseRepository, SupplierPaymentRe
 builder.Services.AddScoped<IPurchasingRepository, PurchasingRepository>();
 builder.Services.AddScoped<ISupplierInvoiceLineRepository, SupplierInvoiceLineRepository>();
 builder.Services.AddScoped<IMessageRepository, MessageRepository>();
+builder.Services.AddScoped<IMessageWriteService, MessageWriteService>();
+builder.Services.AddScoped<IMessageTemplateRenderer, MessageTemplateRenderer>();
 builder.Services.AddScoped<ISettingsRepository, SettingsRepository>();
 builder.Services.AddScoped<IPrintingRepository, PrintingRepository>();
 builder.Services.AddScoped<ICodePrefixSettingsRepository, CodePrefixSettingsRepository>();
