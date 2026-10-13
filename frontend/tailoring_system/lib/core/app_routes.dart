@@ -135,8 +135,9 @@ class _WorkspaceRedirectScreenState extends State<_WorkspaceRedirectScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.workspace.open(widget.routeId);
-      if (mounted && Navigator.of(context).canPop())
+      if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
+      }
     });
   }
 

@@ -97,10 +97,12 @@ class _FinanceStatisticsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (provider.state == FinanceLoadState.loading ||
-        provider.state == FinanceLoadState.idle)
+        provider.state == FinanceLoadState.idle) {
       return const Center(child: CircularProgressIndicator());
-    if (provider.state == FinanceLoadState.error)
+    }
+    if (provider.state == FinanceLoadState.error) {
       return _ErrorPanel(onRetry: provider.loadOverview);
+    }
     final dashboard = provider.dashboard;
     if (dashboard == null) return _ErrorPanel(onRetry: provider.loadOverview);
     final metrics = [
@@ -304,8 +306,9 @@ class _FinancialStatementsTabsState extends State<_FinancialStatementsTabs> {
   Widget build(BuildContext context) => FutureBuilder<FinancialStatements>(
         future: future,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done)
+          if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
+          }
           if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
           final statements = snapshot.data!;
           return DefaultTabController(
@@ -450,8 +453,9 @@ class _FinancialTransactionsScreenState
       child: FutureBuilder<List<FinancialTransaction>>(
           future: future,
           builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done)
+            if (snapshot.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
+            }
             if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
             final all = snapshot.data!;
             final types = all
@@ -543,8 +547,9 @@ class _JournalEntriesScreenState extends State<JournalEntriesScreen> {
         child: FutureBuilder<List<JournalEntry>>(
           future: future,
           builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done)
+            if (snapshot.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
+            }
             if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
             final items = snapshot.data!;
             return Column(
@@ -633,8 +638,9 @@ class _JournalEntryDetailsScreenState extends State<JournalEntryDetailsScreen> {
       child: FutureBuilder(
           future: future,
           builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done)
+            if (snapshot.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
+            }
             if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
             final (entry, lines, accounts) = snapshot.data!;
             final names = {
@@ -754,8 +760,9 @@ class _CashAccountsScreenState extends State<CashAccountsScreen> {
               (List<CashAccount>, List<CashMovement>, CashReconciliation)>(
           future: future,
           builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done)
+            if (snapshot.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
+            }
             if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
             final (accounts, movements, reconciliation) = snapshot.data!;
             return DefaultTabController(
@@ -1094,10 +1101,12 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
                 : FutureBuilder<List<CustomerLedgerEntry>>(
                     future: future,
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState != ConnectionState.done)
+                      if (snapshot.connectionState != ConnectionState.done) {
                         return const Center(child: CircularProgressIndicator());
-                      if (snapshot.hasError)
+                      }
+                      if (snapshot.hasError) {
                         return _ErrorPanel(onRetry: reload);
+                      }
                       final query = filter.text.trim().toLowerCase();
                       final rows =
                           (snapshot.data ?? const <CustomerLedgerEntry>[])
@@ -1759,11 +1768,13 @@ class _LedgerLookupState<T> extends State<_LedgerLookup<T>> {
                           future: future,
                           builder: (context, snapshot) {
                             if (snapshot.connectionState !=
-                                ConnectionState.done)
+                                ConnectionState.done) {
                               return const Center(
                                   child: CircularProgressIndicator());
-                            if (snapshot.hasError)
+                            }
+                            if (snapshot.hasError) {
                               return _ErrorPanel(onRetry: search);
+                            }
                             final query = filter.text.trim().toLowerCase();
                             final rows = snapshot.data!
                                 .map(widget.row)
@@ -1839,8 +1850,9 @@ class _SimpleListPageState<T> extends State<_SimpleListPage<T>> {
             child: FutureBuilder<List<T>>(
                 future: future,
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done)
+                  if (snapshot.connectionState != ConnectionState.done) {
                     return const Center(child: CircularProgressIndicator());
+                  }
                   if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
                   return _Table(
                       columns: widget.columns,

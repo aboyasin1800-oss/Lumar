@@ -12,8 +12,9 @@ class FinanceRepository {
 
   Future<List<T>> _list<T>(String path, T Function(JsonMap) fromJson) async {
     final response = await _client.get(Uri.parse('$_baseUrl$path'));
-    if (response.statusCode < 200 || response.statusCode >= 300)
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       throw FinanceApiException(response.statusCode);
+    }
 
     final decoded = jsonDecode(response.body);
     final items = switch (decoded) {
@@ -34,8 +35,9 @@ class FinanceRepository {
 
   Future<JsonMap> _object(String path) async {
     final response = await _client.get(Uri.parse('$_baseUrl$path'));
-    if (response.statusCode < 200 || response.statusCode >= 300)
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       throw FinanceApiException(response.statusCode);
+    }
     return jsonDecode(response.body) as JsonMap;
   }
 

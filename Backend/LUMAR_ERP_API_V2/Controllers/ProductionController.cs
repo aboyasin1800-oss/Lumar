@@ -1,3 +1,4 @@
+using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.DTOs.Production;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -6,7 +7,7 @@ namespace LUMAR_ERP_API_V2.Controllers;
 
 [ApiController]
 [Route("production")]
-public sealed class ProductionController(IProductionService service, IProductionTrackingService productionTrackingService) : ControllerBase
+public sealed class ProductionController(IProductionService service, IProductionTrackingService productionTrackingService, IAuthenticatedUserContext userContext) : ControllerBase
 {
     [HttpGet("pieces")]
     public Task<IReadOnlyList<PieceDto>> GetPieces(CancellationToken ct) => service.GetPiecesAsync(ct);
@@ -184,6 +185,52 @@ public sealed class ProductionController(IProductionService service, IProduction
         if (result is null) return NotFound();
         if (!result.Updated) return BadRequest(result);
         return Ok(result);
+    }
+
+    [HttpPost("employees/scan")]
+    [ProducesResponseType<EmployeeScannerAdvanceResponseDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<EmployeeScannerAdvanceResponseDto>> AdvanceEmployeeScan([FromBody] EmployeeScannerAdvanceRequestDto request, CancellationToken ct)
+    {
+        if (request is null) return BadRequest("Request body is required.");
+        if (string.IsNullOrWhiteSpace(request.TrackingCode)) return BadRequest("TrackingCode is required.");
+        if (string.IsNullOrWhiteSpace(request.RequestedStage)) return BadRequest("Requested stage is required.");
+
+        var user = await userContext.GetCurrentUserAsync(ct);
+        var authError = EmployeeScannerRequestGuard.ValidateEmployeeAccount(user);
+        if (authError is not null) return authError;
+
+        var route = await service.GetPieceRouteByTrackingCodeAsync(request.TrackingCode.Trim(), ct);
+        if (route is null)
+        {
+            return NotFound(new EmployeeScannerAdvanceResponseDto(null, request.TrackingCode.Trim(), "New", "New", null, "TrackingCode غير معروف في النظام.", false, false, null, null));
+        }
+
+        var resolvedRequest = new ProductionTrackingAdvanceRequestDto(
+            null,
+            request.TrackingCode.Trim(),
+            route.PieceType,
+            request.RequestedStage.Trim(),
+            request.ScannerCode,
+            user!.EmployeeId.HasValue ? user.EmployeeId.Value.ToString() : null,
+            request.OperationReference ?? "EmployeeScanner",
+            route.ProductTypeId,
+            false);
+
+        var result = await service.AdvancePieceStageAsync(resolvedRequest, ct);
+        if (result is null)
+        {
+            return NotFound(new EmployeeScannerAdvanceResponseDto(null, request.TrackingCode.Trim(), "New", "New", null, "القطعة غير موجودة.", false, false, route.ProductTypeId, route.PieceType));
+        }
+
+        if (!result.Updated)
+        {
+            return BadRequest(new EmployeeScannerAdvanceResponseDto(result.PieceId, result.TrackingCode ?? request.TrackingCode.Trim(), result.PreviousStatus, result.NewStatus, result.NextStage, result.Message, false, result.IsReadyMade, route.ProductTypeId, route.PieceType));
+        }
+
+        return Ok(new EmployeeScannerAdvanceResponseDto(result.PieceId, result.TrackingCode ?? request.TrackingCode.Trim(), result.PreviousStatus, result.NewStatus, result.NextStage, result.Message, true, result.IsReadyMade, route.ProductTypeId, route.PieceType));
     }
 
     [HttpPost("pieces")]
