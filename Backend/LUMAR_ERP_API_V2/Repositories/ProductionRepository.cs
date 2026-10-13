@@ -227,6 +227,36 @@ public sealed class ProductionRepository(
             var isFinalReadyMadeStage = pieceContext.IsReadyMade
                 && string.Equals(finalStage, route[^1], StringComparison.OrdinalIgnoreCase);
             var sameStageAlreadyApplied = string.Equals(pieceContext.PieceStatus, finalStage, StringComparison.OrdinalIgnoreCase);
+            var executionSource = ResolveExecutionSource(request);
+
+            if (executionSource == "Scanner" && RequiresPieceStageAssignment(finalStage))
+            {
+                var authenticatedEmployeeId = TryParseEmployeeId(request.EmployeeCode);
+                if (!authenticatedEmployeeId.HasValue)
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                    return new ProductionTrackingAdvanceResultDto(pieceContext.PieceId, pieceContext.TrackingCode, pieceContext.PieceStatus, pieceContext.PieceStatus, null, "Authenticated employee id is required for the requested piece-stage action.", false);
+                }
+
+                var scannerEmployeeCode = await ResolveEmployeeCodeAsync(connection, transaction, request.ScannerCode, request.EmployeeCode, ct);
+                var scannerEmployeeId = string.IsNullOrWhiteSpace(scannerEmployeeCode)
+                    ? null
+                    : await ResolveEmployeeIdAsync(connection, transaction, scannerEmployeeCode, ct);
+
+                if (!scannerEmployeeId.HasValue || scannerEmployeeId.Value != authenticatedEmployeeId.Value)
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                    return new ProductionTrackingAdvanceResultDto(pieceContext.PieceId, pieceContext.TrackingCode, pieceContext.PieceStatus, pieceContext.PieceStatus, null, "Employee account is not the same employee linked to the scanner.", false);
+                }
+
+                var hasAssignment = await IsEmployeeAuthorizedForPieceStageAsync(connection, transaction, authenticatedEmployeeId.Value, pieceContext.PieceType, finalStage, ct);
+                var guardResult = EmployeeScannerRequestGuard.ValidatePieceStageAssignment(authenticatedEmployeeId, pieceContext.PieceType, finalStage, hasAssignment);
+                if (guardResult is not null)
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                    return new ProductionTrackingAdvanceResultDto(pieceContext.PieceId, pieceContext.TrackingCode, pieceContext.PieceStatus, pieceContext.PieceStatus, null, "Employee is not authorized for the requested piece type and stage.", false);
+                }
+            }
 
             if (sameStageAlreadyApplied && isFinalReadyMadeStage)
             {
@@ -274,7 +304,6 @@ public sealed class ProductionRepository(
                 return new ProductionTrackingAdvanceResultDto(pieceContext.PieceId, pieceContext.TrackingCode, pieceContext.PieceStatus, pieceContext.PieceStatus, null, "Order is cancelled and requires an approved disposition decision before progress.", false);
             }
 
-            var executionSource = ResolveExecutionSource(request);
             if (executionSource == "Scanner" && NeedsScanner(request.RequestedStage) && !string.IsNullOrWhiteSpace(request.ScannerCode))
             {
                 var scannerValidation = await ValidateScannerAsync(connection, transaction, request.ScannerCode, request.EmployeeCode, ct);
@@ -590,15 +619,41 @@ public sealed class ProductionRepository(
               AND PieceType = @pieceType
               AND Stage = @stage
               AND IsActive = 1
+              AND (EffectiveFrom IS NULL OR EffectiveFrom <= @now)
+              AND (EffectiveTo IS NULL OR EffectiveTo >= @now)
             ORDER BY EffectiveFrom DESC, EmployeePieceRateAssignmentId DESC;";
 
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@employeeId", employeeId);
         command.Parameters.AddWithValue("@pieceType", pieceType.Trim());
         command.Parameters.AddWithValue("@stage", stage.Trim());
+        command.Parameters.AddWithValue("@now", DateTime.UtcNow);
         await using var reader = await command.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct)) return 0m;
         return reader.IsDBNull(0) ? 0m : reader.GetDecimal(0);
+    }
+
+    private static async Task<bool> IsEmployeeAuthorizedForPieceStageAsync(SqlConnection connection, SqlTransaction transaction, int employeeId, string pieceType, string stage, CancellationToken ct)
+    {
+        if (employeeId <= 0 || string.IsNullOrWhiteSpace(pieceType) || string.IsNullOrWhiteSpace(stage))
+            return false;
+
+        const string sql = @"SELECT TOP 1 1
+            FROM dbo.EmployeePieceRateAssignments WITH (NOLOCK)
+            WHERE EmployeeId = @employeeId
+              AND PieceType = @pieceType
+              AND Stage = @stage
+              AND IsActive = 1
+              AND (EffectiveFrom IS NULL OR EffectiveFrom <= @now)
+              AND (EffectiveTo IS NULL OR EffectiveTo >= @now);";
+
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@employeeId", employeeId);
+        command.Parameters.AddWithValue("@pieceType", pieceType.Trim());
+        command.Parameters.AddWithValue("@stage", stage.Trim());
+        command.Parameters.AddWithValue("@now", DateTime.UtcNow);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        return await reader.ReadAsync(ct);
     }
 
     private static async Task<int> CountPieceWageRecordsForTrackingEventAsync(SqlConnection connection, SqlTransaction transaction, int trackingEventId, CancellationToken ct)
@@ -1075,9 +1130,19 @@ public sealed class ProductionRepository(
         return "Scanner";
     }
 
+    private static bool RequiresPieceStageAssignment(string stage) =>
+        string.Equals(stage, "Cutting", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(stage, "Sewing", StringComparison.OrdinalIgnoreCase);
+
     private static bool RequiresPieceWage(string stage) =>
         string.Equals(stage, "Cutting", StringComparison.OrdinalIgnoreCase)
         || string.Equals(stage, "Sewing", StringComparison.OrdinalIgnoreCase);
+
+    private static int? TryParseEmployeeId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return int.TryParse(value.Trim(), out var employeeId) && employeeId > 0 ? employeeId : null;
+    }
 
     private static string NormalizeStageForStatus(string stage) => stage.Trim() switch
     {

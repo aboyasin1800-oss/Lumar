@@ -25,7 +25,7 @@ class LumarOriginalWindowsApp extends StatefulWidget {
 }
 
 class _LumarOriginalWindowsAppState extends State<LumarOriginalWindowsApp> {
-  final auth = AuthState();
+  final auth = AuthState.instance;
   final themeState = ThemeState();
   final uiScale = UiScaleState();
   late final WorkspaceController workspace;

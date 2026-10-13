@@ -41,4 +41,22 @@ public sealed class EmployeeScannerContractTests
 
         Assert.Null(result);
     }
+
+    [Fact]
+    public void Employee_scan_rejects_cutting_without_piece_stage_assignment()
+    {
+        var result = EmployeeScannerRequestGuard.ValidatePieceStageAssignment(21, "KOT", "Cutting", hasAssignment: false);
+
+        Assert.NotNull(result);
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public void Employee_scan_accepts_authorized_piece_stage_assignment()
+    {
+        var result = EmployeeScannerRequestGuard.ValidatePieceStageAssignment(21, "KOT", "Sewing", hasAssignment: true);
+
+        Assert.Null(result);
+    }
 }
