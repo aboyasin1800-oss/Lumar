@@ -20,7 +20,14 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections) 
         r.NullableDateTime("SentAtUtc"),
         r.NullableDateTime("ReadAtUtc"),
         r.GetInt32(12),
-        r.NullableDateTime("DeliveredAtUtc"));
+        r.NullableDateTime("DeliveredAtUtc"),
+        r.NullableDateTime("ProcessingAtUtc"),
+        r.NullableString("FailureReason"),
+        r.NullableString("ProviderMessageId"),
+        r.NullableString("PhoneNumber"),
+        r.NullableString("ReferenceID"),
+        r.NullableString("ReferenceType"),
+        r.NullableString("IdempotencyKey"));
 
     private static CustomerNotificationDto Notification(SqlDataReader r) => new(
         r.GetInt32(0),
@@ -113,6 +120,143 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections) 
         command.Parameters.AddWithValue("@idempotencyKey", idempotencyKey);
         var value = await command.ExecuteScalarAsync(c);
         return value is not null;
+    }
+
+    public async Task<CustomerMessageDto?> ClaimNextAsync(string channel, int maxAttempts, TimeSpan staleProcessingWindow, CancellationToken cancellationToken)
+    {
+        const string sql = @"
+            WITH candidate AS (
+                SELECT TOP (1) m.*
+                FROM dbo.CustomerMessages AS m
+                WHERE m.Channel = @channel
+                  AND m.DeliveryStatus IN (N'Pending', N'Failed')
+                  AND m.AttemptCount < @maxAttempts
+                  AND (m.DeliveryStatus = N'Pending' OR m.ProcessingAtUtc IS NULL OR DATEDIFF(MINUTE, m.ProcessingAtUtc, SYSUTCDATETIME()) >= @staleMinutes)
+                ORDER BY m.CreatedAtUtc ASC, m.CustomerMessageID ASC
+            )
+            UPDATE candidate
+            SET DeliveryStatus = N'Processing',
+                ProcessingAtUtc = SYSUTCDATETIME(),
+                AttemptCount = AttemptCount + 1,
+                FailureReason = NULL
+            OUTPUT INSERTED.CustomerMessageID,
+                   INSERTED.CustomerID,
+                   INSERTED.OrderID,
+                   INSERTED.EventType,
+                   INSERTED.TemplateKey,
+                   INSERTED.Channel,
+                   INSERTED.Title,
+                   INSERTED.Body,
+                   INSERTED.DeliveryStatus,
+                   INSERTED.CreatedAtUtc,
+                   INSERTED.SentAtUtc,
+                   INSERTED.ReadAtUtc,
+                   INSERTED.AttemptCount,
+                   INSERTED.DeliveredAtUtc,
+                   INSERTED.ProcessingAtUtc,
+                   INSERTED.FailureReason,
+                   INSERTED.ProviderMessageId,
+                   INSERTED.PhoneNumber,
+                   INSERTED.ReferenceID,
+                   INSERTED.ReferenceType,
+                   INSERTED.IdempotencyKey;";
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@channel", channel);
+        command.Parameters.AddWithValue("@maxAttempts", maxAttempts);
+        command.Parameters.AddWithValue("@staleMinutes", (int)staleProcessingWindow.TotalMinutes);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            return null;
+
+        return Message(reader);
+    }
+
+    public async Task<CustomerMessageDto?> GetByProviderMessageIdAsync(string providerMessageId, CancellationToken cancellationToken)
+    {
+        const string sql = @"
+            SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey
+            FROM dbo.CustomerMessages WITH (NOLOCK)
+            WHERE ProviderMessageId = @providerMessageId;";
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@providerMessageId", providerMessageId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            return null;
+
+        return Message(reader);
+    }
+
+    public async Task UpdateDeliveryStatusByProviderIdAsync(string providerMessageId, string status, DateTime occurredAtUtc, string? failureReason, CancellationToken cancellationToken)
+    {
+        const string sql = @"
+            UPDATE dbo.CustomerMessages
+            SET DeliveryStatus = CASE
+                    WHEN @status = N'Sent' THEN N'Sent'
+                    WHEN @status = N'Delivered' THEN CASE WHEN DeliveryStatus IN (N'Sent', N'Delivered', N'Read') THEN DeliveryStatus ELSE N'Delivered' END
+                    WHEN @status = N'Read' THEN CASE WHEN DeliveryStatus = N'Read' THEN N'Read' ELSE N'Read' END
+                    WHEN @status = N'Failed' THEN N'Failed'
+                    ELSE DeliveryStatus
+                END,
+                SentAtUtc = CASE WHEN @status = N'Sent' AND SentAtUtc IS NULL THEN @occurredAtUtc ELSE SentAtUtc END,
+                DeliveredAtUtc = CASE WHEN @status = N'Delivered' AND DeliveredAtUtc IS NULL THEN @occurredAtUtc ELSE DeliveredAtUtc END,
+                ReadAtUtc = CASE WHEN @status = N'Read' AND ReadAtUtc IS NULL THEN @occurredAtUtc ELSE ReadAtUtc END,
+                ProcessingAtUtc = CASE WHEN @status = N'Sent' THEN NULL ELSE ProcessingAtUtc END,
+                FailureReason = CASE WHEN @status = N'Failed' AND @failureReason IS NOT NULL THEN @failureReason WHEN @status = N'Failed' AND @failureReason IS NULL THEN FailureReason ELSE NULL END
+            WHERE ProviderMessageId = @providerMessageId;";
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@providerMessageId", providerMessageId);
+        command.Parameters.AddWithValue("@status", status);
+        command.Parameters.AddWithValue("@occurredAtUtc", occurredAtUtc);
+        command.Parameters.AddWithValue("@failureReason", (object?)failureReason ?? DBNull.Value);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task MarkSentAsync(int customerMessageId, string? providerMessageId, DateTime sentAtUtc, CancellationToken cancellationToken)
+    {
+        const string sql = @"
+            UPDATE dbo.CustomerMessages
+            SET DeliveryStatus = N'Sent',
+                ProviderMessageId = @providerMessageId,
+                SentAtUtc = @sentAtUtc,
+                ProcessingAtUtc = NULL,
+                FailureReason = NULL,
+                DeliveredAtUtc = CASE WHEN DeliveredAtUtc IS NULL THEN @sentAtUtc ELSE DeliveredAtUtc END
+            WHERE CustomerMessageID = @customerMessageId;";
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@customerMessageId", customerMessageId);
+        command.Parameters.AddWithValue("@providerMessageId", (object?)providerMessageId ?? DBNull.Value);
+        command.Parameters.AddWithValue("@sentAtUtc", sentAtUtc);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task MarkFailedAsync(int customerMessageId, string failureReason, bool retryable, CancellationToken cancellationToken)
+    {
+        const string sql = @"
+            UPDATE dbo.CustomerMessages
+            SET DeliveryStatus = N'Failed',
+                FailureReason = @failureReason,
+                ProcessingAtUtc = NULL
+            WHERE CustomerMessageID = @customerMessageId;";
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@customerMessageId", customerMessageId);
+        command.Parameters.AddWithValue("@failureReason", failureReason.Length > 500 ? failureReason[..497] + "..." : failureReason);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c)

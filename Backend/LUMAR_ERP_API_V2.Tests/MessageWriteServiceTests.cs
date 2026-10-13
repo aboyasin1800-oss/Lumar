@@ -1,6 +1,12 @@
 using System.Collections.Generic;
+using LUMAR_ERP_API_V2.Configuration;
+using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Loyalty;
 using LUMAR_ERP_API_V2.DTOs.Messages;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using LUMAR_ERP_API_V2.DTOs.Orders;
 using LUMAR_ERP_API_V2.DTOs.Production;
 using LUMAR_ERP_API_V2.Repositories;
@@ -68,6 +74,120 @@ public sealed class MessageWriteServiceTests
         Assert.Single(repo.Messages);
         Assert.Single(repo.Notifications);
         Assert.Equal(repo.Messages[0].CustomerMessageId, repo.Notifications[0].CustomerMessageId);
+    }
+
+    [Fact]
+    public async Task OutboundMessageDispatcher_SendsEligibleMessage_AndPersistsProviderMessageId()
+    {
+        var repo = new FakeMessageRepository();
+        var channel = new FakeOutboundChannel("InApp", true);
+        var dispatcher = new OutboundMessageDispatcher(repo, [channel], new LoggerFactory().CreateLogger<OutboundMessageDispatcher>(), new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["OutboundMessaging:MaxAttempts"] = "5",
+            ["OutboundMessaging:StaleProcessingMinutes"] = "30",
+        }).Build());
+
+        var messageId = await repo.CreateCustomerMessageAsync(7, 99, "OrderCreated", "OrderCreated", "InApp", "Title", "Body", "0500000000", "ORD-99", "Order", "idempotency-1", CancellationToken.None);
+        Assert.NotNull(messageId);
+
+        var result = await dispatcher.DispatchNextAsync(CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result!.Sent);
+        Assert.Equal(messageId, result.CustomerMessageId);
+        Assert.Equal("provider-123", repo.Messages.Single(x => x.CustomerMessageId == messageId.Value).ProviderMessageId);
+        Assert.Equal("Sent", repo.Messages.Single(x => x.CustomerMessageId == messageId.Value).DeliveryStatus);
+    }
+
+    [Fact]
+    public async Task OutboundMessageDispatcher_RetryUsesSameMessage_WhenTransientFailureOccurs()
+    {
+        var repo = new FakeMessageRepository();
+        var channel = new FakeOutboundChannel("InApp", false, forcedTransientFailure: true);
+        var dispatcher = new OutboundMessageDispatcher(repo, [channel], new LoggerFactory().CreateLogger<OutboundMessageDispatcher>(), new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["OutboundMessaging:MaxAttempts"] = "3",
+            ["OutboundMessaging:StaleProcessingMinutes"] = "30",
+        }).Build());
+
+        var messageId = await repo.CreateCustomerMessageAsync(7, 99, "OrderCreated", "OrderCreated", "InApp", "Title", "Body", "0500000000", "ORD-99", "Order", "idempotency-2", CancellationToken.None);
+        Assert.NotNull(messageId);
+
+        var first = await dispatcher.DispatchNextAsync(CancellationToken.None);
+        var second = await dispatcher.DispatchNextAsync(CancellationToken.None);
+
+        Assert.NotNull(first);
+        Assert.False(first!.Sent);
+        Assert.Equal(messageId, first.CustomerMessageId);
+        Assert.Equal(2, repo.Messages.Single(x => x.CustomerMessageId == messageId.Value).AttemptCount);
+        Assert.True(second is null || second.CustomerMessageId == messageId.Value);
+    }
+
+    [Fact]
+    public async Task MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Outbound messaging validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var messageId = await SeedQueuedMessageAsync(connectionString, "ValidationConcurrentClaim-" + Guid.NewGuid().ToString("N")[..12]);
+        try
+        {
+            var repo1 = new MessageRepository(new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+            var repo2 = new MessageRepository(new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+            var firstClaimTask = repo1.ClaimNextAsync("InApp", 5, TimeSpan.FromMinutes(30), CancellationToken.None);
+            var secondClaimTask = repo2.ClaimNextAsync("InApp", 5, TimeSpan.FromMinutes(30), CancellationToken.None);
+            var claimed = await Task.WhenAll(firstClaimTask, secondClaimTask);
+
+            Assert.Equal(1, claimed.Count(x => x is not null));
+            var winner = claimed.Single(x => x is not null)!;
+            Assert.Equal(messageId, winner.CustomerMessageId);
+
+            await using (var verify = new SqlConnection(connectionString))
+            {
+                await verify.OpenAsync();
+                await using var command = new SqlCommand(@"
+                    SELECT DeliveryStatus, AttemptCount, ProcessingAtUtc, FailureReason, ProviderMessageId
+                    FROM dbo.CustomerMessages WHERE CustomerMessageID = @id;", verify);
+                command.Parameters.AddWithValue("@id", messageId);
+                await using var reader = await command.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                Assert.Equal("Processing", reader.GetString(0));
+                Assert.Equal(1, reader.GetInt32(1));
+                Assert.NotEqual(DBNull.Value, reader[2]);
+                Assert.Equal(DBNull.Value, reader[3]);
+                Assert.Equal(DBNull.Value, reader[4]);
+            }
+
+            await repo1.MarkSentAsync(messageId, "provider-live-123", DateTime.UtcNow, CancellationToken.None);
+
+            await using (var verify = new SqlConnection(connectionString))
+            {
+                await verify.OpenAsync();
+                await using var command = new SqlCommand(@"
+                    SELECT DeliveryStatus, ProviderMessageId, ProcessingAtUtc, SentAtUtc
+                    FROM dbo.CustomerMessages WHERE CustomerMessageID = @id;", verify);
+                command.Parameters.AddWithValue("@id", messageId);
+                await using var reader = await command.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                Assert.Equal("Sent", reader.GetString(0));
+                Assert.Equal("provider-live-123", reader.GetString(1));
+                Assert.Equal(DBNull.Value, reader[2]);
+                Assert.NotEqual(DBNull.Value, reader[3]);
+            }
+        }
+        finally
+        {
+            await using var cleanup = new SqlConnection(connectionString);
+            await cleanup.OpenAsync();
+            await using var command = new SqlCommand("DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID = @id;", cleanup);
+            command.Parameters.AddWithValue("@id", messageId);
+            await command.ExecuteNonQueryAsync();
+        }
     }
 
     [Fact]
@@ -534,6 +654,21 @@ public sealed class MessageWriteServiceTests
                 [new ReadyMadeSaleLineDto(88, null, 9, "Ready item", 1, 100m, 100m, 80m)]));
     }
 
+    private sealed class FakeOutboundChannel(string channelName, bool succeed, bool forcedTransientFailure = false) : IOutboundMessageChannel
+    {
+        public string ChannelName { get; } = channelName;
+
+        public Task<OutboundAdapterResult> SendAsync(CustomerMessageDto message, CancellationToken cancellationToken)
+        {
+            if (forcedTransientFailure)
+                return Task.FromResult(new OutboundAdapterResult(OutboundDispatchOutcome.TransientFailure, FailureReason: "Temporary transport issue", Retryable: true));
+
+            return succeed
+                ? Task.FromResult(new OutboundAdapterResult(OutboundDispatchOutcome.Sent, "provider-123"))
+                : Task.FromResult(new OutboundAdapterResult(OutboundDispatchOutcome.PermanentFailure, FailureReason: "Unsupported payload", Retryable: false));
+        }
+    }
+
     private sealed class FakeOrderLoyaltyIntegrationService : IOrderLoyaltyIntegrationService
     {
         public Task<OrderLoyaltyProcessingResult?> ProcessIfEligibleAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<OrderLoyaltyProcessingResult?>(null);
@@ -559,6 +694,31 @@ public sealed class MessageWriteServiceTests
 
         public Task<IReadOnlyList<VipLevelEvaluationDto>> EvaluateNetworkAsync(int customerId, CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<VipLevelEvaluationDto>>(Array.Empty<VipLevelEvaluationDto>());
+    }
+
+    private static async Task<int> SeedQueuedMessageAsync(string connectionString, string uniqueSuffix)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(@"
+            INSERT INTO dbo.CustomerMessages (
+                CustomerID, EventType, TemplateKey, Channel, Title, Body, DeliveryStatus,
+                CreatedAtUtc, AttemptCount, PhoneNumber, ReferenceID, ReferenceType, IdempotencyKey)
+            OUTPUT INSERTED.CustomerMessageID
+            VALUES (@customerId, @eventType, @templateKey, @channel, @title, @body, N'Pending',
+                    SYSUTCDATETIME(), 0, @phoneNumber, @referenceId, @referenceType, @idempotencyKey);", connection);
+        command.Parameters.AddWithValue("@customerId", 101);
+        command.Parameters.AddWithValue("@eventType", "ValidationConcurrentClaim");
+        command.Parameters.AddWithValue("@templateKey", "ValidationConcurrentClaim");
+        command.Parameters.AddWithValue("@channel", "InApp");
+        command.Parameters.AddWithValue("@title", "Validation title " + uniqueSuffix);
+        command.Parameters.AddWithValue("@body", "Validation body " + uniqueSuffix);
+        command.Parameters.AddWithValue("@phoneNumber", "0500000000");
+        command.Parameters.AddWithValue("@referenceId", "validation-" + uniqueSuffix);
+        command.Parameters.AddWithValue("@referenceType", "Validation");
+        command.Parameters.AddWithValue("@idempotencyKey", "validation-" + uniqueSuffix);
+        var result = await command.ExecuteScalarAsync();
+        return Convert.ToInt32(result);
     }
 
     private sealed class FakeMessageRepository : IMessageRepository
@@ -589,6 +749,65 @@ public sealed class MessageWriteServiceTests
 
         public Task<bool> HasProcessedAsync(string idempotencyKey, CancellationToken c) => Task.FromResult(ProcessedKeys.Contains(idempotencyKey));
 
+        public Task<CustomerMessageDto?> ClaimNextAsync(string channel, int maxAttempts, TimeSpan staleProcessingWindow, CancellationToken cancellationToken)
+        {
+            var candidate = Messages
+                .Where(x => string.Equals(x.Channel, channel, StringComparison.OrdinalIgnoreCase))
+                .Where(x => x.DeliveryStatus == "Pending" || x.DeliveryStatus == "Failed")
+                .Where(x => x.AttemptCount < maxAttempts)
+                .OrderBy(x => x.CreatedAtUtc)
+                .FirstOrDefault();
+
+            if (candidate is null)
+                return Task.FromResult<CustomerMessageDto?>(null);
+
+            var claimed = candidate with { DeliveryStatus = "Processing", ProcessingAtUtc = DateTime.UtcNow, AttemptCount = candidate.AttemptCount + 1, FailureReason = null };
+            var index = Messages.IndexOf(candidate);
+            Messages[index] = claimed;
+            return Task.FromResult<CustomerMessageDto?>(claimed);
+        }
+
+        public Task<CustomerMessageDto?> GetByProviderMessageIdAsync(string providerMessageId, CancellationToken cancellationToken)
+            => Task.FromResult<CustomerMessageDto?>(Messages.FirstOrDefault(x => string.Equals(x.ProviderMessageId, providerMessageId, StringComparison.OrdinalIgnoreCase)));
+
+        public Task UpdateDeliveryStatusByProviderIdAsync(string providerMessageId, string status, DateTime occurredAtUtc, string? failureReason, CancellationToken cancellationToken)
+        {
+            var message = Messages.FirstOrDefault(x => string.Equals(x.ProviderMessageId, providerMessageId, StringComparison.OrdinalIgnoreCase));
+            if (message is null)
+                return Task.CompletedTask;
+
+            var updated = status switch
+            {
+                "Sent" => message with { DeliveryStatus = "Sent", SentAtUtc = occurredAtUtc, ProcessingAtUtc = null, FailureReason = null, ProviderMessageId = providerMessageId, DeliveredAtUtc = message.DeliveredAtUtc ?? occurredAtUtc },
+                "Delivered" => message with { DeliveryStatus = "Delivered", DeliveredAtUtc = occurredAtUtc, ProcessingAtUtc = null, FailureReason = null },
+                "Read" => message with { DeliveryStatus = "Read", ReadAtUtc = occurredAtUtc, ProcessingAtUtc = null, FailureReason = null },
+                "Failed" => message with { DeliveryStatus = "Failed", FailureReason = failureReason ?? message.FailureReason, ProcessingAtUtc = null },
+                _ => message
+            };
+
+            var index = Messages.IndexOf(message);
+            Messages[index] = updated;
+            return Task.CompletedTask;
+        }
+
+        public Task MarkSentAsync(int customerMessageId, string? providerMessageId, DateTime sentAtUtc, CancellationToken cancellationToken)
+        {
+            var message = Messages.First(x => x.CustomerMessageId == customerMessageId);
+            var updated = message with { DeliveryStatus = "Sent", SentAtUtc = sentAtUtc, ProcessingAtUtc = null, FailureReason = null, ProviderMessageId = providerMessageId, DeliveredAtUtc = message.DeliveredAtUtc ?? sentAtUtc };
+            var index = Messages.IndexOf(message);
+            Messages[index] = updated;
+            return Task.CompletedTask;
+        }
+
+        public Task MarkFailedAsync(int customerMessageId, string failureReason, bool retryable, CancellationToken cancellationToken)
+        {
+            var message = Messages.First(x => x.CustomerMessageId == customerMessageId);
+            var updated = message with { DeliveryStatus = "Failed", FailureReason = failureReason, ProcessingAtUtc = null };
+            var index = Messages.IndexOf(message);
+            Messages[index] = updated;
+            return Task.CompletedTask;
+        }
+
         public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c)
         {
             if (FailNotificationCreation)
@@ -599,7 +818,7 @@ public sealed class MessageWriteServiceTests
             var messageId = Messages.Count + 1;
             var notificationId = Notifications.Count + 1;
             ProcessedKeys.Add(idempotencyKey);
-            Messages.Add(new CustomerMessageDto(messageId, customerId, orderId, eventType, templateKey, channel, title, body, "Pending", DateTime.UtcNow, null, null, 0, null));
+            Messages.Add(new CustomerMessageDto(messageId, customerId, orderId, eventType, templateKey, channel, title, body, "Pending", DateTime.UtcNow, null, null, 0, null, null, null, phoneNumber, referenceId, referenceType, idempotencyKey));
             Notifications.Add(new CustomerNotificationDto(notificationId, customerId, orderId, eventType, title, body, "Unread", false, DateTime.UtcNow, null, messageId));
             return Task.FromResult((MessageId: (int?)messageId, NotificationId: (int?)notificationId));
         }
@@ -608,7 +827,7 @@ public sealed class MessageWriteServiceTests
         {
             var id = Messages.Count + 1;
             ProcessedKeys.Add(idempotencyKey);
-            Messages.Add(new CustomerMessageDto(id, customerId, orderId, eventType, templateKey, channel, title, body, "Pending", DateTime.UtcNow, null, null, 0, null));
+            Messages.Add(new CustomerMessageDto(id, customerId, orderId, eventType, templateKey, channel, title, body, "Pending", DateTime.UtcNow, null, null, 0, null, null, null, phoneNumber, referenceId, referenceType, idempotencyKey));
             return Task.FromResult<int?>(id);
         }
         public Task<int> CreateCustomerNotificationAsync(int customerId, int? orderId, string eventType, string title, string body, int customerMessageId, CancellationToken c)
