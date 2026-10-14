@@ -45,6 +45,18 @@ public sealed class OrdersController(IOrderService service, IAuthenticatedUserCo
         return Ok(orders.Where(order => order.CustomerId == customerId).ToList());
     }
 
+    [HttpGet("workload-status")]
+    [ProducesResponseType<DailyOrderWorkloadStatusDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<DailyOrderWorkloadStatusDto>> GetDailyWorkloadStatus(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUserAsync(cancellationToken);
+        if (user is null)
+            return Unauthorized();
+
+        return Ok(await service.GetDailyWorkloadStatusAsync(cancellationToken));
+    }
+
     [HttpGet("{id:int}")]
     [ProducesResponseType<OrderDetailsDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

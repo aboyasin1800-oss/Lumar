@@ -196,6 +196,18 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
 
     public Task<IReadOnlyList<OrderPaymentDto>> GetPaymentsAsync(int orderId, CancellationToken cancellationToken) => QueryAsync("SELECT PaymentID, OrderID, InvoiceID, PaymentDate, Amount, PaymentMethod, ReferenceNo, Notes, CreatedDate, PaymentKind FROM dbo.Payments WHERE OrderID = @orderId ORDER BY PaymentDate DESC, PaymentID DESC", reader => new OrderPaymentDto(reader.GetInt32(0), reader.GetInt32(1), reader.NullableInt32("InvoiceID"), reader.GetDateTime(3), reader.GetDecimal(4), reader.NullableString("PaymentMethod"), reader.NullableString("ReferenceNo"), reader.NullableString("Notes"), reader.GetDateTime(8), reader.GetString(9)), orderId, cancellationToken);
 
+    public async Task<int> CountCreatedOrdersForDayAsync(DateTime utcDayStart, DateTime utcDayEnd, CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT COUNT(*) FROM dbo.Orders WITH (NOLOCK) WHERE CreatedDate >= @utcDayStart AND CreatedDate < @utcDayEnd";
+        await using var connection = connections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@utcDayStart", utcDayStart);
+        command.Parameters.AddWithValue("@utcDayEnd", utcDayEnd);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is null || result is DBNull ? 0 : Convert.ToInt32(result, CultureInfo.InvariantCulture);
+    }
+
     public async Task<IReadOnlyList<OrderTrackingDto>?> GetTrackingAsync(int orderId, CancellationToken cancellationToken)
     {
         var orderExists = await QueryAsync(

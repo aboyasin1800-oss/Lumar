@@ -314,6 +314,83 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task TryCreateAsync_WhenCustomerHasNoReferrer_CreatesOnlyCustomerMessage()
+    {
+        var repo = new FakeMessageRepository();
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer());
+
+        var result = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 17,
+            OrderId: 42,
+            EventType: "OrderCreated",
+            TemplateKey: "order-created-customer-smart",
+            PhoneNumber: "0500000001",
+            ReferenceId: "ORD-42",
+            ReferenceType: "Order",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["OrderNumber"] = "ORD-42",
+                ["OrderDetails"] = "قميص + بنطلون",
+                ["TotalAmount"] = 149.99m,
+                ["PaidAmount"] = 100m,
+                ["RemainingAmount"] = 49.99m,
+                ["DeliveryDate"] = new DateTime(2026, 1, 10),
+                ["PointsEarned"] = 15m,
+                ["PointsBalance"] = 250m,
+                ["CustomerCode"] = "C-001",
+            }), CancellationToken.None);
+
+        Assert.True(result.Created);
+        Assert.Equal(1, repo.Messages.Count(x => x.EventType == "OrderCreated"));
+        Assert.Equal(1, repo.Notifications.Count(x => x.EventType == "OrderCreated"));
+        Assert.DoesNotContain(repo.Messages, x => x.TemplateKey.Contains("referrer", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task TryCreateAsync_WhenReferrerPhoneDiffers_CreatesSeparateCustomerAndReferrerMessages()
+    {
+        var repo = new FakeMessageRepository();
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer());
+
+        var result = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 17,
+            OrderId: 42,
+            EventType: "OrderCreated",
+            TemplateKey: "order-created-customer-smart",
+            PhoneNumber: "0500000001",
+            ReferenceId: "ORD-42",
+            ReferenceType: "Order",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["CustomerCode"] = "C-001",
+                ["OrderNumber"] = "ORD-42",
+                ["OrderDetails"] = "قميص + بنطلون",
+                ["TotalAmount"] = 149.99m,
+                ["PaidAmount"] = 100m,
+                ["RemainingAmount"] = 49.99m,
+                ["DeliveryDate"] = new DateTime(2026, 1, 10),
+                ["PointsEarned"] = 15m,
+                ["PointsBalance"] = 250m,
+                ["ReferrerCustomerId"] = 52,
+                ["ReferrerName"] = "محمود",
+                ["ReferrerCode"] = "R-900",
+                ["ReferrerPhoneNumber"] = "0500009999",
+                ["CustomerPhoneNumber"] = "0500000001",
+                ["ReferralIntroduction"] = "العميل الذي عرّفك على مؤسسة لومــــــVIPـــــار هو سالم.",
+                ["ReferralPointsEarned"] = 12m,
+                ["ReferrerPointsBalance"] = 620m,
+            }), CancellationToken.None);
+
+        Assert.True(result.Created);
+        Assert.Equal(2, repo.Messages.Count(x => x.EventType == "OrderCreated"));
+        Assert.Equal(2, repo.Notifications.Count(x => x.EventType == "OrderCreated"));
+        Assert.Contains(repo.Messages, x => x.TemplateKey == "order-created-customer-smart");
+        Assert.Contains(repo.Messages, x => x.TemplateKey == "referrer-points-earned-smart");
+    }
+
+    [Fact]
     public async Task TryCreateAsync_WhenNotificationCreationFails_DoesNotLeavePartialState()
     {
         var repo = new FakeMessageRepository { FailNotificationCreation = true };
@@ -635,6 +712,7 @@ public sealed class MessageWriteServiceTests
         public Task<IReadOnlyList<OrderFabricDto>> GetFabricsAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<OrderFabricDto>>(Array.Empty<OrderFabricDto>());
         public Task<IReadOnlyList<OrderPaymentDto>> GetPaymentsAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<OrderPaymentDto>>(Array.Empty<OrderPaymentDto>());
         public Task<IReadOnlyList<OrderTrackingDto>?> GetTrackingAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<OrderTrackingDto>?>(Array.Empty<OrderTrackingDto>());
+        public Task<int> CountCreatedOrdersForDayAsync(DateTime utcDayStart, DateTime utcDayEnd, CancellationToken cancellationToken) => Task.FromResult(0);
         public Task<OrderDetailsDto?> CollectCustomerPaymentAsync(int orderId, decimal amount, string? paymentMethod, int? cashAccountId, string? referenceNumber, string? notes, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<OrderDetailsDto?> SettleCustomerBalanceAsync(int orderId, decimal amount, decimal discountAmount, string? paymentMethod, int? cashAccountId, string? referenceNumber, string? notes, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<OrderDeliveryDto?> GetDeliveryAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<OrderDeliveryDto?>(null);

@@ -60,6 +60,23 @@ public sealed class OrderService(
     public Task<IReadOnlyList<OrderFabricDto>> GetFabricsAsync(int orderId, CancellationToken cancellationToken) => repository.GetFabricsAsync(orderId, cancellationToken);
     public Task<IReadOnlyList<OrderPaymentDto>> GetPaymentsAsync(int orderId, CancellationToken cancellationToken) => repository.GetPaymentsAsync(orderId, cancellationToken);
     public Task<IReadOnlyList<OrderTrackingDto>?> GetTrackingAsync(int orderId, CancellationToken cancellationToken) => repository.GetTrackingAsync(orderId, cancellationToken);
+    public static DailyOrderWorkloadStatusDto EvaluateDailyOrderWorkload(int dailyOrderCount)
+    {
+        var isWorkloadHigh = dailyOrderCount >= 25;
+        return new DailyOrderWorkloadStatusDto(isWorkloadHigh, isWorkloadHigh
+            ? "نعتذر عن أي تأخير محتمل. يوجد ضغط في الطلبات حالياً، ويعمل فريقنا على إنجاز طلبكم بأسرع وقت ممكن."
+            : null);
+    }
+
+    public async Task<DailyOrderWorkloadStatusDto> GetDailyWorkloadStatusAsync(CancellationToken cancellationToken)
+    {
+        var utcNow = DateTime.UtcNow;
+        var dayStartUtc = new DateTime(utcNow.Year, utcNow.Month, utcNow.Day, 0, 0, 0, DateTimeKind.Utc);
+        var nextDayUtc = dayStartUtc.AddDays(1);
+        var dailyOrderCount = await repository.CountCreatedOrdersForDayAsync(dayStartUtc, nextDayUtc, cancellationToken);
+        return EvaluateDailyOrderWorkload(dailyOrderCount);
+    }
+
     public async Task<OrderDetailsDto?> CollectCustomerPaymentAsync(int orderId, decimal amount, string? paymentMethod, int? cashAccountId, string? referenceNumber, string? notes, CancellationToken cancellationToken)
     {
         var collected = await repository.CollectCustomerPaymentAsync(orderId, amount, paymentMethod, cashAccountId, referenceNumber, notes, cancellationToken);

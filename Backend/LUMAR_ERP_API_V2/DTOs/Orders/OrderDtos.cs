@@ -85,6 +85,7 @@ public sealed record OrderTrackingDto(
     bool? ReadyForDelivery = null);
 public sealed record OrderPieceDto(int PieceId, int OrderItemId, string TrackingCode, string PieceStatus, int PieceNumber, DateTime CreatedDate);
 public sealed record OrderDeliveryDto(int OrderId, string OrderStatus, DateTime? DeliveryDate);
+public sealed record DailyOrderWorkloadStatusDto(bool IsWorkloadHigh, string? Message);
 public sealed class CustomerPaymentRequestDto
 {
     [Range(typeof(decimal), "0.01", "79228162514264337593543950335")]
