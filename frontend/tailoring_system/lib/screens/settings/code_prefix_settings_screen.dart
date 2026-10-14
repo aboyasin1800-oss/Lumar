@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/app_error.dart';
 import '../../core/app_navigation.dart';
 import '../../core/ui_palette.dart';
 
@@ -127,10 +128,7 @@ class _CodePrefixSettingsScreenState extends State<CodePrefixSettingsScreen> {
       );
 
       if (response.statusCode != 200) {
-        final message = jsonDecode(response.body);
-        throw Exception(
-            (message is Map ? message['title'] ?? message['message'] : message)
-                .toString());
+        throw AppError.fromResponse(response);
       }
 
       final decoded = jsonDecode(response.body) as List<dynamic>;
@@ -154,9 +152,41 @@ class _CodePrefixSettingsScreenState extends State<CodePrefixSettingsScreen> {
     } catch (error) {
       setState(() {
         _saving = false;
-        _error = error.toString();
+        _error = error is AppError
+            ? error.userFriendlyMessage
+            : _serverErrorMessageFromAny(error);
       });
     }
+  }
+
+  String _serverErrorMessageFromAny(Object error) {
+    final raw = error.toString();
+    final cleaned = raw
+        .replaceFirst(RegExp(r'^(Exception|Error):\s*', caseSensitive: false), '')
+        .trim();
+
+    if (cleaned.isEmpty || cleaned.toLowerCase() == 'null') {
+      return 'تعذر حفظ إعدادات التكويد. يرجى مراجعة البيانات والمحاولة مرة أخرى.';
+    }
+
+    if (cleaned.startsWith('{') || cleaned.startsWith('[')) {
+      try {
+        final payload = jsonDecode(cleaned);
+        if (payload is Map<String, dynamic>) {
+          final message = payload['userFriendlyMessage'] ??
+              payload['message'] ??
+              payload['title'] ??
+              payload['detail'];
+          if (message is String && message.trim().isNotEmpty) {
+            return message.trim();
+          }
+        }
+      } catch (_) {
+        // Ignore malformed payloads and keep a safe Arabic message.
+      }
+    }
+
+    return cleaned;
   }
 
   @override

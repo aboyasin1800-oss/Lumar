@@ -25,10 +25,12 @@ class AppError implements Exception {
         final message = payload['userFriendlyMessage'];
         if (errorCode is String &&
             message is String &&
-            _allowedCodes.contains(errorCode) &&
             message.trim().isNotEmpty) {
+          final normalizedCode = _allowedCodes.contains(errorCode)
+              ? errorCode
+              : 'GEN-001';
           return AppError(
-            errorCode: errorCode,
+            errorCode: normalizedCode,
             userFriendlyMessage: message.trim(),
           );
         }

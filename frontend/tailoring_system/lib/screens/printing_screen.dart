@@ -58,16 +58,32 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
     super.dispose();
   }
 
+  Map<String, String> get _authHeaders {
+    final token = widget.auth.token;
+    return {
+      'Accept': 'application/json',
+      if (token != null && token.trim().isNotEmpty)
+        'Authorization': 'Bearer ${token.trim()}',
+    };
+  }
+
   Future<_PrintingCenterState> _loadCenter() async {
-    final ordersResponse = await http.get(Uri.parse('$_baseUrl/orders'));
+    final ordersResponse = await http.get(
+      Uri.parse('$_baseUrl/orders'),
+      headers: _authHeaders,
+    );
     if (ordersResponse.statusCode < 200 || ordersResponse.statusCode >= 300) {
       throw Exception('تعذر تحميل الطلبات.');
     }
     final readyOrdersResponse = await http.get(
       Uri.parse('$_baseUrl/production/readymade-orders'),
+      headers: _authHeaders,
     );
 
-    final customersResponse = await http.get(Uri.parse('$_baseUrl/customers'));
+    final customersResponse = await http.get(
+      Uri.parse('$_baseUrl/customers'),
+      headers: _authHeaders,
+    );
     final Map<int, _CustomerSnapshot> customers = {};
     if (customersResponse.statusCode >= 200 &&
         customersResponse.statusCode < 300) {
@@ -123,6 +139,7 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
     for (final key in keys) {
       final response = await http.get(
         Uri.parse('$_baseUrl/settings/by-key/${Uri.encodeComponent(key)}'),
+        headers: _authHeaders,
       );
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);
@@ -368,9 +385,12 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   }
 
   Future<List<_OrderPieceDetail>> _fetchOrderPiecesOnce(_OrderSummary order) async {
-    final response = await http.get(Uri.parse(order.isReadyMade
-      ? '${widget.baseUrl}/production/readymade-orders/${order.orderId}/items'
-      : '${widget.baseUrl}/orders/${order.orderId}/pieces'));
+    final response = await http.get(
+      Uri.parse(order.isReadyMade
+          ? '${widget.baseUrl}/production/readymade-orders/${order.orderId}/items'
+          : '${widget.baseUrl}/orders/${order.orderId}/pieces'),
+      headers: _authHeaders,
+    );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       return const [];
     }
@@ -382,8 +402,11 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         if (order.isReadyMade) {
           final itemId = (entry['readyMadeProductionOrderItemId'] as int?) ?? 0;
           if (itemId <= 0) continue;
-          final pieceResponse = await http.get(Uri.parse(
-              '${widget.baseUrl}/production/readymade-order-items/$itemId/pieces'));
+          final pieceResponse = await http.get(
+            Uri.parse(
+                '${widget.baseUrl}/production/readymade-order-items/$itemId/pieces'),
+            headers: _authHeaders,
+          );
           if (pieceResponse.statusCode < 200 || pieceResponse.statusCode >= 300) continue;
           for (final pieceJson in (jsonDecode(pieceResponse.body) as List).cast<Map<String, dynamic>>()) {
             final pieceId = (pieceJson['readyMadeProductionOrderPieceInstanceId'] as int?) ?? 0;
@@ -413,9 +436,12 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     });
 
     try {
-      final response = await http.get(Uri.parse(order.isReadyMade
-          ? '${widget.baseUrl}/production/readymade-orders/${order.orderId}/items'
-          : '${widget.baseUrl}/orders/${order.orderId}/pieces'));
+      final response = await http.get(
+        Uri.parse(order.isReadyMade
+            ? '${widget.baseUrl}/production/readymade-orders/${order.orderId}/items'
+            : '${widget.baseUrl}/orders/${order.orderId}/pieces'),
+        headers: _authHeaders,
+      );
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('تعذر تحميل قطع الطلب.');
       }
@@ -427,8 +453,11 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
           if (order.isReadyMade) {
             final itemId = (entry['readyMadeProductionOrderItemId'] as int?) ?? 0;
             if (itemId <= 0) continue;
-            final pieceResponse = await http.get(Uri.parse(
-                '${widget.baseUrl}/production/readymade-order-items/$itemId/pieces'));
+            final pieceResponse = await http.get(
+              Uri.parse(
+                  '${widget.baseUrl}/production/readymade-order-items/$itemId/pieces'),
+              headers: _authHeaders,
+            );
             if (pieceResponse.statusCode < 200 || pieceResponse.statusCode >= 300) continue;
             for (final pieceJson in (jsonDecode(pieceResponse.body) as List).cast<Map<String, dynamic>>()) {
               final pieceId = (pieceJson['readyMadeProductionOrderPieceInstanceId'] as int?) ?? 0;
@@ -492,6 +521,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
       Uri.parse(readyMade
           ? '${widget.baseUrl}/production/readymade-pieces/$pieceId/work-card'
           : '${widget.baseUrl}/production/pieces/$pieceId/work-card'),
+      headers: _authHeaders,
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('تعذر تحميل تفاصيل القطعة.');
@@ -1465,295 +1495,6 @@ class _PrintService {
   }
 }
 
-class _MeasurementCardPreview extends StatelessWidget {
-  const _MeasurementCardPreview({
-    required this.piece,
-    required this.header,
-    required this.onPrintSingle,
-    required this.onReprintRequest,
-  });
-
-  final _OrderPieceDetail piece;
-  final _MeasurementHeaderSettings header;
-  final Future<void> Function() onPrintSingle;
-  final Future<void> Function(_OrderPieceDetail piece) onReprintRequest;
-
-  @override
-  Widget build(BuildContext context) {
-    final qrValue = piece.qrCode.trim().isNotEmpty ? piece.qrCode : 'LUMAR';
-    final barcodeValue =
-        piece.barcode.trim().isNotEmpty ? piece.barcode : piece.trackingCode;
-    final pieceTypeLabel = piece.pieceType;
-    final fabricRows = <Widget>[];
-    final specialRequests = <Widget>[];
-
-    final fabricSectionHasContent = piece.fabricCode.isNotEmpty ||
-        piece.fabricType.isNotEmpty ||
-        piece.fabricColor.isNotEmpty ||
-        piece.catalogNumber.isNotEmpty ||
-        piece.consumptionDisplay.isNotEmpty;
-
-    final specialSectionHasContent = piece.request1.isNotEmpty ||
-        piece.request2.isNotEmpty ||
-        piece.specialRequest.isNotEmpty;
-
-    if (fabricSectionHasContent) {
-      final row1 = Row(
-        children: [
-          Expanded(
-              child: _InfoRow(
-                  label: 'كود القماش',
-                  value: piece.fabricCode.isNotEmpty
-                      ? piece.fabricCode
-                      : 'غير محدد')),
-          Expanded(
-              child: _InfoRow(
-                  label: 'نوع القماش',
-                  value: piece.fabricType.isNotEmpty
-                      ? piece.fabricType
-                      : 'غير محدد')),
-        ],
-      );
-      final row2 = Row(
-        children: [
-          Expanded(
-              child: _InfoRow(
-                  label: 'لون القماش',
-                  value: piece.fabricColor.isNotEmpty
-                      ? piece.fabricColor
-                      : 'غير محدد')),
-          Expanded(
-              child: _InfoRow(
-                  label: 'رقم الكتالوج',
-                  value: piece.catalogNumber.isNotEmpty
-                      ? piece.catalogNumber
-                      : 'غير محدد')),
-        ],
-      );
-      final row3 = Row(
-        children: [
-          Expanded(
-              child: _InfoRow(
-                  label: 'الاستهلاك',
-                  value: piece.consumptionDisplay.isNotEmpty
-                      ? piece.consumptionDisplay
-                      : 'غير محدد')),
-          const Expanded(child: SizedBox()),
-        ],
-      );
-      fabricRows.addAll([row1, row2, row3]);
-    }
-
-    if (specialSectionHasContent) {
-      specialRequests.add(_InfoRow(
-          label: '  طلب رقم1',
-          value: piece.request1.isNotEmpty ? piece.request1 : 'لا يوجد'));
-      specialRequests.add(_InfoRow(
-          label: 'طلب رقم2',
-          value: piece.request2.isNotEmpty ? piece.request2 : 'لا يوجد'));
-      specialRequests.add(_InfoRow(
-          label: 'طلبات خاصة',
-          value: piece.specialRequest.isNotEmpty
-              ? piece.specialRequest
-              : 'لا يوجد'));
-    }
-
-    return Directionality(
-      textDirection: Directionality.of(context),
-      child: Container(
-        width: 330,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: Colors.black, width: 1.6),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildHeader(context),
-            const Divider(height: 1, color: Colors.black),
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.black, width: 1.2),
-              ),
-              padding: const EdgeInsets.all(8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _InfoRow(
-                            label: 'اسم العميل', value: piece.customerName),
-                        _InfoRow(label: 'نوع القطعة', value: pieceTypeLabel),
-                        _InfoRow(
-                            label: 'رقم الطلب', value: piece.orderNumber),
-                        _InfoRow(
-                            label: 'تاريخ الطلب', value: piece.orderDateText),
-                        _InfoRow(
-                            label: 'تاريخ التسليم',
-                            value: piece.deliveryDateText),
-                        _InfoRow(
-                            label: 'رمز التتبع', value: piece.trackingCode),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 90,
-                    child: _QrCodeBox(value: qrValue),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1, color: Colors.black),
-            _BarcodeBox(value: barcodeValue),
-            const Divider(height: 1, color: Colors.black),
-            if (fabricRows.isNotEmpty)
-              Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.black, width: 1.2),
-                ),
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('بيانات القماش',
-                        style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black)),
-                    const SizedBox(height: 6),
-                    ...fabricRows,
-                  ],
-                ),
-              ),
-            if (fabricRows.isNotEmpty)
-              const Divider(height: 1, color: Colors.black),
-            if (specialRequests.isNotEmpty)
-              Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.black, width: 1.2),
-                ),
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(' 4',
-                        style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black)),
-                    const SizedBox(height: 6),
-                    ...specialRequests,
-                  ],
-                ),
-              ),
-            if (specialRequests.isNotEmpty)
-              const Divider(height: 1, color: Colors.black),
-            if (piece.measurements.isNotEmpty)
-              Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.black, width: 1.2),
-                ),
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('القياسات',
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: piece.measurements.entries
-                          .map((entry) => SizedBox(
-                                width: 110,
-                                child: _MeasurementCell(
-                                  label: entry.key,
-                                  value: entry.value,
-                                ),
-                              ))
-                          .toList(),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(BuildContext context) {
-    if (header.useImage) {
-      final imageWidget = _headerImageWidget(header.imageValue);
-      if (imageWidget != null) {
-        return SizedBox(
-          height: 50,
-          child: imageWidget,
-        );
-      }
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            header.name,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
-            ),
-          ),
-          if (header.location.isNotEmpty)
-            Text(
-              header.location,
-              style: const TextStyle(fontSize: 12, color: Colors.black87),
-            ),
-          if (header.phone1.isNotEmpty || header.phone2.isNotEmpty)
-            Text(
-              header.phone1.isNotEmpty && header.phone2.isNotEmpty
-                  ? '${header.phone1} • ${header.phone2}'
-                  : '${header.phone1}${header.phone2}',
-              style: const TextStyle(fontSize: 9, color: Colors.black87),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget? _headerImageWidget(String imageValue) {
-    if (imageValue.isEmpty) return null;
-    final safe = imageValue.trim();
-    if (safe.startsWith('data:image')) {
-      final data = safe.split(',').last;
-      try {
-        return Image.memory(
-          base64Decode(data),
-          fit: BoxFit.contain,
-        );
-      } catch (_) {
-        return null;
-      }
-    }
-    if (safe.startsWith('http')) {
-      return Image.network(
-        safe,
-        fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-      );
-    }
-    return null;
-  }
-}
-
 class _MeasurementCardPdfGenerator {
   static String _copyLabel(int copyNumber) {
     switch (copyNumber) {
@@ -2556,10 +2297,6 @@ class _OrderPieceDetail {
       isReadyMade: readyMade,
     );
   }
-
-  static Map<String, dynamic> _sanitizeMeasurements(
-          Map<String, dynamic> source) =>
-      extractRealPieceMeasurements(source);
 
   static String _firstAvailableString(Iterable<dynamic> values) {
     for (final value in values) {

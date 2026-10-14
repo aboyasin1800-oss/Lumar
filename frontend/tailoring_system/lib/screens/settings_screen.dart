@@ -1082,6 +1082,33 @@ class _MeasurementsSettingsScreenState
     }
   }
 
+  String _extractServerErrorMessage(http.Response response,
+      {String fallback = 'تعذر حفظ الإعدادات.'}) {
+    if (response.body.trim().isEmpty) {
+      return fallback;
+    }
+
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        final message = (decoded['message'] ?? decoded['title'] ?? decoded['detail'] ?? decoded['error'])
+            .toString()
+            .trim();
+        if (message.isNotEmpty && message.toLowerCase() != 'null') {
+          return message;
+        }
+      }
+      if (decoded is String && decoded.trim().isNotEmpty) {
+        return decoded.trim();
+      }
+    } catch (_) {}
+
+    final raw = response.body
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return raw.isNotEmpty && raw.toLowerCase() != 'null' ? raw : fallback;
+  }
+
   String _friendlyErrorMessage(Object error,
       {String fallback = 'حدث خطأ غير متوقع.'}) {
     final raw = error.toString();
@@ -1213,7 +1240,8 @@ class _MeasurementsSettingsScreenState
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(response.body);
+        throw Exception(
+            _extractServerErrorMessage(response, fallback: 'تعذر تحديث قياسات القطعة.'));
       }
 
       await _load();
@@ -1253,7 +1281,8 @@ class _MeasurementsSettingsScreenState
       final response = await http.delete(Uri.parse(
           '$_baseUrl/consumption-rules/measurement-types/${row.productTypeId}'));
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(response.body);
+        throw Exception(
+            _extractServerErrorMessage(response, fallback: 'تعذر حذف القطعة.'));
       }
       await _load();
     } catch (error) {

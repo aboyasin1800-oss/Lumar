@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/app_navigation.dart';
 import '../../core/ui_palette.dart';
+import '../../services/auth_state.dart';
 import 'order_delivery_screen.dart';
 
 class DeliveryDashboardScreen extends StatefulWidget {
@@ -45,13 +46,25 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen>
     });
   }
 
+  Map<String, String> _authHeaders() {
+    final token = AuthState.instance.token;
+    return <String, String>{
+      'Accept': 'application/json',
+      if (token != null && token.trim().isNotEmpty)
+        'Authorization': 'Bearer ${token.trim()}',
+    };
+  }
+
   Future<List<_DeliveryOrder>> _loadOrdersByStatus(String status) async {
     const baseUrl = String.fromEnvironment(
       'LUMAR_API_URL',
       defaultValue: 'http://127.0.0.1:5093',
     );
 
-    final response = await http.get(Uri.parse('$baseUrl/orders'));
+    final response = await http.get(
+      Uri.parse('$baseUrl/orders'),
+      headers: _authHeaders(),
+    );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('تعذر تحميل الطلبات.');
     }
@@ -71,8 +84,10 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen>
       String phoneNumber = '';
 
       if (customerId > 0) {
-        final customerResponse =
-            await http.get(Uri.parse('$baseUrl/customers/$customerId'));
+        final customerResponse = await http.get(
+          Uri.parse('$baseUrl/customers/$customerId'),
+          headers: _authHeaders(),
+        );
         if (customerResponse.statusCode >= 200 &&
             customerResponse.statusCode < 300) {
           final customerMap =

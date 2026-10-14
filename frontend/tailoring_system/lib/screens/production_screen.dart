@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../core/app_navigation.dart';
 import '../core/measurement_snapshot.dart';
 import '../core/ui_palette.dart';
+import '../services/auth_state.dart';
 import '../services/theme_state.dart';
 import 'printing/work_card_screen.dart';
 
@@ -4172,8 +4173,19 @@ class ProductionApi {
     return work.timeout(const Duration(seconds: 20));
   }
 
+  Map<String, String> _authHeaders() {
+    final token = AuthState.instance.token;
+    return <String, String>{
+      'Accept': 'application/json',
+      if (token != null && token.trim().isNotEmpty)
+        'Authorization': 'Bearer ${token.trim()}',
+    };
+  }
+
   Future<dynamic> get(String path) async {
-    final response = await _withTimeout(http.get(Uri.parse('$baseUrl$path')));
+    final response = await _withTimeout(
+      http.get(Uri.parse('$baseUrl$path'), headers: _authHeaders()),
+    );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ProductionApiException(response.statusCode);
     }

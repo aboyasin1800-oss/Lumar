@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/app_navigation.dart';
+import '../services/auth_state.dart';
 import 'order_details_screen.dart';
 
 class OrdersScreen extends StatefulWidget {
@@ -68,10 +69,19 @@ class _OrdersScreenState extends State<OrdersScreen>
     });
   }
 
+  Map<String, String> _authHeaders() {
+    final token = AuthState.instance.token;
+    return <String, String>{
+      'Accept': 'application/json',
+      if (token != null && token.trim().isNotEmpty)
+        'Authorization': 'Bearer ${token.trim()}',
+    };
+  }
+
   Future<List<_CustomerSuggestion>> _searchCustomers(String term) async {
     final uri = Uri.parse('$_baseUrl/customers/search')
         .replace(queryParameters: {'term': term});
-    final response = await http.get(uri);
+    final response = await http.get(uri, headers: _authHeaders());
     if (response.statusCode < 200 || response.statusCode >= 300) return const [];
     final decoded = jsonDecode(response.body);
     if (decoded is! List) return const [];
@@ -105,7 +115,10 @@ class _OrdersScreenState extends State<OrdersScreen>
   }
 
   Future<List<OrderSummary>> _loadOrders() async {
-    final response = await http.get(Uri.parse('$_baseUrl/orders'));
+    final response = await http.get(
+      Uri.parse('$_baseUrl/orders'),
+      headers: _authHeaders(),
+    );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('تعذر تحميل الطلبات.');
     }
