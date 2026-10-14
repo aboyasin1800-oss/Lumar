@@ -46,6 +46,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
         title: const Text('مركز إدارة الرسائل'),
         actions: [
           IconButton(
+            tooltip: 'قوالب الرسائل',
+            onPressed: () => AppNavigation.push(context, (_) => const MessageTemplatesScreen()),
+            icon: const Icon(Icons.library_books_rounded),
+          ),
+          IconButton(
             tooltip: 'تحديث',
             onPressed: _refresh,
             icon: const Icon(Icons.refresh_rounded),
@@ -570,14 +575,644 @@ class _DetailSection extends StatelessWidget {
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.query});
+class MessageTemplatesScreen extends StatefulWidget {
+  const MessageTemplatesScreen({super.key});
 
-  final String query;
+  @override
+  State<MessageTemplatesScreen> createState() => _MessageTemplatesScreenState();
+}
+
+class _MessageTemplatesScreenState extends State<MessageTemplatesScreen> {
+  late Future<List<MessageTemplateRecord>> _future;
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _future = MessageTemplatesRepository().getTemplates();
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _future = MessageTemplatesRepository().getTemplates();
+    });
+    await _future;
+  }
+
+  List<MessageTemplateRecord> _filterItems(List<MessageTemplateRecord> items, String query) {
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isEmpty) return items;
+
+    return items.where((template) {
+      final haystack = [
+        template.templateKey,
+        template.templateName,
+        template.title,
+        template.channel,
+        template.body,
+        template.sourceTable,
+      ].join(' ').toLowerCase();
+      return haystack.contains(normalizedQuery);
+    }).toList();
+  }
+
+  Future<void> _showEditor({MessageTemplateRecord? template}) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (_) => _TemplateEditorDialog(template: template),
+    );
+
+    if (result != true || !mounted) return;
+    await _refresh();
+  }
+
+  Future<void> _toggleStatus(MessageTemplateRecord template) async {
+    try {
+      final repository = MessageTemplatesRepository();
+      await (template.isActive ? repository.deactivateTemplate(template.id) : repository.activateTemplate(template.id));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(template.isActive ? 'تم إلغاء تفعيل القالب.' : 'تم تفعيل القالب.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      await _refresh();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذرت عملية تحديث القالب: $error'), behavior: SnackBarBehavior.floating),
+      );
+    }
+  }
+
+  void _showPreview(MessageTemplateRecord template) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: UiPalette.surfaceCard,
+        title: Text(template.titleText, style: const TextStyle(color: UiPalette.textMain)),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (template.templateKey != null && template.templateKey!.isNotEmpty)
+                _DetailRow(label: 'المفتاح', value: template.templateKey!),
+              if (template.channel != null && template.channel!.isNotEmpty)
+                _DetailRow(label: 'القناة', value: template.channel!),
+              const SizedBox(height: 12),
+              Text(
+                template.bodyText,
+                style: const TextStyle(color: UiPalette.textMain, height: 1.7),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('إغلاق'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final text = query.isEmpty ? 'لا توجد رسائل حالياً.' : 'لا توجد نتائج للبحث الحالي.';
+    return Scaffold(
+      backgroundColor: UiPalette.screenBackground,
+      appBar: AppBar(
+        backgroundColor: UiPalette.primary,
+        foregroundColor: UiPalette.adaptiveTextColor(UiPalette.primary),
+        title: const Text('قوالب الرسائل'),
+        actions: [
+          IconButton(
+            tooltip: 'تحديث',
+            onPressed: _refresh,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showEditor(),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('إضافة قالب'),
+      ),
+      body: FutureBuilder<List<MessageTemplateRecord>>(
+        future: _future,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return _ErrorState(message: snapshot.error.toString());
+          }
+
+          final items = snapshot.data ?? const <MessageTemplateRecord>[];
+          final filtered = _filterItems(items, _query);
+
+          return RefreshIndicator(
+            onRefresh: _refresh,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        onChanged: (value) => setState(() => _query = value),
+                        decoration: InputDecoration(
+                          hintText: 'بحث في القوالب',
+                          hintStyle: const TextStyle(color: UiPalette.textSoft),
+                          filled: true,
+                          fillColor: UiPalette.surfaceCard,
+                          prefixIcon: const Icon(Icons.search_rounded, color: UiPalette.textSoft),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        style: const TextStyle(color: UiPalette.textMain),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (filtered.isEmpty)
+                  _EmptyState(query: _query, emptyText: 'لا توجد قوالب رسائل حالياً.')
+                else
+                  ...filtered.map(
+                    (template) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _TemplateCard(
+                        template: template,
+                        onEdit: () => _showEditor(template: template),
+                        onPreview: () => _showPreview(template),
+                        onToggle: () => _toggleStatus(template),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TemplateCard extends StatelessWidget {
+  const _TemplateCard({
+    required this.template,
+    required this.onEdit,
+    required this.onPreview,
+    required this.onToggle,
+  });
+
+  final MessageTemplateRecord template;
+  final VoidCallback onEdit;
+  final VoidCallback onPreview;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: UiPalette.surfaceCard,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        template.titleText,
+                        style: const TextStyle(color: UiPalette.textMain, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      if (template.templateKey != null && template.templateKey!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            template.templateKey!,
+                            style: const TextStyle(color: UiPalette.textSoft, fontSize: 12),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: (template.isActive ? const Color(0xFF2E9D5A) : const Color(0xFFD64B4B)).withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    template.isActive ? 'مفعل' : 'غير مفعل',
+                    style: TextStyle(
+                      color: template.isActive ? const Color(0xFF2E9D5A) : const Color(0xFFD64B4B),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              template.bodyText,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: UiPalette.textSoft, height: 1.6),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                if (template.channel != null && template.channel!.isNotEmpty)
+                  _MetaChip(icon: Icons.campaign_rounded, label: template.channel!),
+                if (template.sourceTable.isNotEmpty)
+                  _MetaChip(icon: Icons.storage_rounded, label: template.sourceTable),
+                _MetaChip(icon: Icons.update_rounded, label: template.updatedAtLabel),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: onPreview,
+                        icon: const Icon(Icons.preview_rounded, size: 18),
+                        label: const Text('معاينة'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: onEdit,
+                        icon: const Icon(Icons.edit_rounded, size: 18),
+                        label: const Text('تعديل'),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: onToggle,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: template.isActive ? const Color(0xFFD64B4B) : const Color(0xFF2E9D5A),
+                        ),
+                        child: Text(template.isActive ? 'إلغاء التفعيل' : 'تفعيل'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TemplateEditorDialog extends StatefulWidget {
+  const _TemplateEditorDialog({this.template});
+
+  final MessageTemplateRecord? template;
+
+  @override
+  State<_TemplateEditorDialog> createState() => _TemplateEditorDialogState();
+}
+
+class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _keyController;
+  late final TextEditingController _titleController;
+  late final TextEditingController _channelController;
+  late final TextEditingController _bodyController;
+  bool _isActive = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final template = widget.template;
+    _keyController = TextEditingController(text: template?.templateKey ?? '');
+    _titleController = TextEditingController(text: template?.title ?? '');
+    _channelController = TextEditingController(text: template?.channel ?? '');
+    _bodyController = TextEditingController(text: template?.body ?? '');
+    _isActive = template?.isActive ?? true;
+  }
+
+  @override
+  void dispose() {
+    _keyController.dispose();
+    _titleController.dispose();
+    _channelController.dispose();
+    _bodyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final repository = MessageTemplatesRepository();
+    try {
+      if (widget.template == null) {
+        await repository.createTemplate(
+          templateKey: _keyController.text.trim(),
+          title: _titleController.text.trim(),
+          channel: _channelController.text.trim(),
+          body: _bodyController.text.trim(),
+          isActive: _isActive,
+        );
+      } else {
+        await repository.updateTemplate(
+          widget.template!.id,
+          templateKey: _keyController.text.trim(),
+          title: _titleController.text.trim(),
+          channel: _channelController.text.trim(),
+          body: _bodyController.text.trim(),
+          isActive: _isActive,
+        );
+      }
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذرت حفظ القالب: $error'), behavior: SnackBarBehavior.floating),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: UiPalette.surfaceCard,
+      title: Text(widget.template == null ? 'إضافة قالب رسالة' : 'تعديل قالب الرسالة', style: const TextStyle(color: UiPalette.textMain)),
+      content: SizedBox(
+        width: 520,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _keyController,
+                  validator: (value) => (value == null || value.trim().isEmpty) ? 'أدخل مفتاح القالب' : null,
+                  decoration: const InputDecoration(labelText: 'مفتاح القالب'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _titleController,
+                  validator: (value) => (value == null || value.trim().isEmpty) ? 'أدخل عنوان القالب' : null,
+                  decoration: const InputDecoration(labelText: 'عنوان القالب'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _channelController,
+                  validator: (value) => (value == null || value.trim().isEmpty) ? 'أدخل القناة' : null,
+                  decoration: const InputDecoration(labelText: 'القناة'),
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('مفعل'),
+                  value: _isActive,
+                  onChanged: (value) => setState(() => _isActive = value),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _bodyController,
+                  minLines: 5,
+                  maxLines: 8,
+                  validator: (value) => (value == null || value.trim().isEmpty) ? 'أدخل نص القالب' : null,
+                  decoration: const InputDecoration(labelText: 'نص القالب', alignLabelWithHint: true),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('إلغاء')),
+        FilledButton(onPressed: _submit, child: const Text('حفظ')),
+      ],
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(color: UiPalette.textMain, height: 1.7),
+          children: [
+            TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.bold)),
+            TextSpan(text: value),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class MessageTemplatesRepository {
+  MessageTemplatesRepository({http.Client? client}) : _client = client ?? http.Client();
+
+  final http.Client _client;
+
+  Future<List<MessageTemplateRecord>> getTemplates() async {
+    final response = await _client.get(
+      Uri.parse('$_apiBaseUrl/messages/templates'),
+      headers: {'Accept': 'application/json'},
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('تعذرت قراءة قوالب الرسائل (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) return const <MessageTemplateRecord>[];
+
+    final items = decoded.whereType<Map<String, dynamic>>();
+    return items.map(MessageTemplateRecord.fromJson).toList();
+  }
+
+  Future<MessageTemplateRecord> createTemplate({
+    required String templateKey,
+    required String title,
+    required String channel,
+    required String body,
+    required bool isActive,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_apiBaseUrl/messages/templates'),
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: jsonEncode({
+        'templateKey': templateKey,
+        'title': title,
+        'channel': channel,
+        'body': body,
+        'isActive': isActive,
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('تعذرت إنشاء القالب (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('استجابة القالب غير صالحة.');
+    }
+
+    return MessageTemplateRecord.fromJson(decoded);
+  }
+
+  Future<MessageTemplateRecord> updateTemplate(
+    int id, {
+    required String templateKey,
+    required String title,
+    required String channel,
+    required String body,
+    required bool isActive,
+  }) async {
+    final response = await _client.put(
+      Uri.parse('$_apiBaseUrl/messages/templates/$id'),
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: jsonEncode({
+        'templateKey': templateKey,
+        'title': title,
+        'channel': channel,
+        'body': body,
+        'isActive': isActive,
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('تعذرت تحديث القالب (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('استجابة تحديث القالب غير صالحة.');
+    }
+
+    return MessageTemplateRecord.fromJson(decoded);
+  }
+
+  Future<MessageTemplateRecord> activateTemplate(int id) async {
+    final response = await _client.put(
+      Uri.parse('$_apiBaseUrl/messages/templates/$id/activate'),
+      headers: {'Accept': 'application/json'},
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('تعذرت تفعيل القالب (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('استجابة التفعيل غير صالحة.');
+    }
+
+    return MessageTemplateRecord.fromJson(decoded);
+  }
+
+  Future<MessageTemplateRecord> deactivateTemplate(int id) async {
+    final response = await _client.put(
+      Uri.parse('$_apiBaseUrl/messages/templates/$id/deactivate'),
+      headers: {'Accept': 'application/json'},
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('تعذرت إلغاء تفعيل القالب (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('استجابة إلغاء التفعيل غير صالحة.');
+    }
+
+    return MessageTemplateRecord.fromJson(decoded);
+  }
+}
+
+class MessageTemplateRecord {
+  const MessageTemplateRecord({
+    required this.id,
+    required this.sourceTable,
+    this.templateKey,
+    this.templateName,
+    this.title,
+    this.channel,
+    this.body,
+    required this.isActive,
+    this.createdAtUtc,
+    this.updatedAtUtc,
+  });
+
+  factory MessageTemplateRecord.fromJson(Map<String, dynamic> json) {
+    return MessageTemplateRecord(
+      id: json['templateId'] as int? ?? 0,
+      sourceTable: json['sourceTable'] as String? ?? '',
+      templateKey: json['templateKey'] as String?,
+      templateName: json['templateName'] as String?,
+      title: json['title'] as String?,
+      channel: json['channel'] as String?,
+      body: json['body'] as String?,
+      isActive: json['isActive'] as bool? ?? false,
+      createdAtUtc: _optionalDateFromJson(json['createdAtUtc']),
+      updatedAtUtc: _optionalDateFromJson(json['updatedAtUtc']),
+    );
+  }
+
+  final int id;
+  final String sourceTable;
+  final String? templateKey;
+  final String? templateName;
+  final String? title;
+  final String? channel;
+  final String? body;
+  final bool isActive;
+  final DateTime? createdAtUtc;
+  final DateTime? updatedAtUtc;
+
+  String get titleText => (title ?? '').trim().isNotEmpty ? title!.trim() : (templateName ?? templateKey ?? 'قالب بدون عنوان');
+  String get bodyText => body ?? '';
+  String get updatedAtLabel => updatedAtUtc != null ? _formatDate(updatedAtUtc!) : 'غير محدد';
+}
+
+DateTime? _optionalDateFromJson(Object? value) {
+  if (value == null || value == '') return null;
+  final parsed = DateTime.tryParse(value.toString());
+  return parsed;
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.query, this.emptyText = 'لا توجد رسائل حالياً.'});
+
+  final String query;
+  final String emptyText;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = query.isEmpty ? emptyText : 'لا توجد نتائج للبحث الحالي.';
     return Container(
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(24),
