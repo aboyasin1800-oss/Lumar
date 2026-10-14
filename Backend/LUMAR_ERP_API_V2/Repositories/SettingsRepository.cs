@@ -173,6 +173,90 @@ public sealed class SettingsRepository(
         return await GetProductionRoutesConfigAsync(cancellationToken);
     }
 
+    public async Task<MessageSettingsDto> GetMessageSettingsAsync(CancellationToken cancellationToken)
+    {
+        var defaults = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["MessageMasterEnabled"] = true,
+            ["DirectReferralDefaultOn"] = true,
+            ["OtherReferralDefaultOff"] = false,
+            ["FridayGreetingEnabled"] = true,
+            ["CampaignEnabled"] = true,
+        };
+
+        foreach (var key in defaults.Keys.ToArray())
+        {
+            var value = await ReadSettingValueAsync(key, cancellationToken);
+            defaults[key] = ParseBoolValue(value, defaults[key]);
+        }
+
+        return new MessageSettingsDto(
+            defaults["MessageMasterEnabled"],
+            defaults["DirectReferralDefaultOn"],
+            defaults["OtherReferralDefaultOff"],
+            defaults["FridayGreetingEnabled"],
+            defaults["CampaignEnabled"]);
+    }
+
+    public async Task<MessageSettingsDto> UpdateMessageSettingsAsync(MessageSettingsDto config, CancellationToken cancellationToken)
+    {
+        if (config is null)
+        {
+            throw new ArgumentException("يجب إرسال إعدادات الرسائل المطلوبة.");
+        }
+
+        var entries = new[]
+        {
+            (Key: "MessageMasterEnabled", Value: config.MessageMasterEnabled),
+            (Key: "DirectReferralDefaultOn", Value: config.DirectReferralDefaultOn),
+            (Key: "OtherReferralDefaultOff", Value: config.OtherReferralDefaultOff),
+            (Key: "FridayGreetingEnabled", Value: config.FridayGreetingEnabled),
+            (Key: "CampaignEnabled", Value: config.CampaignEnabled),
+        };
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            foreach (var entry in entries)
+            {
+                var exists = await ExistsSettingAsync(connection, transaction, entry.Key, cancellationToken);
+                if (exists)
+                {
+                    await using var update = new SqlCommand(
+                        "UPDATE dbo.System_Settings SET SettingValue=@value, Description=@description WHERE SettingName=@key;",
+                        connection,
+                        transaction);
+                    update.Parameters.AddWithValue("@key", entry.Key);
+                    update.Parameters.AddWithValue("@value", entry.Value ? "true" : "false");
+                    update.Parameters.AddWithValue("@description", $"Message settings: {entry.Key}");
+                    await update.ExecuteNonQueryAsync(cancellationToken);
+                    continue;
+                }
+
+                await using var insert = new SqlCommand(
+                    "INSERT INTO dbo.System_Settings (SettingName, SettingValue, Description) VALUES (@key, @value, @description);",
+                    connection,
+                    transaction);
+                insert.Parameters.AddWithValue("@key", entry.Key);
+                insert.Parameters.AddWithValue("@value", entry.Value ? "true" : "false");
+                insert.Parameters.AddWithValue("@description", $"Message settings: {entry.Key}");
+                await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+
+        return await GetMessageSettingsAsync(cancellationToken);
+    }
+
     public async Task<bool> UpdateCurrencySettingsAsync(
         string currencyName,
         string preferredCurrency,
@@ -275,6 +359,38 @@ public sealed class SettingsRepository(
         command.Parameters.AddWithValue("@key", settingName);
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return value is null ? null : Convert.ToString(value);
+    }
+
+    private static bool ParseBoolValue(string? value, bool fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return fallback;
+        }
+
+        var normalized = value.Trim();
+        if (bool.TryParse(normalized, out var parsed))
+        {
+            return parsed;
+        }
+
+        if (int.TryParse(normalized, out var numeric))
+        {
+            return numeric != 0;
+        }
+
+        var lowered = normalized.ToLowerInvariant();
+        if (lowered is "1" or "yes" or "y" or "on" or "true")
+        {
+            return true;
+        }
+
+        if (lowered is "0" or "no" or "n" or "off" or "false")
+        {
+            return false;
+        }
+
+        return fallback;
     }
 
     private static async Task<bool> ExistsSettingAsync(SqlConnection connection, SqlTransaction transaction, string key, CancellationToken cancellationToken)

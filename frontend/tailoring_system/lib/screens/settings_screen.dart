@@ -14,6 +14,7 @@ import 'settings/code_prefix_settings_screen.dart';
 import 'settings/consumption_rules_settings_screen.dart';
 import 'settings/currency_settings_screen.dart';
 import 'settings/points_settings_screen.dart';
+import 'settings/message_settings_screen.dart';
 import 'settings/print_settings_screen.dart';
 import 'settings/production_routes_screen.dart';
 import 'settings/piece_cost_management_screen.dart';
@@ -206,6 +207,21 @@ class _SettingsHomeScreenState extends State<SettingsHomeScreen> {
           keywords: const ['تصنيف القماش', 'نوع القماش', 'الأقمشة'],
           icon: Icons.checkroom_outlined,
           builder: (_) => const FabricSettingsScreen(),
+        ),
+        _SettingsSection(
+          title: 'إعدادات الرسائل',
+          description: 'تفعيل النظام\nالتحية الأسبوعية\nالحملات الترويجية',
+          keywords: const [
+            'الرسائل',
+            'الترويج',
+            'التحية',
+            'الجمعة',
+            'الحملات',
+            'الإحالات',
+            'التنبيهات'
+          ],
+          icon: Icons.message_outlined,
+          builder: (_) => const MessageSettingsScreen(),
         ),
         _SettingsSection(
           title: 'إعدادات الطباعة',

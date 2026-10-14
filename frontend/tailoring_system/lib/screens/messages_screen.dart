@@ -11,6 +11,40 @@ const _apiBaseUrl = String.fromEnvironment(
   defaultValue: 'http://127.0.0.1:5093',
 );
 
+const Map<String, String> _templateDescriptions = {
+  'order-created-customer-smart': 'يُستخدم عند تسجيل طلب جديد، ويرسل للعميل بيانات طلبه والنقاط والمعلومات المرتبطة بالعملية.',
+  'referrer-points-earned-smart': 'يُستخدم لإبلاغ المعرّف بالنقاط التي حصل عليها عندما يستحق نقاطاً نتيجة تعريف عميل على المؤسسة.',
+  'order-referrer-combined-smart': 'يُستخدم عندما يكون رقم هاتف العميل ورقم هاتف المعرّف متطابقين، ويجمع بيانات العميل والمعرّف في رسالة واحدة.',
+  'friday-greeting': 'يُرسل تلقائياً يوم الجمعة للعملاء المؤهلين في النظام لإرسال تحية الجمعة الأسبوعية من مؤسسة لومــــــVIPـــــار.',
+  'general-campaign-smart': 'يُستخدم لإنشاء رسائل الإعلانات والعروض والتهاني والمناسبات وإرسالها يدوياً إلى العملاء المستهدفين، مع دعم النص والصورة.',
+  'order-ready': 'يُرسل للعميل عندما يصبح طلبه جاهزاً للاستلام.',
+  'order-delivered': 'يُرسل للعميل بعد تسجيل تسليم الطلب بنجاح.',
+  'order-started': 'يُرسل للعميل عند بدء العمل الفعلي على طلبه.',
+  'order-created': 'قالب تسجيل طلب تفصيل، ويُستخدم لإبلاغ العميل بإنشاء طلبه وفق المسار المرتبط به.',
+  'OrderCreated': 'قالب تشغيلي مرتبط بحدث إنشاء الطلب، ويجب مراجعة ارتباطه قبل تعطيله أو استبداله.',
+  'ready-made-sale': 'يُرسل للعميل عند إتمام عملية بيع منتج جاهز.',
+  'loyalty-welcome': 'يُرسل للعميل عند تفعيل حسابه في نظام النقاط والولاء.',
+  'loyalty-earned': 'يُرسل للعميل عندما تضاف نقاط ولاء جديدة إلى حسابه.',
+  'referral-earned': 'قالب عربي سابق لاكتساب نقاط التعريف، ويُعرض للتوثيق مع بيان حالته التشغيلية الفعلية.',
+  'ReferralPointsEarned': 'قالب تشغيلي مرتبط بحدث اكتساب نقاط التعريف، ويجب توضيح ارتباطه الحالي قبل تعطيله.',
+  'welcome': 'قالب ترحيب تاريخي باللغة الإنجليزية. لا يُستخدم كنص عربي نهائي إلا إذا بقي مرتبطاً بمسار تشغيلي قديم.',
+  'referral': 'قالب تاريخي باللغة الإنجليزية لرسائل التعريف، ويجب الحفاظ عليه للمرجعية حتى اكتمال الانتقال الآمن.',
+  'loyalty': 'قالب تاريخي باللغة الإنجليزية لرسائل الولاء، ويُعرض للمرجعية ولا يُعتمد كنص عربي نهائي.',
+  'reward': 'قالب تاريخي باللغة الإنجليزية للمكافآت، ويُحافظ عليه حتى إثبات عدم وجود استخدام تشغيلي له.',
+  'ready': 'قالب تاريخي باللغة الإنجليزية لجاهزية الطلب، ويُحافظ عليه للمرجعية حتى اكتمال الانتقال الآمن.',
+  'delivery': 'قالب تاريخي باللغة الإنجليزية لتسليم الطلب، ويُحافظ عليه للمرجعية حتى اكتمال الانتقال الآمن.',
+};
+
+String _templateDescriptionFor(String? key) {
+  final normalized = (key ?? '').trim();
+  if (normalized.isEmpty) {
+    return 'لا يتوفر تعريف تشغيلي موثق لهذا القالب حالياً. راجع مفتاح القالب وارتباطه بالأحداث قبل تعديله أو تعطيله.';
+  }
+
+  return _templateDescriptions[normalized] ??
+      'لا يتوفر تعريف تشغيلي موثق لهذا القالب حالياً. راجع مفتاح القالب وارتباطه بالأحداث قبل تعديله أو تعطيله.';
+}
+
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});
 
@@ -611,6 +645,7 @@ class _MessageTemplatesScreenState extends State<MessageTemplatesScreen> {
         template.channel,
         template.body,
         template.sourceTable,
+        _templateDescriptionFor(template.templateKey),
       ].join(' ').toLowerCase();
       return haystack.contains(normalizedQuery);
     }).toList();
@@ -806,9 +841,24 @@ class _TemplateCard extends StatelessWidget {
                             style: const TextStyle(color: UiPalette.textSoft, fontSize: 12),
                           ),
                         ),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: UiPalette.softBlue.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: UiPalette.borderSoft),
+                        ),
+                        child: Text(
+                          _templateDescriptionFor(template.templateKey),
+                          style: const TextStyle(color: UiPalette.textMain, fontSize: 12.5, height: 1.6),
+                        ),
+                      ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 10),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
@@ -952,51 +1002,98 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final dialogWidth = (screenSize.width * 0.75).clamp(540.0, 960.0);
+    final dialogHeight = (screenSize.height * 0.82).clamp(500.0, 900.0);
+    final descriptionText = _templateDescriptionFor(_keyController.text);
+
     return AlertDialog(
       backgroundColor: UiPalette.surfaceCard,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
       title: Text(widget.template == null ? 'إضافة قالب رسالة' : 'تعديل قالب الرسالة', style: const TextStyle(color: UiPalette.textMain)),
       content: SizedBox(
-        width: 520,
+        width: dialogWidth,
+        height: dialogHeight,
         child: Form(
           key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: _keyController,
-                  validator: (value) => (value == null || value.trim().isEmpty) ? 'أدخل مفتاح القالب' : null,
-                  decoration: const InputDecoration(labelText: 'مفتاح القالب'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  SizedBox(
+                    width: 220,
+                    child: TextFormField(
+                      controller: _keyController,
+                      readOnly: true,
+                      validator: (value) => (value == null || value.trim().isEmpty) ? 'أدخل مفتاح القالب' : null,
+                      decoration: const InputDecoration(labelText: 'مفتاح القالب'),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 220,
+                    child: TextFormField(
+                      controller: _titleController,
+                      validator: (value) => (value == null || value.trim().isEmpty) ? 'أدخل عنوان القالب' : null,
+                      decoration: const InputDecoration(labelText: 'عنوان القالب'),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 180,
+                    child: TextFormField(
+                      controller: _channelController,
+                      validator: (value) => (value == null || value.trim().isEmpty) ? 'أدخل القناة' : null,
+                      decoration: const InputDecoration(labelText: 'القناة'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: UiPalette.softBlue.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: UiPalette.borderSoft),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _titleController,
-                  validator: (value) => (value == null || value.trim().isEmpty) ? 'أدخل عنوان القالب' : null,
-                  decoration: const InputDecoration(labelText: 'عنوان القالب'),
+                child: Text(
+                  descriptionText,
+                  style: const TextStyle(color: UiPalette.textMain, height: 1.6),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _channelController,
-                  validator: (value) => (value == null || value.trim().isEmpty) ? 'أدخل القناة' : null,
-                  decoration: const InputDecoration(labelText: 'القناة'),
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('مفعل'),
+                value: _isActive,
+                onChanged: (value) => setState(() => _isActive = value),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: Scrollbar(
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    child: TextFormField(
+                      controller: _bodyController,
+                      minLines: 20,
+                      maxLines: null,
+                      keyboardType: TextInputType.multiline,
+                      textInputAction: TextInputAction.newline,
+                      textAlign: TextAlign.right,
+                      validator: (value) => (value == null || value.trim().isEmpty) ? 'أدخل نص القالب' : null,
+                      decoration: const InputDecoration(
+                        labelText: 'نص القالب',
+                        alignLabelWithHint: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 12),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('مفعل'),
-                  value: _isActive,
-                  onChanged: (value) => setState(() => _isActive = value),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _bodyController,
-                  minLines: 5,
-                  maxLines: 8,
-                  validator: (value) => (value == null || value.trim().isEmpty) ? 'أدخل نص القالب' : null,
-                  decoration: const InputDecoration(labelText: 'نص القالب', alignLabelWithHint: true),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

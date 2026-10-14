@@ -55,6 +55,30 @@ public sealed class SettingsController(ISettingsService service) : ControllerBas
         }
     }
 
+    [HttpGet("message")]
+    public async Task<ActionResult<MessageSettingsDto>> MessageSettings(CancellationToken cancellationToken) =>
+        Ok(await service.GetMessageSettingsAsync(cancellationToken));
+
+    [HttpPut("message")]
+    public async Task<ActionResult<MessageSettingsDto>> UpdateMessageSettings(
+        [FromBody] MessageSettingsDto request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return BadRequest("يجب إرسال إعدادات الرسائل المطلوبة.");
+        }
+
+        try
+        {
+            return Ok(await service.UpdateMessageSettingsAsync(request, cancellationToken));
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(exception.Message);
+        }
+    }
+
     [HttpPut("currency")]
     public async Task<IActionResult> UpdateCurrency(
         [FromBody] UpdateCurrencySettingsDto request,

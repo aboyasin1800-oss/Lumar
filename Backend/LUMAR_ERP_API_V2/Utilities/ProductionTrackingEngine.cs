@@ -212,6 +212,66 @@ public static class ProductionTrackingEngine
         return string.IsNullOrWhiteSpace(orderStatus) ? "InProduction" : orderStatus;
     }
 
+    public static decimal CalculatePieceProgressPercent(string? pieceType, string? currentStage, IReadOnlyCollection<string>? completedStages = null)
+    {
+        var route = GetRoute(pieceType);
+        if (route.Count == 0)
+        {
+            return 0m;
+        }
+
+        var normalizedCompleted = completedStages?
+            .Select(NormalizeStage)
+            .Where(stage => !string.IsNullOrWhiteSpace(stage))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? [];
+
+        if (normalizedCompleted.Count == 0)
+        {
+            if (string.IsNullOrWhiteSpace(currentStage))
+            {
+                return 0m;
+            }
+
+            var currentIndex = IndexOf(route, NormalizeStage(currentStage));
+            if (currentIndex < 0)
+            {
+                return 0m;
+            }
+
+            normalizedCompleted = route
+                .Take(currentIndex + 1)
+                .ToList();
+        }
+
+        var validCompleted = normalizedCompleted
+            .Where(stage => IndexOf(route, stage) >= 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(stage => IndexOf(route, stage))
+            .ToList();
+
+        if (validCompleted.Count == 0)
+        {
+            return 0m;
+        }
+
+        var totalStages = route.Count;
+        var completedCount = validCompleted.Count;
+        var progress = (completedCount * 100m) / totalStages;
+        return Math.Clamp(progress, 0m, 100m);
+    }
+
+    public static decimal CalculateOrderProgressPercent(IReadOnlyCollection<decimal> pieceProgressPercentages)
+    {
+        if (pieceProgressPercentages.Count == 0)
+        {
+            return 0m;
+        }
+
+        var average = pieceProgressPercentages.Average();
+        return Math.Clamp(average, 0m, 100m);
+    }
+
     public static ProductionTrackingAdvanceResultDto AdvancePiece(string? pieceType, string? currentStatus, string? requestedStage, int? pieceId = null, string? trackingCode = null)
     {
         var previousStatus = NormalizeStage(currentStatus) ?? "New";

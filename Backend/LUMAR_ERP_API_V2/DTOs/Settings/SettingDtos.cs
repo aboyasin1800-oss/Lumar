@@ -13,6 +13,12 @@ public sealed record ProductionRouteEntryDto
 }
 public sealed record ProductionRoutesConfigDto(IReadOnlyList<ProductionRouteEntryDto> Routes);
 public sealed record UpdateCurrencySettingsDto(string CurrencyName, string PreferredCurrency);
+public sealed record MessageSettingsDto(
+    bool MessageMasterEnabled,
+    bool DirectReferralDefaultOn,
+    bool OtherReferralDefaultOff,
+    bool FridayGreetingEnabled,
+    bool CampaignEnabled);
 public sealed record UpdatePrintSettingsDto(
     string? MeasurementCardHeaderImage,
     string? MeasurementCardHeaderUseImage,

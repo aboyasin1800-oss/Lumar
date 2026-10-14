@@ -2,8 +2,8 @@ using System.ComponentModel.DataAnnotations;
 
 namespace LUMAR_ERP_API_V2.DTOs.Orders;
 
-public sealed record OrderListDto(int OrderId, string OrderNumber, int CustomerId, string? CustomerCode, string? CustomerName, string? PhoneNumber, DateTime OrderDate, DateTime? DeliveryDate, decimal TotalAmount, decimal PaidAmount, decimal RemainingAmount, string UrgencyStatus, string OrderStatus, string SaleCategory);
-public sealed record OrderDetailsDto(int OrderId, string OrderNumber, int CustomerId, string? CustomerName, string? PhoneNumber, DateTime OrderDate, DateTime? DeliveryDate, decimal TotalAmount, decimal DiscountAmount, decimal PaidAmount, decimal RemainingAmount, string UrgencyStatus, string OrderStatus, string? Notes, DateTime CreatedDate, DateTime? UpdatedDate, string? CancellationReason, DateTime? CancelledAt, string? CancelledBy, string SaleCategory, bool RevenueRecognized, DateTime? RevenueRecognizedAt, bool RevenueReversalCreated, DateTime? RevenueReversalCreatedAt);
+public sealed record OrderListDto(int OrderId, string OrderNumber, int CustomerId, string? CustomerCode, string? CustomerName, string? PhoneNumber, DateTime OrderDate, DateTime? DeliveryDate, decimal TotalAmount, decimal PaidAmount, decimal RemainingAmount, string UrgencyStatus, string OrderStatus, string SaleCategory, decimal? OrderProgressPercent = null);
+public sealed record OrderDetailsDto(int OrderId, string OrderNumber, int CustomerId, string? CustomerName, string? PhoneNumber, DateTime OrderDate, DateTime? DeliveryDate, decimal TotalAmount, decimal DiscountAmount, decimal PaidAmount, decimal RemainingAmount, string UrgencyStatus, string OrderStatus, string? Notes, DateTime CreatedDate, DateTime? UpdatedDate, string? CancellationReason, DateTime? CancelledAt, string? CancelledBy, string SaleCategory, bool RevenueRecognized, DateTime? RevenueRecognizedAt, bool RevenueReversalCreated, DateTime? RevenueReversalCreatedAt, decimal? OrderProgressPercent = null);
 
 public class CreateOrderDto
 {
@@ -82,7 +82,8 @@ public sealed record OrderTrackingDto(
     int? TotalPieces = null,
     int? CompletedPieces = null,
     decimal? ProgressPercent = null,
-    bool? ReadyForDelivery = null);
+    bool? ReadyForDelivery = null,
+    decimal? PieceProgressPercent = null);
 public sealed record OrderPieceDto(int PieceId, int OrderItemId, string TrackingCode, string PieceStatus, int PieceNumber, DateTime CreatedDate);
 public sealed record OrderDeliveryDto(int OrderId, string OrderStatus, DateTime? DeliveryDate);
 public sealed record DailyOrderWorkloadStatusDto(bool IsWorkloadHigh, string? Message);
