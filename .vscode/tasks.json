@@ -1101,6 +1101,48 @@
 			"command": "$ErrorActionPreference='Stop'; $proc = Get-Process -Name LUMAR_ERP_API_V2 -ErrorAction SilentlyContinue; if ($proc) { Stop-Process -Id $proc.Id -Force; } $buildStart=(Get-Date).ToString('o'); Write-Output \"BackendBuildTime=$buildStart\"; dotnet build Backend/LUMAR_ERP_API_V2/LUMAR_ERP_API_V2.csproj --no-restore -nologo; if ($LASTEXITCODE -ne 0) { throw 'BUILD_FAILED' }; $p = Start-Process -FilePath 'dotnet' -ArgumentList 'run --project \"Backend/LUMAR_ERP_API_V2/LUMAR_ERP_API_V2.csproj\" --urls http://localhost:5093' -WorkingDirectory 'D:\\YASIN' -PassThru; Start-Sleep -Milliseconds 6000; $startTime = $p.StartTime.ToString('o'); Write-Output \"BackendProcessStartTime=$startTime\"; $pw = $env:LUMAR_ADMIN_PASSWORD; if ([string]::IsNullOrWhiteSpace($pw)) { $secure = Read-Host -Prompt 'Enter the new admin password (not stored in repo)' -AsSecureString; $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure); try { $pw = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) } }; $login = Invoke-WebRequest -Uri 'http://localhost:5093/auth/login' -Method Post -ContentType 'application/json' -Body (@{ username='admin'; password=$pw } | ConvertTo-Json) -UseBasicParsing; $loginStatus = [int]$login.StatusCode; Write-Output \"LOGIN_STATUS=$loginStatus\"; $loginJson = $login.Content | ConvertFrom-Json; $tokenPresent = ($null -ne $loginJson.token) -or ($null -ne $loginJson.sessionToken); Write-Output \"TOKEN_PRESENT=$tokenPresent\"; if ($tokenPresent) { $token = if ($null -ne $loginJson.token) { $loginJson.token } else { $loginJson.sessionToken }; $me = Invoke-WebRequest -Uri 'http://localhost:5093/auth/me' -Method Get -Headers @{ Authorization = \"Bearer $token\" } -UseBasicParsing; $meStatus = [int]$me.StatusCode; Write-Output \"ME_STATUS=$meStatus\"; } else { Write-Output 'ME_STATUS=SKIP'; } $windowOpen = $false; $win = Get-Process | Where-Object { $_.MainWindowTitle -and $_.ProcessName -match 'LUMAR|Tailoring|ERP' } | Select-Object -First 1; if ($win) { $windowOpen = $true; } Write-Output \"WINDOWS_HOME_OPENED=$windowOpen\"; if ($loginStatus -ne 200 -or $meStatus -ne 200) { Write-Output 'First Failed Check=Password verification or session creation failed'; } else { Write-Output 'First Failed Check=NONE'; }",
 			"isBackground": false,
 			"problemMatcher": []
+		},
+		{
+			"label": "diag-check",
+			"type": "shell",
+			"command": "cmd /c echo hi > \"d:\\YASIN\\_diagnostics\\tasktest.txt\"",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "claim-lock-probe",
+			"type": "shell",
+			"command": "cmd /c \"dotnet run --project \\\"d:\\YASIN\\_diagnostics\\claim_lock_probe\\claim_lock_probe.csproj\\\" > \\\"d:\\YASIN\\_diagnostics\\claim_lock_probe\\probe-output.txt\\\" 2>&1\"",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "claim-lock-build",
+			"type": "shell",
+			"command": "cmd /c \"dotnet build \\\"d:\\YASIN\\_diagnostics\\claim_lock_probe\\claim_lock_probe.csproj\\\" > \\\"d:\\YASIN\\_diagnostics\\claim_lock_probe\\build-output.txt\\\" 2>&1\"",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "env-check",
+			"type": "shell",
+			"command": "cmd /c set Lumar__ConnectionString > \"d:\\YASIN\\_diagnostics\\env-check.txt\" 2>&1",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "test-claim-concurrency",
+			"type": "shell",
+			"command": "cmd /c \"dotnet test \\\"d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\\\" --filter MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists > \\\"d:\\YASIN\\_diagnostics\\claim-test-output.txt\\\" 2>&1\"",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "claim-lock-probe-run",
+			"type": "shell",
+			"command": "cmd /c \"dotnet run --project \\\"d:\\YASIN\\_diagnostics\\claim_lock_probe\\claim_lock_probe.csproj\\\" > \\\"d:\\YASIN\\_diagnostics\\claim_lock_probe\\probe-output.txt\\\" 2>&1\"",
+			"isBackground": false,
+			"problemMatcher": []
 		}
 	]
 }

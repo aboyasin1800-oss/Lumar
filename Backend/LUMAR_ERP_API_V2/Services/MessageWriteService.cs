@@ -1,16 +1,39 @@
 using LUMAR_ERP_API_V2.DTOs.Messages;
+using LUMAR_ERP_API_V2.DTOs.Settings;
 using LUMAR_ERP_API_V2.Repositories;
 
 namespace LUMAR_ERP_API_V2.Services;
 
-public sealed class MessageWriteService(IMessageRepository repository, IMessageTemplateRenderer renderer) : IMessageWriteService
+public sealed class MessageWriteService(
+    IMessageRepository repository,
+    IMessageTemplateRenderer renderer,
+    ISettingsRepository? settingsRepository = null) : IMessageWriteService
 {
     public async Task<MessageWriteResult> TryCreateAsync(MessageWriteRequest request, CancellationToken cancellationToken)
     {
         if (request.CustomerId <= 0)
             return new MessageWriteResult(false, null, null, request.TemplateKey, string.Empty, string.Empty);
 
-        var routes = await ResolveRoutesAsync(request, cancellationToken);
+        var runtimeSettings = await GetRuntimeSettingsAsync(cancellationToken);
+        if (!runtimeSettings.MessageMasterEnabled)
+        {
+            var legacyTemplateKey = string.IsNullOrWhiteSpace(request.TemplateKey) ? "OrderCreated" : request.TemplateKey.Trim();
+            return new MessageWriteResult(false, null, null, legacyTemplateKey, string.Empty, string.Empty);
+        }
+
+        if (IsFridayGreetingRequest(request) && !runtimeSettings.FridayGreetingEnabled)
+        {
+            var legacyTemplateKey = string.IsNullOrWhiteSpace(request.TemplateKey) ? "friday-greeting" : request.TemplateKey.Trim();
+            return new MessageWriteResult(false, null, null, legacyTemplateKey, string.Empty, string.Empty);
+        }
+
+        if (IsCampaignRequest(request) && !runtimeSettings.CampaignEnabled)
+        {
+            var legacyTemplateKey = string.IsNullOrWhiteSpace(request.TemplateKey) ? "general-campaign-smart" : request.TemplateKey.Trim();
+            return new MessageWriteResult(false, null, null, legacyTemplateKey, string.Empty, string.Empty);
+        }
+
+        var routes = await ResolveRoutesAsync(request, runtimeSettings, cancellationToken);
         if (routes.Count == 0)
         {
             var legacyTemplateKey = string.IsNullOrWhiteSpace(request.TemplateKey) ? "OrderCreated" : request.TemplateKey.Trim();
@@ -60,7 +83,7 @@ public sealed class MessageWriteService(IMessageRepository repository, IMessageT
             : new MessageWriteResult(false, null, null, request.TemplateKey, string.Empty, string.Empty);
     }
 
-    private async Task<List<MessageRoute>> ResolveRoutesAsync(MessageWriteRequest request, CancellationToken cancellationToken)
+    private async Task<List<MessageRoute>> ResolveRoutesAsync(MessageWriteRequest request, MessageSettingsDto runtimeSettings, CancellationToken cancellationToken)
     {
         var ctx = request.Context ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         var customerPhone = NormalizePhone(GetContextValue(ctx, "CustomerPhoneNumber", "PhoneNumber", request.PhoneNumber));
@@ -83,6 +106,9 @@ public sealed class MessageWriteService(IMessageRepository repository, IMessageT
 
         if (!string.IsNullOrWhiteSpace(customerPhone) && !string.IsNullOrWhiteSpace(referrerPhone) && string.Equals(customerPhone, referrerPhone, StringComparison.OrdinalIgnoreCase))
         {
+            if (!runtimeSettings.DirectReferralDefaultOn)
+                return routePlans;
+
             var combinedTemplate = ResolveLegacyTemplateKey(normalizedKey, "order-referrer-combined-smart", "OrderCreated");
             var combinedValues = ToValueDictionary(ctx, allowReferrerValues: true);
             routePlans.Add(new MessageRoute(combinedTemplate, request.CustomerId, request.PhoneNumber, "combined", combinedValues));
@@ -93,12 +119,42 @@ public sealed class MessageWriteService(IMessageRepository repository, IMessageT
         var customerValuesForDifferentPhone = ToValueDictionary(ctx, allowReferrerValues: false);
         routePlans.Add(new MessageRoute(customerTemplateKeyForDifferentPhone, request.CustomerId, request.PhoneNumber, "customer", customerValuesForDifferentPhone));
 
+        if (runtimeSettings.OtherReferralDefaultOff)
+            return routePlans;
+
         var referrerTemplateKeyForDifferentPhone = ResolveLegacyTemplateKey(normalizedKey, "referrer-points-earned-smart", "ReferralPointsEarned");
         var referrerValuesForDifferentPhone = ToValueDictionary(ctx, allowReferrerValues: true);
         var referrerCustomerTargetId = referrerCustomerId ?? request.CustomerId;
         routePlans.Add(new MessageRoute(referrerTemplateKeyForDifferentPhone, referrerCustomerTargetId, referrerPhone, "referrer", referrerValuesForDifferentPhone));
 
         return routePlans;
+    }
+
+    private async Task<MessageSettingsDto> GetRuntimeSettingsAsync(CancellationToken cancellationToken)
+    {
+        if (settingsRepository is null)
+            return new MessageSettingsDto(true, true, false, true, true);
+
+        return await settingsRepository.GetMessageSettingsAsync(cancellationToken);
+    }
+
+    private static bool IsFridayGreetingRequest(MessageWriteRequest request)
+    {
+        var templateText = request.TemplateKey ?? string.Empty;
+        var eventText = request.EventType ?? string.Empty;
+        return templateText.Contains("friday", StringComparison.OrdinalIgnoreCase)
+            || eventText.Contains("friday", StringComparison.OrdinalIgnoreCase)
+            || templateText.Contains("greeting", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCampaignRequest(MessageWriteRequest request)
+    {
+        var templateText = request.TemplateKey ?? string.Empty;
+        var eventText = request.EventType ?? string.Empty;
+        return templateText.Contains("campaign", StringComparison.OrdinalIgnoreCase)
+            || eventText.Contains("campaign", StringComparison.OrdinalIgnoreCase)
+            || templateText.Contains("promotion", StringComparison.OrdinalIgnoreCase)
+            || eventText.Contains("promotion", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ResolveLegacyTemplateKey(string requestedTemplateKey, string smartTemplateKey, string fallbackTemplateKey)

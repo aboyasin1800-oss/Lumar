@@ -3,6 +3,7 @@ using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Loyalty;
 using LUMAR_ERP_API_V2.DTOs.Messages;
+using LUMAR_ERP_API_V2.DTOs.Settings;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,78 @@ public sealed class MessageWriteServiceTests
         });
 
         Assert.Equal("مرحباً سالم، تم إنشاء الطلب رقم 42 بقيمة 149.99 ريال.", rendered);
+    }
+
+    [Fact]
+    public async Task MessageRepository_GetCustomerMessagesAsync_ProjectsAllRequiredMessageFields()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Message repository validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var uniqueSuffix = "ValidationCustomerProjection-" + Guid.NewGuid().ToString("N")[..12];
+        var messageId = await SeedQueuedMessageAsync(connectionString, uniqueSuffix);
+        try
+        {
+            var repository = new MessageRepository(
+                new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+                new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+            var messages = await repository.GetCustomerMessagesAsync(CancellationToken.None);
+            var row = messages.Single(x => x.CustomerMessageId == messageId);
+
+            Assert.Equal("ValidationCustomerProjection", row.TemplateKey);
+            Assert.Equal("provider-live-123", row.ProviderMessageId);
+            Assert.Equal("0500000000", row.PhoneNumber);
+            Assert.Equal("validation-" + uniqueSuffix, row.ReferenceId);
+            Assert.Equal("Validation", row.ReferenceType);
+            Assert.Equal("validation-" + uniqueSuffix, row.IdempotencyKey);
+            Assert.NotNull(row.ProcessingAtUtc);
+            Assert.Equal("Transient failure", row.FailureReason);
+        }
+        finally
+        {
+            await using var cleanup = new SqlConnection(connectionString);
+            await cleanup.OpenAsync();
+            await using var command = new SqlCommand("DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID = @id;", cleanup);
+            command.Parameters.AddWithValue("@id", messageId);
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
+    public async Task MessageWriteService_RespectsMasterAndReferralRuntimeSettings()
+    {
+        var repo = new FakeMessageRepository();
+        var settingsRepo = new FakeSettingsRepository(new MessageSettingsDto(
+            MessageMasterEnabled: false,
+            DirectReferralDefaultOn: true,
+            OtherReferralDefaultOff: false,
+            FridayGreetingEnabled: true,
+            CampaignEnabled: true));
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer(), settingsRepo);
+
+        var result = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 17,
+            OrderId: 42,
+            EventType: "OrderCreated",
+            TemplateKey: "OrderCreated",
+            PhoneNumber: "0500000000",
+            ReferenceId: "ORD-42",
+            ReferenceType: "Order",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["OrderNumber"] = "ORD-42",
+                ["Amount"] = 149.99m,
+            }), CancellationToken.None);
+
+        Assert.False(result.Created);
+        Assert.Null(result.CustomerMessageId);
+        Assert.Equal("OrderCreated", result.TemplateKey);
     }
 
     [Fact]
@@ -817,22 +890,72 @@ public sealed class MessageWriteServiceTests
         await using var command = new SqlCommand(@"
             INSERT INTO dbo.CustomerMessages (
                 CustomerID, EventType, TemplateKey, Channel, Title, Body, DeliveryStatus,
-                CreatedAtUtc, AttemptCount, PhoneNumber, ReferenceID, ReferenceType, IdempotencyKey)
+                CreatedAtUtc, AttemptCount, ProcessingAtUtc, FailureReason, ProviderMessageId,
+                PhoneNumber, ReferenceID, ReferenceType, IdempotencyKey)
             OUTPUT INSERTED.CustomerMessageID
-            VALUES (@customerId, @eventType, @templateKey, @channel, @title, @body, N'Pending',
-                    SYSUTCDATETIME(), 0, @phoneNumber, @referenceId, @referenceType, @idempotencyKey);", connection);
+            VALUES (@customerId, @eventType, @templateKey, @channel, @title, @body, N'Failed',
+                    SYSUTCDATETIME(), 1, SYSUTCDATETIME(), @failureReason, @providerMessageId,
+                    @phoneNumber, @referenceId, @referenceType, @idempotencyKey);", connection);
         command.Parameters.AddWithValue("@customerId", 101);
         command.Parameters.AddWithValue("@eventType", "ValidationConcurrentClaim");
-        command.Parameters.AddWithValue("@templateKey", "ValidationConcurrentClaim");
+        command.Parameters.AddWithValue("@templateKey", "ValidationCustomerProjection");
         command.Parameters.AddWithValue("@channel", "InApp");
         command.Parameters.AddWithValue("@title", "Validation title " + uniqueSuffix);
         command.Parameters.AddWithValue("@body", "Validation body " + uniqueSuffix);
+        command.Parameters.AddWithValue("@failureReason", "Transient failure");
+        command.Parameters.AddWithValue("@providerMessageId", "provider-live-123");
         command.Parameters.AddWithValue("@phoneNumber", "0500000000");
         command.Parameters.AddWithValue("@referenceId", "validation-" + uniqueSuffix);
         command.Parameters.AddWithValue("@referenceType", "Validation");
         command.Parameters.AddWithValue("@idempotencyKey", "validation-" + uniqueSuffix);
         var result = await command.ExecuteScalarAsync();
         return Convert.ToInt32(result);
+    }
+
+    private sealed class FakeSettingsRepository : ISettingsRepository
+    {
+        private MessageSettingsDto _settings;
+
+        public FakeSettingsRepository() : this(new MessageSettingsDto(true, true, false, true, true))
+        {
+        }
+
+        public FakeSettingsRepository(ISettingsRepository? inner)
+            : this(inner is null ? new MessageSettingsDto(true, true, false, true, true) : throw new NotSupportedException())
+        {
+        }
+
+        public FakeSettingsRepository(MessageSettingsDto settings)
+        {
+            _settings = settings;
+        }
+
+        public Task<IReadOnlyList<SystemSettingListDto>> GetAllAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SystemSettingListDto>>(Array.Empty<SystemSettingListDto>());
+        public Task<SystemSettingDetailsDto?> GetByIdAsync(int id, CancellationToken c) => Task.FromResult<SystemSettingDetailsDto?>(null);
+        public Task<SystemSettingDetailsDto?> GetByKeyAsync(string key, CancellationToken c) => Task.FromResult<SystemSettingDetailsDto?>(null);
+        public Task<IReadOnlyList<SettingCategoryDto>> GetCategoriesAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SettingCategoryDto>>(Array.Empty<SettingCategoryDto>());
+        public Task<IReadOnlyList<SystemSettingListDto>> GetByCategoryAsync(string category, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SystemSettingListDto>>(Array.Empty<SystemSettingListDto>());
+        public Task<ProductionRoutesConfigDto> GetProductionRoutesConfigAsync(CancellationToken c) => Task.FromResult(new ProductionRoutesConfigDto(Array.Empty<ProductionRouteEntryDto>()));
+        public Task<IReadOnlyList<string>> GetProductionRoutePieceTypesAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+        public Task<ProductionRoutesConfigDto> UpsertProductionRoutesConfigAsync(ProductionRoutesConfigDto config, CancellationToken c) => Task.FromResult(config);
+        public Task<MessageSettingsDto> GetMessageSettingsAsync(CancellationToken c) => Task.FromResult(_settings);
+        public Task<MessageSettingsDto> UpdateMessageSettingsAsync(MessageSettingsDto config, CancellationToken c)
+        {
+            _settings = config;
+            return Task.FromResult(_settings);
+        }
+
+        public Task<bool> UpdateCurrencySettingsAsync(string currencyName, string preferredCurrency, CancellationToken c) => Task.FromResult(true);
+        public Task<bool> UpdatePrintSettingsAsync(IReadOnlyDictionary<string, string> values, CancellationToken c) => Task.FromResult(true);
+        public Task<IReadOnlyList<SystemSettingListDto>> SearchAsync(string query, CancellationToken c) => Task.FromResult<IReadOnlyList<SystemSettingListDto>>(Array.Empty<SystemSettingListDto>());
+        public Task<SystemSettingListDto> ResolveSettingAsync(string key, CancellationToken c) => Task.FromResult(new SystemSettingListDto(0, key, string.Empty, string.Empty));
+        public Task<SystemSettingDetailsDto?> UpsertSettingAsync(SystemSettingDetailsDto setting, CancellationToken c) => Task.FromResult<SystemSettingDetailsDto?>(setting);
+        public Task<bool> DeleteSettingAsync(int id, CancellationToken c) => Task.FromResult(true);
+        public Task<IReadOnlyList<SystemSettingListDto>> GetSystemSettingsAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SystemSettingListDto>>(Array.Empty<SystemSettingListDto>());
+        public Task<SystemSettingDetailsDto?> GetSystemSettingByKeyAsync(string key, CancellationToken c) => Task.FromResult<SystemSettingDetailsDto?>(null);
+        public Task<SystemSettingDetailsDto?> UpsertSystemSettingAsync(SystemSettingDetailsDto setting, CancellationToken c) => Task.FromResult<SystemSettingDetailsDto?>(setting);
+        public Task<bool> DeleteSystemSettingAsync(int id, CancellationToken c) => Task.FromResult(true);
+        public Task<IReadOnlyList<SystemSettingListDto>> GetSettingsByCategoryAsync(string category, CancellationToken c) => Task.FromResult<IReadOnlyList<SystemSettingListDto>>(Array.Empty<SystemSettingListDto>());
     }
 
     private sealed class FakeMessageRepository : IMessageRepository

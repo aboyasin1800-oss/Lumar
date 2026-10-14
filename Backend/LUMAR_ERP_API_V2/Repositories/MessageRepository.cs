@@ -1,4 +1,5 @@
-﻿using LUMAR_ERP_API_V2.Data;
+﻿using System.Data;
+using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Messages;
 using Microsoft.Data.SqlClient;
 
@@ -66,13 +67,17 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
         r.NullableInt32("MessageID"));
 
     public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(CancellationToken c)
-        => Q("SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc FROM dbo.CustomerMessages ORDER BY CreatedAtUtc DESC,CustomerMessageID DESC", null, Message, c);
+        => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey
+                FROM dbo.CustomerMessages
+                ORDER BY CreatedAtUtc DESC,CustomerMessageID DESC", null, Message, c);
 
     public async Task<CustomerMessageDto?> GetCustomerMessageAsync(int id, CancellationToken c)
-        => (await Q("SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc FROM dbo.CustomerMessages WHERE CustomerMessageID=@id", id, Message, c)).FirstOrDefault();
+        => (await Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey
+                FROM dbo.CustomerMessages WHERE CustomerMessageID=@id", id, Message, c)).FirstOrDefault();
 
     public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(int customerId, CancellationToken c)
-        => Q("SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc FROM dbo.CustomerMessages WHERE CustomerID=@id ORDER BY CreatedAtUtc DESC,CustomerMessageID DESC", customerId, Message, c);
+        => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey
+                FROM dbo.CustomerMessages WHERE CustomerID=@id ORDER BY CreatedAtUtc DESC,CustomerMessageID DESC", customerId, Message, c);
 
     public Task<IReadOnlyList<CustomerNotificationDto>> GetNotificationsAsync(CancellationToken c)
         => Q("SELECT CustomerNotificationID,CustomerID,OrderID,EventType,Title,Body,Status,IsRead,CreatedAtUtc,ReadAtUtc,CustomerMessageID FROM dbo.CustomerNotifications ORDER BY CreatedAtUtc DESC,CustomerNotificationID DESC", null, Notification, c);
@@ -202,20 +207,25 @@ WHERE MessageTemplateID = @id;";
 
     public async Task<CustomerMessageDto?> ClaimNextAsync(string channel, int maxAttempts, TimeSpan staleProcessingWindow, CancellationToken cancellationToken)
     {
-        const string sql = @"
-            WITH candidate AS (
-                SELECT TOP (1) m.*
-                FROM dbo.CustomerMessages AS m
+        const string claimSql = @"
+            ;WITH candidate AS (
+                SELECT TOP (1) m.CustomerMessageID
+                FROM dbo.CustomerMessages AS m WITH (UPDLOCK, ROWLOCK, HOLDLOCK)
                 WHERE m.Channel = @channel
                   AND m.DeliveryStatus IN (N'Pending', N'Failed')
                   AND m.AttemptCount < @maxAttempts
-                  AND (m.DeliveryStatus = N'Pending' OR m.ProcessingAtUtc IS NULL OR DATEDIFF(MINUTE, m.ProcessingAtUtc, SYSUTCDATETIME()) >= @staleMinutes)
+                  AND (
+                        m.DeliveryStatus = N'Pending'
+                        OR m.DeliveryStatus = N'Failed'
+                        OR m.ProcessingAtUtc IS NULL
+                        OR DATEDIFF(MINUTE, m.ProcessingAtUtc, SYSUTCDATETIME()) >= @staleMinutes
+                    )
                 ORDER BY m.CreatedAtUtc ASC, m.CustomerMessageID ASC
             )
-            UPDATE candidate
+            UPDATE m
             SET DeliveryStatus = N'Processing',
                 ProcessingAtUtc = SYSUTCDATETIME(),
-                AttemptCount = AttemptCount + 1,
+                AttemptCount = m.AttemptCount + 1,
                 FailureReason = NULL
             OUTPUT INSERTED.CustomerMessageID,
                    INSERTED.CustomerID,
@@ -237,20 +247,51 @@ WHERE MessageTemplateID = @id;";
                    INSERTED.PhoneNumber,
                    INSERTED.ReferenceID,
                    INSERTED.ReferenceType,
-                   INSERTED.IdempotencyKey;";
+                   INSERTED.IdempotencyKey
+            FROM dbo.CustomerMessages AS m
+            INNER JOIN candidate AS c
+                ON c.CustomerMessageID = m.CustomerMessageID
+            WHERE m.DeliveryStatus IN (N'Pending', N'Failed')
+              AND m.AttemptCount < @maxAttempts;";
 
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.AddWithValue("@channel", channel);
-        command.Parameters.AddWithValue("@maxAttempts", maxAttempts);
-        command.Parameters.AddWithValue("@staleMinutes", (int)staleProcessingWindow.TotalMinutes);
+        await using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
-            return null;
+        try
+        {
+            await using (var lockCmd = new SqlCommand("DECLARE @result int; EXEC @result = sys.sp_getapplock @Resource = @resource, @LockMode = N'Exclusive', @LockOwner = N'Transaction', @LockTimeout = 5000; SELECT @result;", connection, transaction))
+            {
+                lockCmd.Parameters.AddWithValue("@resource", $"MessageClaim:{channel}");
+                var lockResult = await lockCmd.ExecuteScalarAsync(cancellationToken);
+                if (lockResult is int result && result < 0)
+                    throw new InvalidOperationException($"Could not acquire message claim lock for channel '{channel}'.");
+            }
 
-        return Message(reader);
+            await using var command = new SqlCommand(claimSql, connection, transaction);
+            command.Parameters.AddWithValue("@channel", channel);
+            command.Parameters.AddWithValue("@maxAttempts", maxAttempts);
+            command.Parameters.AddWithValue("@staleMinutes", (int)staleProcessingWindow.TotalMinutes);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                if (transaction.Connection is not null && transaction.Connection.State == ConnectionState.Open)
+                    await transaction.RollbackAsync(cancellationToken);
+                return null;
+            }
+
+            var claimed = Message(reader);
+            reader.Dispose();
+            await transaction.CommitAsync(cancellationToken);
+            return claimed;
+        }
+        catch
+        {
+            if (transaction.Connection is not null && transaction.Connection.State == ConnectionState.Open)
+                await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     public async Task<CustomerMessageDto?> GetByProviderMessageIdAsync(string providerMessageId, CancellationToken cancellationToken)
