@@ -11,6 +11,10 @@ public interface IMessageRepository
     Task<IReadOnlyList<CustomerNotificationDto>> GetNotificationsAsync(int customerId, CancellationToken c);
     Task<IReadOnlyList<MessageTemplateDto>> GetTemplatesAsync(CancellationToken c);
     Task<IReadOnlyList<MessageTemplateDto>> GetTemplatesByIdAsync(int id, CancellationToken c);
+    Task<MessageTemplateDto?> CreateTemplateAsync(CreateMessageTemplateDto request, CancellationToken c);
+    Task<MessageTemplateDto?> UpdateTemplateAsync(int id, UpdateMessageTemplateDto request, CancellationToken c);
+    Task<MessageTemplateDto?> ActivateTemplateAsync(int id, CancellationToken c);
+    Task<MessageTemplateDto?> DeactivateTemplateAsync(int id, CancellationToken c);
     Task<IReadOnlyList<SentMessageDto>> GetSentAsync(CancellationToken c);
     Task<IReadOnlyList<SentLogDto>> GetSentLogAsync(CancellationToken c);
     Task<MessageTemplateRecord?> GetActiveTemplateAsync(string templateKey, CancellationToken c);

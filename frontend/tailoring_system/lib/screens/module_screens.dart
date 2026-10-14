@@ -15,6 +15,7 @@ import 'employees_screen.dart';
 import 'financial/finance_views.dart';
 import 'inventory_screen.dart';
 import 'measurements_screen.dart';
+import 'messages_screen.dart';
 import 'orders_screen.dart';
 import 'printing_screen.dart';
 import 'pricing_screen.dart';
@@ -60,6 +61,7 @@ Widget screenForIndex(
   if (index == 12) return const FinancialScreen();
   if (index == 13) return const PricingScreen();
   if (index == 14) return const LoyaltyDashboardScreen();
+  if (index == 15) return const MessagesScreen();
   if (index == 24) return const ReferralDashboardScreen();
   if (index == 25) return const ReferralTreeScreen();
   if (index == 26) return const ReferralHistoryScreen();

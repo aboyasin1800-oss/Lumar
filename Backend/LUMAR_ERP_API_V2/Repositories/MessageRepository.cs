@@ -4,7 +4,7 @@ using Microsoft.Data.SqlClient;
 
 namespace LUMAR_ERP_API_V2.Repositories;
 
-public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections) : IMessageRepository
+public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections) : IMessageRepository
 {
     private static CustomerMessageDto Message(SqlDataReader r) => new(
         r.GetInt32(0),
@@ -85,6 +85,84 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections) 
 
     public Task<IReadOnlyList<MessageTemplateDto>> GetTemplatesByIdAsync(int id, CancellationToken c)
         => Q("SELECT MessageTemplateID AS TemplateId,'dbo.MessageTemplates' AS SourceTable,TemplateKey,NULL AS TemplateName,Title,Channel,Body,IsActive,CreatedAtUtc,UpdatedAtUtc FROM dbo.MessageTemplates WHERE MessageTemplateID=@id ORDER BY MessageTemplateID DESC", id, Template, c);
+
+    public async Task<MessageTemplateDto?> CreateTemplateAsync(CreateMessageTemplateDto request, CancellationToken c)
+    {
+        if (string.IsNullOrWhiteSpace(request.TemplateKey)) throw new ArgumentException("TemplateKey is required.");
+        if (string.IsNullOrWhiteSpace(request.Title)) throw new ArgumentException("Title is required.");
+        if (string.IsNullOrWhiteSpace(request.Channel)) throw new ArgumentException("Channel is required.");
+        if (string.IsNullOrWhiteSpace(request.Body)) throw new ArgumentException("Body is required.");
+
+        const string sql = @"INSERT INTO dbo.MessageTemplates (TemplateKey, Title, Channel, Body, IsActive, CreatedAtUtc, UpdatedAtUtc)
+OUTPUT INSERTED.MessageTemplateID, INSERTED.TemplateKey, INSERTED.Title, INSERTED.Channel, INSERTED.Body, INSERTED.IsActive, INSERTED.CreatedAtUtc, INSERTED.UpdatedAtUtc
+VALUES (@templateKey, @title, @channel, @body, @isActive, SYSUTCDATETIME(), SYSUTCDATETIME());";
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(c);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@templateKey", request.TemplateKey.Trim());
+        command.Parameters.AddWithValue("@title", request.Title.Trim());
+        command.Parameters.AddWithValue("@channel", request.Channel.Trim());
+        command.Parameters.AddWithValue("@body", request.Body.Trim());
+        command.Parameters.AddWithValue("@isActive", request.IsActive);
+        await using var reader = await command.ExecuteReaderAsync(c);
+        if (!await reader.ReadAsync(c)) return null;
+
+        return new MessageTemplateDto(reader.GetInt32(0), "dbo.MessageTemplates", reader.IsDBNull(1) ? null : reader.GetString(1), null, reader.IsDBNull(2) ? null : reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetBoolean(5), reader.GetDateTime(6), reader.GetDateTime(7));
+    }
+
+    public async Task<MessageTemplateDto?> UpdateTemplateAsync(int id, UpdateMessageTemplateDto request, CancellationToken c)
+    {
+        if (id <= 0) throw new ArgumentException("Template id must be positive.");
+        if (string.IsNullOrWhiteSpace(request.TemplateKey)) throw new ArgumentException("TemplateKey is required.");
+        if (string.IsNullOrWhiteSpace(request.Title)) throw new ArgumentException("Title is required.");
+        if (string.IsNullOrWhiteSpace(request.Channel)) throw new ArgumentException("Channel is required.");
+        if (string.IsNullOrWhiteSpace(request.Body)) throw new ArgumentException("Body is required.");
+        if (request.IsActive is null) throw new ArgumentException("IsActive is required.");
+
+        const string sql = @"UPDATE dbo.MessageTemplates
+SET TemplateKey = @templateKey,
+    Title = @title,
+    Channel = @channel,
+    Body = @body,
+    IsActive = @isActive,
+    UpdatedAtUtc = SYSUTCDATETIME()
+WHERE MessageTemplateID = @id;";
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(c);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@id", id);
+        command.Parameters.AddWithValue("@templateKey", request.TemplateKey.Trim());
+        command.Parameters.AddWithValue("@title", request.Title.Trim());
+        command.Parameters.AddWithValue("@channel", request.Channel.Trim());
+        command.Parameters.AddWithValue("@body", request.Body.Trim());
+        command.Parameters.AddWithValue("@isActive", request.IsActive.Value);
+        var affected = await command.ExecuteNonQueryAsync(c);
+        return affected > 0 ? (await GetTemplatesByIdAsync(id, c)).FirstOrDefault() : null;
+    }
+
+    public async Task<MessageTemplateDto?> ActivateTemplateAsync(int id, CancellationToken c)
+    {
+        const string sql = "UPDATE dbo.MessageTemplates SET IsActive = 1, UpdatedAtUtc = SYSUTCDATETIME() WHERE MessageTemplateID = @id;";
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(c);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@id", id);
+        var affected = await command.ExecuteNonQueryAsync(c);
+        return affected > 0 ? (await GetTemplatesByIdAsync(id, c)).FirstOrDefault() : null;
+    }
+
+    public async Task<MessageTemplateDto?> DeactivateTemplateAsync(int id, CancellationToken c)
+    {
+        const string sql = "UPDATE dbo.MessageTemplates SET IsActive = 0, UpdatedAtUtc = SYSUTCDATETIME() WHERE MessageTemplateID = @id;";
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(c);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@id", id);
+        var affected = await command.ExecuteNonQueryAsync(c);
+        return affected > 0 ? (await GetTemplatesByIdAsync(id, c)).FirstOrDefault() : null;
+    }
 
     public Task<IReadOnlyList<SentMessageDto>> GetSentAsync(CancellationToken c)
         => Q("SELECT MessageID,TrackingCode,CustomerID,MessageText,SentDate FROM dbo.Sent_Messages ORDER BY SentDate DESC,MessageID DESC", null, SentMessage, c);

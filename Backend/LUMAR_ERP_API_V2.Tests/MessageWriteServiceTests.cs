@@ -34,6 +34,38 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task MessageService_ExposesTemplateManagementContract()
+    {
+        var repo = new FakeMessageRepository();
+        var service = new MessageService(repo);
+
+        var created = await service.CreateTemplateAsync(new CreateMessageTemplateDto(
+            TemplateKey: "OrderCreated",
+            Title: "طلب جديد",
+            Channel: "InApp",
+            Body: "مرحبا {{CustomerName}}",
+            IsActive: true), CancellationToken.None);
+
+        var updated = await service.UpdateTemplateAsync(created!.TemplateId, new UpdateMessageTemplateDto(
+            TemplateKey: "OrderCreated",
+            Title: "تحديث الطلب",
+            Channel: "InApp",
+            Body: "مرحبا {{CustomerName}} تم تحديث الطلب",
+            IsActive: true), CancellationToken.None);
+
+        var activated = await service.ActivateTemplateAsync(updated!.TemplateId, CancellationToken.None);
+        var deactivated = await service.DeactivateTemplateAsync(activated!.TemplateId, CancellationToken.None);
+
+        Assert.NotNull(created);
+        Assert.NotNull(updated);
+        Assert.NotNull(activated);
+        Assert.NotNull(deactivated);
+        Assert.Equal("OrderCreated", created.TemplateKey);
+        Assert.Equal("تحديث الطلب", updated.Title);
+        Assert.False(deactivated.IsActive);
+    }
+
+    [Fact]
     public async Task TryCreateOrderCreatedMessageAsync_IsIdempotent()
     {
         var repo = new FakeMessageRepository();
@@ -136,8 +168,12 @@ public sealed class MessageWriteServiceTests
         var messageId = await SeedQueuedMessageAsync(connectionString, "ValidationConcurrentClaim-" + Guid.NewGuid().ToString("N")[..12]);
         try
         {
-            var repo1 = new MessageRepository(new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
-            var repo2 = new MessageRepository(new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+            var repo1 = new MessageRepository(
+                new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+                new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+            var repo2 = new MessageRepository(
+                new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+                new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
 
             var firstClaimTask = repo1.ClaimNextAsync("InApp", 5, TimeSpan.FromMinutes(30), CancellationToken.None);
             var secondClaimTask = repo2.ClaimNextAsync("InApp", 5, TimeSpan.FromMinutes(30), CancellationToken.None);
@@ -742,6 +778,14 @@ public sealed class MessageWriteServiceTests
         {
             new MessageTemplateDto(1, "dbo.Orders", "OrderCreated", "إنشاء الطلب", "تم إنشاء الطلب", "sms", "مرحباً {CustomerName}، تم إنشاء الطلب رقم {OrderNumber} بقيمة {Amount} ريال.", true, DateTime.UtcNow, DateTime.UtcNow)
         });
+        public Task<MessageTemplateDto?> CreateTemplateAsync(CreateMessageTemplateDto request, CancellationToken c)
+            => Task.FromResult<MessageTemplateDto?>(new MessageTemplateDto(1, "dbo.MessageTemplates", request.TemplateKey, null, request.Title, request.Channel, request.Body, request.IsActive, DateTime.UtcNow, DateTime.UtcNow));
+        public Task<MessageTemplateDto?> UpdateTemplateAsync(int id, UpdateMessageTemplateDto request, CancellationToken c)
+            => Task.FromResult<MessageTemplateDto?>(new MessageTemplateDto(id, "dbo.MessageTemplates", request.TemplateKey ?? "OrderCreated", null, request.Title ?? "تحديث الطلب", request.Channel ?? "InApp", request.Body ?? "مرحبا {{CustomerName}}", request.IsActive ?? true, DateTime.UtcNow, DateTime.UtcNow));
+        public Task<MessageTemplateDto?> ActivateTemplateAsync(int id, CancellationToken c)
+            => Task.FromResult<MessageTemplateDto?>(new MessageTemplateDto(id, "dbo.MessageTemplates", "OrderCreated", null, "تحديث الطلب", "InApp", "مرحبا {{CustomerName}}", true, DateTime.UtcNow, DateTime.UtcNow));
+        public Task<MessageTemplateDto?> DeactivateTemplateAsync(int id, CancellationToken c)
+            => Task.FromResult<MessageTemplateDto?>(new MessageTemplateDto(id, "dbo.MessageTemplates", "OrderCreated", null, "تحديث الطلب", "InApp", "مرحبا {{CustomerName}}", false, DateTime.UtcNow, DateTime.UtcNow));
         public Task<IReadOnlyList<SentMessageDto>> GetSentAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SentMessageDto>>(Array.Empty<SentMessageDto>());
         public Task<IReadOnlyList<SentLogDto>> GetSentLogAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SentLogDto>>(Array.Empty<SentLogDto>());
         public Task<MessageTemplateRecord?> GetActiveTemplateAsync(string templateKey, CancellationToken c)

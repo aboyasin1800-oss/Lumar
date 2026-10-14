@@ -23,5 +23,7 @@ public sealed record CustomerMessageDto(
     string? IdempotencyKey = null);
 public sealed record CustomerNotificationDto(int CustomerNotificationId,int CustomerId,int? OrderId,string EventType,string Title,string Body,string Status,bool IsRead,DateTime CreatedAtUtc,DateTime? ReadAtUtc,int? CustomerMessageId);
 public sealed record MessageTemplateDto(int TemplateId,string SourceTable,string? TemplateKey,string? TemplateName,string? Title,string? Channel,string? Body,bool? IsActive,DateTime? CreatedAtUtc,DateTime? UpdatedAtUtc);
+public sealed record CreateMessageTemplateDto(string TemplateKey,string Title,string Channel,string Body,bool IsActive = true);
+public sealed record UpdateMessageTemplateDto(string? TemplateKey,string? Title,string? Channel,string? Body,bool? IsActive);
 public sealed record SentMessageDto(int MessageId,int? TrackingCode,int? CustomerId,string? MessageText,DateTime? SentDate);
 public sealed record SentLogDto(int Id,int? MessageId);

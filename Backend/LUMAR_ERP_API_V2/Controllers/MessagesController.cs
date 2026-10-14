@@ -47,6 +47,48 @@ public sealed class MessagesController(IMessageService service, ICustomerService
 		return items.Count == 0 ? NotFound() : items.Count > 1 ? StatusCode(501, "Template id is ambiguous across independent template tables.") : Ok(items[0]);
 	}
 
+	[HttpPost("templates")]
+	public async Task<ActionResult<MessageTemplateDto>> CreateTemplate([FromBody] CreateMessageTemplateDto request, CancellationToken ct)
+	{
+		try
+		{
+			var created = await service.CreateTemplateAsync(request, ct);
+			return created is null ? StatusCode(500, "Unable to create message template.") : CreatedAtAction(nameof(GetTemplate), new { id = created.TemplateId }, created);
+		}
+		catch (ArgumentException exception)
+		{
+			return BadRequest(exception.Message);
+		}
+	}
+
+	[HttpPut("templates/{id:int}")]
+	public async Task<ActionResult<MessageTemplateDto>> UpdateTemplate(int id, [FromBody] UpdateMessageTemplateDto request, CancellationToken ct)
+	{
+		try
+		{
+			var updated = await service.UpdateTemplateAsync(id, request, ct);
+			return updated is null ? NotFound() : Ok(updated);
+		}
+		catch (ArgumentException exception)
+		{
+			return BadRequest(exception.Message);
+		}
+	}
+
+	[HttpPut("templates/{id:int}/activate")]
+	public async Task<ActionResult<MessageTemplateDto>> ActivateTemplate(int id, CancellationToken ct)
+	{
+		var template = await service.ActivateTemplateAsync(id, ct);
+		return template is null ? NotFound() : Ok(template);
+	}
+
+	[HttpPut("templates/{id:int}/deactivate")]
+	public async Task<ActionResult<MessageTemplateDto>> DeactivateTemplate(int id, CancellationToken ct)
+	{
+		var template = await service.DeactivateTemplateAsync(id, ct);
+		return template is null ? NotFound() : Ok(template);
+	}
+
 	[HttpGet("sent")]
 	public async Task<ActionResult<IReadOnlyList<SentMessageDto>>> GetSent(CancellationToken ct) => Ok(await service.GetSentAsync(ct));
 
