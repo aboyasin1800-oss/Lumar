@@ -367,6 +367,9 @@ public sealed class ProductionRepository(
                 throw new InvalidOperationException("The piece update did not affect the expected row.");
             }
 
+            var hasOrderStartedProduction = !pieceContext.IsReadyMade && pieceContext.OrderId > 0
+                && await MaybeUpdateOrderProductionStatusAsync(connection, transaction, pieceContext.OrderId, pieceContext.OrderStatus, ct);
+
             var readyMadeInventory = pieceContext.IsReadyMade && isFinalReadyMadeStage
                 ? await EnsureReadyMadeInventoryProductAsync(connection, transaction, pieceContext, identity.ProductTypeId, ct)
                 : ReadyMadeInventoryTransferOutcome.NotRequired;
@@ -962,6 +965,69 @@ public sealed class ProductionRepository(
         orderCommand.Parameters.AddWithValue("@status", orderStatus);
         orderCommand.Parameters.AddWithValue("@orderId", orderId);
         await orderCommand.ExecuteNonQueryAsync(ct);
+    }
+
+    private async Task<bool> MaybeUpdateOrderProductionStatusAsync(SqlConnection connection, SqlTransaction transaction, int orderId, string currentOrderStatus, CancellationToken ct)
+    {
+        if (string.Equals(currentOrderStatus, "Cancelled", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(currentOrderStatus, "ReadyForDelivery", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(currentOrderStatus, "Delivered", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        const string sql = @"
+            SELECT p.PieceStatus, oi.PieceType
+            FROM dbo.Pieces p WITH (NOLOCK)
+            INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = p.OrderItemID
+            WHERE oi.OrderID = @orderId;";
+        await using var piecesCommand = new SqlCommand(sql, connection, transaction);
+        piecesCommand.Parameters.AddWithValue("@orderId", orderId);
+        await using var reader = await piecesCommand.ExecuteReaderAsync(ct);
+        var totalPieces = 0;
+        var completedPieces = 0;
+        var cancelledPieces = 0;
+        var hasBlockedPieces = false;
+        var hasStartedPiece = false;
+        while (await reader.ReadAsync(ct))
+        {
+            totalPieces++;
+            var pieceStatus = reader.GetString(0);
+            var pieceType = reader.GetString(1);
+            var identity = await identities.ResolveAsync(connection, transaction, null, pieceType, pieceType, null, ct);
+            var route = identity is null ? Array.Empty<string>() : ProductionTrackingEngine.GetRoute(identity.ProductTypeId);
+            var lastStage = route.LastOrDefault();
+            var completed = string.Equals(pieceStatus, "Delivered", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(pieceStatus, "Ready", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(pieceStatus, "ReadyForDelivery", StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(lastStage) && string.Equals(pieceStatus, lastStage, StringComparison.OrdinalIgnoreCase));
+            if (completed) completedPieces++;
+            if (!string.Equals(pieceStatus, "New", StringComparison.OrdinalIgnoreCase))
+            {
+                hasStartedPiece = true;
+            }
+            if (string.Equals(pieceStatus, "Cancelled", StringComparison.OrdinalIgnoreCase)) cancelledPieces++;
+            if (string.Equals(pieceStatus, "Blocked", StringComparison.OrdinalIgnoreCase) || string.Equals(pieceStatus, "Hold", StringComparison.OrdinalIgnoreCase)) hasBlockedPieces = true;
+        }
+
+        if (totalPieces <= 0)
+        {
+            return false;
+        }
+
+        var nextStatus = hasStartedPiece
+            ? ProductionTrackingEngine.DetermineOrderStatus(completedPieces, totalPieces, cancelledPieces, hasBlockedPieces, currentOrderStatus)
+            : currentOrderStatus;
+        if (string.Equals(nextStatus, currentOrderStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        const string updateSql = "UPDATE dbo.Orders SET OrderStatus = @status WHERE OrderID = @orderId AND OrderStatus <> N'Cancelled'";
+        await using var updateCommand = new SqlCommand(updateSql, connection, transaction);
+        updateCommand.Parameters.AddWithValue("@status", nextStatus);
+        updateCommand.Parameters.AddWithValue("@orderId", orderId);
+        return await updateCommand.ExecuteNonQueryAsync(ct) > 0;
     }
 
     private async Task<bool> MaybeUpdateOrderReadyForDeliveryAsync(SqlConnection connection, SqlTransaction transaction, int orderId, string currentOrderStatus, CancellationToken ct)

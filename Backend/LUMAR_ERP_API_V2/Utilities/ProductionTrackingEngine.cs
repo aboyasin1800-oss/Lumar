@@ -204,6 +204,11 @@ public static class ProductionTrackingEngine
             return "ReadyForDelivery";
         }
 
+        if (string.Equals(orderStatus, "New", StringComparison.OrdinalIgnoreCase))
+        {
+            return totalRequiredPieces > 0 ? "InProduction" : "New";
+        }
+
         return string.IsNullOrWhiteSpace(orderStatus) ? "InProduction" : orderStatus;
     }
 

@@ -181,6 +181,19 @@ public class ProductionTrackingEngineTests : IDisposable
     }
 
     [Fact]
+    public void ShouldPromoteOrderToInProductionWhenProductionStarts()
+    {
+        var result = ProductionTrackingEngine.DetermineOrderStatus(
+            completedPieceCount: 0,
+            totalRequiredPieces: 3,
+            cancelledPieces: 0,
+            hasBlockedPieces: false,
+            orderStatus: "New");
+
+        Assert.Equal("InProduction", result);
+    }
+
+    [Fact]
     public void ShouldKeepOrderUnreadyWhenPieceIsStillIncomplete()
     {
         var result = ProductionTrackingEngine.DetermineOrderStatus(
