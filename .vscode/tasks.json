@@ -1143,6 +1143,106 @@
 			"command": "cmd /c \"dotnet run --project \\\"d:\\YASIN\\_diagnostics\\claim_lock_probe\\claim_lock_probe.csproj\\\" > \\\"d:\\YASIN\\_diagnostics\\claim_lock_probe\\probe-output.txt\\\" 2>&1\"",
 			"isBackground": false,
 			"problemMatcher": []
+		},
+		{
+			"label": "dotnet-direct-test",
+			"type": "shell",
+			"command": "dotnet test \"d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists > \"d:\\YASIN\\_diagnostics\\claim-test-output.txt\" 2>&1",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "probe-direct-run",
+			"type": "shell",
+			"command": "dotnet run --project \"d:\\YASIN\\_diagnostics\\claim_lock_probe\\claim_lock_probe.csproj\" > \"d:\\YASIN\\_diagnostics\\claim_lock_probe\\probe-output.txt\" 2>&1",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "dotnet-version",
+			"type": "shell",
+			"command": "dotnet --list-sdks > \"d:\\YASIN\\_diagnostics\\dotnet-sdks.txt\" 2>&1",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stale-processing-test",
+			"type": "shell",
+			"command": "dotnet test \"d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"MessageRepository_ClaimNextAsync_StaleProcessingMessagesAreEligibleAfterWindow\" > \"d:\\YASIN\\_diagnostics\\stale-processing-test.txt\" 2>&1",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "single-concurrency-test",
+			"type": "shell",
+			"command": "dotnet test \"d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists\" > \"d:\\YASIN\\_diagnostics\\single-concurrency-test.txt\" 2>&1",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "single-claim-proof",
+			"type": "shell",
+			"command": "dotnet test \"d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists\" --logger \"console;verbosity=minimal\" > \"d:\\YASIN\\_diagnostics\\single-claim-proof.txt\" 2>&1",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Claim contract verification",
+			"type": "shell",
+			"command": "dotnet test \"d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists|MessageRepository_ClaimNextAsync_ConcurrentClaims_UsesDistinctMessages_WhenTwoMessagesShareUniqueChannel|MessageRepository_ClaimNextAsync_StaleProcessingMessagesAreEligibleAfterWindow\" --logger \"console;verbosity=minimal\"",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Claim contract verification v2",
+			"type": "shell",
+			"command": "dotnet test \"d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter 'MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists|MessageRepository_ClaimNextAsync_ConcurrentClaims_UsesDistinctMessages_WhenTwoMessagesShareUniqueChannel|MessageRepository_ClaimNextAsync_StaleProcessingMessagesAreEligibleAfterWindow' --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Claim contract verification v3",
+			"type": "shell",
+			"command": "dotnet test \"d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter 'MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists|MessageRepository_ClaimNextAsync_ConcurrentClaims_UsesDistinctMessages_WhenTwoMessagesShareUniqueChannel|MessageRepository_ClaimNextAsync_StaleProcessingMessagesAreEligibleAfterWindow' --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Claim contract verification v4",
+			"type": "shell",
+			"command": "dotnet test \"d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter 'MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists|MessageRepository_ClaimNextAsync_ConcurrentClaims_UsesDistinctMessages_WhenTwoMessagesShareUniqueChannel|MessageRepository_ClaimNextAsync_StaleProcessingMessagesAreEligibleAfterWindow' --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Claim contract verification v5",
+			"type": "shell",
+			"command": "dotnet test \"d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter 'MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists|MessageRepository_ClaimNextAsync_ConcurrentClaims_UsesDistinctMessages_WhenTwoMessagesShareUniqueChannel|MessageRepository_ClaimNextAsync_StaleProcessingMessagesAreEligibleAfterWindow' --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Claim contract verification v6",
+			"type": "shell",
+			"command": "dotnet test \"d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter 'MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists|MessageRepository_ClaimNextAsync_ConcurrentClaims_UsesDistinctMessages_WhenTwoMessagesShareUniqueChannel|MessageRepository_ClaimNextAsync_StaleProcessingMessagesAreEligibleAfterWindow' --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "MessageWriteServiceTests",
+			"type": "shell",
+			"command": "dotnet test \"d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"MessageWriteServiceTests\" --logger \"console;verbosity=minimal\"",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "FlutterWindowsBuildCapture",
+			"type": "shell",
+			"command": "Set-Location \"d:\\YASIN\\frontend\\tailoring_system\"; flutter build windows > \"d:\\YASIN\\flutter_windows_build.log\" 2>&1; Get-Content \"d:\\YASIN\\flutter_windows_build.log\"",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }

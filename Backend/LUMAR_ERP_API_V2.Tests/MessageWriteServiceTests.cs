@@ -45,7 +45,8 @@ public sealed class MessageWriteServiceTests
             throw new InvalidOperationException("Message repository validation must target LUMAR_ERP_ES_VALIDATION.");
 
         var uniqueSuffix = "ValidationCustomerProjection-" + Guid.NewGuid().ToString("N")[..12];
-        var messageId = await SeedQueuedMessageAsync(connectionString, uniqueSuffix);
+        var channel = "ValidationInApp-" + Guid.NewGuid().ToString("N")[..16];
+        var messageId = await SeedQueuedMessageAsync(connectionString, channel, uniqueSuffix);
         try
         {
             var repository = new MessageRepository(
@@ -238,7 +239,8 @@ public sealed class MessageWriteServiceTests
         if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Outbound messaging validation must target LUMAR_ERP_ES_VALIDATION.");
 
-        var messageId = await SeedQueuedMessageAsync(connectionString, "ValidationConcurrentClaim-" + Guid.NewGuid().ToString("N")[..12]);
+        var channel = "ValidationInApp-" + Guid.NewGuid().ToString("N")[..16];
+        var messageId = await SeedQueuedMessageAsync(connectionString, channel, "ValidationConcurrentClaim-" + Guid.NewGuid().ToString("N")[..12]);
         try
         {
             var repo1 = new MessageRepository(
@@ -248,10 +250,28 @@ public sealed class MessageWriteServiceTests
                 new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
                 new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
 
-            var firstClaimTask = repo1.ClaimNextAsync("InApp", 5, TimeSpan.FromMinutes(30), CancellationToken.None);
-            var secondClaimTask = repo2.ClaimNextAsync("InApp", 5, TimeSpan.FromMinutes(30), CancellationToken.None);
+            await using (var print = new SqlConnection(connectionString))
+            {
+                await print.OpenAsync();
+                await using var list = new SqlCommand(@"
+                    SELECT CustomerMessageID, EventType, TemplateKey, DeliveryStatus, AttemptCount, ProcessingAtUtc, IdempotencyKey
+                    FROM dbo.CustomerMessages
+                    WHERE Channel = @channel
+                    ORDER BY CreatedAtUtc ASC, CustomerMessageID ASC;", print);
+                list.Parameters.AddWithValue("@channel", channel);
+                await using var reader = await list.ExecuteReaderAsync();
+                Console.WriteLine($"[ClaimDebug] channel={channel} seedMessageId={messageId}");
+                while (await reader.ReadAsync())
+                {
+                    Console.WriteLine($"[ClaimDebug] eligible CustomerMessageID={reader.GetInt32(0)}, EventType={reader.GetString(1)}, TemplateKey={reader.GetString(2)}, DeliveryStatus={reader.GetString(3)}, AttemptCount={reader.GetInt32(4)}, ProcessingAtUtc={(reader.IsDBNull(5) ? "NULL" : reader.GetDateTime(5).ToString("O"))}, IdempotencyKey={reader.GetString(6)}");
+                }
+            }
+
+            var firstClaimTask = repo1.ClaimNextAsync(channel, 5, TimeSpan.FromMinutes(30), CancellationToken.None);
+            var secondClaimTask = repo2.ClaimNextAsync(channel, 5, TimeSpan.FromMinutes(30), CancellationToken.None);
             var claimed = await Task.WhenAll(firstClaimTask, secondClaimTask);
 
+            Console.WriteLine($"[ClaimDebug] claimedIds={string.Join(",", claimed.Select(x => x is null ? "null" : x.CustomerMessageId.ToString()))}");
             Assert.Equal(1, claimed.Count(x => x is not null));
             var winner = claimed.Single(x => x is not null)!;
             Assert.Equal(messageId, winner.CustomerMessageId);
@@ -272,7 +292,8 @@ public sealed class MessageWriteServiceTests
                 Assert.Equal(DBNull.Value, reader[4]);
             }
 
-            await repo1.MarkSentAsync(messageId, "provider-live-123", DateTime.UtcNow, CancellationToken.None);
+            var providerMessageId = "provider-live-" + Guid.NewGuid().ToString("N");
+            await repo1.MarkSentAsync(messageId, providerMessageId, DateTime.UtcNow, CancellationToken.None);
 
             await using (var verify = new SqlConnection(connectionString))
             {
@@ -284,10 +305,94 @@ public sealed class MessageWriteServiceTests
                 await using var reader = await command.ExecuteReaderAsync();
                 Assert.True(await reader.ReadAsync());
                 Assert.Equal("Sent", reader.GetString(0));
-                Assert.Equal("provider-live-123", reader.GetString(1));
+                Assert.Equal(providerMessageId, reader.GetString(1));
                 Assert.Equal(DBNull.Value, reader[2]);
                 Assert.NotEqual(DBNull.Value, reader[3]);
             }
+        }
+        finally
+        {
+            await using var cleanup = new SqlConnection(connectionString);
+            await cleanup.OpenAsync();
+            await using var command = new SqlCommand("DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID = @id;", cleanup);
+            command.Parameters.AddWithValue("@id", messageId);
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
+    public async Task MessageRepository_ClaimNextAsync_ConcurrentClaims_UsesDistinctMessages_WhenTwoMessagesShareUniqueChannel()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Outbound messaging validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var channel = "ValidationInApp-" + Guid.NewGuid().ToString("N")[..16];
+        var firstMessageId = await SeedQueuedMessageAsync(connectionString, channel, "ValidationTwoWinnersA-" + Guid.NewGuid().ToString("N")[..12]);
+        var secondMessageId = await SeedQueuedMessageAsync(connectionString, channel, "ValidationTwoWinnersB-" + Guid.NewGuid().ToString("N")[..12]);
+
+        try
+        {
+            var repo1 = new MessageRepository(
+                new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+                new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+            var repo2 = new MessageRepository(
+                new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+                new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+            var firstClaimTask = repo1.ClaimNextAsync(channel, 5, TimeSpan.FromMinutes(30), CancellationToken.None);
+            var secondClaimTask = repo2.ClaimNextAsync(channel, 5, TimeSpan.FromMinutes(30), CancellationToken.None);
+            var claimed = await Task.WhenAll(firstClaimTask, secondClaimTask);
+
+            Assert.Equal(2, claimed.Count(x => x is not null));
+            Assert.Equal(2, claimed.Select(x => x!.CustomerMessageId).Distinct().Count());
+            Assert.Contains(claimed, x => x!.CustomerMessageId == firstMessageId);
+            Assert.Contains(claimed, x => x!.CustomerMessageId == secondMessageId);
+        }
+        finally
+        {
+            await using var cleanup = new SqlConnection(connectionString);
+            await cleanup.OpenAsync();
+            await using var delete = new SqlCommand(@"DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID IN (@id1, @id2);", cleanup);
+            delete.Parameters.AddWithValue("@id1", firstMessageId);
+            delete.Parameters.AddWithValue("@id2", secondMessageId);
+            await delete.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
+    public async Task MessageRepository_ClaimNextAsync_StaleProcessingMessagesAreEligibleAfterWindow()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Outbound messaging validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var channel = "ValidationInApp-" + Guid.NewGuid().ToString("N")[..16];
+        var messageId = await SeedQueuedMessageAsync(
+            connectionString,
+            channel,
+            "ValidationStaleProcessing-" + Guid.NewGuid().ToString("N")[..12],
+            deliveryStatus: "Processing",
+            attemptCount: 1,
+            processingAtUtc: DateTime.UtcNow.AddMinutes(-31),
+            failureReason: "Transient failure");
+
+        try
+        {
+            var repo = new MessageRepository(
+                new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+                new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+            var claimed = await repo.ClaimNextAsync(channel, 5, TimeSpan.FromMinutes(30), CancellationToken.None);
+
+            Assert.NotNull(claimed);
+            Assert.Equal(messageId, claimed!.CustomerMessageId);
         }
         finally
         {
@@ -883,7 +988,14 @@ public sealed class MessageWriteServiceTests
             => Task.FromResult<IReadOnlyList<VipLevelEvaluationDto>>(Array.Empty<VipLevelEvaluationDto>());
     }
 
-    private static async Task<int> SeedQueuedMessageAsync(string connectionString, string uniqueSuffix)
+    private static async Task<int> SeedQueuedMessageAsync(
+        string connectionString,
+        string channel,
+        string uniqueSuffix,
+        string deliveryStatus = "Failed",
+        int attemptCount = 1,
+        DateTime? processingAtUtc = null,
+        string? failureReason = "Transient failure")
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
@@ -893,21 +1005,24 @@ public sealed class MessageWriteServiceTests
                 CreatedAtUtc, AttemptCount, ProcessingAtUtc, FailureReason, ProviderMessageId,
                 PhoneNumber, ReferenceID, ReferenceType, IdempotencyKey)
             OUTPUT INSERTED.CustomerMessageID
-            VALUES (@customerId, @eventType, @templateKey, @channel, @title, @body, N'Failed',
-                    SYSUTCDATETIME(), 1, SYSUTCDATETIME(), @failureReason, @providerMessageId,
+            VALUES (@customerId, @eventType, @templateKey, @channel, @title, @body, @deliveryStatus,
+                    SYSUTCDATETIME(), @attemptCount, @processingAtUtc, @failureReason, @providerMessageId,
                     @phoneNumber, @referenceId, @referenceType, @idempotencyKey);", connection);
         command.Parameters.AddWithValue("@customerId", 101);
         command.Parameters.AddWithValue("@eventType", "ValidationConcurrentClaim");
         command.Parameters.AddWithValue("@templateKey", "ValidationCustomerProjection");
-        command.Parameters.AddWithValue("@channel", "InApp");
+        command.Parameters.AddWithValue("@channel", channel);
         command.Parameters.AddWithValue("@title", "Validation title " + uniqueSuffix);
         command.Parameters.AddWithValue("@body", "Validation body " + uniqueSuffix);
-        command.Parameters.AddWithValue("@failureReason", "Transient failure");
-        command.Parameters.AddWithValue("@providerMessageId", "provider-live-123");
+        command.Parameters.AddWithValue("@deliveryStatus", deliveryStatus);
+        command.Parameters.AddWithValue("@attemptCount", attemptCount);
+        command.Parameters.AddWithValue("@processingAtUtc", (object?)(processingAtUtc ?? DateTime.UtcNow) ?? DBNull.Value);
+        command.Parameters.AddWithValue("@failureReason", (object?)failureReason ?? DBNull.Value);
+        command.Parameters.AddWithValue("@providerMessageId", DBNull.Value);
         command.Parameters.AddWithValue("@phoneNumber", "0500000000");
-        command.Parameters.AddWithValue("@referenceId", "validation-" + uniqueSuffix);
+        command.Parameters.AddWithValue("@referenceId", "validation-" + uniqueSuffix + "-" + Guid.NewGuid().ToString("N")[..8]);
         command.Parameters.AddWithValue("@referenceType", "Validation");
-        command.Parameters.AddWithValue("@idempotencyKey", "validation-" + uniqueSuffix);
+        command.Parameters.AddWithValue("@idempotencyKey", "validation-" + uniqueSuffix + "-" + Guid.NewGuid().ToString("N")[..8]);
         var result = await command.ExecuteScalarAsync();
         return Convert.ToInt32(result);
     }

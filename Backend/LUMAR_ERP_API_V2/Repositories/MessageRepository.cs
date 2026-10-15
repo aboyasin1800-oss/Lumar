@@ -212,20 +212,17 @@ WHERE MessageTemplateID = @id;";
                 SELECT TOP (1) m.CustomerMessageID
                 FROM dbo.CustomerMessages AS m WITH (UPDLOCK, ROWLOCK, HOLDLOCK)
                 WHERE m.Channel = @channel
-                  AND m.DeliveryStatus IN (N'Pending', N'Failed')
-                  AND m.AttemptCount < @maxAttempts
                   AND (
-                        m.DeliveryStatus = N'Pending'
-                        OR m.DeliveryStatus = N'Failed'
-                        OR m.ProcessingAtUtc IS NULL
-                        OR DATEDIFF(MINUTE, m.ProcessingAtUtc, SYSUTCDATETIME()) >= @staleMinutes
+                        (m.DeliveryStatus = N'Pending')
+                        OR (m.DeliveryStatus = N'Failed' AND m.AttemptCount < @maxAttempts)
+                        OR (m.DeliveryStatus = N'Processing' AND m.ProcessingAtUtc IS NOT NULL AND DATEDIFF(MINUTE, m.ProcessingAtUtc, SYSUTCDATETIME()) >= @staleMinutes)
                     )
                 ORDER BY m.CreatedAtUtc ASC, m.CustomerMessageID ASC
             )
             UPDATE m
             SET DeliveryStatus = N'Processing',
                 ProcessingAtUtc = SYSUTCDATETIME(),
-                AttemptCount = m.AttemptCount + 1,
+                AttemptCount = CASE WHEN m.DeliveryStatus IN (N'Failed', N'Processing') THEN m.AttemptCount ELSE m.AttemptCount + 1 END,
                 FailureReason = NULL
             OUTPUT INSERTED.CustomerMessageID,
                    INSERTED.CustomerID,
@@ -251,8 +248,11 @@ WHERE MessageTemplateID = @id;";
             FROM dbo.CustomerMessages AS m
             INNER JOIN candidate AS c
                 ON c.CustomerMessageID = m.CustomerMessageID
-            WHERE m.DeliveryStatus IN (N'Pending', N'Failed')
-              AND m.AttemptCount < @maxAttempts;";
+            WHERE (
+                    (m.DeliveryStatus = N'Pending')
+                    OR (m.DeliveryStatus = N'Failed' AND m.AttemptCount < @maxAttempts)
+                    OR (m.DeliveryStatus = N'Processing' AND m.ProcessingAtUtc IS NOT NULL AND DATEDIFF(MINUTE, m.ProcessingAtUtc, SYSUTCDATETIME()) >= @staleMinutes)
+                );";
 
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
