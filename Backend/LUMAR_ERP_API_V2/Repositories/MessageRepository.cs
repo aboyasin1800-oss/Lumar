@@ -215,14 +215,14 @@ WHERE MessageTemplateID = @id;";
                   AND (
                         (m.DeliveryStatus = N'Pending')
                         OR (m.DeliveryStatus = N'Failed' AND m.AttemptCount < @maxAttempts)
-                        OR (m.DeliveryStatus = N'Processing' AND m.ProcessingAtUtc IS NOT NULL AND DATEDIFF(MINUTE, m.ProcessingAtUtc, SYSUTCDATETIME()) >= @staleMinutes)
+                        OR (m.DeliveryStatus = N'Processing' AND m.AttemptCount < @maxAttempts AND m.ProcessingAtUtc IS NOT NULL AND DATEDIFF(MINUTE, m.ProcessingAtUtc, SYSUTCDATETIME()) >= @staleMinutes)
                     )
                 ORDER BY m.CreatedAtUtc ASC, m.CustomerMessageID ASC
             )
             UPDATE m
             SET DeliveryStatus = N'Processing',
                 ProcessingAtUtc = SYSUTCDATETIME(),
-                AttemptCount = CASE WHEN m.DeliveryStatus IN (N'Failed', N'Processing') THEN m.AttemptCount ELSE m.AttemptCount + 1 END,
+                AttemptCount = m.AttemptCount + 1,
                 FailureReason = NULL
             OUTPUT INSERTED.CustomerMessageID,
                    INSERTED.CustomerID,
@@ -251,7 +251,7 @@ WHERE MessageTemplateID = @id;";
             WHERE (
                     (m.DeliveryStatus = N'Pending')
                     OR (m.DeliveryStatus = N'Failed' AND m.AttemptCount < @maxAttempts)
-                    OR (m.DeliveryStatus = N'Processing' AND m.ProcessingAtUtc IS NOT NULL AND DATEDIFF(MINUTE, m.ProcessingAtUtc, SYSUTCDATETIME()) >= @staleMinutes)
+                    OR (m.DeliveryStatus = N'Processing' AND m.AttemptCount < @maxAttempts AND m.ProcessingAtUtc IS NOT NULL AND DATEDIFF(MINUTE, m.ProcessingAtUtc, SYSUTCDATETIME()) >= @staleMinutes)
                 );";
 
         await using var connection = connections.Create();
@@ -429,11 +429,41 @@ WHERE MessageTemplateID = @id;";
             await transaction.CommitAsync(c);
             return (messageId, notificationId);
         }
+        catch (SqlException ex) when (IsDuplicateKeyException(ex))
+        {
+            await transaction.RollbackAsync(c);
+            var existing = await GetExistingMessageAndNotificationAsync(connection, idempotencyKey, c);
+            if (existing is not null)
+                return existing.Value;
+            throw;
+        }
         catch
         {
             await transaction.RollbackAsync(c);
             throw;
         }
+    }
+
+    private static bool IsDuplicateKeyException(SqlException ex) => ex.Number is 2601 or 2627;
+
+    private async Task<(int? MessageId, int? NotificationId)?> GetExistingMessageAndNotificationAsync(SqlConnection connection, string idempotencyKey, CancellationToken c)
+    {
+        const string sql = @"
+            SELECT TOP (1) m.CustomerMessageID, n.CustomerNotificationID
+            FROM dbo.CustomerMessages AS m
+            LEFT JOIN dbo.CustomerNotifications AS n ON n.CustomerMessageID = m.CustomerMessageID
+            WHERE m.IdempotencyKey = @idempotencyKey
+            ORDER BY m.CustomerMessageID DESC;";
+
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@idempotencyKey", idempotencyKey);
+        await using var reader = await command.ExecuteReaderAsync(c);
+        if (!await reader.ReadAsync(c))
+            return null;
+
+        var messageId = reader.IsDBNull(0) ? null : (int?)reader.GetInt32(0);
+        var notificationId = reader.IsDBNull(1) ? null : (int?)reader.GetInt32(1);
+        return (messageId, notificationId);
     }
 
     public async Task<int?> CreateCustomerMessageAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c)
