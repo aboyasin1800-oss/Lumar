@@ -12,12 +12,13 @@ public sealed class FinanceRepository(ReadOnlySqlConnectionFactory connections) 
                COALESCE(SUM(CASE cm.CashDirection WHEN 1 THEN cm.Amount WHEN 2 THEN -cm.Amount ELSE 0 END), 0),
                ca.CurrentBalance, ca.IsActive,
                CASE WHEN ca.IsActive = 1 AND ca.CashAccountType = 1 AND ca.AllowsReceipts = 1 AND ca.CurrencyCode IS NOT NULL AND ca.LedgerControlAccountId IS NOT NULL THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END,
+               CASE WHEN ca.IsActive = 1 AND ca.CashAccountType = 1 AND ca.AllowsDisbursements = 1 AND ca.CurrencyCode IS NOT NULL AND ca.LedgerControlAccountId IS NOT NULL THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END,
                ca.CurrencyCode, ca.CreatedAt
         FROM dbo.CashAccounts ca
         LEFT JOIN dbo.CashMovements cm ON cm.CashAccountId = ca.CashAccountId
-        GROUP BY ca.CashAccountId, ca.AccountName, ca.CurrentBalance, ca.IsActive, ca.CashAccountType, ca.AllowsReceipts, ca.CurrencyCode, ca.LedgerControlAccountId, ca.CreatedAt
+        GROUP BY ca.CashAccountId, ca.AccountName, ca.CurrentBalance, ca.IsActive, ca.CashAccountType, ca.AllowsReceipts, ca.AllowsDisbursements, ca.CurrencyCode, ca.LedgerControlAccountId, ca.CreatedAt
         ORDER BY ca.AccountName, ca.CashAccountId
-        """, null, r => new CashAccountDto(r.GetInt32(0), r.GetString(1), r.GetDecimal(2), r.GetDecimal(3), r.GetBoolean(4), r.GetBoolean(5), r.NullableString("CurrencyCode"), r.GetDateTime(7)), ct);
+        """, null, r => new CashAccountDto(r.GetInt32(0), r.GetString(1), r.GetDecimal(2), r.GetDecimal(3), r.GetBoolean(4), r.GetBoolean(5), r.GetBoolean(6), r.NullableString("CurrencyCode"), r.GetDateTime(8)), ct);
     public Task<IReadOnlyList<CashMovementDto>> GetCashMovementsAsync(CancellationToken ct) => QueryAsync("SELECT cm.CashMovementId, cm.CashAccountId, ca.AccountName, cm.CashDirection, cm.Amount, cm.OccurredAt, cm.CreatedAt FROM dbo.CashMovements cm INNER JOIN dbo.CashAccounts ca ON ca.CashAccountId = cm.CashAccountId ORDER BY cm.OccurredAt DESC, cm.CashMovementId DESC", null, r => new CashMovementDto(r.GetInt64(0), r.GetInt32(1), r.GetString(2), r.GetByte(3), r.GetDecimal(4), r.GetDateTime(5), r.GetDateTime(6)), ct);
     public async Task<CashReconciliationDto> GetCashReconciliationAsync(CancellationToken ct)
     {

@@ -25,19 +25,24 @@ class SupplierPurchasingCashAccount {
       required this.name,
       required this.balance,
       required this.isActive,
-      required this.currency});
+      required this.currency,
+      this.isDisbursementEnabled = true});
   factory SupplierPurchasingCashAccount.fromJson(Map<String, dynamic> json) =>
       SupplierPurchasingCashAccount(
           id: (json['cashAccountId'] as num).toInt(),
           name: (json['accountName'] ?? '').toString(),
           balance: ((json['derivedBalance'] ?? 0) as num).toDouble(),
           isActive: json['isActive'] == true,
-          currency: (json['currencyCode'] ?? 'YER').toString());
+          currency: (json['currencyCode'] ?? 'YER').toString(),
+          isDisbursementEnabled: json['isDisbursementEnabled'] == true ||
+              json['allowsDisbursements'] == true ||
+              json['isDisbursementEnabled'] == null && json['allowsDisbursements'] == null);
   final int id;
   final String name;
   final double balance;
   final bool isActive;
   final String currency;
+  final bool isDisbursementEnabled;
 }
 
 class SupplierPurchasingInventoryItem {

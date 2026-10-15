@@ -43,6 +43,7 @@ These are applied as policy requirements, not as recommendations.
 - User guide creation and linkage: `.github/instructions/user-guide-screen.instructions.md` as the implementation gate only; user guide content remains a requested, explicit documentation artifact.
 - Performance / data loading / caching / paging / rendering / profiling: `.github/instructions/screen-performance-data-loading.instructions.md` is the current permanent and mandatory implementation reference for the LUMAR performance architecture; the system retains one authoritative policy path without duplicating the full text in the index.
 - Database ownership / write protection / validation baseline: `Docs/LUMAR_ERP_OFFICIAL_DATABASE_POLICY.md`
+- Working logic protection / no-regression / root-cause-first engineering policy: integrated into `Docs/LUMAR_ERP_OFFICIAL_DATABASE_POLICY.md` as the general project-wide rule for logic safety and regression prevention.
 - Navigation and keyboard implementation mechanics for Flutter: `.github/instructions/flutter-navigation.instructions.md` as implementation guidance only; it does not replace the specialized policy documents.
 
 ## No duplicated rule rule

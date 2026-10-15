@@ -28,7 +28,7 @@ class SupplierPurchasingRepository {
       (await _api.getList('/finance/cash-accounts'))
           .map((json) => SupplierPurchasingCashAccount.fromJson(
               Map<String, dynamic>.from(json as Map)))
-          .where((account) => account.isActive)
+          .where((account) => account.isActive && account.isDisbursementEnabled)
           .toList();
   Future<List<SupplierPurchasingInventoryItem>> getInventoryItems() async =>
       (await _api.getList('/inventory/items'))

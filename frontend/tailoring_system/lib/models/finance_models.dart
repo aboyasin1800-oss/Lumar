@@ -50,15 +50,32 @@ class LedgerAccount {
 	final DateTime? updatedAt;
 }
 
+bool _boolSetting(JsonMap json, String key, {required bool fallback}) {
+  final value = json[key];
+  if (value is bool) return value;
+  return fallback;
+}
+
 class CashAccount {
-	const CashAccount({required this.id, required this.accountName, required this.derivedBalance, required this.historicalSnapshotBalance, required this.isActive, required this.isReceiptEnabled, required this.currencyCode, required this.createdAt});
-	factory CashAccount.fromJson(JsonMap json) => CashAccount(id: json['cashAccountId'] as int, accountName: json['accountName'] as String, derivedBalance: _amount(json, 'derivedBalance'), historicalSnapshotBalance: _amount(json, 'historicalSnapshotBalance'), isActive: json['isActive'] as bool, isReceiptEnabled: json['isReceiptEnabled'] as bool, currencyCode: json['currencyCode'] as String?, createdAt: _date(json, 'createdAt'));
+	const CashAccount({required this.id, required this.accountName, required this.derivedBalance, required this.historicalSnapshotBalance, required this.isActive, this.isReceiptEnabled = true, this.isDisbursementEnabled = true, required this.currencyCode, required this.createdAt});
+	factory CashAccount.fromJson(JsonMap json) => CashAccount(
+		id: json['cashAccountId'] as int,
+		accountName: json['accountName'] as String,
+		derivedBalance: _amount(json, 'derivedBalance'),
+		historicalSnapshotBalance: _amount(json, 'historicalSnapshotBalance'),
+		isActive: json['isActive'] as bool,
+		isReceiptEnabled: _boolSetting(json, 'isReceiptEnabled', fallback: _boolSetting(json, 'allowsReceipts', fallback: true)),
+		isDisbursementEnabled: _boolSetting(json, 'isDisbursementEnabled', fallback: _boolSetting(json, 'allowsDisbursements', fallback: true)),
+		currencyCode: json['currencyCode'] as String?,
+		createdAt: _date(json, 'createdAt'),
+	);
 	final int id;
 	final String accountName;
 	final double derivedBalance;
 	final double historicalSnapshotBalance;
 	final bool isActive;
 	final bool isReceiptEnabled;
+	final bool isDisbursementEnabled;
 	final String? currencyCode;
 	final DateTime createdAt;
 }

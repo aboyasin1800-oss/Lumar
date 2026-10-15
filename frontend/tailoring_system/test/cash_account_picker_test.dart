@@ -7,6 +7,7 @@ CashAccount _account({
   required int id,
   bool active = true,
   bool receivesCash = true,
+  bool disbursesCash = true,
 }) => CashAccount(
   id: id,
   accountName: 'الحساب $id',
@@ -14,6 +15,7 @@ CashAccount _account({
   historicalSnapshotBalance: 0,
   isActive: active,
   isReceiptEnabled: receivesCash,
+  isDisbursementEnabled: disbursesCash,
   currencyCode: 'YER',
   createdAt: DateTime.utc(2026, 9, 26),
 );
@@ -25,6 +27,16 @@ void main() {
       _account(id: 2, active: false),
       _account(id: 3, receivesCash: false),
     ]);
+
+    expect(accounts.map((account) => account.id), [1]);
+  });
+
+  test('eligible disbursing accounts exclude inactive and non-dispursing accounts', () {
+    final accounts = eligibleCashAccounts([
+      _account(id: 1),
+      _account(id: 2, active: false),
+      _account(id: 3, disbursesCash: false),
+    ], direction: CashAccountDirection.disbursing);
 
     expect(accounts.map((account) => account.id), [1]);
   });

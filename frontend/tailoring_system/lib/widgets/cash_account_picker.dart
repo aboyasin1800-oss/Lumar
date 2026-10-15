@@ -3,13 +3,25 @@ import 'package:flutter/material.dart';
 import '../models/finance_models.dart';
 import '../repositories/finance_repository.dart';
 
-List<CashAccount> eligibleReceivingCashAccounts(
-  Iterable<CashAccount> accounts,
-) => accounts
-    .where((account) => account.isActive && account.isReceiptEnabled)
+enum CashAccountDirection { receiving, disbursing }
+
+List<CashAccount> eligibleCashAccounts(
+  Iterable<CashAccount> accounts, {
+  CashAccountDirection direction = CashAccountDirection.receiving,
+}) => accounts
+    .where((account) {
+      if (!account.isActive) return false;
+      return direction == CashAccountDirection.receiving
+          ? account.isReceiptEnabled
+          : account.isDisbursementEnabled;
+    })
     .toList(growable: false);
 
-  enum CashAccountAvailability { loading, ready, unavailable, failed }
+List<CashAccount> eligibleReceivingCashAccounts(
+  Iterable<CashAccount> accounts,
+) => eligibleCashAccounts(accounts, direction: CashAccountDirection.receiving);
+
+enum CashAccountAvailability { loading, ready, unavailable, failed }
 
 class CashAccountPicker extends StatefulWidget {
   const CashAccountPicker({
@@ -18,6 +30,7 @@ class CashAccountPicker extends StatefulWidget {
     this.enabled = true,
     this.accountsFuture,
     this.onAvailabilityChanged,
+    this.direction = CashAccountDirection.receiving,
     super.key,
   });
 
@@ -26,6 +39,7 @@ class CashAccountPicker extends StatefulWidget {
   final bool enabled;
   final Future<List<CashAccount>>? accountsFuture;
   final ValueChanged<CashAccountAvailability>? onAvailabilityChanged;
+  final CashAccountDirection direction;
 
   @override
   State<CashAccountPicker> createState() => _CashAccountPickerState();
@@ -76,13 +90,17 @@ class _CashAccountPickerState extends State<CashAccountPicker> {
             return const Text('تعذر تحميل الحسابات النقدية المتاحة.');
           }
 
-          final accounts = eligibleReceivingCashAccounts(snapshot.data!);
+          final accounts = eligibleCashAccounts(
+            snapshot.data!,
+            direction: widget.direction,
+          );
           _selectOnlyEligibleAccount(accounts);
           if (accounts.isEmpty) {
             _reportAvailability(CashAccountAvailability.unavailable);
-            return const Text(
-              'لا يوجد حساب نقدي نشط ومؤهل لاستلام النقدية.',
-            );
+            final label = widget.direction == CashAccountDirection.disbursing
+                ? 'لا يوجد حساب نقدي نشط ومؤهل للسحب النقدي.'
+                : 'لا يوجد حساب نقدي نشط ومؤهل لاستلام النقدية.';
+            return Text(label);
           }
           _reportAvailability(CashAccountAvailability.ready);
           return DropdownButtonFormField<int>(
@@ -90,9 +108,11 @@ class _CashAccountPickerState extends State<CashAccountPicker> {
                 ? widget.value
                 : null,
             isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'الحساب النقدي المستلم',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: widget.direction == CashAccountDirection.disbursing
+                  ? 'الحساب النقدي المسحوب منه'
+                  : 'الحساب النقدي المستلم',
+              border: const OutlineInputBorder(),
             ),
             hint: const Text('اختر الحساب النقدي'),
             items: accounts

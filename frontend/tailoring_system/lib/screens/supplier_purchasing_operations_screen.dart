@@ -300,7 +300,9 @@ class _SupplierPurchasingOperationsScreenState
       _invoices = values[2] as List<SupplierPurchasingInvoice>;
       _payments = values[3] as List<SupplierPurchasingPayment>;
       _receipts = values[4] as List<SupplierPurchasingReceipt>;
-      _cashAccounts = values[5] as List<SupplierPurchasingCashAccount>;
+      _cashAccounts = (values[5] as List<SupplierPurchasingCashAccount>)
+          .where((account) => account.isActive && account.isDisbursementEnabled)
+          .toList(growable: false);
       _loadedTabs.addAll([0, 1, 2, 3, 4]);
     });
   }
