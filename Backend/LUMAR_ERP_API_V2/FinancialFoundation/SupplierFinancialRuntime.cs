@@ -24,23 +24,31 @@ public sealed class SupplierFinancialRuntime
 
     public async Task<SupplierFinancialInvoiceResult> CreateInvoiceAsync(SqlConnection connection, SqlTransaction transaction, SupplierFinancialInvoiceRequest request, CancellationToken cancellationToken)
     {
+        Console.WriteLine($"SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId={request.SupplierId} invoiceNumber={request.InvoiceNumber} sourceOperationId={request.SourceOperationId} amount={request.Amount}");
         ValidateInvoiceRequest(connection, transaction, request);
         var existing = await FindInvoiceAsync(connection, transaction, request.SourceOperationId, cancellationToken);
+        Console.WriteLine($"SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult={(existing is null ? "null" : existing.Value.Id.ToString())}");
         if (existing is not null) return ValidateInvoiceRetry(existing.Value, request);
         await ValidateSupplierAsync(connection, transaction, request.SupplierId, cancellationToken);
 
         var invoiceId = await InsertInvoiceAsync(connection, transaction, request, cancellationToken);
+        Console.WriteLine($"SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId={invoiceId}");
         var ledger = await _ledgerWriter.PostAsync(connection, transaction, request.SupplierId,
             new LedgerEntryRequest("SupplierInvoice", request.Amount, request.Amount, DateTime.UtcNow, request.InvoiceDate,
                 "SupplierInvoice", invoiceId, request.SourceOperationId, request.InvoiceNumber, request.CreatedBy), cancellationToken);
+        Console.WriteLine($"SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId={ledger.EntryId}");
         var posting = await FoundationPostingGateway.PostAsync(connection, transaction,
             new FoundationPostingRequest(28, request.Amount, "SupplierInvoice", invoiceId, request.SourceOperationId,
                 request.InvoiceNumber, "Supplier invoice", request.CreatedBy, null, "Supplier", request.SupplierId, request.CurrencyCode), cancellationToken);
+        Console.WriteLine($"SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId={posting.AccountingEventId}");
         await InsertFinancialInvoiceAsync(connection, transaction, invoiceId, request.SourceOperationId, posting.AccountingEventId, request.CreatedBy, cancellationToken);
+        Console.WriteLine($"SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId={request.SupplierId} invoiceId={invoiceId}");
         await CreateSupplierNotificationAsync(connection, transaction, request.SupplierId, invoiceId, "SupplierInvoice", "Invoice", $"تم تسجيل فاتورة {request.InvoiceNumber} بنجاح.", $"تم إنشاء الفاتورة {request.InvoiceNumber} بقيمة {request.Amount:N0} ر.ي.", cancellationToken);
+        Console.WriteLine($"SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId={request.SupplierId} invoiceId={invoiceId}");
 
         var autoApplied = await ApplyAvailableAdvancesAsync(connection, transaction, request.SupplierId, invoiceId, request.InvoiceDate,
             request.SourceOperationId, request.InvoiceNumber, request.CreatedBy, cancellationToken);
+        Console.WriteLine($"SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied={autoApplied} outstanding={request.Amount - autoApplied}");
         return new SupplierFinancialInvoiceResult(invoiceId, posting.AccountingEventId, autoApplied, request.Amount - autoApplied, false);
     }
 

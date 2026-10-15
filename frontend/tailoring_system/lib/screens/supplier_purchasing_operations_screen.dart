@@ -146,6 +146,16 @@ class SupplierPurchasingOperationsScreen extends StatefulWidget {
 
   final AuthState auth;
 
+  static double? parseOptionalDecimal(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    final parsed = double.tryParse(trimmed);
+    if (parsed == null) {
+      throw const FormatException('القيمة الرقمية غير صالحة.');
+    }
+    return parsed;
+  }
+
   @override
   State<SupplierPurchasingOperationsScreen> createState() =>
       _SupplierPurchasingOperationsScreenState();
@@ -297,14 +307,19 @@ class _SupplierPurchasingOperationsScreenState
 
   Future<void> _run(Future<void> Function() action,
       {String success = 'تم تنفيذ العملية بنجاح.'}) async {
+    debugPrint('SUPPLIER_INVOICE_TRACE: _run start busy=$_busy');
     setState(() => _busy = true);
     try {
+      debugPrint('SUPPLIER_INVOICE_TRACE: _run invoking action');
       await action();
+      debugPrint('SUPPLIER_INVOICE_TRACE: _run action completed');
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(success)));
       await _load();
-    } catch (error) {
+    } catch (error, stackTrace) {
+      debugPrint('SUPPLIER_INVOICE_TRACE: _run caught error: $error');
+      debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error.toString())));
@@ -629,23 +644,23 @@ class _SupplierPurchasingOperationsScreenState
             0,
             (total, line) =>
                 total +
-                (double.tryParse(line.quantity.text.trim()) ?? 0) *
-                    (double.tryParse(line.cost.text.trim()) ?? 0))
+                (parseOptionalDecimal(line.quantity.text) ?? 0) *
+                    (parseOptionalDecimal(line.cost.text) ?? 0))
         .toStringAsFixed(6));
     bool validLines() =>
         lines.isNotEmpty &&
         lines.every((line) {
-          final quantity = double.tryParse(line.quantity.text.trim()) ?? 0;
-          final cost = double.tryParse(line.cost.text.trim()) ?? 0;
-          final itemCount = double.tryParse(line.itemCount.text.trim()) ?? 0;
+          final quantity = parseOptionalDecimal(line.quantity.text);
+          final cost = parseOptionalDecimal(line.cost.text);
+          final itemCount = parseOptionalDecimal(line.itemCount.text);
           final hasName = line.description.text.trim().isNotEmpty;
           final isImported = invoiceType == 'imported';
           final productTypeOk =
               !isImported || line.productType.text.trim().isNotEmpty;
           final unitOk =
               !isImported || _isApprovedImportedUnit(line.unitCode.text.trim());
-          if (!hasName || quantity <= 0 || cost <= 0) return false;
-          if (isImported) return productTypeOk && unitOk && itemCount > 0;
+          if (!hasName || quantity == null || quantity <= 0 || cost == null || cost <= 0) return false;
+          if (isImported) return productTypeOk && unitOk && itemCount != null && itemCount > 0;
           return line.rollCount.text.trim().isEmpty ||
               (int.tryParse(line.rollCount.text.trim()) ?? 0) > 0;
         });
@@ -745,7 +760,6 @@ class _SupplierPurchasingOperationsScreenState
                         lines.length == 1
                             ? null
                             : () => setDialogState(() {
-                                  lines[index].dispose();
                                   lines.removeAt(index);
                                 }),
                         () => setDialogState(() {})),
@@ -812,6 +826,8 @@ class _SupplierPurchasingOperationsScreenState
       if (duplicate) {
         _showMessage('توجد فاتورة للمورد بالرقم نفسه.');
       } else {
+        debugPrint(
+            'SUPPLIER_INVOICE_TRACE: createInvoice request supplierId=${supplier!.id} invoiceNumber=${number.text.trim()} amount=${invoiceTotal()} date=${invoiceDate.toIso8601String()}');
         await _run(
             () => _repository.createInvoice(
                 supplierId: supplier!.id,
@@ -820,36 +836,48 @@ class _SupplierPurchasingOperationsScreenState
                 dueDate: dueDate,
                 amount: invoiceTotal(),
                 lines: lines
-                    .map((line) => {
-                          'inventoryItemId': null,
-                          'itemDescription': line.description.text.trim(),
-                          'itemType': invoiceType == 'fabric'
-                              ? 'Fabric'
-                              : invoiceType == 'tools'
-                                  ? 'UsedTool'
-                                  : 'ImportedProduct',
-                          'productType': line.productType.text.trim().isNotEmpty
-                              ? line.productType.text.trim()
-                              : null,
-                          'supplierItemCode':
-                              _nullable(line.supplierItemCode.text),
-                          'unitCode': invoiceType == 'fabric'
-                              ? 'ياردة'
-                              : invoiceType == 'tools'
-                                  ? 'قطعة'
-                                  : (line.unitCode.text.trim().isNotEmpty
-                                      ? line.unitCode.text.trim()
-                                      : 'قطعة'),
-                          'quantity': double.parse(line.quantity.text.trim()),
-                          'itemCount': double.parse(line.itemCount.text.trim()),
-                          'receivedItemCount':
-                              double.parse(line.itemCount.text.trim()),
-                          'unitCost': double.parse(line.cost.text.trim()),
-                          'rollCount': line.rollCount.text.trim().isEmpty
-                              ? null
-                              : int.parse(line.rollCount.text.trim())
-                        })
-                    .toList(),
+                    .map((line) {
+                      final quantity = parseOptionalDecimal(line.quantity.text);
+                      final cost = parseOptionalDecimal(line.cost.text);
+                      final itemCount = parseOptionalDecimal(line.itemCount.text);
+
+                      if (quantity == null || cost == null) {
+                        throw const FormatException(
+                            'أدخل كمية وتكلفة صحيحة قبل حفظ الفاتورة.');
+                      }
+
+                      final isFabric = invoiceType == 'fabric';
+                      final itemCountValue = isFabric ? null : itemCount;
+
+                      return {
+                        'inventoryItemId': null,
+                        'itemDescription': line.description.text.trim(),
+                        'itemType': invoiceType == 'fabric'
+                            ? 'Fabric'
+                            : invoiceType == 'tools'
+                                ? 'UsedTool'
+                                : 'ImportedProduct',
+                        'productType': line.productType.text.trim().isNotEmpty
+                            ? line.productType.text.trim()
+                            : null,
+                        'supplierItemCode':
+                            _nullable(line.supplierItemCode.text),
+                        'unitCode': invoiceType == 'fabric'
+                            ? 'ياردة'
+                            : invoiceType == 'tools'
+                                ? 'قطعة'
+                                : (line.unitCode.text.trim().isNotEmpty
+                                    ? line.unitCode.text.trim()
+                                    : 'قطعة'),
+                        'quantity': quantity,
+                        'itemCount': itemCountValue,
+                        'receivedItemCount': itemCountValue,
+                        'unitCost': cost,
+                        'rollCount': line.rollCount.text.trim().isEmpty
+                            ? null
+                            : int.tryParse(line.rollCount.text.trim())
+                      };
+                    }).toList(),
                 purchaseOrderId: order?.id,
                 currencyCode: currency,
                 notes: _nullable(notes.text)),
@@ -1787,7 +1815,6 @@ class _SupplierPurchasingOperationsScreenState
                                         invoiceLines,
                                         () => setDialogState(() {}),
                                         () => setDialogState(() {
-                                              lines[index].dispose();
                                               lines.removeAt(index);
                                             })),
                                   Align(
@@ -2410,6 +2437,10 @@ class _SupplierPurchasingOperationsScreenState
       parts.add('التكلفة الفعلية ${difference.actualUnitCost}');
     }
     return parts.isEmpty ? 'راجع بيانات البند.' : parts.join('  •  ');
+  }
+
+  static double? parseOptionalDecimal(String value) {
+    return SupplierPurchasingOperationsScreen.parseOptionalDecimal(value);
   }
 
   String? _nullable(String value) => value.trim().isEmpty ? null : value.trim();

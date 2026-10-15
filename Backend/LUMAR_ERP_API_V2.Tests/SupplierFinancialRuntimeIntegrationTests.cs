@@ -108,6 +108,56 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
     }
 
     [Fact]
+    public async Task InvoiceWorkflow_CreatesSingleSupplierNotificationAndRetryDoesNotDuplicate()
+    {
+        var fixture = await CreateInvoiceOnlyFixtureAsync();
+        var invoiceOperation = Guid.NewGuid();
+        try
+        {
+            var options = Options.Create(new DatabaseOptions { ConnectionString = ConnectionString() });
+            var coordinator = new SupplierFinancialWorkflowCoordinator(
+                new OperationalSqlConnectionFactory(options),
+                new SupplierFinancialRuntime(),
+                new Es7OperationalAudit(NullLogger<Es7OperationalAudit>.Instance));
+
+            var invoiceRequest = new CreateSupplierInvoiceRequestDto(
+                fixture.SupplierId, $"ES7-INV-NOTIFY-ONLY-{Guid.NewGuid():N}", new DateOnly(2026, 9, 30), new DateOnly(2026, 10, 30), 35m, null, invoiceOperation,
+                Lines: [new(null, 1m, 35m, ItemDescription: "إشعار فاتورة مستقل", ItemType: "Fabric", SupplierItemCode: "SUP-INV-NOTIFY-ONLY")]);
+            var invoiceUser = new CurrentUserDto(7, "es7-invoice-notify-only", "ES7 Invoice Notify Only", "System Administrator", true, null);
+
+            var invoice = await coordinator.CreateInvoiceAsync(invoiceRequest, invoiceUser, "es7-invoice-notify-only", CancellationToken.None);
+            var retry = await coordinator.CreateInvoiceAsync(invoiceRequest, invoiceUser, "es7-invoice-notify-only-retry", CancellationToken.None);
+
+            Assert.Equal(invoice.SupplierInvoiceId, retry.SupplierInvoiceId);
+            Assert.True(retry.IsExisting);
+            Assert.Equal(1, await CountForSupplierWithReferenceAsync("SELECT COUNT(*) FROM dbo.SupplierInvoices WHERE SupplierId=@supplierId AND SupplierInvoiceId=@referenceId", fixture.SupplierId, invoice.SupplierInvoiceId));
+            Assert.Equal(1, await CountForSupplierWithReferenceAsync("SELECT COUNT(*) FROM dbo.SupplierFinancialInvoices WHERE SupplierInvoiceId=@referenceId", fixture.SupplierId, invoice.SupplierInvoiceId));
+            Assert.Equal(1, await CountByOperationAsync("SELECT COUNT(*) FROM dbo.SupplierFinancialInvoices WHERE SourceOperationId=@operation", invoiceOperation));
+            Assert.Equal(1, await CountByOperationAsync("SELECT COUNT(*) FROM dbo.AccountingEvents WHERE SourceOperationId=@operation AND SourceType=N'SupplierInvoice'", invoiceOperation));
+
+            var notification = await ReadInvoiceNotificationAsync(fixture.SupplierId, invoice.SupplierInvoiceId);
+            Assert.NotNull(notification);
+            Assert.Equal(fixture.SupplierId, notification.Value.SupplierId);
+            Assert.Equal(fixture.MobileAccountId, notification.Value.MobileAccountId);
+            Assert.Equal("Invoice", notification.Value.NotificationType);
+            Assert.Equal("SupplierInvoice", notification.Value.ReferenceType);
+            Assert.Equal(invoice.SupplierInvoiceId, notification.Value.ReferenceId);
+            Assert.Equal(1, await CountForSupplierWithReferenceAsync("SELECT COUNT(*) FROM dbo.SupplierNotifications WHERE SupplierId=@supplierId AND ReferenceType=N'SupplierInvoice' AND ReferenceId=@referenceId", fixture.SupplierId, invoice.SupplierInvoiceId));
+            Assert.Equal(0, await CountForSupplierWithReferenceAsync("SELECT COUNT(*) FROM dbo.SupplierNotifications WHERE SupplierId=@supplierId AND ReferenceType=N'SupplierInvoice' AND ReferenceId=@referenceId AND SupplierNotificationId IS NOT NULL AND SupplierNotificationId <> (SELECT MIN(SupplierNotificationId) FROM dbo.SupplierNotifications WHERE SupplierId=@supplierId AND ReferenceType=N'SupplierInvoice' AND ReferenceId=@referenceId)", fixture.SupplierId, invoice.SupplierInvoiceId));
+
+            var orphanCount = await CountForSupplierWithReferenceAsync(
+                "SELECT COUNT(*) FROM dbo.SupplierNotifications n LEFT JOIN dbo.MobileAccounts m ON m.MobileAccountId=n.MobileAccountId WHERE n.SupplierId=@supplierId AND n.ReferenceType=N'SupplierInvoice' AND n.ReferenceId=@referenceId AND m.MobileAccountId IS NULL",
+                fixture.SupplierId,
+                invoice.SupplierInvoiceId);
+            Assert.Equal(0, orphanCount);
+        }
+        finally
+        {
+            await CleanupInvoiceOnlyFixtureAsync(fixture, invoiceOperation);
+        }
+    }
+
+    [Fact]
     public async Task InvoiceAndPaymentWorkflow_CreateSupplierNotificationsAndRetryWithoutDuplicates()
     {
         var fixture = await CreateCommittedFixtureAsync();
@@ -342,6 +392,104 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
         var reversal = await reverse(operation);
         Assert.Equal(reversal, await reverse(operation));
         await Assert.ThrowsAsync<InvalidOperationException>(() => reverse(Guid.NewGuid()));
+    }
+
+    private static async Task<InvoiceOnlyFixture> CreateInvoiceOnlyFixtureAsync()
+    {
+        await using var connection = new SqlConnection(ConnectionString());
+        await connection.OpenAsync();
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
+        {
+            var mappings = await ReadFoundationStateAsync(connection, transaction);
+            var supplierId = await InsertSupplierAsync(connection, transaction);
+            var mobileAccountId = await InsertSupplierMobileAccountAsync(connection, transaction, supplierId);
+            var ledgerCodes = await ConfigureInvoiceOnlyFoundationAsync(connection, transaction);
+            await transaction.CommitAsync();
+            return new InvoiceOnlyFixture(supplierId, mobileAccountId, ledgerCodes, mappings.Mappings, mappings.Events);
+        }
+        catch
+        {
+            if (transaction.Connection is not null) await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    private static async Task CleanupInvoiceOnlyFixtureAsync(InvoiceOnlyFixture fixture, Guid sourceOperationId)
+    {
+        await using var connection = new SqlConnection(ConnectionString());
+        await connection.OpenAsync();
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
+        {
+            await using (var command = new SqlCommand("""
+                DECLARE @invoiceIds TABLE (SupplierInvoiceId int NOT NULL PRIMARY KEY);
+                INSERT @invoiceIds(SupplierInvoiceId)
+                SELECT i.SupplierInvoiceId
+                FROM dbo.SupplierFinancialInvoices f
+                JOIN dbo.SupplierInvoices i ON i.SupplierInvoiceId=f.SupplierInvoiceId
+                WHERE f.SourceOperationId=@operation AND i.SupplierId=@supplierId;
+
+                DELETE n FROM dbo.SupplierNotifications n
+                WHERE n.SupplierId=@supplierId
+                  AND n.ReferenceType=N'SupplierInvoice'
+                  AND n.ReferenceId IN (SELECT SupplierInvoiceId FROM @invoiceIds);
+
+                DELETE l FROM dbo.SupplierInvoiceLines l
+                JOIN @invoiceIds ids ON ids.SupplierInvoiceId=l.SupplierInvoiceId;
+
+                DELETE t FROM dbo.FinancialTransactions t
+                JOIN dbo.AccountingEvents ae ON ae.AccountingEventId=t.AccountingEventId
+                WHERE ae.SourceOperationId=@operation;
+
+                DELETE j FROM dbo.JournalEntryLines j
+                JOIN dbo.JournalEntries je ON je.JournalEntryId=j.JournalEntryId
+                JOIN dbo.AccountingEvents ae ON ae.AccountingEventId=je.AccountingEventId
+                WHERE ae.SourceOperationId=@operation;
+
+                DELETE je FROM dbo.JournalEntries je
+                JOIN dbo.AccountingEvents ae ON ae.AccountingEventId=je.AccountingEventId
+                WHERE ae.SourceOperationId=@operation;
+
+                DELETE ae FROM dbo.AccountingEvents ae
+                WHERE ae.SourceOperationId=@operation AND ae.SourceType=N'SupplierInvoice';
+
+                DELETE sfl FROM dbo.SupplierLedgerEntries sfl
+                WHERE sfl.SupplierId=@supplierId AND sfl.SourceType=N'SupplierInvoice' AND sfl.SourceId IN (SELECT SupplierInvoiceId FROM @invoiceIds);
+
+                DELETE f FROM dbo.SupplierFinancialInvoices f
+                WHERE f.SourceOperationId=@operation;
+
+                DELETE FROM dbo.SupplierInvoices
+                WHERE SupplierId=@supplierId
+                  AND SupplierInvoiceId IN (SELECT SupplierInvoiceId FROM @invoiceIds);
+
+                DELETE FROM dbo.MobileAccounts WHERE MobileAccountId=@mobileAccountId;
+                DELETE FROM dbo.Suppliers WHERE SupplierId=@supplierId;
+                """, connection, transaction))
+            {
+                command.Parameters.AddWithValue("@supplierId", fixture.SupplierId);
+                command.Parameters.Add("@operation", SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+                command.Parameters.AddWithValue("@mobileAccountId", fixture.MobileAccountId);
+                await command.ExecuteNonQueryAsync();
+            }
+
+            await RestoreFoundationStateAsync(connection, transaction, fixture);
+            await using (var accounts = new SqlCommand("DELETE FROM dbo.LedgerAccounts WHERE AccountCode IN (@cash,@liability,@clearing,@advance);", connection, transaction))
+            {
+                accounts.Parameters.AddWithValue("@cash", fixture.LedgerCodes.Cash);
+                accounts.Parameters.AddWithValue("@liability", fixture.LedgerCodes.SupplierLiability);
+                accounts.Parameters.AddWithValue("@clearing", fixture.LedgerCodes.PurchaseClearing);
+                accounts.Parameters.AddWithValue("@advance", fixture.LedgerCodes.SupplierAdvance);
+                await accounts.ExecuteNonQueryAsync();
+            }
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            if (transaction.Connection is not null) await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     private static async Task<CommittedFixture> CreateCommittedFixtureAsync()
@@ -588,8 +736,41 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
     }
 
     private sealed record CommittedFixture(int SupplierId, int CashAccountId, IReadOnlyList<MappingState> Mappings, IReadOnlyList<EventState> Events);
+    private sealed record InvoiceOnlyFixture(int SupplierId, int MobileAccountId, LedgerCodes LedgerCodes, IReadOnlyList<MappingState> Mappings, IReadOnlyList<EventState> Events);
+    private sealed record LedgerCodes(string Cash, string SupplierLiability, string PurchaseClearing, string SupplierAdvance);
     private sealed record MappingState(string Role, int? LedgerAccountId, bool IsEnabled);
     private sealed record EventState(byte EventType, bool IsEnabled);
+
+    private static async Task<int> CountForSupplierWithReferenceAsync(string sql, int supplierId, int referenceId)
+    {
+        await using var connection = new SqlConnection(ConnectionString());
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@supplierId", supplierId);
+        command.Parameters.AddWithValue("@referenceId", referenceId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountByOperationAsync(string sql, Guid operation)
+    {
+        await using var connection = new SqlConnection(ConnectionString());
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@operation", SqlDbType.UniqueIdentifier).Value = operation;
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<(int SupplierId, int MobileAccountId, string NotificationType, string ReferenceType, int ReferenceId)?> ReadInvoiceNotificationAsync(int supplierId, int invoiceId)
+    {
+        await using var connection = new SqlConnection(ConnectionString());
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("SELECT SupplierId, MobileAccountId, NotificationType, ReferenceType, ReferenceId FROM dbo.SupplierNotifications WHERE SupplierId=@supplierId AND ReferenceType=N'SupplierInvoice' AND ReferenceId=@referenceId;", connection);
+        command.Parameters.AddWithValue("@supplierId", supplierId);
+        command.Parameters.AddWithValue("@referenceId", invoiceId);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) return null;
+        return (reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetString(3), reader.GetInt32(4));
+    }
 
     private static async Task<int> InsertSupplierAsync(SqlConnection connection, SqlTransaction transaction)
     {
@@ -598,10 +779,10 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
-    private static async Task InsertSupplierMobileAccountAsync(SqlConnection connection, SqlTransaction transaction, int supplierId)
+    private static async Task<int> InsertSupplierMobileAccountAsync(SqlConnection connection, SqlTransaction transaction, int supplierId)
     {
         await using var command = new SqlCommand(
-            "INSERT INTO dbo.MobileAccounts (AccountType, CustomerId, EmployeeId, SupplierId, Username, NormalizedUsername, PasswordHash, IsActive, FailedLoginAttempts, LockoutEndUtc, SecurityStamp, TokenVersion, CreatedAtUtc, UpdatedAtUtc) VALUES (@accountType, NULL, NULL, @supplierId, @username, @normalizedUsername, N'', 1, 0, NULL, CAST(NEWID() AS nvarchar(128)), 0, SYSUTCDATETIME(), SYSUTCDATETIME());",
+            "INSERT INTO dbo.MobileAccounts (AccountType, CustomerId, EmployeeId, SupplierId, Username, NormalizedUsername, PasswordHash, IsActive, FailedLoginAttempts, LockoutEndUtc, SecurityStamp, TokenVersion, CreatedAtUtc, UpdatedAtUtc) OUTPUT inserted.MobileAccountId VALUES (@accountType, NULL, NULL, @supplierId, @username, @normalizedUsername, N'', 1, 0, NULL, CAST(NEWID() AS nvarchar(128)), 0, SYSUTCDATETIME(), SYSUTCDATETIME());",
             connection,
             transaction);
         var username = $"supplier-{supplierId}-{Guid.NewGuid():N}"[..24];
@@ -609,7 +790,29 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
         command.Parameters.AddWithValue("@supplierId", supplierId);
         command.Parameters.AddWithValue("@username", username);
         command.Parameters.AddWithValue("@normalizedUsername", username.ToUpperInvariant());
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<LedgerCodes> ConfigureInvoiceOnlyFoundationAsync(SqlConnection connection, SqlTransaction transaction)
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var cash = $"ESINV-CASH-{suffix}";
+        var liability = $"ESINV-LIAB-{suffix}";
+        var clearing = $"ESINV-CLEAR-{suffix}";
+        var advance = $"ESINV-ADV-{suffix}";
+        const string sql = """
+            DECLARE @accounts table (AccountCode nvarchar(50), LedgerAccountId int);
+            INSERT dbo.LedgerAccounts(AccountCode,AccountName,AccountType,IsActive,CreatedAt)
+            OUTPUT inserted.AccountCode,inserted.LedgerAccountId INTO @accounts
+            VALUES (@cash,N'نقد',N'Asset',1,SYSUTCDATETIME()),(@liability,N'دائنون',N'Liability',1,SYSUTCDATETIME()),(@clearing,N'مشتريات',N'Asset',1,SYSUTCDATETIME()),(@advance,N'سلف موردين',N'Asset',1,SYSUTCDATETIME());
+            UPDATE dbo.AccountRoleMappings SET LedgerAccountId=(SELECT LedgerAccountId FROM @accounts WHERE AccountCode=CASE AccountRole WHEN N'Cash' THEN @cash WHEN N'SupplierLiability' THEN @liability WHEN N'PurchaseClearing' THEN @clearing WHEN N'SupplierAdvance' THEN @advance END),IsEnabled=1 WHERE AccountRole IN(N'Cash',N'SupplierLiability',N'PurchaseClearing',N'SupplierAdvance');
+            UPDATE dbo.AccountingEventDefinitions SET IsEnabled=1 WHERE AccountingEventType IN(28,29,30,31,32,33);
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@cash", cash); command.Parameters.AddWithValue("@liability", liability);
+        command.Parameters.AddWithValue("@clearing", clearing); command.Parameters.AddWithValue("@advance", advance);
         await command.ExecuteNonQueryAsync();
+        return new LedgerCodes(cash, liability, clearing, advance);
     }
 
     private static async Task<int> ConfigureFoundationAsync(SqlConnection connection, SqlTransaction transaction)

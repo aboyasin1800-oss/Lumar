@@ -24,21 +24,25 @@ public sealed class SupplierFinancialWorkflowCoordinator(
 {
     public async Task<SupplierFinancialInvoiceResult> CreateInvoiceAsync(CreateSupplierInvoiceRequestDto request, CurrentUserDto user, string correlationId, CancellationToken cancellationToken)
     {
+        Console.WriteLine($"SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync start supplierId={request.SupplierId} invoiceNumber={request.InvoiceNumber} amount={request.Amount} sourceOperationId={request.SourceOperationId} correlationId={correlationId}");
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
         try
         {
             var result = await runtime.CreateInvoiceAsync(connection, transaction, new SupplierFinancialInvoiceRequest(request.SupplierId, request.InvoiceNumber, request.InvoiceDate, request.DueDate, request.Amount, request.Notes, request.SourceOperationId, user.Username, request.CurrencyCode), cancellationToken);
+            Console.WriteLine($"SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync runtime returned invoiceId={result.SupplierInvoiceId} accountingEventId={result.AccountingEventId}");
             if (request.PurchaseOrderId.HasValue)
                 await EnsureInvoicePurchaseOrderAsync(connection, transaction, result.SupplierInvoiceId, request.SupplierId, request.PurchaseOrderId.Value, cancellationToken);
             await EnsureInvoiceLinesAsync(connection, transaction, result.SupplierInvoiceId, request, user.Username, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+            Console.WriteLine($"SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync commit success invoiceId={result.SupplierInvoiceId}");
             audit.Record(user, "SupplierInvoice.Create", request.SourceOperationId, result.SupplierInvoiceId, correlationId);
             return result;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync exception type={ex.GetType().Name} message={ex.Message}");
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
