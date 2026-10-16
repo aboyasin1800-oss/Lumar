@@ -269,6 +269,50 @@ public sealed class OrderLoyaltyIntegrationServiceTests
     }
 
     [Fact]
+    public void RewardReversalEngine_ProducesExactSinglePieceCancellationReversalEntries()
+    {
+        var cancelledOrderBuyerEarn = new LoyaltyTransactionDto(
+            1,
+            7,
+            5,
+            900,
+            null,
+            "Earn",
+            100m,
+            0m,
+            100m,
+            "PiecePurchase",
+            "OrderId:900|Fingerprint:root|EngineVersion:RL3-R1",
+            DateTime.UtcNow);
+
+        var cancelledOrderReward = new ReferralTransactionDto(
+            101,
+            4,
+            5,
+            null,
+            900,
+            null,
+            "RewardGranted",
+            0m,
+            50m,
+            "Level:1|OrderId:900|Fingerprint:reward-900",
+            DateTime.UtcNow);
+
+        var reversedReferralRewards = RewardReversalEngine.ReverseReferralRewards(new[] { cancelledOrderReward }).ToList();
+
+        var reversedBuyerEarn = RewardReversalEngine.ReverseBuyerEarn(cancelledOrderBuyerEarn);
+
+        Assert.Single(reversedReferralRewards);
+        Assert.Equal(4, reversedReferralRewards[0].ReferrerCustomerId);
+        Assert.Equal(50m, reversedReferralRewards[0].Points);
+        Assert.Equal("RewardReversal", reversedReferralRewards[0].TransactionType);
+
+        Assert.Equal(5, reversedBuyerEarn.ReferrerCustomerId);
+        Assert.Equal(100m, reversedBuyerEarn.Points);
+        Assert.Equal("BuyerEarnReversal", reversedBuyerEarn.TransactionType);
+    }
+
+    [Fact]
     public void ReferralTreeBuilder_BuildsHierarchyFromRegistrationTransactionsOnly()
     {
         var customers = new Dictionary<int, CustomerIdentity>

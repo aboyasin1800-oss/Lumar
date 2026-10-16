@@ -196,6 +196,17 @@ createdDate: datetime
 
 This section updates the existing R2 order foundation contract without creating a new contract file or parallel workflow. The governing business decision is:
 
+### Scope gate: ADD PIECE TO EXISTING ORDER
+
+This current Go-Live scope explicitly defers ADD PIECE TO EXISTING ORDER post-Go-Live by owner decision.
+
+- Additional Piece Requested in the current release: create a new order using the official Create Order path.
+- No active Add Piece write endpoint is in scope for the current Go-Live release.
+- No Add Piece repository/service mutation is enabled in the current release.
+- This is a Scope/Go-Live deferral, not a technical failure or a migration requirement.
+
+This scope rule remains authoritative for ORDER 4/8 closure and does not alter the valid Create Order, single-piece cancellation, production tracking, or delivery contracts already in force.
+
 - Before actual Cutting, the cancelled piece may reverse only the original official fabric consumption attributable to that piece.
 - After actual Cutting, raw fabric must not be returned to raw fabric inventory.
 - After Cutting, the cancelled piece may continue through the official ready-made disposition path or equivalent supported operational disposition; it may not be treated as raw fabric return.

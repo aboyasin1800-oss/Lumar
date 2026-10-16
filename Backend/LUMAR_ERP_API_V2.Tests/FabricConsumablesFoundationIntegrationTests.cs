@@ -1,4 +1,4 @@
-using LUMAR_ERP_API_V2.Configuration;
+﻿using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Controllers;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Consumption;
@@ -147,7 +147,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                     RollCode = seed.FabricRollCode,
                     ColorValue = "WHITE",
                     UnitId = 1,
-                    OpposingLedgerAccountCode = "1000",
+                    OpposingLedgerAccountCode = "2100",
                     SourceOperationId = seed.FabricReceiptOperationId
                 },
                 CancellationToken.None);
@@ -174,7 +174,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                     FabricTypeCode = "COTTON-TEST",
                     RollCode = seed.FabricRollCode,
                     UnitId = 1,
-                    OpposingLedgerAccountCode = "1000",
+                    OpposingLedgerAccountCode = "2100",
                     SourceOperationId = seed.FabricReceiptOperationId
                 },
                 CancellationToken.None);
@@ -189,7 +189,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                     GoodsReceiptItemId = seed.ConsumableReceiptItemId,
                     ItemCode = seed.ConsumableItemCode,
                     UnitId = 3,
-                    OpposingLedgerAccountCode = "1000",
+                    OpposingLedgerAccountCode = "2100",
                     SourceOperationId = seed.FabricReceiptOperationId
                 },
                 CancellationToken.None));
@@ -200,7 +200,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                     GoodsReceiptItemId = seed.ConsumableReceiptItemId,
                     ItemCode = seed.ConsumableItemCode,
                     UnitId = 3,
-                    OpposingLedgerAccountCode = "1000",
+                    OpposingLedgerAccountCode = "2100",
                     SourceOperationId = seed.ConsumableReceiptOperationId
                 },
                 CancellationToken.None);
@@ -318,7 +318,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                 FabricTypeCode = "REPLAY-ROLL",
                 RollCode = "REPLAY-ROLL-001",
                 UnitId = 1,
-                OpposingLedgerAccountCode = "1000",
+                OpposingLedgerAccountCode = "2100",
                 SourceOperationId = seed.FabricReceiptOperationId
             }, CancellationToken.None);
             Assert.NotNull(first);
@@ -331,7 +331,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                 FabricTypeCode = "REPLAY-ROLL",
                 RollCode = "REPLAY-ROLL-001",
                 UnitId = 1,
-                OpposingLedgerAccountCode = "1000",
+                OpposingLedgerAccountCode = "2100",
                 SourceOperationId = seed.FabricReceiptOperationId
             }, CancellationToken.None);
 
@@ -364,7 +364,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                 FabricTypeCode = "MULTI-ROLL-FAB",
                 FabricWidth = 58m,
                 UnitId = 1,
-                OpposingLedgerAccountCode = "1000",
+                OpposingLedgerAccountCode = "2100",
                 SourceOperationId = operationId,
                 Rolls =
                 [
@@ -407,7 +407,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                 FabricTypeCode = "CAT-UNIQUE-BATCH",
                 FabricWidth = 58m,
                 UnitId = 1,
-                OpposingLedgerAccountCode = "1000",
+                OpposingLedgerAccountCode = "2100",
                 SourceOperationId = operationId,
                 Rolls =
                 [
@@ -516,7 +516,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                 FabricTypeCode = "REPAIR-PARTIAL",
                 RollCode = $"ROLL-PARTIAL-{Guid.NewGuid():N}",
                 UnitId = 1,
-                OpposingLedgerAccountCode = "1000",
+                OpposingLedgerAccountCode = "2100",
                 SourceOperationId = partialOperationId
             }, CancellationToken.None);
 
@@ -562,7 +562,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                     FabricTypeCode = "COTTON-ROLLBACK",
                     RollCode = seed.FabricRollCode,
                     UnitId = 1,
-                    OpposingLedgerAccountCode = "1000",
+                    OpposingLedgerAccountCode = "2100",
                     SourceOperationId = seed.FabricReceiptOperationId
                 },
                 CancellationToken.None);
@@ -604,7 +604,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                     FabricTypeCode = "CODE-TEST",
                     RollCode = seed.FabricRollCode,
                     UnitId = unitId,
-                    OpposingLedgerAccountCode = "1000",
+                    OpposingLedgerAccountCode = "2100",
                     SourceOperationId = seed.FabricReceiptOperationId
                 }, CancellationToken.None);
             Assert.NotNull(receipt);
@@ -671,7 +671,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
                     FabricTypeCode = "CODE-ROLLBACK",
                     RollCode = seed.FabricRollCode,
                     UnitId = 1,
-                    OpposingLedgerAccountCode = "1000",
+                    OpposingLedgerAccountCode = "2100",
                     SourceOperationId = seed.FabricReceiptOperationId
                 }, CancellationToken.None);
             Assert.NotNull(receipt);
@@ -1085,7 +1085,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
             FabricTypeCode = "ORDER-CODE-TEST",
             RollCode = seed.FabricRollCode,
             UnitId = 1,
-            OpposingLedgerAccountCode = "1000",
+            OpposingLedgerAccountCode = "2100",
             SourceOperationId = seed.FabricReceiptOperationId
         }, CancellationToken.None) ?? throw new InvalidOperationException("The test fabric receipt was not created.");
 
@@ -1539,3 +1539,4 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
 
     private sealed record OfficialBatchSupportSeed(int SupplierId);
 }
+
