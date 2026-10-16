@@ -168,6 +168,12 @@ public sealed class MessageWriteService(
         if (normalized is "ordercreated" or "order-created" or "order-created-customer-smart" or "order-referrer-combined-smart" or "referrer-points-earned-smart")
             return smartTemplateKey;
 
+        if (normalized is "orderready" or "order-ready")
+            return "order-ready";
+
+        if (normalized is "orderdelivered" or "order-delivered")
+            return "order-delivered";
+
         return trimmed;
     }
 

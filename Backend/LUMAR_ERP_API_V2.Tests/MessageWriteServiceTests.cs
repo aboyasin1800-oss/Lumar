@@ -557,6 +557,46 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task MessageWriteService_UsesExistingOrderReadyAndDeliveredTemplates_ForLifecycleEvents()
+    {
+        var repo = new StrictTemplateLookupRepository();
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer());
+
+        var ready = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 17,
+            OrderId: 42,
+            EventType: "OrderReady",
+            TemplateKey: "OrderReady",
+            PhoneNumber: "0500000000",
+            ReferenceId: "ORD-42",
+            ReferenceType: "Order",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["OrderNumber"] = "ORD-42",
+            }), CancellationToken.None);
+
+        var delivered = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 17,
+            OrderId: 42,
+            EventType: "OrderDelivered",
+            TemplateKey: "OrderDelivered",
+            PhoneNumber: "0500000000",
+            ReferenceId: "ORD-42",
+            ReferenceType: "Order",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["OrderNumber"] = "ORD-42",
+            }), CancellationToken.None);
+
+        Assert.True(ready.Created, "OrderReady should resolve to the existing active order-ready template key.");
+        Assert.True(delivered.Created, "OrderDelivered should resolve to the existing active order-delivered template key.");
+        Assert.Equal("order-ready", ready.TemplateKey);
+        Assert.Equal("order-delivered", delivered.TemplateKey);
+    }
+
+    [Fact]
     public async Task TryCreateAsync_UsesUniqueRewardGrantIdentity_ForReferralRewards()
     {
         var repo = new FakeMessageRepository();
@@ -1442,6 +1482,42 @@ public sealed class MessageWriteServiceTests
         public Task<SystemSettingDetailsDto?> UpsertSystemSettingAsync(SystemSettingDetailsDto setting, CancellationToken c) => Task.FromResult<SystemSettingDetailsDto?>(setting);
         public Task<bool> DeleteSystemSettingAsync(int id, CancellationToken c) => Task.FromResult(true);
         public Task<IReadOnlyList<SystemSettingListDto>> GetSettingsByCategoryAsync(string category, CancellationToken c) => Task.FromResult<IReadOnlyList<SystemSettingListDto>>(Array.Empty<SystemSettingListDto>());
+    }
+
+    private sealed class StrictTemplateLookupRepository : IMessageRepository
+    {
+        public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<CustomerMessageDto>>(Array.Empty<CustomerMessageDto>());
+        public Task<CustomerMessageDto?> GetCustomerMessageAsync(int id, CancellationToken c) => Task.FromResult<CustomerMessageDto?>(null);
+        public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(int customerId, CancellationToken c) => Task.FromResult<IReadOnlyList<CustomerMessageDto>>(Array.Empty<CustomerMessageDto>());
+        public Task<IReadOnlyList<CustomerNotificationDto>> GetNotificationsAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<CustomerNotificationDto>>(Array.Empty<CustomerNotificationDto>());
+        public Task<IReadOnlyList<CustomerNotificationDto>> GetNotificationsAsync(int customerId, CancellationToken c) => Task.FromResult<IReadOnlyList<CustomerNotificationDto>>(Array.Empty<CustomerNotificationDto>());
+        public Task<IReadOnlyList<MessageTemplateDto>> GetTemplatesAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<MessageTemplateDto>>(Array.Empty<MessageTemplateDto>());
+        public Task<IReadOnlyList<MessageTemplateDto>> GetTemplatesByIdAsync(int id, CancellationToken c) => Task.FromResult<IReadOnlyList<MessageTemplateDto>>(Array.Empty<MessageTemplateDto>());
+        public Task<MessageTemplateDto?> CreateTemplateAsync(CreateMessageTemplateDto request, CancellationToken c) => Task.FromResult<MessageTemplateDto?>(null);
+        public Task<MessageTemplateDto?> UpdateTemplateAsync(int id, UpdateMessageTemplateDto request, CancellationToken c) => Task.FromResult<MessageTemplateDto?>(null);
+        public Task<MessageTemplateDto?> ActivateTemplateAsync(int id, CancellationToken c) => Task.FromResult<MessageTemplateDto?>(null);
+        public Task<MessageTemplateDto?> DeactivateTemplateAsync(int id, CancellationToken c) => Task.FromResult<MessageTemplateDto?>(null);
+        public Task<IReadOnlyList<SentMessageDto>> GetSentAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SentMessageDto>>(Array.Empty<SentMessageDto>());
+        public Task<IReadOnlyList<SentLogDto>> GetSentLogAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SentLogDto>>(Array.Empty<SentLogDto>());
+        public Task<MessageTemplateRecord?> GetActiveTemplateAsync(string templateKey, CancellationToken c)
+        {
+            var key = templateKey.Trim();
+            if (string.Equals(key, "order-ready", StringComparison.OrdinalIgnoreCase))
+                return Task.FromResult<MessageTemplateRecord?>(new MessageTemplateRecord(1, "order-ready", "جاهزية الطلب", "InApp", "يسعدنا إبلاغك بأن طلبك رقم {{OrderNumber}} أصبح جاهزاً للاستلام."));
+            if (string.Equals(key, "order-delivered", StringComparison.OrdinalIgnoreCase))
+                return Task.FromResult<MessageTemplateRecord?>(new MessageTemplateRecord(2, "order-delivered", "تسليم الطلب", "InApp", "شكراً لك {{CustomerName}}. تم تسليم الطلب رقم {{OrderNumber}} بنجاح."));
+            return Task.FromResult<MessageTemplateRecord?>(null);
+        }
+        public Task<bool> HasProcessedAsync(string idempotencyKey, CancellationToken c) => Task.FromResult(false);
+        public Task<CustomerMessageDto?> ClaimNextAsync(string channel, int maxAttempts, TimeSpan staleProcessingWindow, CancellationToken cancellationToken) => Task.FromResult<CustomerMessageDto?>(null);
+        public Task<CustomerMessageDto?> GetByProviderMessageIdAsync(string providerMessageId, CancellationToken cancellationToken) => Task.FromResult<CustomerMessageDto?>(null);
+        public Task UpdateDeliveryStatusByProviderIdAsync(string providerMessageId, string status, DateTime occurredAtUtc, string? failureReason, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task MarkSentAsync(int customerMessageId, string? providerMessageId, DateTime sentAtUtc, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task MarkFailedAsync(int customerMessageId, string failureReason, bool retryable, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c)
+            => Task.FromResult((MessageId: (int?)1, NotificationId: (int?)1));
+        public Task<int?> CreateCustomerMessageAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c) => Task.FromResult<int?>(1);
+        public Task<int> CreateCustomerNotificationAsync(int customerId, int? orderId, string eventType, string title, string body, int customerMessageId, CancellationToken c) => Task.FromResult(1);
     }
 
     private sealed class FakeMessageRepository : IMessageRepository
