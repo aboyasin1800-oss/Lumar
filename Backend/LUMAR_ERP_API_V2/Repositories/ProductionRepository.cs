@@ -399,7 +399,8 @@ public sealed class ProductionRepository(
                         ? "Production stage completed and order is ready for delivery."
                         : "Production stage recorded successfully.",
                 true,
-                pieceContext.IsReadyMade);
+                pieceContext.IsReadyMade,
+                isOrderReadyForDelivery);
         }
         catch
         {

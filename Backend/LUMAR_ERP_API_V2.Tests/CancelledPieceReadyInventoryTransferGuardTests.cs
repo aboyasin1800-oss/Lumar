@@ -21,6 +21,21 @@ public class CancelledPieceReadyInventoryTransferGuardTests
         Assert.Equal("Assembly", result.FinalStage);
     }
 
+    [Fact]
+    public void ShouldRejectReadyMadeTransfer_WhenProductionIsNotYetReady()
+    {
+        var result = CancelledPieceReadyInventoryTransferGuard.Evaluate(
+            orderCancelled: true,
+            pieceStartedProduction: true,
+            hasAssemblyStage: false,
+            pieceStatus: "InProduction",
+            finalStage: "Sewing",
+            alreadyTransferred: false);
+
+        Assert.False(result.IsEligible);
+        Assert.Equal("Sewing", result.FinalStage);
+    }
+
     [Theory]
     [InlineData(false, true, true, "Ready", "Assembly", false)]
     [InlineData(true, false, true, "Ready", "Assembly", false)]

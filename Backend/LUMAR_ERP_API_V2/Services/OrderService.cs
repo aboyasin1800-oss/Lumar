@@ -20,8 +20,10 @@ public sealed class OrderService(
         var created = await repository.CreateAsync(order, cancellationToken);
         if (created is not null)
         {
-            await vipLevelEvaluationService.EvaluateNetworkAsync(created.CustomerId, cancellationToken);
-            await orderLoyaltyIntegrationService.ProcessIfEligibleAsync(created.OrderId, cancellationToken);
+            if (vipLevelEvaluationService is not null)
+                await vipLevelEvaluationService.EvaluateNetworkAsync(created.CustomerId, cancellationToken);
+            if (orderLoyaltyIntegrationService is not null)
+                await orderLoyaltyIntegrationService.ProcessIfEligibleAsync(created.OrderId, cancellationToken);
 
             if (messageWriteService is not null)
             {
@@ -55,6 +57,7 @@ public sealed class OrderService(
 
         return created;
     }
+
     public Task<IReadOnlyList<OrderItemDto>> GetItemsAsync(int orderId, CancellationToken cancellationToken) => repository.GetItemsAsync(orderId, cancellationToken);
     public Task<IReadOnlyList<OrderPieceDto>> GetPiecesAsync(int orderId, CancellationToken cancellationToken) => repository.GetPiecesAsync(orderId, cancellationToken);
     public Task<IReadOnlyList<OrderFabricDto>> GetFabricsAsync(int orderId, CancellationToken cancellationToken) => repository.GetFabricsAsync(orderId, cancellationToken);

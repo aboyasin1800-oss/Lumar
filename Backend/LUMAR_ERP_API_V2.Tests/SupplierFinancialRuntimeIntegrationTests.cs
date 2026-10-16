@@ -474,7 +474,7 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
                 await command.ExecuteNonQueryAsync();
             }
 
-            await RestoreFoundationStateAsync(connection, transaction, fixture);
+            await RestoreFoundationStateAsync(connection, transaction, fixture.Mappings, fixture.Events);
             await using (var accounts = new SqlCommand("DELETE FROM dbo.LedgerAccounts WHERE AccountCode IN (@cash,@liability,@clearing,@advance);", connection, transaction))
             {
                 accounts.Parameters.AddWithValue("@cash", fixture.LedgerCodes.Cash);
@@ -555,7 +555,7 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
                 command.Parameters.AddWithValue("@supplierId", fixture.SupplierId);
                 await command.ExecuteNonQueryAsync();
             }
-            await RestoreFoundationStateAsync(connection, transaction, fixture);
+            await RestoreFoundationStateAsync(connection, transaction, fixture.Mappings, fixture.Events);
             await using (var accounts = new SqlCommand("UPDATE dbo.AccountRoleMappings SET LedgerAccountId=NULL, IsEnabled=0 WHERE AccountRole IN (N'Cash',N'SupplierLiability',N'PurchaseClearing',N'SupplierAdvance'); UPDATE dbo.CashAccounts SET LedgerControlAccountId=NULL WHERE LedgerControlAccountId IN (SELECT LedgerAccountId FROM dbo.LedgerAccounts WHERE AccountCode LIKE N'ES5C%' OR AccountCode LIKE N'ES5L%' OR AccountCode LIKE N'ES5P%' OR AccountCode LIKE N'ES5A%'); DELETE FROM dbo.CashAccounts WHERE CashAccountId=@cashAccountId; DELETE FROM dbo.LedgerAccounts WHERE AccountCode LIKE N'ES5C%' OR AccountCode LIKE N'ES5L%' OR AccountCode LIKE N'ES5P%' OR AccountCode LIKE N'ES5A%';", connection, transaction))
             {
                 accounts.Parameters.AddWithValue("@cashAccountId", fixture.CashAccountId);
@@ -678,9 +678,9 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
         return (mappings, events);
     }
 
-    private static async Task RestoreFoundationStateAsync(SqlConnection connection, SqlTransaction transaction, CommittedFixture fixture)
+    private static async Task RestoreFoundationStateAsync(SqlConnection connection, SqlTransaction transaction, IReadOnlyList<MappingState> mappings, IReadOnlyList<EventState> events)
     {
-        foreach (var mapping in fixture.Mappings)
+        foreach (var mapping in mappings)
         {
             await using var command = new SqlCommand("UPDATE dbo.AccountRoleMappings SET LedgerAccountId=@ledgerAccountId,IsEnabled=@isEnabled WHERE AccountRole=@role;", connection, transaction);
             command.Parameters.AddWithValue("@ledgerAccountId", mapping.LedgerAccountId ?? (object)DBNull.Value);
@@ -688,7 +688,7 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
             command.Parameters.AddWithValue("@role", mapping.Role);
             await command.ExecuteNonQueryAsync();
         }
-        foreach (var definition in fixture.Events)
+        foreach (var definition in events)
         {
             await using var command = new SqlCommand("UPDATE dbo.AccountingEventDefinitions SET IsEnabled=@isEnabled WHERE AccountingEventType=@eventType;", connection, transaction);
             command.Parameters.AddWithValue("@isEnabled", definition.IsEnabled);

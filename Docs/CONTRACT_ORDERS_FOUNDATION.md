@@ -192,6 +192,85 @@ pieceNumber: int
 createdDate: datetime
 ```
 
+## R2 — Single Piece Cancellation Fabric Disposition Contract
+
+This section updates the existing R2 order foundation contract without creating a new contract file or parallel workflow. The governing business decision is:
+
+- Before actual Cutting, the cancelled piece may reverse only the original official fabric consumption attributable to that piece.
+- After actual Cutting, raw fabric must not be returned to raw fabric inventory.
+- After Cutting, the cancelled piece may continue through the official ready-made disposition path or equivalent supported operational disposition; it may not be treated as raw fabric return.
+
+### Source of truth: Cutting
+
+The authoritative traceability source is `TrackingEvents` for the specific piece:
+
+- `TrackingEvents.PieceID`
+- `TrackingEvents.Stage = N'Cutting'`
+- `TrackingEvents.Status` and `EventTime` for the factual execution evidence
+
+`Pieces.PieceStatus` alone is not sufficient when the system stores the official execution history in `TrackingEvents`.
+
+### Source of truth: Fabric consumption
+
+The official fabric consumption record is `dbo.FabricConsumptionSources`.
+
+Key fields:
+
+- `FabricConsumptionSourceId`
+- `OrderItemId`
+- `PieceId`
+- `SourceOperationId`
+- `InventoryTransactionId`
+- `AccountingEventId`
+- `ConsumedQuantity`
+- `OfficialUnitCost`
+- `OperationalAmount`
+- `PostingAmount`
+
+This table is the authoritative record for what was consumed, by which order item, and by which piece when the source was recorded against a specific piece.
+
+### Safe piece-level traceability
+
+The current schema supports safe, piece-level traceability when the official source is recorded with `PieceId` on `FabricConsumptionSources`.
+
+The safe decision rule is:
+
+- If `PieceId` is present and the original official source is available, reverse that exact `FabricConsumptionSource` through the official inverse movement.
+- If the source is not attributable to the specific cancelled piece, do not estimate a quantity and do not reverse unrelated fabric consumption.
+- Do not delete original consumption history. Preserve the original event and add the official reversal/disposition record.
+
+### R2 decision matrix
+
+| Condition | Contract decision |
+| --- | --- |
+| No actual Cutting event exists for the piece | `BEFORE CUTTING` → allow official fabric consumption reversal for the exact source only |
+| Actual Cutting event exists for the piece | `AFTER CUTTING` → never return raw fabric to raw inventory |
+| After Cutting and the piece is still operationally reusable | disposition via official ready-made or supported remnant flow |
+| After Cutting and not reusable | production waste under the official production disposition path |
+
+### Required operational behavior
+
+- The system must prefer the original source record, not a recalculated estimate.
+- Reversal must be idempotent and tied to `SourceOperationId` / original `FabricConsumptionSourceId`.
+- `ContinueToReadyInventory` is allowed only as a post-cutting operational disposition, not as a raw-fabric return.
+- `ContinueToReadyInventory` must not bypass the official ready-made inventory integration path.
+- Piece wages remain a separate contract from fabric reversal. Payment for executed work stays valid; fabric reversal does not erase executed piece wages.
+- Historical records remain preserved: original event + official reversal/disposition, not delete-and-replace history.
+
+### Traceability gate
+
+If the system can determine the exact original fabric consumption for the cancelled piece using the official IDs already present in `FabricConsumptionSources` and `TrackingEvents`, the contract remains valid and no migration is required.
+
+If the source cannot be tied to the specific piece with the current schema, then the decision is:
+
+`FABRIC REVERSAL TRACEABILITY GAP`
+
+The minimum safe action is to stop, document the gap, and require explicit owner approval before any migration or speculative quantity restoration.
+
+### Order-level regression protection
+
+This contract does not alter the existing full-order cancellation logic and does not create a parallel business flow. The single-piece cancellation rule is narrow, piece-specific, and must not change the behaviour of unrelated order-level cancellation or order readiness logic.
+
 ### OrderDeliveryDto
 
 This is a read-only projection over existing `Orders` fields; no delivery table currently exists in the referenced tables.

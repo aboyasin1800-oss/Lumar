@@ -40,7 +40,7 @@ public sealed class ProductionService(
             if (piece is not null)
             {
                 await orderLoyaltyIntegrationService.ProcessIfEligibleAsync(piece.OrderId, ct);
-                if (result.Message.Contains("ready for delivery", StringComparison.OrdinalIgnoreCase))
+                if (result.BecameReadyForDelivery)
                 {
                     var order = await orderRepository.GetByIdAsync(piece.OrderId, ct);
                     await TrySendMessageAsync(

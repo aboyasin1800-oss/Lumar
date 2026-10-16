@@ -818,7 +818,7 @@ public sealed class MessageWriteServiceTests
 
         var productionRepository = new FakeProductionRepository(
             new PieceDto(13, 1, "TRK-100", "Ready", 1, DateTime.UtcNow, "YALAQ", 100, "ORD-100", 9),
-            new ProductionTrackingAdvanceResultDto(13, "TRK-100", "Ready", "ReadyForDelivery", null, "Order is ready for delivery and can be packed.", true));
+            new ProductionTrackingAdvanceResultDto(13, "TRK-100", "Ready", "ReadyForDelivery", null, "Order is ready for delivery and can be packed.", true, false, true));
         var orderRepository = new FakeOrderRepository(order);
         var service = new ProductionService(productionRepository, new FakeOrderLoyaltyIntegrationService(), orderRepository, messageService);
 
@@ -828,6 +828,99 @@ public sealed class MessageWriteServiceTests
         Assert.Equal("OrderReady", messageService.Requests[0].EventType);
         Assert.Equal("ORD-100", messageService.Requests[0].ReferenceId);
         Assert.Equal(7, messageService.Requests[0].CustomerId);
+    }
+
+    [Fact]
+    public async Task ProductionService_AdvancePieceStageAsync_WhenMessageMentionsReadyForDeliveryButTransitionDidNotOccur_DoesNotSendOrderReady()
+    {
+        var messageService = new RecordingMessageWriteService();
+        var order = new OrderDetailsDto(
+            101,
+            "ORD-101",
+            7,
+            "محمود",
+            "0500000101",
+            DateTime.UtcNow,
+            null,
+            150m,
+            0m,
+            0m,
+            150m,
+            "Normal",
+            "Confirmed",
+            "Pending",
+            DateTime.UtcNow,
+            null,
+            null,
+            null,
+            null,
+            "TailoringOrder",
+            false,
+            null,
+            false,
+            null);
+
+        var productionRepository = new FakeProductionRepository(
+            new PieceDto(14, 1, "TRK-101", "Cutting", 1, DateTime.UtcNow, "YALAQ", 101, "ORD-101", 9),
+            new ProductionTrackingAdvanceResultDto(14, "TRK-101", "Cutting", "Ironing", "Ironing", "Order is ready for delivery and can be packed.", true, false, false));
+        var orderRepository = new FakeOrderRepository(order);
+        var service = new ProductionService(productionRepository, new FakeOrderLoyaltyIntegrationService(), orderRepository, messageService);
+
+        await service.AdvancePieceStageAsync(new ProductionTrackingAdvanceRequestDto(14, "TRK-101", "YALAQ", "Ironing", "SCN-3", "EMP-3", "REF-3", 9), CancellationToken.None);
+
+        Assert.Empty(messageService.Requests);
+    }
+
+    [Fact]
+    public async Task ProductionService_AdvancePieceStageAsync_ReplayDoesNotResendOrderReady_WhenTransitionOnlyHappensOnce()
+    {
+        var messageService = new RecordingMessageWriteService();
+        var order = new OrderDetailsDto(
+            102,
+            "ORD-102",
+            7,
+            "باسم",
+            "0500000102",
+            DateTime.UtcNow,
+            null,
+            150m,
+            0m,
+            0m,
+            150m,
+            "Normal",
+            "ReadyForDelivery",
+            "Ready",
+            DateTime.UtcNow,
+            null,
+            null,
+            null,
+            null,
+            "TailoringOrder",
+            false,
+            null,
+            false,
+            null);
+
+        var piece = new PieceDto(15, 1, "TRK-102", "Ready", 1, DateTime.UtcNow, "YALAQ", 102, "ORD-102", 9);
+        var results = new Queue<ProductionTrackingAdvanceResultDto>([
+            new ProductionTrackingAdvanceResultDto(15, "TRK-102", "Ready", "ReadyForDelivery", null, "Order is ready for delivery and can be packed.", true, false, true),
+            new ProductionTrackingAdvanceResultDto(15, "TRK-102", "ReadyForDelivery", "ReadyForDelivery", null, "Order remains ready for delivery.", true, false, false)
+        ]);
+
+        var productionRepository = new SequenceProductionRepository(piece, results);
+        var orderRepository = new FakeOrderRepository(order);
+        var service = new ProductionService(productionRepository, new FakeOrderLoyaltyIntegrationService(), orderRepository, messageService);
+
+        var first = await service.AdvancePieceStageAsync(new ProductionTrackingAdvanceRequestDto(15, "TRK-102", "YALAQ", "ReadyForDelivery", "SCN-4", "EMP-4", "REF-4", 9), CancellationToken.None);
+        var second = await service.AdvancePieceStageAsync(new ProductionTrackingAdvanceRequestDto(15, "TRK-102", "YALAQ", "ReadyForDelivery", "SCN-4", "EMP-4", "REF-4", 9), CancellationToken.None);
+
+        Assert.NotNull(first);
+        Assert.True(first!.BecameReadyForDelivery);
+        Assert.Equal(1, messageService.Requests.Count(x => x.EventType == "OrderReady"));
+
+        Assert.NotNull(second);
+        Assert.False(second!.BecameReadyForDelivery);
+        Assert.Equal(1, messageService.Requests.Count(x => x.EventType == "OrderReady"));
     }
 
     [Fact]
@@ -1076,6 +1169,33 @@ public sealed class MessageWriteServiceTests
         public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteAsync(int pieceId, CancellationToken cancellationToken) => Task.FromResult<ProductionTrackingRouteDto?>(null);
         public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken cancellationToken) => Task.FromResult<ProductionTrackingRouteDto?>(null);
         public Task<ProductionTrackingAdvanceResultDto?> AdvancePieceStageAsync(ProductionTrackingAdvanceRequestDto request, CancellationToken cancellationToken) => Task.FromResult<ProductionTrackingAdvanceResultDto?>(result);
+    }
+
+    private sealed class SequenceProductionRepository(PieceDto piece, Queue<ProductionTrackingAdvanceResultDto> results) : IProductionRepository
+    {
+        public Task<IReadOnlyList<PieceDto>> GetPiecesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<PieceDto>>(Array.Empty<PieceDto>());
+        public Task<IReadOnlyList<PieceDto>> GetReadyMadePiecesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<PieceDto>>(Array.Empty<PieceDto>());
+        public Task<PieceDto?> GetPieceByIdAsync(int pieceId, CancellationToken cancellationToken) => Task.FromResult<PieceDto?>(piece);
+        public Task<PieceDto?> GetReadyMadePieceByIdAsync(int pieceId, CancellationToken cancellationToken) => Task.FromResult<PieceDto?>(null);
+        public Task<WorkCardDto?> GetWorkCardAsync(int pieceId, CancellationToken cancellationToken) => Task.FromResult<WorkCardDto?>(null);
+        public Task<WorkCardDto?> GetReadyMadeWorkCardAsync(int pieceId, CancellationToken cancellationToken) => Task.FromResult<WorkCardDto?>(null);
+        public Task<IReadOnlyList<TrackingEventDto>> GetPieceTrackingAsync(int pieceId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<TrackingEventDto>>(Array.Empty<TrackingEventDto>());
+        public Task<IReadOnlyList<ProductionStageDto>> GetStagesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ProductionStageDto>>(Array.Empty<ProductionStageDto>());
+        public Task<ProductionDashboardDto> GetDashboardAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<FactoryMonitoringDashboardDto> GetFactoryMonitoringAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ReadyMadeProductionOrderDto>> GetReadyMadeOrdersAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ReadyMadeProductionOrderDto>>(Array.Empty<ReadyMadeProductionOrderDto>());
+        public Task<ReadyMadeProductionOrderDto?> GetReadyMadeOrderByIdAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<ReadyMadeProductionOrderDto?>(null);
+        public Task<IReadOnlyList<ReadyMadeProductionOrderItemDto>> GetReadyMadeOrderItemsAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ReadyMadeProductionOrderItemDto>>(Array.Empty<ReadyMadeProductionOrderItemDto>());
+        public Task<IReadOnlyList<ReadyMadeProductionPieceDto>> GetReadyMadeItemPiecesAsync(int itemId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ReadyMadeProductionPieceDto>>(Array.Empty<ReadyMadeProductionPieceDto>());
+        public Task<IReadOnlyList<TrackingEventDto>> GetReadyMadePieceTrackingAsync(int pieceInstanceId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<TrackingEventDto>>(Array.Empty<TrackingEventDto>());
+        public Task<ReadyMadeProductionOrderCreateResultDto> CreateReadyMadeOrderAsync(ReadyMadeProductionOrderCreateDto order, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ProductionDeliveryDto>> GetDeliveriesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ProductionDeliveryDto>>(Array.Empty<ProductionDeliveryDto>());
+        public Task<ProductionTrackingRouteDto?> GetPieceRouteAsync(int pieceId, CancellationToken cancellationToken) => Task.FromResult<ProductionTrackingRouteDto?>(null);
+        public Task<ProductionTrackingRouteDto?> GetPieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken cancellationToken) => Task.FromResult<ProductionTrackingRouteDto?>(null);
+        public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteAsync(int pieceId, CancellationToken cancellationToken) => Task.FromResult<ProductionTrackingRouteDto?>(null);
+        public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken cancellationToken) => Task.FromResult<ProductionTrackingRouteDto?>(null);
+        public Task<ProductionTrackingAdvanceResultDto?> AdvancePieceStageAsync(ProductionTrackingAdvanceRequestDto request, CancellationToken cancellationToken)
+            => Task.FromResult<ProductionTrackingAdvanceResultDto?>(results.Count > 0 ? results.Dequeue() : results.Peek());
     }
 
     private sealed class FakeReadyMadeSalesRepository : IReadyMadeSalesRepository

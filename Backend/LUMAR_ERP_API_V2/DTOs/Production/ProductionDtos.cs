@@ -10,7 +10,16 @@ public sealed record FactoryMonitoringOrderDto(int OrderId, string OrderNumber, 
 public sealed record FactoryMonitoringClassificationResult(string Classification, string Reason);
 public sealed record FactoryMonitoringPieceSnapshot(int PieceId, string PieceType, string TrackingCode, string CurrentStage, string? NextStage, DateTime? LastTrackingEventAt, string? LastEmployeeCode, decimal ProgressPercent, bool IsCompleted);
 public sealed record ProductionTrackingAdvanceRequestDto(int? PieceId, string? TrackingCode, string PieceType, string RequestedStage, string? ScannerCode, string? EmployeeCode, string? OperationReference, int ProductTypeId, bool IsReadyMade = false);
-public sealed record ProductionTrackingAdvanceResultDto(int? PieceId, string? TrackingCode, string PreviousStatus, string NewStatus, string? NextStage, string Message, bool Updated, bool IsReadyMade = false);
+public sealed record ProductionTrackingAdvanceResultDto(
+    int? PieceId,
+    string? TrackingCode,
+    string PreviousStatus,
+    string NewStatus,
+    string? NextStage,
+    string Message,
+    bool Updated,
+    bool IsReadyMade = false,
+    bool BecameReadyForDelivery = false);
 public sealed record EmployeeScannerAdvanceRequestDto(string TrackingCode, string RequestedStage, string? ScannerCode = null, string? OperationReference = null);
 public sealed record EmployeeScannerAdvanceResponseDto(int? PieceId, string TrackingCode, string PreviousStatus, string NewStatus, string? NextStage, string Message, bool Updated, bool IsReadyMade = false, int? ProductTypeId = null, string? PieceType = null);
 public sealed record ProductionTrackingRouteDto(int ProductTypeId, string ProductTypeCode, string ProductTypeNameAr, string PieceType, IReadOnlyList<string> Route, string CurrentStage, string? NextStage, bool IsReadyMade = false);

@@ -39,5 +39,6 @@
     "D:/YASIN/backups",
     "D:/YASIN/artifacts",
     "D:/YASIN/_validation_obj"
-  ]
+  ],
+  "java.compile.nullAnalysis.mode": "automatic"
 }

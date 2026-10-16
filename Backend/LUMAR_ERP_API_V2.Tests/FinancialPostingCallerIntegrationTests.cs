@@ -132,6 +132,171 @@ public sealed class FinancialPostingCallerIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task ActiveOrderPieceDecision_CanBeSavedWithoutCancellingWholeOrder()
+    {
+        var repository = CreateCancelledPieceRepository();
+        var order = await InsertOrderFixtureAsync("Delivered", revenueRecognized: false, 0m);
+        var productTypeId = await ReadActiveProductTypeIdAsync();
+
+        try
+        {
+            var trackingCode = $"TRKA-ACTIVE-{Guid.NewGuid():N}";
+            await using var connection = new SqlConnection(GetConnectionString());
+            await connection.OpenAsync();
+            await using var transaction = connection.BeginTransaction();
+            try
+            {
+                var orderItemId = await InsertScalarAsync(connection, transaction, @"
+                    INSERT INTO dbo.OrderItems (OrderID,PieceType,Quantity,MeasurementSnapshot,TrackingCode,PieceStatus,CreatedDate,ProductTypeId)
+                    OUTPUT INSERTED.OrderItemID VALUES (@orderId,N'قطعة فعالة',1,N'{}',@tracking,N'Ready',SYSUTCDATETIME(),@productTypeId);",
+                    ("@orderId", order.OrderId),
+                    ("@tracking", trackingCode),
+                    ("@productTypeId", productTypeId));
+
+                await using var pieceCommand = new SqlCommand(@"
+                    INSERT INTO dbo.Pieces (OrderItemID,TrackingCode,PieceStatus,PieceNumber,CreatedDate)
+                    OUTPUT INSERTED.PieceID
+                    VALUES (@orderItemId,@tracking,N'Ready',1,SYSUTCDATETIME());", connection, transaction);
+                pieceCommand.Parameters.AddWithValue("@orderItemId", orderItemId);
+                pieceCommand.Parameters.AddWithValue("@tracking", trackingCode);
+                var pieceId = Convert.ToInt32(await pieceCommand.ExecuteScalarAsync());
+
+                await insertTrackingEventAsync(connection, transaction, order.OrderId, orderItemId, pieceId, trackingCode, "Assembly", "Completed");
+                await transaction.CommitAsync();
+
+                var saved = await repository.SaveDecisionAsync(pieceId, "StopAndHold", "Active order safety check", "tester", CancellationToken.None);
+                Assert.Equal(pieceId, saved.PieceId);
+                Assert.Equal("StopAndHold", saved.Decision);
+                Assert.Equal("tester", saved.DecidedBy);
+                Assert.Equal("Active order safety check", saved.Reason);
+
+                var orderStatus = await ReadScalarStringAsync("SELECT OrderStatus FROM dbo.Orders WHERE OrderID=@orderId", order.OrderId);
+                Assert.Equal("Delivered", orderStatus);
+
+                var executed = await repository.ExecuteDecisionAsync(pieceId, CancellationToken.None);
+                Assert.NotNull(executed);
+                Assert.Equal("StopAndHold", executed.Decision);
+                Assert.Equal("NotTransferred", executed.TransferStatus);
+            }
+            finally
+            {
+                if (transaction.Connection is not null && transaction.Connection.State == System.Data.ConnectionState.Open)
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+            }
+        }
+        finally
+        {
+            await DeleteOrderGraphAsync(order.OrderId, order.OrderNumber);
+        }
+    }
+
+    [Fact]
+    public async Task DuplicateAndHistoricalRecords_ArePreservedForSinglePieceCancellation()
+    {
+        var repository = CreateCancelledPieceRepository();
+        var order = await InsertOrderFixtureAsync("Active", revenueRecognized: false, 0m);
+        var productTypeId = await ReadActiveProductTypeIdAsync();
+
+        try
+        {
+            var trackingCode = $"TRKA-DUP-{Guid.NewGuid():N}";
+            await using var connection = new SqlConnection(GetConnectionString());
+            await connection.OpenAsync();
+            await using var transaction = connection.BeginTransaction();
+            try
+            {
+                var orderItemId = await InsertScalarAsync(connection, transaction, @"
+                    INSERT INTO dbo.OrderItems (OrderID,PieceType,Quantity,MeasurementSnapshot,TrackingCode,PieceStatus,CreatedDate,ProductTypeId)
+                    OUTPUT INSERTED.OrderItemID VALUES (@orderId,N'قطعة مكررة',1,N'{}',@tracking,N'Ready',SYSUTCDATETIME(),@productTypeId);",
+                    ("@orderId", order.OrderId),
+                    ("@tracking", trackingCode),
+                    ("@productTypeId", productTypeId));
+                var insertedPieceId = await InsertScalarAsync(connection, transaction, @"
+                    INSERT INTO dbo.Pieces (OrderItemID,TrackingCode,PieceStatus,PieceNumber,CreatedDate)
+                    OUTPUT INSERTED.PieceID VALUES (@orderItemId,@tracking,N'Ready',1,SYSUTCDATETIME());",
+                    ("@orderItemId", orderItemId),
+                    ("@tracking", trackingCode));
+                await insertTrackingEventAsync(connection, transaction, order.OrderId, orderItemId, insertedPieceId, trackingCode, "Assembly", "Completed");
+                await insertPieceWageAsync(connection, transaction, order.OrderId, orderItemId, insertedPieceId, trackingCode, 80m);
+                await transaction.CommitAsync();
+            }
+            finally
+            {
+                if (transaction.Connection is not null && transaction.Connection.State == System.Data.ConnectionState.Open)
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+            }
+
+            var pieceId = await ReadIntAsync("SELECT PieceID FROM dbo.Pieces WHERE TrackingCode=@tracking", trackingCode);
+            var beforeTracking = await CountByPieceIdAsync("SELECT COUNT(*) FROM dbo.TrackingEvents WHERE PieceID=@pieceId", pieceId);
+            var beforeWages = await CountByPieceIdAsync("SELECT COUNT(*) FROM dbo.PieceWageRecords WHERE PieceID=@pieceId", pieceId);
+
+            var first = await repository.SaveDecisionAsync(pieceId, "StopAndHold", "duplicate check", "tester", CancellationToken.None);
+            var second = await repository.SaveDecisionAsync(first.PieceId, "StopAndHold", "duplicate check updated", "tester-2", CancellationToken.None);
+            Assert.Equal(first.PieceId, second.PieceId);
+            Assert.Equal(1, await CountByPieceIdAsync("SELECT COUNT(*) FROM dbo.CancelledPieceDisposition WHERE PieceId=@pieceId", pieceId));
+
+            var afterTracking = await CountByPieceIdAsync("SELECT COUNT(*) FROM dbo.TrackingEvents WHERE PieceID=@pieceId", pieceId);
+            var afterWages = await CountByPieceIdAsync("SELECT COUNT(*) FROM dbo.PieceWageRecords WHERE PieceID=@pieceId", pieceId);
+            Assert.Equal(beforeTracking, afterTracking);
+            Assert.Equal(beforeWages, afterWages);
+        }
+        finally
+        {
+            await DeleteOrderGraphAsync(order.OrderId, order.OrderNumber);
+        }
+    }
+
+    [Fact]
+    public async Task MissingPiece_AndActivePieceSave_StayFailSafe()
+    {
+        var repository = CreateCancelledPieceRepository();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => repository.SaveDecisionAsync(-1, "StopAndHold", "missing", "tester", CancellationToken.None));
+
+        var order = await InsertOrderFixtureAsync("Active", revenueRecognized: false, 0m);
+        var productTypeId = await ReadActiveProductTypeIdAsync();
+        try
+        {
+            var trackingCode = $"TRKA-MISSING-{Guid.NewGuid():N}";
+            await using var connection = new SqlConnection(GetConnectionString());
+            await connection.OpenAsync();
+            await using var transaction = connection.BeginTransaction();
+            try
+            {
+                var orderItemId = await InsertScalarAsync(connection, transaction, @"
+                    INSERT INTO dbo.OrderItems (OrderID,PieceType,Quantity,MeasurementSnapshot,TrackingCode,PieceStatus,CreatedDate,ProductTypeId)
+                    OUTPUT INSERTED.OrderItemID VALUES (@orderId,N'قطعة فارغة',1,N'{}',@tracking,N'Ready',SYSUTCDATETIME(),@productTypeId);",
+                    ("@orderId", order.OrderId),
+                    ("@tracking", trackingCode),
+                    ("@productTypeId", productTypeId));
+                var pieceId = await InsertScalarAsync(connection, transaction, @"
+                    INSERT INTO dbo.Pieces (OrderItemID,TrackingCode,PieceStatus,PieceNumber,CreatedDate)
+                    OUTPUT INSERTED.PieceID VALUES (@orderItemId,@tracking,N'Ready',1,SYSUTCDATETIME());",
+                    ("@orderItemId", orderItemId),
+                    ("@tracking", trackingCode));
+                await transaction.CommitAsync();
+
+                var saved = await repository.SaveDecisionAsync(pieceId, "StopAndHold", "active safe", "tester", CancellationToken.None);
+                Assert.Equal(pieceId, saved.PieceId);
+            }
+            finally
+            {
+                if (transaction.Connection is not null && transaction.Connection.State == System.Data.ConnectionState.Open)
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+            }
+        }
+        finally
+        {
+            await DeleteOrderGraphAsync(order.OrderId, order.OrderNumber);
+        }
+    }
+
     [Theory]
     [InlineData("Legacy")]
     [InlineData("Posted")]
@@ -240,10 +405,15 @@ public sealed class FinancialPostingCallerIntegrationTests
         {
             var orderItemId = await InsertScalarAsync(connection, transaction, @"
                 INSERT INTO dbo.OrderItems (OrderID,PieceType,Quantity,MeasurementSnapshot,TrackingCode,PieceStatus,CreatedDate,ProductTypeId)
-                OUTPUT INSERTED.OrderItemID VALUES (@orderId,N'قطعة اختبار',1,N'{}',@tracking,N'Ready',SYSUTCDATETIME(),@productTypeId);", order.OrderId, trackingCode, productTypeId);
+                OUTPUT INSERTED.OrderItemID VALUES (@orderId,N'قطعة اختبار',1,N'{}',@tracking,N'Ready',SYSUTCDATETIME(),@productTypeId);",
+                ("@orderId", order.OrderId),
+                ("@tracking", trackingCode),
+                ("@productTypeId", productTypeId));
             var pieceId = await InsertScalarAsync(connection, transaction, @"
                 INSERT INTO dbo.Pieces (OrderItemID,TrackingCode,PieceStatus,PieceNumber,CreatedDate)
-                OUTPUT INSERTED.PieceID VALUES (@orderItemId,@tracking,N'Ready',1,SYSUTCDATETIME());", orderItemId, trackingCode, null);
+                OUTPUT INSERTED.PieceID VALUES (@orderItemId,@tracking,N'Ready',1,SYSUTCDATETIME());",
+                ("@orderItemId", orderItemId),
+                ("@tracking", trackingCode));
             await ExecuteAsync(connection, transaction, "INSERT INTO dbo.TrackingEvents (OrderItemID,OrderID,TrackingCode,Stage,Status,EventTime,IsReverted,PieceID) VALUES (@orderItemId,@orderId,@tracking,N'Assembly',N'Completed',SYSUTCDATETIME(),0,@pieceId);", order.OrderId, trackingCode, orderItemId, pieceId);
             await ExecuteAsync(connection, transaction, "INSERT INTO dbo.OrderItemFabrics (OrderItemID,Quantity,Unit,UnitCost,TotalCost,ConsumedQuantity,CreatedDate) VALUES (@orderItemId,1,N'Piece',50,50,0,SYSUTCDATETIME());", order.OrderId, trackingCode, orderItemId, null);
             transaction.Commit();
@@ -310,6 +480,7 @@ public sealed class FinancialPostingCallerIntegrationTests
             DELETE FROM dbo.FinancialTransactions WHERE ReferenceNumber LIKE @orderReference;
             DELETE FROM dbo.CustomerLedgerEntries WHERE ReferenceNumber LIKE @orderReference;
             DELETE FROM dbo.Payments WHERE OrderID=@orderId;
+            DELETE pwr FROM dbo.PieceWageRecords pwr INNER JOIN dbo.Pieces p ON p.PieceID = pwr.PieceID INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = p.OrderItemID WHERE oi.OrderID=@orderId;
             DELETE te FROM dbo.TrackingEvents te WHERE te.OrderID=@orderId;
             DELETE cpd FROM dbo.CancelledPieceDisposition cpd INNER JOIN dbo.Pieces p ON p.PieceID=cpd.PieceId INNER JOIN dbo.OrderItems oi ON oi.OrderItemID=p.OrderItemID WHERE oi.OrderID=@orderId;
             DELETE FROM dbo.OrderItemFabrics WHERE OrderItemID IN (SELECT OrderItemID FROM dbo.OrderItems WHERE OrderID=@orderId);
@@ -367,11 +538,56 @@ public sealed class FinancialPostingCallerIntegrationTests
     private static async Task<int> ReadActiveCustomerIdAsync() => await ReadIntAsync("SELECT TOP(1) CustomerID FROM dbo.Customers ORDER BY CustomerID");
     private static async Task<int> ReadActiveProductTypeIdAsync() => await ReadIntAsync("SELECT TOP(1) ProductTypeId FROM dbo.PricingProductTypes WHERE IsActive=1 ORDER BY ProductTypeId");
     private static async Task<int> ReadIntAsync(string sql) { await using var connection = new SqlConnection(GetConnectionString()); await connection.OpenAsync(); await using var command = new SqlCommand(sql, connection); return Convert.ToInt32(await command.ExecuteScalarAsync()); }
+    private static async Task<int> ReadIntAsync(string sql, string trackingCode) { await using var connection = new SqlConnection(GetConnectionString()); await connection.OpenAsync(); await using var command = new SqlCommand(sql, connection); command.Parameters.AddWithValue("@tracking", trackingCode); return Convert.ToInt32(await command.ExecuteScalarAsync()); }
+    private static async Task<int> CountByPieceIdAsync(string sql, int pieceId) { await using var connection = new SqlConnection(GetConnectionString()); await connection.OpenAsync(); await using var command = new SqlCommand(sql, connection); command.Parameters.AddWithValue("@pieceId", pieceId); return Convert.ToInt32(await command.ExecuteScalarAsync()); }
     private static async Task<decimal> ReadDecimalAsync(string sql, int orderId) { await using var connection = new SqlConnection(GetConnectionString()); await connection.OpenAsync(); await using var command = new SqlCommand(sql, connection); command.Parameters.AddWithValue("@orderId", orderId); return Convert.ToDecimal(await command.ExecuteScalarAsync()); }
     private static async Task<bool> ReadBooleanAsync(string sql, int orderId) { await using var connection = new SqlConnection(GetConnectionString()); await connection.OpenAsync(); await using var command = new SqlCommand(sql, connection); command.Parameters.AddWithValue("@orderId", orderId); return Convert.ToBoolean(await command.ExecuteScalarAsync()); }
     private static async Task<int> CountAsync(string sql, string reference, int? orderId = null, string? transactionType = null, decimal? amount = null, string? debitAccount = null, string? creditAccount = null) { await using var connection = new SqlConnection(GetConnectionString()); await connection.OpenAsync(); await using var command = new SqlCommand(sql, connection); command.Parameters.AddWithValue("@reference", reference); command.Parameters.AddWithValue("@orderId", orderId ?? (object)DBNull.Value); command.Parameters.AddWithValue("@transactionType", transactionType ?? (object)DBNull.Value); command.Parameters.AddWithValue("@amount", amount ?? (object)DBNull.Value); command.Parameters.AddWithValue("@debitAccount", debitAccount ?? (object)DBNull.Value); command.Parameters.AddWithValue("@creditAccount", creditAccount ?? (object)DBNull.Value); return Convert.ToInt32(await command.ExecuteScalarAsync()); }
-    private static async Task<int> InsertScalarAsync(SqlConnection connection, SqlTransaction transaction, string sql, int orderId, string tracking, int? productTypeId) { await using var command = new SqlCommand(sql, connection, transaction); command.Parameters.AddWithValue("@orderId", orderId); command.Parameters.AddWithValue("@tracking", tracking); command.Parameters.AddWithValue("@productTypeId", productTypeId ?? (object)DBNull.Value); command.Parameters.AddWithValue("@orderItemId", orderId); return Convert.ToInt32(await command.ExecuteScalarAsync()); }
+    private static async Task<int> InsertScalarAsync(SqlConnection connection, SqlTransaction transaction, string sql, params (string Name, object Value)[] parameters)
+    {
+        await using var command = new SqlCommand(sql, connection, transaction);
+        foreach (var parameter in parameters)
+        {
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+        }
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
     private static async Task ExecuteAsync(SqlConnection connection, SqlTransaction transaction, string sql, int orderId, string tracking, int? orderItemId, int? pieceId) { await using var command = new SqlCommand(sql, connection, transaction); command.Parameters.AddWithValue("@orderId", orderId); command.Parameters.AddWithValue("@tracking", tracking); command.Parameters.AddWithValue("@orderItemId", orderItemId ?? (object)DBNull.Value); command.Parameters.AddWithValue("@pieceId", pieceId ?? (object)DBNull.Value); await command.ExecuteNonQueryAsync(); }
+    private static async Task<int> insertTrackingEventAsync(SqlConnection connection, SqlTransaction transaction, int orderId, int orderItemId, int pieceId, string trackingCode, string stage, string status)
+    {
+        await using var command = new SqlCommand(@"
+            INSERT INTO dbo.TrackingEvents (OrderItemID, OrderID, TrackingCode, Stage, Status, EventTime, IsReverted, PieceID)
+            OUTPUT INSERTED.TrackingEventID
+            VALUES (@orderItemId, @orderId, @trackingCode, @stage, @status, SYSUTCDATETIME(), 0, @pieceId);", connection, transaction);
+        command.Parameters.AddWithValue("@orderItemId", orderItemId);
+        command.Parameters.AddWithValue("@orderId", orderId);
+        command.Parameters.AddWithValue("@trackingCode", trackingCode);
+        command.Parameters.AddWithValue("@stage", stage);
+        command.Parameters.AddWithValue("@status", status);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+    private static async Task insertPieceWageAsync(SqlConnection connection, SqlTransaction transaction, int orderId, int orderItemId, int pieceId, string trackingCode, decimal totalWage)
+    {
+        var trackingEventId = await insertTrackingEventAsync(connection, transaction, orderId, orderItemId, pieceId, trackingCode, "Assembly", "Completed");
+        await using var command = new SqlCommand(@"
+            INSERT INTO dbo.PieceWageRecords (OrderID, OrderItemID, PieceID, TrackingEventID, EmployeeId, EmployeeCode, PieceType, Stage, Quantity, WageRate, TotalWage, Status, CreatedAt)
+            VALUES (@orderId, @orderItemId, @pieceId, @trackingEventId, NULL, N'EMP-TEST', N'قطعة اختبار', N'Assembly', 1, @totalWage, @totalWage, N'PendingPayroll', SYSUTCDATETIME());", connection, transaction);
+        command.Parameters.AddWithValue("@orderId", orderId);
+        command.Parameters.AddWithValue("@orderItemId", orderItemId);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        command.Parameters.AddWithValue("@trackingEventId", trackingEventId);
+        command.Parameters.AddWithValue("@totalWage", totalWage);
+        await command.ExecuteNonQueryAsync();
+    }
+    private static async Task<string> ReadScalarStringAsync(string sql, int orderId)
+    {
+        await using var connection = new SqlConnection(GetConnectionString());
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@orderId", orderId);
+        return Convert.ToString(await command.ExecuteScalarAsync()) ?? string.Empty;
+    }
 
     private sealed record OrderFixture(int OrderId, string OrderNumber);
     private sealed record WipFixture(int OrderId, string OrderNumber, int OrderItemId, int PieceId, string TrackingCode);

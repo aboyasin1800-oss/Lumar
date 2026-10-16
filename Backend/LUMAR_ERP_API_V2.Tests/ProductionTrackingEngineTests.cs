@@ -168,6 +168,20 @@ public class ProductionTrackingEngineTests : IDisposable
     }
 
     [Fact]
+    public void ShouldNotSetReadyForDelivery_WhenZeroActivePiecesRemain()
+    {
+        var result = ProductionTrackingEngine.DetermineOrderStatus(
+            completedPieceCount: 0,
+            totalRequiredPieces: 0,
+            cancelledPieces: 0,
+            hasBlockedPieces: false,
+            orderStatus: "InProduction");
+
+        Assert.Equal("InProduction", result);
+        Assert.NotEqual("ReadyForDelivery", result);
+    }
+
+    [Fact]
     public void ShouldSetReadyForDeliveryOnlyWhenAllPiecesReady()
     {
         var result = ProductionTrackingEngine.DetermineOrderStatus(

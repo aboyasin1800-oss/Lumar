@@ -67,12 +67,6 @@ public sealed class CancelledPieceDispositionRepository(OperationalSqlConnection
                 return await GetByPieceIdAsync(pieceId, ct) ?? throw new InvalidOperationException("Unable to load the persisted decision.");
             }
 
-            var orderIsCancelled = string.Equals(pieceContext.OrderStatus, "Cancelled", StringComparison.OrdinalIgnoreCase);
-            if (!orderIsCancelled)
-            {
-                throw new InvalidOperationException("The order must be cancelled before a decision can be saved.");
-            }
-
             var now = DateTime.UtcNow;
             const string insertSql = @"
                 INSERT INTO dbo.CancelledPieceDisposition
