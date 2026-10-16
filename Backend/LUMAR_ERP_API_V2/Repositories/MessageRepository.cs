@@ -487,7 +487,7 @@ WHERE MessageTemplateID = @id;";
         return value is int id ? id : null;
     }
 
-    public async Task<int> CreateCustomerNotificationAsync(int customerId, int? orderId, string eventType, string title, string body, int customerMessageId, CancellationToken c)
+    public async Task<int> CreateCustomerNotificationAsync(int customerId, int? orderId, string eventType, string title, string body, int? customerMessageId, CancellationToken c)
     {
         const string sql = "INSERT INTO dbo.CustomerNotifications (CustomerID,OrderID,EventType,Title,Body,Status,IsRead,CreatedAtUtc,CustomerMessageID) OUTPUT INSERTED.CustomerNotificationID VALUES (@customerId,@orderId,@eventType,@title,@body,N'Unread',0,GETUTCDATE(),@customerMessageId)";
         await using var connection = connections.Create();
@@ -498,7 +498,7 @@ WHERE MessageTemplateID = @id;";
         command.Parameters.AddWithValue("@eventType", eventType);
         command.Parameters.AddWithValue("@title", title);
         command.Parameters.AddWithValue("@body", body);
-        command.Parameters.AddWithValue("@customerMessageId", customerMessageId);
+        command.Parameters.AddWithValue("@customerMessageId", customerMessageId is null ? DBNull.Value : customerMessageId.Value);
         var value = await command.ExecuteScalarAsync(c);
         return value is int id ? id : 0;
     }

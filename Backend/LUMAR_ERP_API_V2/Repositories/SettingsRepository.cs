@@ -182,6 +182,7 @@ public sealed class SettingsRepository(
             ["OtherReferralDefaultOff"] = false,
             ["FridayGreetingEnabled"] = true,
             ["CampaignEnabled"] = true,
+            ["WhatsAppEnabled"] = true,
         };
 
         foreach (var key in defaults.Keys.ToArray())
@@ -195,7 +196,8 @@ public sealed class SettingsRepository(
             defaults["DirectReferralDefaultOn"],
             defaults["OtherReferralDefaultOff"],
             defaults["FridayGreetingEnabled"],
-            defaults["CampaignEnabled"]);
+            defaults["CampaignEnabled"],
+            defaults["WhatsAppEnabled"]);
     }
 
     public async Task<MessageSettingsDto> UpdateMessageSettingsAsync(MessageSettingsDto config, CancellationToken cancellationToken)
@@ -212,6 +214,7 @@ public sealed class SettingsRepository(
             (Key: "OtherReferralDefaultOff", Value: config.OtherReferralDefaultOff),
             (Key: "FridayGreetingEnabled", Value: config.FridayGreetingEnabled),
             (Key: "CampaignEnabled", Value: config.CampaignEnabled),
+            (Key: "WhatsAppEnabled", Value: config.WhatsAppEnabled),
         };
 
         await using var connection = operationalConnections.Create();

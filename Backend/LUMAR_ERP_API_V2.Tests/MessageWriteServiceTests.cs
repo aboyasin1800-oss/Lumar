@@ -1211,6 +1211,42 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task MessageWriteService_WhenWhatsAppChannelIsDisabled_StillCreatesNotificationWithoutChannelMessage()
+    {
+        var repo = new FakeMessageRepository();
+        repo.TemplateExists = true;
+        var settingsRepo = new FakeSettingsRepository(new MessageSettingsDto(
+            MessageMasterEnabled: true,
+            DirectReferralDefaultOn: true,
+            OtherReferralDefaultOff: false,
+            FridayGreetingEnabled: true,
+            CampaignEnabled: true,
+            WhatsAppEnabled: false));
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer(), settingsRepo);
+
+        var result = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 7,
+            OrderId: 42,
+            EventType: "OrderCreated",
+            TemplateKey: "OrderCreated",
+            PhoneNumber: "0500000000",
+            ReferenceId: "ORD-42",
+            ReferenceType: "Order",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["OrderNumber"] = "ORD-42",
+                ["Amount"] = 149.99m,
+            }), CancellationToken.None);
+
+        Assert.True(result.Created);
+        Assert.NotNull(result.CustomerNotificationId);
+        Assert.Equal(1, repo.Notifications.Count);
+        Assert.Equal(0, repo.Messages.Count);
+        Assert.Equal("order-created-customer-smart", result.TemplateKey);
+    }
+
+    [Fact]
     public async Task ReadyMadeSalesService_SendsReadyMadeSaleCompletedMessage()
     {
         var messageService = new RecordingMessageWriteService();
@@ -1517,7 +1553,7 @@ public sealed class MessageWriteServiceTests
         public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c)
             => Task.FromResult((MessageId: (int?)1, NotificationId: (int?)1));
         public Task<int?> CreateCustomerMessageAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c) => Task.FromResult<int?>(1);
-        public Task<int> CreateCustomerNotificationAsync(int customerId, int? orderId, string eventType, string title, string body, int customerMessageId, CancellationToken c) => Task.FromResult(1);
+        public Task<int> CreateCustomerNotificationAsync(int customerId, int? orderId, string eventType, string title, string body, int? customerMessageId, CancellationToken c) => Task.FromResult(1);
     }
 
     private sealed class FakeMessageRepository : IMessageRepository
@@ -1637,8 +1673,11 @@ public sealed class MessageWriteServiceTests
             Messages.Add(new CustomerMessageDto(id, customerId, orderId, eventType, templateKey, channel, title, body, "Pending", DateTime.UtcNow, null, null, 0, null, null, null, phoneNumber, referenceId, referenceType, idempotencyKey));
             return Task.FromResult<int?>(id);
         }
-        public Task<int> CreateCustomerNotificationAsync(int customerId, int? orderId, string eventType, string title, string body, int customerMessageId, CancellationToken c)
+        public Task<int> CreateCustomerNotificationAsync(int customerId, int? orderId, string eventType, string title, string body, int? customerMessageId, CancellationToken c)
         {
+            if (FailNotificationCreation)
+                throw new InvalidOperationException("Notification write failed.");
+
             var id = Notifications.Count + 1;
             Notifications.Add(new CustomerNotificationDto(id, customerId, orderId, eventType, title, body, "Unread", false, DateTime.UtcNow, null, customerMessageId));
             return Task.FromResult(id);

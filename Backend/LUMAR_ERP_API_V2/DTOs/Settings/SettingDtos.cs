@@ -18,7 +18,8 @@ public sealed record MessageSettingsDto(
     bool DirectReferralDefaultOn,
     bool OtherReferralDefaultOff,
     bool FridayGreetingEnabled,
-    bool CampaignEnabled);
+    bool CampaignEnabled,
+    bool WhatsAppEnabled = true);
 public sealed record UpdatePrintSettingsDto(
     string? MeasurementCardHeaderImage,
     string? MeasurementCardHeaderUseImage,
