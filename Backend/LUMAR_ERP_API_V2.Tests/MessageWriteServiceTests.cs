@@ -1008,6 +1008,95 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task OrderService_CancelOrderAsync_WhenOrderCancellationSucceeds_SendsOrderCancelledOnce()
+    {
+        var messageService = new RecordingMessageWriteService();
+        var order = new OrderDetailsDto(
+            202,
+            "ORD-202",
+            8,
+            "أحمد",
+            "0500000202",
+            DateTime.UtcNow,
+            null,
+            200m,
+            0m,
+            0m,
+            200m,
+            "Normal",
+            "Confirmed",
+            null,
+            DateTime.UtcNow,
+            null,
+            null,
+            null,
+            null,
+            "TailoringOrder",
+            false,
+            null,
+            false,
+            null);
+
+        var service = new OrderService(
+            new FakeOrderRepository(order, cancelledOrder: order),
+            new FakeVipLevelEvaluationService(),
+            new FakeOrderLoyaltyIntegrationService(),
+            messageService);
+
+        var result = await service.CancelOrderAsync(202, "Customer request", "Admin", CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Single(messageService.Requests);
+        Assert.Equal("OrderCancelled", messageService.Requests[0].EventType);
+        Assert.Equal("ORD-202", messageService.Requests[0].ReferenceId);
+    }
+
+    [Fact]
+    public async Task CancelledPieceDispositionService_SaveDecisionAsync_WhenPieceIsCancelled_SendsPieceCancelledOnce()
+    {
+        var messageService = new RecordingMessageWriteService();
+        var order = new OrderDetailsDto(
+            42,
+            "ORD-42",
+            7,
+            "سالم",
+            "0500000042",
+            DateTime.UtcNow,
+            null,
+            300m,
+            0m,
+            0m,
+            300m,
+            "Normal",
+            "Confirmed",
+            null,
+            DateTime.UtcNow,
+            null,
+            null,
+            null,
+            null,
+            "TailoringOrder",
+            false,
+            null,
+            false,
+            null);
+        var piece = new PieceDto(15, 1, "TRK-042", "Cancelled", 1, DateTime.UtcNow, "YALAQ", 42, "ORD-42", 9);
+
+        var service = new CancelledPieceDispositionService(
+            new FakeCancelledPieceDispositionRepository(),
+            new FakeProductionRepository(piece),
+            new FakeOrderRepository(order),
+            messageService);
+
+        var result = await service.SaveDecisionAsync(15, "StopAndHold", "Cancelled by customer", "admin", CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Single(messageService.Requests);
+        Assert.Equal("PieceCancelled", messageService.Requests[0].EventType);
+        Assert.Equal("ORD-42:1", messageService.Requests[0].ReferenceId);
+    }
+
+    [Fact]
     public async Task TryCreateAsync_UsesIdempotencyForReadyAndDeliveredBusinessEvents()
     {
         var repo = new FakeMessageRepository();
@@ -1125,10 +1214,10 @@ public sealed class MessageWriteServiceTests
         }
     }
 
-    private sealed class FakeOrderRepository(OrderDetailsDto? currentOrder = null, OrderDetailsDto? deliveredOrder = null, bool? deliverResult = null) : IOrderRepository
+    private sealed class FakeOrderRepository(OrderDetailsDto? currentOrder = null, OrderDetailsDto? deliveredOrder = null, OrderDetailsDto? cancelledOrder = null, bool? deliverResult = null) : IOrderRepository
     {
         public Task<IReadOnlyList<OrderListDto>> GetListAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<OrderListDto>>(Array.Empty<OrderListDto>());
-        public Task<OrderDetailsDto?> GetByIdAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult(currentOrder);
+        public Task<OrderDetailsDto?> GetByIdAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult(currentOrder ?? cancelledOrder);
         public Task<OrderDetailsDto?> CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<OrderItemDto>> GetItemsAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<OrderItemDto>>(Array.Empty<OrderItemDto>());
         public Task<IReadOnlyList<OrderPieceDto>> GetPiecesAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<OrderPieceDto>>(Array.Empty<OrderPieceDto>());
@@ -1142,10 +1231,19 @@ public sealed class MessageWriteServiceTests
         public Task<OrderDetailsDto?> DeliverAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult(deliverResult is null ? deliveredOrder : deliverResult.Value ? deliveredOrder : null);
         public Task<OrderDetailsDto?> WaiveRemainingBalanceAsync(int orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<OrderDetailsDto?> RecognizeDeliveryRevenueAsync(int orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<OrderDetailsDto?> CancelOrderAsync(int orderId, string? reason, string? cancelledBy, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<OrderDetailsDto?> CancelOrderAsync(int orderId, string? reason, string? cancelledBy, CancellationToken cancellationToken) => Task.FromResult(cancelledOrder ?? currentOrder);
     }
 
-    private sealed class FakeProductionRepository(PieceDto piece, ProductionTrackingAdvanceResultDto result) : IProductionRepository
+    private sealed class FakeCancelledPieceDispositionRepository : ICancelledPieceDispositionRepository
+    {
+        public Task<CancelledPieceDispositionDto?> GetByPieceIdAsync(int pieceId, CancellationToken cancellationToken) => Task.FromResult<CancelledPieceDispositionDto?>(new CancelledPieceDispositionDto(1, pieceId, "StopAndHold", "Cancelled by customer", "admin", DateTime.UtcNow, "NotTransferred", null, null, DateTime.UtcNow));
+        public Task<CancelledPieceDispositionDto> SaveDecisionAsync(int pieceId, string decision, string? reason, string? decidedBy, CancellationToken cancellationToken)
+            => Task.FromResult(new CancelledPieceDispositionDto(1, pieceId, decision, reason, decidedBy, DateTime.UtcNow, "NotTransferred", null, null, DateTime.UtcNow));
+        public Task<CancelledPieceDispositionDto?> ExecuteDecisionAsync(int pieceId, CancellationToken cancellationToken)
+            => Task.FromResult<CancelledPieceDispositionDto?>(new CancelledPieceDispositionDto(1, pieceId, "StopAndHold", "Cancelled by customer", "admin", DateTime.UtcNow, "NotTransferred", null, null, DateTime.UtcNow));
+    }
+
+    private sealed class FakeProductionRepository(PieceDto piece, ProductionTrackingAdvanceResultDto result = default!) : IProductionRepository
     {
         public Task<IReadOnlyList<PieceDto>> GetPiecesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<PieceDto>>(Array.Empty<PieceDto>());
         public Task<IReadOnlyList<PieceDto>> GetReadyMadePiecesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<PieceDto>>(Array.Empty<PieceDto>());

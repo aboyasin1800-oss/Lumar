@@ -141,7 +141,37 @@ public sealed class OrderService(
         var cancelled = await repository.CancelOrderAsync(orderId, reason, cancelledBy, cancellationToken);
         if (cancelled is not null)
         {
-            await vipLevelEvaluationService.EvaluateNetworkAsync(existing?.CustomerId ?? cancelled.CustomerId, cancellationToken);
+            if (vipLevelEvaluationService is not null)
+            {
+                await vipLevelEvaluationService.EvaluateNetworkAsync(existing?.CustomerId ?? cancelled.CustomerId, cancellationToken);
+            }
+
+            if (messageWriteService is not null)
+            {
+                try
+                {
+                    await messageWriteService.TryCreateAsync(new MessageWriteRequest(
+                        cancelled.CustomerId,
+                        cancelled.OrderId,
+                        "OrderCancelled",
+                        "OrderCancelled",
+                        cancelled.PhoneNumber ?? string.Empty,
+                        cancelled.OrderNumber,
+                        "Order",
+                        new Dictionary<string, object?>
+                        {
+                            ["CustomerName"] = cancelled.CustomerName ?? "Customer",
+                            ["OrderNumber"] = cancelled.OrderNumber,
+                            ["OrderId"] = cancelled.OrderId,
+                            ["Amount"] = cancelled.TotalAmount,
+                            ["Reason"] = reason,
+                        }), cancellationToken);
+                }
+                catch
+                {
+                    // Order cancellation remains valid even if the internal message side is unavailable.
+                }
+            }
         }
 
         return cancelled;
