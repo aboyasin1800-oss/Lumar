@@ -732,15 +732,9 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                           ),
                           if (enteringAmount > 0) ...[
                             const SizedBox(height: 12),
-                            CashAccountPicker(
-                              value: _cashAccountId,
-                              enabled: isReadyForCollection,
-                              accountsFuture: widget.cashAccountsFuture,
-                              onAvailabilityChanged: (availability) => setState(
-                                  () =>
-                                      _cashAccountAvailability = availability),
-                              onChanged: (value) =>
-                                  setState(() => _cashAccountId = value),
+                            Text(
+                              'سيتم استخدام الصندوق النقدي العام من إعدادات النظام تلقائيًا.',
+                              style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ],
                           const SizedBox(height: 12),
