@@ -56,13 +56,27 @@ class _CashAccountPickerState extends State<CashAccountPicker> {
     _accounts = widget.accountsFuture ?? FinanceRepository().getCashAccounts();
   }
 
+  int? _defaultCashAccountId(List<CashAccount> accounts) {
+    if (accounts.isEmpty) return null;
+    final eligible = accounts
+        .where((account) => account.isActive && account.isReceiptEnabled)
+        .toList(growable: false);
+    if (eligible.isEmpty) return null;
+
+    final preferred = eligible
+        .where((account) =>
+            (account.currencyCode ?? '').trim().toUpperCase() == 'YER')
+        .toList(growable: false);
+    return (preferred.isNotEmpty ? preferred.first : eligible.first).id;
+  }
+
   void _selectOnlyEligibleAccount(List<CashAccount> accounts) {
-    if (widget.value != null || accounts.length != 1) return;
-    final accountId = accounts.single.id;
-    if (_autoSelectedId == accountId) return;
-    _autoSelectedId = accountId;
+    final defaultAccountId = _defaultCashAccountId(accounts);
+    if (widget.value != null || defaultAccountId == null) return;
+    if (_autoSelectedId == defaultAccountId) return;
+    _autoSelectedId = defaultAccountId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && widget.value == null) widget.onChanged(accountId);
+      if (mounted && widget.value == null) widget.onChanged(defaultAccountId);
     });
   }
 
@@ -103,10 +117,11 @@ class _CashAccountPickerState extends State<CashAccountPicker> {
             return Text(label);
           }
           _reportAvailability(CashAccountAvailability.ready);
+          final selectedValue = accounts.any((account) => account.id == widget.value)
+              ? widget.value
+              : _defaultCashAccountId(accounts);
           return DropdownButtonFormField<int>(
-            initialValue: accounts.any((account) => account.id == widget.value)
-                ? widget.value
-                : null,
+            initialValue: selectedValue,
             isExpanded: true,
             decoration: InputDecoration(
               labelText: widget.direction == CashAccountDirection.disbursing
@@ -123,7 +138,8 @@ class _CashAccountPickerState extends State<CashAccountPicker> {
                   ),
                 )
                 .toList(),
-            onChanged: widget.enabled && accounts.isNotEmpty ? widget.onChanged : null,
+            onChanged:
+                widget.enabled && accounts.isNotEmpty ? widget.onChanged : null,
           );
         },
       );

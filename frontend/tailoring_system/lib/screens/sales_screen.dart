@@ -11,6 +11,7 @@ import '../core/app_navigation.dart';
 import '../core/ui_palette.dart';
 import '../models/customer_creation_models.dart';
 import '../models/sales_reference_models.dart';
+import '../repositories/finance_repository.dart';
 import '../repositories/loyalty_repository.dart';
 import '../services/screen_chrome_state.dart';
 import '../services/sales_reference_cache.dart';
@@ -446,14 +447,18 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       return;
     }
     if (advance > 0 && _cashAccountId == null) {
-      _showMessage(switch (_cashAccountAvailability) {
-        CashAccountAvailability.failed =>
-          'تعذر تحميل الحسابات النقدية، ولا يمكن تسجيل الدفعة المقدمة الآن.',
-        CashAccountAvailability.unavailable =>
-          'لا يوجد حساب نقدي نشط ومؤهل لاستلام النقدية.',
-        _ => 'اختر الحساب النقدي المستلم للدفعة المقدمة.',
-      });
-      return;
+      final defaultCashAccount = await _resolveOfficialAdvanceCashAccount();
+      if (defaultCashAccount == null) {
+        _showMessage(switch (_cashAccountAvailability) {
+          CashAccountAvailability.failed =>
+            'تعذر تحميل الحسابات النقدية، ولا يمكن تسجيل الدفعة المقدمة الآن.',
+          CashAccountAvailability.unavailable =>
+            'لا يوجد حساب نقدي عام مفعّل لاستلام العربون. يرجى مراجعة إعدادات الحسابات النقدية.',
+          _ => 'لا يوجد حساب نقدي عام مفعّل لاستلام العربون. يرجى مراجعة إعدادات الحسابات النقدية.',
+        });
+        return;
+      }
+      _cashAccountId = defaultCashAccount;
     }
     final items = <Map<String, dynamic>>[];
     for (var index = 0; index < pieceTypes.length; index++) {
@@ -597,6 +602,39 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       _showMessage('تعذر الاتصال بالخادم لحفظ الطلب.');
     } finally {
       if (mounted) setState(() => _savingOrder = false);
+    }
+  }
+
+  Future<int?> _resolveOfficialAdvanceCashAccount() async {
+    try {
+      final accounts = await FinanceRepository().getCashAccounts();
+      final eligible = accounts
+          .where((account) => account.isActive && account.isReceiptEnabled)
+          .toList(growable: false);
+      if (eligible.isEmpty) {
+        if (mounted) {
+          setState(() => _cashAccountAvailability = CashAccountAvailability.unavailable);
+        }
+        return null;
+      }
+
+      final preferred = eligible
+          .where((account) =>
+              (account.currencyCode ?? '').trim().toUpperCase() == 'YER')
+          .toList(growable: false);
+      final defaultAccount = (preferred.isNotEmpty ? preferred.first : eligible.first);
+      if (mounted) {
+        setState(() {
+          _cashAccountId = defaultAccount.id;
+          _cashAccountAvailability = CashAccountAvailability.ready;
+        });
+      }
+      return defaultAccount.id;
+    } catch (_) {
+      if (mounted) {
+        setState(() => _cashAccountAvailability = CashAccountAvailability.failed);
+      }
+      return null;
     }
   }
 
@@ -2279,6 +2317,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                   padding: const EdgeInsets.only(top: 8),
                   child: CashAccountPicker(
                     value: _cashAccountId,
+                    enabled: false,
                     onAvailabilityChanged: (availability) => setState(
                         () => _cashAccountAvailability = availability),
                     onChanged: (value) =>
