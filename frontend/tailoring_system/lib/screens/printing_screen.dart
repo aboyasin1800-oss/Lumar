@@ -12,8 +12,8 @@ import 'package:printing/printing.dart';
 import '../core/measurement_snapshot.dart';
 import '../core/document_printing.dart';
 import '../core/ui_palette.dart';
+import '../repositories/finance_repository.dart';
 import '../services/auth_state.dart';
-import '../widgets/cash_account_picker.dart';
 
 class PrintingScreen extends StatelessWidget {
   const PrintingScreen({required this.auth, super.key});
@@ -724,7 +724,6 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     int? responsibleEmployeeId;
     int? saleCustomerId;
     int? cashAccountId;
-    var cashAccountAvailability = CashAccountAvailability.loading;
     var paymentType = 'Cash';
     String? errorText;
 
@@ -830,15 +829,9 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                       ),
                       if (paymentType == 'Cash') ...[
                         const SizedBox(height: 12),
-                        CashAccountPicker(
-                          value: cashAccountId,
-                          onAvailabilityChanged: (availability) =>
-                              setDialogState(() =>
-                                  cashAccountAvailability = availability),
-                          onChanged: (value) => setDialogState(() {
-                            cashAccountId = value;
-                            errorText = null;
-                          }),
+                        Text(
+                          'سيتم استخدام الصندوق النقدي العام من إعدادات النظام تلقائيًا.',
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
                       if (piece.isReadyMade) ...[
@@ -887,7 +880,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                 child: const Text('إلغاء'),
               ),
               FilledButton(
-                onPressed: () {
+                onPressed: () async {
                   final saleAmount =
                       double.tryParse(saleAmountController.text.trim());
                   if (reasonCode == null) {
@@ -901,21 +894,25 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                         'سبب التلف والموظف المسؤول مطلوبان قبل المتابعة.');
                     return;
                   }
-                  if (isPieceSold &&
-                      (saleAmount == null || saleAmount <= 0 ||
-                        (piece.isReadyMade && saleCustomerId == null) ||
-                        (paymentType == 'Cash' && cashAccountId == null))) {
-                    setDialogState(() => errorText = paymentType == 'Cash' &&
-                            cashAccountId == null
-                        ? switch (cashAccountAvailability) {
-                            CashAccountAvailability.failed =>
-                              'تعذر تحميل الحسابات النقدية، ولا يمكن تسجيل البيع النقدي الآن.',
-                            CashAccountAvailability.unavailable =>
-                              'لا يوجد حساب نقدي نشط ومؤهل لاستلام النقدية.',
-                            _ => 'اختر الحساب النقدي المستلم قبل المتابعة.',
-                          }
-                        : 'قيمة البيع وعميل البيع المطلوبان قبل المتابعة.');
-                    return;
+                  if (isPieceSold) {
+                    if (paymentType == 'Cash') {
+                      final generalCashAccount =
+                          await FinanceRepository().resolveGeneralCashAccount(
+                        requireReceiptEnabled: true,
+                      );
+                      if (generalCashAccount == null) {
+                        setDialogState(() => errorText =
+                            'الصندوق النقدي العام غير محدد أو غير متاح. يرجى تحديده من الإعدادات المالية.');
+                        return;
+                      }
+                      cashAccountId = generalCashAccount.id;
+                    }
+                    if (saleAmount == null || saleAmount <= 0 ||
+                        (piece.isReadyMade && saleCustomerId == null)) {
+                      setDialogState(() =>
+                          errorText = 'قيمة البيع وعميل البيع المطلوبان قبل المتابعة.');
+                      return;
+                    }
                   }
                   Navigator.of(dialogContext).pop(_ReprintFormData(
                     reasonCode: reasonCode!,

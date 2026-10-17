@@ -1,6 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:tailoring_system/models/finance_models.dart';
+import 'package:tailoring_system/repositories/finance_repository.dart';
 import 'package:tailoring_system/widgets/cash_account_picker.dart';
 
 CashAccount _account({
@@ -41,8 +46,7 @@ void main() {
     expect(accounts.map((account) => account.id), [1]);
   });
 
-  testWidgets('selects the only eligible receiving account automatically',
-      (tester) async {
+  testWidgets('never auto-selects the first eligible account', (tester) async {
     int? selectedId;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
@@ -55,7 +59,8 @@ void main() {
     ));
 
     await tester.pumpAndSettle();
-    expect(selectedId, 1);
+    expect(selectedId, isNull);
+    expect(find.text('اختر الحساب النقدي'), findsOneWidget);
   });
 
   testWidgets('requires manual selection when multiple accounts are eligible',
@@ -74,6 +79,66 @@ void main() {
     await tester.pumpAndSettle();
     expect(selectedId, isNull);
     expect(find.text('اختر الحساب النقدي'), findsOneWidget);
+  });
+
+  test('resolveGeneralCashAccount returns the configured setting only', () async {
+    final repository = FinanceRepository(
+      client: MockClient((request) {
+        if (request.url.path == '/settings/general-cash-account') {
+          return Future.value(http.Response(jsonEncode({'cashAccountId': 42}), 200));
+        }
+        if (request.url.path == '/finance/cash-accounts') {
+          return Future.value(http.Response(
+            jsonEncode([
+              {'cashAccountId': 7, 'accountName': 'Other', 'derivedBalance': 0, 'historicalSnapshotBalance': 0, 'isActive': true, 'isReceiptEnabled': true, 'isDisbursementEnabled': true, 'currencyCode': 'YER', 'createdAt': '2026-09-26T00:00:00Z'},
+              {'cashAccountId': 42, 'accountName': 'General', 'derivedBalance': 0, 'historicalSnapshotBalance': 0, 'isActive': true, 'isReceiptEnabled': true, 'isDisbursementEnabled': true, 'currencyCode': 'YER', 'createdAt': '2026-09-26T00:00:00Z'},
+            ]),
+            200,
+          ));
+        }
+        return Future.value(http.Response('not found', 404));
+      }),
+    );
+
+    final account = await repository.resolveGeneralCashAccount();
+    expect(account, isNotNull);
+    expect(account!.id, 42);
+  });
+
+  test('resolveGeneralCashAccount returns null for missing setting', () async {
+    final repository = FinanceRepository(
+      client: MockClient((request) {
+        if (request.url.path == '/settings/general-cash-account') {
+          return Future.value(http.Response(jsonEncode({}), 200));
+        }
+        return Future.value(http.Response('not found', 404));
+      }),
+    );
+
+    final account = await repository.resolveGeneralCashAccount();
+    expect(account, isNull);
+  });
+
+  test('resolveGeneralCashAccount returns null for invalid configured account', () async {
+    final repository = FinanceRepository(
+      client: MockClient((request) {
+        if (request.url.path == '/settings/general-cash-account') {
+          return Future.value(http.Response(jsonEncode({'cashAccountId': 42}), 200));
+        }
+        if (request.url.path == '/finance/cash-accounts') {
+          return Future.value(http.Response(
+            jsonEncode([
+              {'cashAccountId': 42, 'accountName': 'General', 'derivedBalance': 0, 'historicalSnapshotBalance': 0, 'isActive': false, 'isReceiptEnabled': false, 'isDisbursementEnabled': false, 'currencyCode': 'YER', 'createdAt': '2026-09-26T00:00:00Z'},
+            ]),
+            200,
+          ));
+        }
+        return Future.value(http.Response('not found', 404));
+      }),
+    );
+
+    final account = await repository.resolveGeneralCashAccount();
+    expect(account, isNull);
   });
 
   testWidgets('blocks selection when no account is eligible', (tester) async {

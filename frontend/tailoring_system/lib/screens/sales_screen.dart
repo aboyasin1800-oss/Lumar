@@ -609,30 +609,11 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   Future<int?> _resolveOfficialAdvanceCashAccount() async {
     try {
       final financeRepository = FinanceRepository();
-      final generalCashAccountId =
-          await financeRepository.getGeneralCashAccountId();
-      if (generalCashAccountId == null || generalCashAccountId <= 0) {
-        if (mounted) {
-          setState(() =>
-              _cashAccountAvailability = CashAccountAvailability.unavailable);
-        }
-        return null;
-      }
-
-      final accounts = await financeRepository.getCashAccounts();
-      int? matchingAccountId;
-      for (final account in accounts) {
-        final isValid = account.id == generalCashAccountId &&
-            account.isActive &&
-            account.isReceiptEnabled &&
-            ((account.currencyCode ?? '').trim().toUpperCase() == 'YER');
-        if (isValid) {
-          matchingAccountId = account.id;
-          break;
-        }
-      }
-
-      if (matchingAccountId == null || matchingAccountId <= 0) {
+      final generalCashAccount =
+          await financeRepository.resolveGeneralCashAccount(
+        requireReceiptEnabled: true,
+      );
+      if (generalCashAccount == null) {
         if (mounted) {
           setState(() =>
               _cashAccountAvailability = CashAccountAvailability.unavailable);
@@ -642,11 +623,11 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
 
       if (mounted) {
         setState(() {
-          _cashAccountId = matchingAccountId;
+          _cashAccountId = generalCashAccount.id;
           _cashAccountAvailability = CashAccountAvailability.ready;
         });
       }
-      return matchingAccountId;
+      return generalCashAccount.id;
     } catch (_) {
       if (mounted) {
         setState(
@@ -2329,25 +2310,6 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                 readOnly: true),
             _customerField(context, 'المدفوع مقدماً', paidAmountController,
                 onChanged: _updateRemainingAmount),
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: paidAmountController,
-              builder: (context, value, _) {
-                final advance =
-                    double.tryParse(value.text.replaceAll(',', '.')) ?? 0;
-                if (advance <= 0) return const SizedBox.shrink();
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: CashAccountPicker(
-                    value: _cashAccountId,
-                    enabled: false,
-                    onAvailabilityChanged: (availability) =>
-                        setState(() => _cashAccountAvailability = availability),
-                    onChanged: (value) =>
-                        setState(() => _cashAccountId = value),
-                  ),
-                );
-              },
-            ),
             _customerField(context, 'الخصم', discountAmountController,
                 onChanged: _updateRemainingAmount),
             _customerField(

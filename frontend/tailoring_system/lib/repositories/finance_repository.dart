@@ -54,6 +54,7 @@ class FinanceRepository {
       _list('/finance/ledger-accounts', LedgerAccount.fromJson);
   Future<List<CashAccount>> getCashAccounts() =>
       _list('/finance/cash-accounts', CashAccount.fromJson);
+
   Future<int?> getGeneralCashAccountId() async {
     try {
       final response = await _client.get(
@@ -74,6 +75,31 @@ class FinanceRepository {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<CashAccount?> resolveGeneralCashAccount({
+    bool requireReceiptEnabled = true,
+    bool requireDisbursementEnabled = false,
+  }) async {
+    final generalCashAccountId = await getGeneralCashAccountId();
+    if (generalCashAccountId == null || generalCashAccountId <= 0) {
+      return null;
+    }
+
+    final accounts = await getCashAccounts();
+    for (final account in accounts) {
+      final matchesId = account.id == generalCashAccountId;
+      final isActive = account.isActive;
+      final isReceiptEligible = !requireReceiptEnabled || account.isReceiptEnabled;
+      final isDisbursementEligible =
+          !requireDisbursementEnabled || account.isDisbursementEnabled;
+      final isYER = (account.currencyCode ?? '').trim().toUpperCase() == 'YER';
+      if (matchesId && isActive && isReceiptEligible && isDisbursementEligible && isYER) {
+        return account;
+      }
+    }
+
+    return null;
   }
 
   Future<List<CashMovement>> getCashMovements() =>

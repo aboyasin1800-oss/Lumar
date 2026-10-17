@@ -162,10 +162,11 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
   }
 
   Future<void> _resolveDefaultCashAccount() async {
-    final generalCashAccountId =
-        await FinanceRepository().getGeneralCashAccountId();
-    if (!mounted || generalCashAccountId == null) return;
-    setState(() => _cashAccountId = generalCashAccountId);
+    final generalCashAccount = await FinanceRepository().resolveGeneralCashAccount(
+      requireReceiptEnabled: true,
+    );
+    if (!mounted || generalCashAccount == null) return;
+    setState(() => _cashAccountId = generalCashAccount.id);
   }
 
   Future<_DeliverySettlementRequest?> _showDeliverySettlementDialog(
@@ -301,18 +302,9 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                     ),
                     if (canCollect && amount > 0) ...[
                       const SizedBox(height: 12),
-                      CashAccountPicker(
-                        value: _cashAccountId,
-                        enabled: true,
-                        accountsFuture: widget.cashAccountsFuture,
-                        onAvailabilityChanged: (availability) {
-                          _cashAccountAvailability = availability;
-                          setDialogState(() {});
-                        },
-                        onChanged: (value) {
-                          _cashAccountId = value;
-                          setDialogState(() {});
-                        },
+                      Text(
+                        'سيتم استخدام الصندوق النقدي العام من إعدادات النظام تلقائيًا.',
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                     const SizedBox(height: 12),

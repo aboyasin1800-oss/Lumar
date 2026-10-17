@@ -111,11 +111,12 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
   }
 
   Future<void> _loadGeneralCashAccountDefault() async {
-    final generalCashAccountId =
-        await FinanceRepository().getGeneralCashAccountId();
-    if (!mounted || generalCashAccountId == null) return;
+    final generalCashAccount = await FinanceRepository().resolveGeneralCashAccount(
+      requireReceiptEnabled: true,
+    );
+    if (!mounted || generalCashAccount == null) return;
     setState(() {
-      selectedCashAccountId = generalCashAccountId;
+      selectedCashAccountId = generalCashAccount.id;
       cashAccountAvailability = CashAccountAvailability.ready;
     });
   }
@@ -680,12 +681,9 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
               ),
               if (paymentMethod == 'نقداً') ...[
                 const SizedBox(height: 6),
-                CashAccountPicker(
-                  value: selectedCashAccountId,
-                  onAvailabilityChanged: (availability) =>
-                      setState(() => cashAccountAvailability = availability),
-                  onChanged: (value) =>
-                      setState(() => selectedCashAccountId = value),
+                Text(
+                  'سيتم استخدام الصندوق النقدي العام من إعدادات النظام تلقائيًا.',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
               const Spacer(),
