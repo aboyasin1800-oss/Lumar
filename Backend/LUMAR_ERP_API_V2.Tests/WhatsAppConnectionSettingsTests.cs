@@ -1,5 +1,7 @@
+using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Controllers;
+using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Settings;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Http;
@@ -32,8 +34,8 @@ public sealed class WhatsAppConnectionSettingsTests
         var model = Assert.IsType<WhatsAppConnectionStatusDto>(ok.Value);
         Assert.True(model.TokenConfigured);
         Assert.Equal("123456", model.PhoneNumberId);
-        Assert.False(model.AccessToken is not null && model.AccessToken.Contains("super-secret-token"));
         Assert.False(string.IsNullOrWhiteSpace(model.PhoneNumberId));
+        Assert.False(string.IsNullOrWhiteSpace(model.Message));
     }
 
     [Fact]
@@ -195,8 +197,7 @@ public sealed class WhatsAppConnectionSettingsTests
         var store = provider.GetRequiredService<IWhatsAppConnectionSettingsStore>();
         var controller = new WhatsAppSettingsController(
             store,
-            new FakeAuthenticatedUserContext(userRole),
-            Options.Create(new WhatsAppOptions { Enabled = options.Enabled, BaseUrl = options.BaseUrl, ApiVersion = options.ApiVersion, PhoneNumberId = options.PhoneNumberId, AccessToken = options.AccessToken, VerifyToken = options.VerifyToken, AppSecret = options.AppSecret, TimeoutSeconds = options.TimeoutSeconds }));
+            new FakeAuthenticatedUserContext(userRole));
 
         controller.ControllerContext = new ControllerContext
         {
@@ -218,14 +219,27 @@ public sealed class WhatsAppConnectionSettingsTests
         {
             var tokenConfigured = !string.IsNullOrWhiteSpace(options.AccessToken);
             var phoneConfigured = !string.IsNullOrWhiteSpace(options.PhoneNumberId);
+            var connectionConfigured = options.Enabled && tokenConfigured && phoneConfigured;
+
             return Task.FromResult(new WhatsAppConnectionStatusDto(
                 Enabled: options.Enabled,
                 PhoneNumberId: options.PhoneNumberId,
                 TokenConfigured: tokenConfigured,
-                ConnectionConfigured: tokenConfigured && phoneConfigured,
-                HasSecretAccessToken: tokenConfigured,
-                AccessTokenMasked: tokenConfigured ? "••••••••••••" : null,
-                Message: tokenConfigured && phoneConfigured ? "مهيأ" : "غير مهيأ"));
+                ConnectionConfigured: connectionConfigured,
+                Message: connectionConfigured ? "تمت تهيئة اتصال واتساب بشكل كامل." : "اتصال واتساب غير مكتمل. يلزم رقم الهاتف ورمز الوصول."));
+        }
+
+        public Task<WhatsAppRuntimeSettings> GetRuntimeSettingsAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new WhatsAppRuntimeSettings(
+                Enabled: options.Enabled,
+                BaseUrl: string.IsNullOrWhiteSpace(options.BaseUrl) ? "https://graph.facebook.com" : options.BaseUrl,
+                ApiVersion: string.IsNullOrWhiteSpace(options.ApiVersion) ? "v20.0" : options.ApiVersion,
+                PhoneNumberId: options.PhoneNumberId,
+                AccessToken: options.AccessToken,
+                VerifyToken: options.VerifyToken,
+                AppSecret: options.AppSecret,
+                TimeoutSeconds: options.TimeoutSeconds));
         }
 
         public Task<WhatsAppConnectionStatusDto> UpdateAsync(WhatsAppConnectionSettingsUpdateDto request, CancellationToken cancellationToken)
