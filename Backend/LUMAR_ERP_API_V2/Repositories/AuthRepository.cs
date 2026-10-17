@@ -759,10 +759,8 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
             return false;
 
         var normalized = role.Trim();
-        return normalized.Equals("Admin", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("System Administrator", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("Admin", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("Administrator", StringComparison.OrdinalIgnoreCase);
+        return string.Equals(normalized, "Admin", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "System Administrator", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<bool> VerifyCurrentPasswordAsync(int userId, string password, CancellationToken ct)

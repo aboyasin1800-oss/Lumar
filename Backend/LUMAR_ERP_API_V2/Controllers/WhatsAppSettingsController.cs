@@ -89,9 +89,7 @@ public sealed class WhatsAppSettingsController(
         }
 
         var normalized = role.Trim();
-        return normalized.Equals("Admin", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("System Administrator", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("Admin", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("Administrator", StringComparison.OrdinalIgnoreCase);
+        return string.Equals(normalized, "Admin", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "System Administrator", StringComparison.OrdinalIgnoreCase);
     }
 }

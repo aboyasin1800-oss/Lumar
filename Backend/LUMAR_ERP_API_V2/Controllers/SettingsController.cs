@@ -89,7 +89,7 @@ public sealed class SettingsController(ISettingsService service, IAuthenticatedU
             return Unauthorized();
         }
 
-        if (!string.Equals(user.Role, "System Administrator", StringComparison.OrdinalIgnoreCase))
+        if (!IsAdministrativeRole(user.Role))
         {
             return StatusCode(StatusCodes.Status403Forbidden, "هذه الشاشة متاحة لمسؤول النظام فقط.");
         }
@@ -108,7 +108,7 @@ public sealed class SettingsController(ISettingsService service, IAuthenticatedU
             return Unauthorized();
         }
 
-        if (!string.Equals(user.Role, "System Administrator", StringComparison.OrdinalIgnoreCase))
+        if (!IsAdministrativeRole(user.Role))
         {
             return StatusCode(StatusCodes.Status403Forbidden, "هذه الشاشة متاحة لمسؤول النظام فقط.");
         }
@@ -126,6 +126,18 @@ public sealed class SettingsController(ISettingsService service, IAuthenticatedU
         {
             return BadRequest(exception.Message);
         }
+    }
+
+    private static bool IsAdministrativeRole(string? role)
+    {
+        if (string.IsNullOrWhiteSpace(role))
+        {
+            return false;
+        }
+
+        var normalized = role.Trim();
+        return string.Equals(normalized, "Admin", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "System Administrator", StringComparison.OrdinalIgnoreCase);
     }
 
     [HttpPut("currency")]

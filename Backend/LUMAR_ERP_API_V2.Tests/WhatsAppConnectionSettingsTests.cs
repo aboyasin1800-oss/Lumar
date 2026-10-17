@@ -97,6 +97,71 @@ public sealed class WhatsAppConnectionSettingsTests
         Assert.IsType<UnauthorizedResult>(update.Result);
     }
 
+    [Theory]
+    [InlineData("Customer")]
+    [InlineData("AdminViewer")]
+    [InlineData("NotAdministrator")]
+    [InlineData("AssistantAdmin")]
+    public async Task NonAdminRoleNames_AreRejected(string userRole)
+    {
+        var controller = CreateController(
+            new WhatsAppConnectionSettingsOptions { Enabled = true, PhoneNumberId = "123456", AccessToken = "secret" },
+            userRole: userRole);
+
+        var status = await controller.GetStatus(CancellationToken.None);
+        var statusResult = Assert.IsType<ObjectResult>(status.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, statusResult.StatusCode);
+
+        var update = await controller.Update(new WhatsAppConnectionSettingsUpdateDto
+        {
+            Enabled = true,
+            PhoneNumberId = "999",
+            AccessToken = "new-token"
+        }, CancellationToken.None);
+        var updateResult = Assert.IsType<ObjectResult>(update.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, updateResult.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("Admin", 200)]
+    [InlineData("System Administrator", 200)]
+    [InlineData("Customer", 403)]
+    [InlineData("AdminViewer", 403)]
+    [InlineData("NotAdministrator", 403)]
+    [InlineData("AssistantAdmin", 403)]
+    public async Task SettingsController_EnforcesExplicitAdminContract(string? userRole, int expectedStatus)
+    {
+        var controller = CreateSettingsController(userRole: userRole, userExists: true);
+
+        var get = await controller.WhatsAppConnection(CancellationToken.None);
+        AssertStatusCode(get.Result, expectedStatus);
+
+        var update = await controller.UpdateWhatsAppConnection(new WhatsAppConnectionSettingsUpdateDto
+        {
+            Enabled = true,
+            PhoneNumberId = "999",
+            AccessToken = "new-token"
+        }, CancellationToken.None);
+        AssertStatusCode(update.Result, expectedStatus);
+    }
+
+    [Fact]
+    public async Task SettingsController_NoUser_ReturnsUnauthorized()
+    {
+        var controller = CreateSettingsController(userRole: "Admin", userExists: false);
+
+        var get = await controller.WhatsAppConnection(CancellationToken.None);
+        Assert.IsType<UnauthorizedResult>(get.Result);
+
+        var update = await controller.UpdateWhatsAppConnection(new WhatsAppConnectionSettingsUpdateDto
+        {
+            Enabled = true,
+            PhoneNumberId = "999",
+            AccessToken = "new-token"
+        }, CancellationToken.None);
+        Assert.IsType<UnauthorizedResult>(update.Result);
+    }
+
     [Fact]
     public async Task AdminRole_IsAlsoAllowedForSettings()
     {
@@ -292,9 +357,10 @@ public sealed class WhatsAppConnectionSettingsTests
         var provider = services.BuildServiceProvider();
 
         var store = provider.GetRequiredService<IWhatsAppConnectionSettingsStore>();
+        var currentUser = user ?? new CurrentUserDto(1, "admin", "Admin User", userRole ?? "System Administrator", true, DateTime.UtcNow);
         var controller = new WhatsAppSettingsController(
             store,
-            FakeAuthenticatedUserContext.Create(userRole, user, userExists));
+            FakeAuthenticatedUserContext.Create(currentUser, userExists));
 
         controller.ControllerContext = new ControllerContext
         {
@@ -304,32 +370,102 @@ public sealed class WhatsAppConnectionSettingsTests
         return controller;
     }
 
+    private static SettingsController CreateSettingsController(
+        string? userRole = "System Administrator",
+        CurrentUserDto? user = null,
+        bool userExists = true)
+    {
+        var settingsService = new FakeSettingsService();
+        var currentUser = user ?? new CurrentUserDto(1, "admin", "Admin User", userRole ?? "System Administrator", true, DateTime.UtcNow);
+        var controller = new SettingsController(
+            settingsService,
+            FakeAuthenticatedUserContext.Create(currentUser, userExists));
+
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext()
+        };
+
+        return controller;
+    }
+
+    private static void AssertStatusCode(ActionResult? result, int expectedStatus)
+    {
+        if (result is UnauthorizedResult unauthorized)
+        {
+            Assert.Equal(StatusCodes.Status401Unauthorized, unauthorized.StatusCode);
+            return;
+        }
+
+        var objectResult = result as ObjectResult;
+        Assert.NotNull(objectResult);
+        Assert.Equal(expectedStatus, objectResult!.StatusCode ?? expectedStatus);
+    }
+
     private sealed class FakeAuthenticatedUserContext : IAuthenticatedUserContext
     {
-        private readonly string? role;
         private readonly CurrentUserDto? overrideUser;
         private readonly bool userExists;
 
-        private FakeAuthenticatedUserContext(string? role, CurrentUserDto? overrideUser, bool userExists)
+        private FakeAuthenticatedUserContext(CurrentUserDto? overrideUser, bool userExists)
         {
-            this.role = role;
             this.overrideUser = overrideUser;
             this.userExists = userExists;
         }
 
-        public static FakeAuthenticatedUserContext Create(string? role, CurrentUserDto? overrideUser, bool userExists)
+        public static FakeAuthenticatedUserContext Create(CurrentUserDto? overrideUser, bool userExists)
         {
-            if (!userExists)
-            {
-                return new FakeAuthenticatedUserContext(role, overrideUser, false);
-            }
-
-            var user = overrideUser ?? new CurrentUserDto(1, "admin", "Admin User", role ?? "System Administrator", true, DateTime.UtcNow);
-            return new FakeAuthenticatedUserContext(role, user, true);
+            return new FakeAuthenticatedUserContext(overrideUser, userExists);
         }
 
         public Task<CurrentUserDto?> GetCurrentUserAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(userExists ? overrideUser : null);
+    }
+
+    private sealed class FakeSettingsService : ISettingsService
+    {
+        public Task<IReadOnlyList<SystemSettingListDto>> GetAllAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SystemSettingListDto>>(Array.Empty<SystemSettingListDto>());
+
+        public Task<SystemSettingDetailsDto?> GetByIdAsync(int i, CancellationToken c) =>
+            Task.FromResult<SystemSettingDetailsDto?>(null);
+
+        public Task<SystemSettingDetailsDto?> GetByKeyAsync(string k, CancellationToken c) =>
+            Task.FromResult<SystemSettingDetailsDto?>(null);
+
+        public Task<IReadOnlyList<SettingCategoryDto>> GetCategoriesAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SettingCategoryDto>>(Array.Empty<SettingCategoryDto>());
+
+        public Task<IReadOnlyList<SystemSettingListDto>> GetByCategoryAsync(string category, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SystemSettingListDto>>(Array.Empty<SystemSettingListDto>());
+
+        public Task<ProductionRoutesConfigDto> GetProductionRoutesConfigAsync(CancellationToken c) =>
+            Task.FromResult(new ProductionRoutesConfigDto(Array.Empty<ProductionRouteEntryDto>()));
+
+        public Task<IReadOnlyList<string>> GetProductionRoutePieceTypesAsync(CancellationToken c) =>
+            Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+
+        public Task<ProductionRoutesConfigDto> UpsertProductionRoutesConfigAsync(ProductionRoutesConfigDto config, CancellationToken c) =>
+            Task.FromResult(config);
+
+        public Task<MessageSettingsDto> GetMessageSettingsAsync(CancellationToken c) =>
+            Task.FromResult(new MessageSettingsDto(false, false, false, false, false, true));
+
+        public Task<MessageSettingsDto> UpdateMessageSettingsAsync(MessageSettingsDto config, CancellationToken c) =>
+            Task.FromResult(config);
+
+        public Task<WhatsAppConnectionSettingsResponseDto> GetWhatsAppConnectionSettingsAsync(CancellationToken c) =>
+            Task.FromResult(new WhatsAppConnectionSettingsResponseDto(true, "https://graph.facebook.com", "v20.0", "123456", 30, true, true, true, "تمت تهيئة اتصال واتساب بشكل كامل."));
+
+        public Task<WhatsAppConnectionSettingsResponseDto> UpdateWhatsAppConnectionSettingsAsync(WhatsAppConnectionSettingsUpdateDto config, CancellationToken c) =>
+            Task.FromResult(new WhatsAppConnectionSettingsResponseDto(true, "https://graph.facebook.com", "v20.0", config.PhoneNumberId ?? "123456", 30, true, true, true, "تمت تهيئة اتصال واتساب بشكل كامل."));
+
+        public Task<bool> UpdateCurrencySettingsAsync(string currencyName, string preferredCurrency, CancellationToken c) => Task.FromResult(true);
+        public Task<bool> UpdatePrintSettingsAsync(IReadOnlyDictionary<string, string> values, CancellationToken c) => Task.FromResult(true);
+        public Task<GeneralCashAccountSettingDto> GetGeneralCashAccountSettingAsync(CancellationToken c) =>
+            Task.FromResult(new GeneralCashAccountSettingDto(null, null, false, ""));
+        public Task<GeneralCashAccountSettingDto> UpsertGeneralCashAccountSettingAsync(int? cashAccountId, CancellationToken c) =>
+            Task.FromResult(new GeneralCashAccountSettingDto(cashAccountId, null, false, ""));
     }
 
     private sealed class FakeWhatsAppConnectionSettingsStore(WhatsAppConnectionSettingsOptions options) : IWhatsAppConnectionSettingsStore
