@@ -5,8 +5,6 @@ public sealed record WhatsAppConnectionStatusDto(
     string PhoneNumberId,
     bool TokenConfigured,
     bool ConnectionConfigured,
-    bool HasSecretAccessToken,
-    string? AccessTokenMasked,
     string? Message);
 
 public sealed record WhatsAppRuntimeSettings(

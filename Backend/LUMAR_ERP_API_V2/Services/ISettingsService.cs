@@ -1,1 +1,21 @@
-using LUMAR_ERP_API_V2.DTOs.Settings;namespace LUMAR_ERP_API_V2.Services;public interface ISettingsService{Task<IReadOnlyList<SystemSettingListDto>> GetAllAsync(CancellationToken c);Task<SystemSettingDetailsDto?> GetByIdAsync(int i,CancellationToken c);Task<SystemSettingDetailsDto?> GetByKeyAsync(string k,CancellationToken c);Task<IReadOnlyList<SettingCategoryDto>> GetCategoriesAsync(CancellationToken c);Task<IReadOnlyList<SystemSettingListDto>> GetByCategoryAsync(string category,CancellationToken c);Task<ProductionRoutesConfigDto> GetProductionRoutesConfigAsync(CancellationToken c);Task<IReadOnlyList<string>> GetProductionRoutePieceTypesAsync(CancellationToken c);Task<ProductionRoutesConfigDto> UpsertProductionRoutesConfigAsync(ProductionRoutesConfigDto config,CancellationToken c);Task<MessageSettingsDto> GetMessageSettingsAsync(CancellationToken c);Task<MessageSettingsDto> UpdateMessageSettingsAsync(MessageSettingsDto config,CancellationToken c);Task<WhatsAppConnectionSettingsDto> GetWhatsAppConnectionSettingsAsync(CancellationToken c);Task<WhatsAppConnectionSettingsDto> UpdateWhatsAppConnectionSettingsAsync(WhatsAppConnectionSettingsDto config,CancellationToken c);Task<bool> UpdateCurrencySettingsAsync(string currencyName,string preferredCurrency,CancellationToken c);Task<bool> UpdatePrintSettingsAsync(IReadOnlyDictionary<string,string> values,CancellationToken c);Task<GeneralCashAccountSettingDto> GetGeneralCashAccountSettingAsync(CancellationToken c);Task<GeneralCashAccountSettingDto> UpsertGeneralCashAccountSettingAsync(int? cashAccountId,CancellationToken c);}
+using LUMAR_ERP_API_V2.DTOs.Settings;
+namespace LUMAR_ERP_API_V2.Services;
+public interface ISettingsService
+{
+    Task<IReadOnlyList<SystemSettingListDto>> GetAllAsync(CancellationToken c);
+    Task<SystemSettingDetailsDto?> GetByIdAsync(int i, CancellationToken c);
+    Task<SystemSettingDetailsDto?> GetByKeyAsync(string k, CancellationToken c);
+    Task<IReadOnlyList<SettingCategoryDto>> GetCategoriesAsync(CancellationToken c);
+    Task<IReadOnlyList<SystemSettingListDto>> GetByCategoryAsync(string category, CancellationToken c);
+    Task<ProductionRoutesConfigDto> GetProductionRoutesConfigAsync(CancellationToken c);
+    Task<IReadOnlyList<string>> GetProductionRoutePieceTypesAsync(CancellationToken c);
+    Task<ProductionRoutesConfigDto> UpsertProductionRoutesConfigAsync(ProductionRoutesConfigDto config, CancellationToken c);
+    Task<MessageSettingsDto> GetMessageSettingsAsync(CancellationToken c);
+    Task<MessageSettingsDto> UpdateMessageSettingsAsync(MessageSettingsDto config, CancellationToken c);
+    Task<WhatsAppConnectionSettingsResponseDto> GetWhatsAppConnectionSettingsAsync(CancellationToken c);
+    Task<WhatsAppConnectionSettingsResponseDto> UpdateWhatsAppConnectionSettingsAsync(WhatsAppConnectionSettingsDto config, CancellationToken c);
+    Task<bool> UpdateCurrencySettingsAsync(string currencyName, string preferredCurrency, CancellationToken c);
+    Task<bool> UpdatePrintSettingsAsync(IReadOnlyDictionary<string, string> values, CancellationToken c);
+    Task<GeneralCashAccountSettingDto> GetGeneralCashAccountSettingAsync(CancellationToken c);
+    Task<GeneralCashAccountSettingDto> UpsertGeneralCashAccountSettingAsync(int? cashAccountId, CancellationToken c);
+}

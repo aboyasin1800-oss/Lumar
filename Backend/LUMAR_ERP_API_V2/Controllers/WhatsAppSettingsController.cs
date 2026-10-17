@@ -12,7 +12,7 @@ public sealed class WhatsAppSettingsController(
     IAuthenticatedUserContext userContext) : ControllerBase
 {
     [HttpGet("status")]
-    public async Task<ActionResult<WhatsAppConnectionStatusDto>> GetStatus(CancellationToken cancellationToken)
+    public async Task<ActionResult<WhatsAppConnectionSettingsResponseDto>> GetStatus(CancellationToken cancellationToken)
     {
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
         if (user is null || !string.Equals(user.Role, "System Administrator", StringComparison.OrdinalIgnoreCase))
@@ -20,11 +20,17 @@ public sealed class WhatsAppSettingsController(
             return Forbid();
         }
 
-        return Ok(await store.GetStatusAsync(cancellationToken));
+        var status = await store.GetStatusAsync(cancellationToken);
+        return Ok(new WhatsAppConnectionSettingsResponseDto(
+            Enabled: status.Enabled,
+            PhoneNumberId: status.PhoneNumberId,
+            TokenConfigured: status.TokenConfigured,
+            ConnectionConfigured: status.ConnectionConfigured,
+            Message: status.Message));
     }
 
     [HttpPut("status")]
-    public async Task<ActionResult<WhatsAppConnectionStatusDto>> Update(
+    public async Task<ActionResult<WhatsAppConnectionSettingsResponseDto>> Update(
         [FromBody] WhatsAppConnectionSettingsUpdateDto request,
         CancellationToken cancellationToken)
     {
@@ -39,6 +45,12 @@ public sealed class WhatsAppSettingsController(
             return BadRequest("يجب إرسال بيانات الاتصال المطلوبة.");
         }
 
-        return Ok(await store.UpdateAsync(request, cancellationToken));
+        var status = await store.UpdateAsync(request, cancellationToken);
+        return Ok(new WhatsAppConnectionSettingsResponseDto(
+            Enabled: status.Enabled,
+            PhoneNumberId: status.PhoneNumberId,
+            TokenConfigured: status.TokenConfigured,
+            ConnectionConfigured: status.ConnectionConfigured,
+            Message: status.Message));
     }
 }

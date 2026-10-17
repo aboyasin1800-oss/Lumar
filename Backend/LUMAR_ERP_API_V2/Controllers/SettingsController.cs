@@ -81,7 +81,7 @@ public sealed class SettingsController(ISettingsService service, IAuthenticatedU
     }
 
     [HttpGet("whatsapp-connection")]
-    public async Task<ActionResult<WhatsAppConnectionSettingsDto>> WhatsAppConnection(CancellationToken cancellationToken)
+    public async Task<ActionResult<WhatsAppConnectionSettingsResponseDto>> WhatsAppConnection(CancellationToken cancellationToken)
     {
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
         if (user is null || !string.Equals(user.Role, "System Administrator", StringComparison.OrdinalIgnoreCase))
@@ -93,7 +93,7 @@ public sealed class SettingsController(ISettingsService service, IAuthenticatedU
     }
 
     [HttpPut("whatsapp-connection")]
-    public async Task<ActionResult<WhatsAppConnectionSettingsDto>> UpdateWhatsAppConnection(
+    public async Task<ActionResult<WhatsAppConnectionSettingsResponseDto>> UpdateWhatsAppConnection(
         [FromBody] WhatsAppConnectionSettingsDto request,
         CancellationToken cancellationToken)
     {

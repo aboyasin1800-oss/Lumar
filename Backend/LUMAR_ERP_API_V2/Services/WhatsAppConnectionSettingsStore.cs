@@ -26,8 +26,6 @@ public sealed class WhatsAppConnectionSettingsStore(
             PhoneNumberId: settings.PhoneNumberId,
             TokenConfigured: tokenConfigured,
             ConnectionConfigured: connectionConfigured,
-            HasSecretAccessToken: tokenConfigured,
-            AccessTokenMasked: null,
             Message: connectionConfigured ? "تمت تهيئة اتصال واتساب بشكل كامل." : "اتصال واتساب غير مكتمل. يلزم رقم الهاتف ورمز الوصول."));
     }
 
@@ -116,22 +114,22 @@ public sealed class WhatsAppConnectionSettingsStore(
     {
         if (!TryLoadSecrets(out var secrets))
         {
-            return fallbackValue;
+            return string.Empty;
         }
 
         if (!secrets.TryGetValue(key, out var protectedValue) || string.IsNullOrWhiteSpace(protectedValue))
         {
-            return fallbackValue;
+            return string.Empty;
         }
 
         try
         {
             var unprotected = _protector.Unprotect(protectedValue);
-            return string.IsNullOrWhiteSpace(unprotected) ? fallbackValue : unprotected;
+            return string.IsNullOrWhiteSpace(unprotected) ? string.Empty : unprotected;
         }
         catch
         {
-            return fallbackValue;
+            return string.Empty;
         }
     }
 
