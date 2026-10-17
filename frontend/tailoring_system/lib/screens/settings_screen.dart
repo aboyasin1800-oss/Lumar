@@ -20,6 +20,7 @@ import 'settings/print_settings_screen.dart';
 import 'settings/production_routes_screen.dart';
 import 'settings/piece_cost_management_screen.dart';
 import 'settings/scanner_management_screen.dart';
+import 'settings/whatsapp_connection_settings_screen.dart';
 
 const Color _settingsAccent = UiPalette.primaryBorder;
 
@@ -237,6 +238,22 @@ class _SettingsHomeScreenState extends State<SettingsHomeScreen> {
           ],
           icon: Icons.message_outlined,
           builder: (_) => const MessageSettingsScreen(),
+        ),
+        _SettingsSection(
+          title: 'إعدادات واتساب',
+          description: 'مزود واتساب\nرقم الهاتف\nتوكن الوصول',
+          keywords: const [
+            'واتساب',
+            'whatsapp',
+            'رقم الهاتف',
+            'access token',
+            'verify token',
+            'app secret',
+            'الرسائل',
+            'التفعيل'
+          ],
+          icon: Icons.chat_outlined,
+          builder: (_) => const WhatsAppConnectionSettingsScreen(),
         ),
         _SettingsSection(
           title: 'إعدادات الطباعة',

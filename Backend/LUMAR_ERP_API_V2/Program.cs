@@ -81,6 +81,7 @@ builder.Services.AddScoped<IPurchasingService, PurchasingService>();
 builder.Services.AddScoped<ISupplierInvoiceLineService, SupplierInvoiceLineService>();
 builder.Services.AddScoped<IMessageService, MessageService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddScoped<IWhatsAppConnectionSettingsStore, WhatsAppConnectionSettingsStore>();
 builder.Services.AddScoped<IPrintingService, PrintingService>();
 builder.Services.AddScoped<ICodePrefixSettingsService, CodePrefixSettingsService>();
 builder.Services.AddScoped<IPieceCostSettingService, PieceCostSettingService>();
@@ -113,4 +114,4 @@ app.UseSwagger();
 app.UseSwaggerUI();
 app.MapControllers();
 
-app.Run();
+await app.RunAsync();

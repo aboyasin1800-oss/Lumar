@@ -79,6 +79,32 @@ public sealed class SettingsController(ISettingsService service) : ControllerBas
         }
     }
 
+    [HttpGet("whatsapp-connection")]
+    public async Task<ActionResult<WhatsAppConnectionSettingsDto>> WhatsAppConnection(CancellationToken cancellationToken)
+    {
+        return Ok(await service.GetWhatsAppConnectionSettingsAsync(cancellationToken));
+    }
+
+    [HttpPut("whatsapp-connection")]
+    public async Task<ActionResult<WhatsAppConnectionSettingsDto>> UpdateWhatsAppConnection(
+        [FromBody] WhatsAppConnectionSettingsDto request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return BadRequest("يجب إرسال إعدادات واتساب المطلوبة.");
+        }
+
+        try
+        {
+            return Ok(await service.UpdateWhatsAppConnectionSettingsAsync(request, cancellationToken));
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(exception.Message);
+        }
+    }
+
     [HttpPut("currency")]
     public async Task<IActionResult> UpdateCurrency(
         [FromBody] UpdateCurrencySettingsDto request,

@@ -22,6 +22,20 @@ public sealed record MessageSettingsDto(
     bool FridayGreetingEnabled,
     bool CampaignEnabled,
     bool WhatsAppEnabled = true);
+public sealed record WhatsAppConnectionSettingsDto(
+    bool Enabled,
+    string BaseUrl,
+    string ApiVersion,
+    string PhoneNumberId,
+    string? AccessToken,
+    string? VerifyToken,
+    string? AppSecret,
+    int TimeoutSeconds,
+    bool IsConfigured,
+    string? AccessTokenMasked,
+    string? VerifyTokenMasked,
+    string? AppSecretMasked,
+    string? Message);
 public sealed record UpdatePrintSettingsDto(
     string? MeasurementCardHeaderImage,
     string? MeasurementCardHeaderUseImage,
