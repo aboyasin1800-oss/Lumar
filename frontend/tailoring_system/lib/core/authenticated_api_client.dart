@@ -52,6 +52,12 @@ class AuthenticatedApiClient {
     return _decodeObject(response, path);
   }
 
+  Future<Map<String, dynamic>> putObject(
+      String path, Map<String, dynamic> body) async {
+    final response = await _send('PUT', path, body: body);
+    return _decodeObject(response, path);
+  }
+
   Future<void> postEmpty(String path, Map<String, dynamic> body) async {
     final response = await _send('POST', path, body: body);
     if (response.statusCode < 200 || response.statusCode >= 300) {

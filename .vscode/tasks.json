@@ -1243,6 +1243,14 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "WhatsApp Settings Screen Build",
+			"type": "shell",
+			"command": "Set-Location \"D:\\YASIN\\frontend\\tailoring_system\"; flutter build windows --target lib/main_windows.dart",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }

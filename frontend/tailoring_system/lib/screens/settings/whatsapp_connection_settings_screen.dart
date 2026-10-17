@@ -1,9 +1,8 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
+import '../../core/authenticated_api_client.dart';
 import '../../core/ui_palette.dart';
+import '../../services/auth_state.dart';
 
 class WhatsAppConnectionSettingsScreen extends StatefulWidget {
   const WhatsAppConnectionSettingsScreen({super.key});
@@ -19,6 +18,9 @@ class _WhatsAppConnectionSettingsScreenState
     'LUMAR_API_URL',
     defaultValue: 'http://127.0.0.1:5093',
   );
+
+  late final AuthenticatedApiClient _api =
+      AuthenticatedApiClient(auth: AuthState.instance, baseUrl: _baseUrl);
 
   bool _loading = true;
   bool _saving = false;
@@ -59,18 +61,7 @@ class _WhatsAppConnectionSettingsScreenState
     });
 
     try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/settings/whatsapp-connection'),
-      );
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('تعذر قراءة إعدادات واتساب: ${response.statusCode}');
-      }
-
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception('استجابة غير صالحة من الخادم.');
-      }
+      final decoded = await _api.getObject('/settings/whatsapp-connection');
 
       if (!mounted) return;
       setState(() {
@@ -84,14 +75,23 @@ class _WhatsAppConnectionSettingsScreenState
         _appSecretMask = decoded['appSecretMasked']?.toString();
         _statusMessage = decoded['message']?.toString();
         _isConfigured = _asBool(decoded['isConfigured'], false);
-        _loading = false;
+      });
+    } on ApiClientException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = _errorMessageFor(error);
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _loading = false;
-        _error = error.toString();
+        _error = 'تعذر قراءة إعدادات واتساب: $error';
       });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -99,18 +99,7 @@ class _WhatsAppConnectionSettingsScreenState
     setState(() => _validating = true);
 
     try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/settings/whatsapp-connection'),
-      );
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('تعذر التحقق من إعدادات واتساب: ${response.statusCode}');
-      }
-
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception('استجابة غير صالحة أثناء التحقق.');
-      }
+      final decoded = await _api.getObject('/settings/whatsapp-connection');
 
       final status = decoded['message']?.toString() ?? 'لم يتم تحديد الحالة.';
       final configured = _asBool(decoded['isConfigured'], false);
@@ -121,6 +110,11 @@ class _WhatsAppConnectionSettingsScreenState
           content: Text(status),
           backgroundColor: configured ? Colors.green : Colors.orange,
         ),
+      );
+    } on ApiClientException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_errorMessageFor(error))),
       );
     } catch (error) {
       if (!mounted) return;
@@ -143,30 +137,16 @@ class _WhatsAppConnectionSettingsScreenState
       final appSecret = _appSecretController.text.trim();
       final timeout = int.tryParse(_timeoutController.text.trim()) ?? 30;
 
-      final response = await http.put(
-        Uri.parse('$_baseUrl/settings/whatsapp-connection'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'enabled': _enabled,
-          'baseUrl': _baseUrlController.text.trim(),
-          'apiVersion': _apiVersionController.text.trim(),
-          'phoneNumberId': _phoneNumberIdController.text.trim(),
-          'accessToken': accessToken.isEmpty ? null : accessToken,
-          'verifyToken': verifyToken.isEmpty ? null : verifyToken,
-          'appSecret': appSecret.isEmpty ? null : appSecret,
-          'timeoutSeconds': timeout,
-        }),
-      );
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        final text = response.body.trim();
-        throw Exception(text.isNotEmpty ? text : 'تعذر حفظ إعدادات واتساب.');
-      }
-
-      final body = jsonDecode(response.body);
-      if (body is! Map<String, dynamic>) {
-        throw Exception('استجابة غير صالحة من الخادم.');
-      }
+      final body = await _api.putObject('/settings/whatsapp-connection', {
+        'enabled': _enabled,
+        'baseUrl': _baseUrlController.text.trim(),
+        'apiVersion': _apiVersionController.text.trim(),
+        'phoneNumberId': _phoneNumberIdController.text.trim(),
+        'accessToken': accessToken.isEmpty ? null : accessToken,
+        'verifyToken': verifyToken.isEmpty ? null : verifyToken,
+        'appSecret': appSecret.isEmpty ? null : appSecret,
+        'timeoutSeconds': timeout,
+      });
 
       if (!mounted) return;
       setState(() {
@@ -183,6 +163,11 @@ class _WhatsAppConnectionSettingsScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_statusMessage ?? 'تم حفظ إعدادات واتساب بنجاح.')),
       );
+    } on ApiClientException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_errorMessageFor(error))),
+      );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -196,6 +181,16 @@ class _WhatsAppConnectionSettingsScreenState
   }
 
   String? _maskIfNeeded(String? value) => value == null || value.trim().isEmpty ? null : value;
+
+  String _errorMessageFor(ApiClientException error) {
+    if (error.statusCode == 401) {
+      return 'انتهت الجلسة. سجل الدخول من جديد.';
+    }
+    if (error.statusCode == 403) {
+      return 'هذه الشاشة متاحة لمسؤول النظام فقط.';
+    }
+    return error.message;
+  }
 
   bool _asBool(dynamic value, bool fallback) {
     if (value is bool) return value;
