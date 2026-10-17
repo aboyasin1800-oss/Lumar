@@ -61,24 +61,14 @@ public sealed class SettingsService(
             Message: BuildWhatsAppStatusMessage(runtime.Enabled, runtime.PhoneNumberId, runtime.AccessToken));
     }
 
-    public async Task<WhatsAppConnectionSettingsResponseDto> UpdateWhatsAppConnectionSettingsAsync(WhatsAppConnectionSettingsDto config, CancellationToken c)
+    public async Task<WhatsAppConnectionSettingsResponseDto> UpdateWhatsAppConnectionSettingsAsync(WhatsAppConnectionSettingsUpdateDto config, CancellationToken c)
     {
         if (config is null)
         {
             throw new ArgumentNullException(nameof(config));
         }
 
-        var request = new WhatsAppConnectionSettingsUpdateDto(
-            Enabled: config.Enabled,
-            PhoneNumberId: config.PhoneNumberId,
-            AccessToken: config.AccessToken,
-            VerifyToken: config.VerifyToken,
-            AppSecret: config.AppSecret,
-            BaseUrl: config.BaseUrl,
-            ApiVersion: config.ApiVersion,
-            TimeoutSeconds: config.TimeoutSeconds);
-
-        await whatsappSettingsStore.UpdateAsync(request, c);
+        await whatsappSettingsStore.UpdateAsync(config, c);
         return await GetWhatsAppConnectionSettingsAsync(c);
     }
 

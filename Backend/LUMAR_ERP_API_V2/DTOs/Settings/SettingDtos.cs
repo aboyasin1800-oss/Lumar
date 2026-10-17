@@ -30,6 +30,7 @@ public sealed record WhatsAppConnectionSettingsResponseDto(
     int TimeoutSeconds,
     bool IsConfigured,
     bool TokenConfigured,
+    bool ConnectionConfigured,
     string? Message);
 public sealed record WhatsAppConnectionSettingsDto(
     bool Enabled,

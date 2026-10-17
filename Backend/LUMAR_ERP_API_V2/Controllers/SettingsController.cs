@@ -94,7 +94,7 @@ public sealed class SettingsController(ISettingsService service, IAuthenticatedU
 
     [HttpPut("whatsapp-connection")]
     public async Task<ActionResult<WhatsAppConnectionSettingsResponseDto>> UpdateWhatsAppConnection(
-        [FromBody] WhatsAppConnectionSettingsDto request,
+        [FromBody] WhatsAppConnectionSettingsUpdateDto request,
         CancellationToken cancellationToken)
     {
         var user = await userContext.GetCurrentUserAsync(cancellationToken);

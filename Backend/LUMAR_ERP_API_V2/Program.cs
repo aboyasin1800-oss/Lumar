@@ -6,6 +6,7 @@ using LUMAR_ERP_API_V2.FinancialFoundation;
 using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
 using LUMAR_ERP_API_V2.Utilities;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
 
