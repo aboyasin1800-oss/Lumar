@@ -1251,6 +1251,14 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "WhatsApp Focused Tests",
+			"type": "shell",
+			"command": "dotnet test \"Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj\" --filter \"PersistedDisabledEnabled_OverridesConfigurationOnRestart|RestartedStore_UsesPersistentSettingsFileForNonSecretValues\" --nologo",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
 		}
 	]
 }

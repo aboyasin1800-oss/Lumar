@@ -79,7 +79,9 @@ public sealed class WhatsAppConnectionSettingsStore(
         var section = configuration.GetSection(WhatsAppOptions.SectionName);
         var persistent = LoadPersistentState();
 
-        var enabled = persistent.Enabled || bool.TryParse(section["Enabled"], out var sectionEnabled) && sectionEnabled;
+        var sectionEnabled = bool.TryParse(section["Enabled"], out var parsedSectionEnabled) ? parsedSectionEnabled : (bool?)null;
+        var enabled = persistent.Enabled ?? sectionEnabled ?? options.Value.Enabled;
+
         var baseUrl = !string.IsNullOrWhiteSpace(persistent.BaseUrl)
             ? persistent.BaseUrl
             : section["BaseUrl"] ?? options.Value.BaseUrl;
@@ -175,13 +177,20 @@ public sealed class WhatsAppConnectionSettingsStore(
 
             var state = new PersistentWhatsAppState();
 
-            if (root.TryGetProperty("Enabled", out var enabledElement) && enabledElement.ValueKind == JsonValueKind.True)
+            if (root.TryGetProperty("Enabled", out var enabledElement))
             {
-                state.Enabled = true;
-            }
-            else if (root.TryGetProperty("Enabled", out var enabledFalseElement) && enabledFalseElement.ValueKind == JsonValueKind.False)
-            {
-                state.Enabled = false;
+                if (enabledElement.ValueKind == JsonValueKind.True)
+                {
+                    state.Enabled = true;
+                }
+                else if (enabledElement.ValueKind == JsonValueKind.False)
+                {
+                    state.Enabled = false;
+                }
+                else if (enabledElement.ValueKind == JsonValueKind.Null)
+                {
+                    state.Enabled = null;
+                }
             }
 
             if (root.TryGetProperty("BaseUrl", out var baseUrlElement))
@@ -253,7 +262,7 @@ public sealed class WhatsAppConnectionSettingsStore(
 
     private sealed class PersistentWhatsAppState
     {
-        public bool Enabled { get; set; }
+        public bool? Enabled { get; set; }
         public string BaseUrl { get; set; } = string.Empty;
         public string ApiVersion { get; set; } = string.Empty;
         public string PhoneNumberId { get; set; } = string.Empty;
