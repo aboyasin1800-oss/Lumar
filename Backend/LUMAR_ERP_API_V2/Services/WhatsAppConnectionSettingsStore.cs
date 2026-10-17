@@ -51,17 +51,19 @@ public sealed class WhatsAppConnectionSettingsStore(
         }
 
         var current = GetCurrentSettings();
-        var section = configuration.GetSection(WhatsAppOptions.SectionName);
+        var persisted = LoadPersistentState();
 
-        section["Enabled"] = request.Enabled.ToString();
-        section["BaseUrl"] = string.IsNullOrWhiteSpace(request.BaseUrl) ? current.BaseUrl : request.BaseUrl.Trim();
-        section["ApiVersion"] = string.IsNullOrWhiteSpace(request.ApiVersion) ? current.ApiVersion : request.ApiVersion.Trim();
-        section["PhoneNumberId"] = string.IsNullOrWhiteSpace(request.PhoneNumberId) ? current.PhoneNumberId : request.PhoneNumberId.Trim();
-        section["TimeoutSeconds"] = request.TimeoutSeconds <= 0 ? current.TimeoutSeconds.ToString() : request.TimeoutSeconds.ToString();
+        persisted.Enabled = request.Enabled;
+        persisted.BaseUrl = string.IsNullOrWhiteSpace(request.BaseUrl) ? current.BaseUrl : request.BaseUrl.Trim();
+        persisted.ApiVersion = string.IsNullOrWhiteSpace(request.ApiVersion) ? current.ApiVersion : request.ApiVersion.Trim();
+        persisted.PhoneNumberId = string.IsNullOrWhiteSpace(request.PhoneNumberId) ? current.PhoneNumberId : request.PhoneNumberId.Trim();
+        persisted.TimeoutSeconds = request.TimeoutSeconds <= 0 ? current.TimeoutSeconds : request.TimeoutSeconds;
 
-        await StoreSecretAsync("AccessToken", request.AccessToken, current.AccessToken);
-        await StoreSecretAsync("VerifyToken", request.VerifyToken, current.VerifyToken);
-        await StoreSecretAsync("AppSecret", request.AppSecret, current.AppSecret);
+        StoreSecretIfProvided(persisted.Secrets, "AccessToken", request.AccessToken);
+        StoreSecretIfProvided(persisted.Secrets, "VerifyToken", request.VerifyToken);
+        StoreSecretIfProvided(persisted.Secrets, "AppSecret", request.AppSecret);
+
+        SavePersistentState(persisted);
 
         return await GetStatusAsync(cancellationToken);
     }
@@ -75,18 +77,29 @@ public sealed class WhatsAppConnectionSettingsStore(
     private WhatsAppOptions GetCurrentSettings()
     {
         var section = configuration.GetSection(WhatsAppOptions.SectionName);
-        var baseUrl = section["BaseUrl"] ?? options.Value.BaseUrl;
-        var apiVersion = section["ApiVersion"] ?? options.Value.ApiVersion;
-        var phoneNumberId = section["PhoneNumberId"] ?? options.Value.PhoneNumberId;
-        var timeoutSeconds = int.TryParse(section["TimeoutSeconds"], out var timeout) && timeout > 0 ? timeout : options.Value.TimeoutSeconds;
+        var persistent = LoadPersistentState();
 
-        var accessToken = ReadProtectedSecret("AccessToken", section["AccessToken"] ?? options.Value.AccessToken);
-        var verifyToken = ReadProtectedSecret("VerifyToken", section["VerifyToken"] ?? options.Value.VerifyToken);
-        var appSecret = ReadProtectedSecret("AppSecret", section["AppSecret"] ?? options.Value.AppSecret);
+        var enabled = persistent.Enabled || bool.TryParse(section["Enabled"], out var sectionEnabled) && sectionEnabled;
+        var baseUrl = !string.IsNullOrWhiteSpace(persistent.BaseUrl)
+            ? persistent.BaseUrl
+            : section["BaseUrl"] ?? options.Value.BaseUrl;
+        var apiVersion = !string.IsNullOrWhiteSpace(persistent.ApiVersion)
+            ? persistent.ApiVersion
+            : section["ApiVersion"] ?? options.Value.ApiVersion;
+        var phoneNumberId = !string.IsNullOrWhiteSpace(persistent.PhoneNumberId)
+            ? persistent.PhoneNumberId
+            : section["PhoneNumberId"] ?? options.Value.PhoneNumberId;
+        var timeoutSeconds = persistent.TimeoutSeconds > 0
+            ? persistent.TimeoutSeconds
+            : (int.TryParse(section["TimeoutSeconds"], out var sectionTimeout) && sectionTimeout > 0 ? sectionTimeout : options.Value.TimeoutSeconds);
+
+        var accessToken = ReadProtectedSecret(persistent.Secrets, "AccessToken", section["AccessToken"] ?? options.Value.AccessToken);
+        var verifyToken = ReadProtectedSecret(persistent.Secrets, "VerifyToken", section["VerifyToken"] ?? options.Value.VerifyToken);
+        var appSecret = ReadProtectedSecret(persistent.Secrets, "AppSecret", section["AppSecret"] ?? options.Value.AppSecret);
 
         return new WhatsAppOptions
         {
-            Enabled = bool.TryParse(section["Enabled"], out var enabled) && enabled,
+            Enabled = enabled,
             BaseUrl = baseUrl,
             ApiVersion = apiVersion,
             PhoneNumberId = phoneNumberId,
@@ -97,40 +110,32 @@ public sealed class WhatsAppConnectionSettingsStore(
         };
     }
 
-    private async Task StoreSecretAsync(string key, string? incomingValue, string currentValue)
+    private string ReadProtectedSecret(Dictionary<string, string> secrets, string key, string fallbackValue)
+    {
+        if (secrets.TryGetValue(key, out var protectedValue) && !string.IsNullOrWhiteSpace(protectedValue))
+        {
+            try
+            {
+                var unprotected = _protector.Unprotect(protectedValue);
+                return string.IsNullOrWhiteSpace(unprotected) ? string.Empty : unprotected;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        return string.IsNullOrWhiteSpace(fallbackValue) ? string.Empty : fallbackValue;
+    }
+
+    private void StoreSecretIfProvided(Dictionary<string, string> secrets, string key, string? incomingValue)
     {
         if (string.IsNullOrWhiteSpace(incomingValue))
         {
             return;
         }
 
-        var secret = incomingValue.Trim();
-        var secrets = await LoadSecretsAsync();
-        secrets[key] = _protector.Protect(secret);
-        await SaveSecretsAsync(secrets);
-    }
-
-    private string ReadProtectedSecret(string key, string fallbackValue)
-    {
-        if (!TryLoadSecrets(out var secrets))
-        {
-            return string.Empty;
-        }
-
-        if (!secrets.TryGetValue(key, out var protectedValue) || string.IsNullOrWhiteSpace(protectedValue))
-        {
-            return string.Empty;
-        }
-
-        try
-        {
-            var unprotected = _protector.Unprotect(protectedValue);
-            return string.IsNullOrWhiteSpace(unprotected) ? string.Empty : unprotected;
-        }
-        catch
-        {
-            return string.Empty;
-        }
+        secrets[key] = _protector.Protect(incomingValue.Trim());
     }
 
     private static string GetSecretStorePath()
@@ -145,67 +150,85 @@ public sealed class WhatsAppConnectionSettingsStore(
         return Path.Combine(baseDirectory, "LUMAR_ERP_API_V2", "WhatsAppSecrets", "settings.json");
     }
 
-    private static async Task<Dictionary<string, string>> LoadSecretsAsync()
+    private static PersistentWhatsAppState LoadPersistentState()
     {
         var path = GetSecretStorePath();
-        var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
         if (!File.Exists(path))
         {
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            return new PersistentWhatsAppState();
         }
 
         try
         {
-            var json = await File.ReadAllTextAsync(path);
-            if (string.IsNullOrWhiteSpace(json))
-            {
-                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            }
-
-            var model = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-            return model ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        }
-    }
-
-    private static bool TryLoadSecrets(out Dictionary<string, string> secrets)
-    {
-        try
-        {
-            var path = GetSecretStorePath();
-            if (!File.Exists(path))
-            {
-                secrets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                return false;
-            }
-
             var json = File.ReadAllText(path);
             if (string.IsNullOrWhiteSpace(json))
             {
-                secrets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                return false;
+                return new PersistentWhatsAppState();
             }
 
-            var model = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-            secrets = model ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            return secrets.Count > 0;
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return new PersistentWhatsAppState();
+            }
+
+            var state = new PersistentWhatsAppState();
+
+            if (root.TryGetProperty("Enabled", out var enabledElement) && enabledElement.ValueKind == JsonValueKind.True)
+            {
+                state.Enabled = true;
+            }
+            else if (root.TryGetProperty("Enabled", out var enabledFalseElement) && enabledFalseElement.ValueKind == JsonValueKind.False)
+            {
+                state.Enabled = false;
+            }
+
+            if (root.TryGetProperty("BaseUrl", out var baseUrlElement))
+            {
+                state.BaseUrl = baseUrlElement.GetString() ?? string.Empty;
+            }
+
+            if (root.TryGetProperty("ApiVersion", out var apiVersionElement))
+            {
+                state.ApiVersion = apiVersionElement.GetString() ?? string.Empty;
+            }
+
+            if (root.TryGetProperty("PhoneNumberId", out var phoneElement))
+            {
+                state.PhoneNumberId = phoneElement.GetString() ?? string.Empty;
+            }
+
+            if (root.TryGetProperty("TimeoutSeconds", out var timeoutElement) && timeoutElement.TryGetInt32(out var timeoutValue))
+            {
+                state.TimeoutSeconds = timeoutValue > 0 ? timeoutValue : 30;
+            }
+
+            var secretsElement = root.TryGetProperty("Secrets", out var secretsNode) ? secretsNode : root;
+            if (secretsElement.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in secretsElement.EnumerateObject())
+                {
+                    if (!string.IsNullOrWhiteSpace(property.Name))
+                    {
+                        var value = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString() : property.Value.ToString();
+                        if (!string.IsNullOrWhiteSpace(value))
+                        {
+                            state.Secrets[property.Name] = value;
+                        }
+                    }
+                }
+            }
+
+            return state;
         }
         catch
         {
-            secrets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            return false;
+            return new PersistentWhatsAppState();
         }
     }
 
-    private static async Task SaveSecretsAsync(Dictionary<string, string> secrets)
+    private static void SavePersistentState(PersistentWhatsAppState state)
     {
         var path = GetSecretStorePath();
         var directory = Path.GetDirectoryName(path);
@@ -214,7 +237,27 @@ public sealed class WhatsAppConnectionSettingsStore(
             Directory.CreateDirectory(directory);
         }
 
-        var json = JsonSerializer.Serialize(secrets, new JsonSerializerOptions { WriteIndented = false });
-        await File.WriteAllTextAsync(path, json);
+        var payload = new
+        {
+            Enabled = state.Enabled,
+            BaseUrl = state.BaseUrl,
+            ApiVersion = state.ApiVersion,
+            PhoneNumberId = state.PhoneNumberId,
+            TimeoutSeconds = state.TimeoutSeconds,
+            Secrets = state.Secrets
+        };
+
+        var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = false });
+        File.WriteAllText(path, json);
+    }
+
+    private sealed class PersistentWhatsAppState
+    {
+        public bool Enabled { get; set; }
+        public string BaseUrl { get; set; } = string.Empty;
+        public string ApiVersion { get; set; } = string.Empty;
+        public string PhoneNumberId { get; set; } = string.Empty;
+        public int TimeoutSeconds { get; set; } = 30;
+        public Dictionary<string, string> Secrets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }
