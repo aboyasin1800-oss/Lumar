@@ -43,6 +43,12 @@ class _WhatsAppConnectionSettingsScreenState
   bool _isConfigured = false;
 
   @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
   void dispose() {
     _baseUrlController.dispose();
     _apiVersionController.dispose();
