@@ -50,14 +50,19 @@ public sealed class SettingsService(
     public async Task<WhatsAppConnectionSettingsResponseDto> GetWhatsAppConnectionSettingsAsync(CancellationToken c)
     {
         var runtime = await whatsappSettingsStore.GetRuntimeSettingsAsync(c);
+        var connectionConfigured = runtime.Enabled
+            && !string.IsNullOrWhiteSpace(runtime.PhoneNumberId)
+            && !string.IsNullOrWhiteSpace(runtime.AccessToken);
+
         return new WhatsAppConnectionSettingsResponseDto(
             Enabled: runtime.Enabled,
             BaseUrl: string.IsNullOrWhiteSpace(runtime.BaseUrl) ? "https://graph.facebook.com" : runtime.BaseUrl,
             ApiVersion: string.IsNullOrWhiteSpace(runtime.ApiVersion) ? "v20.0" : runtime.ApiVersion,
             PhoneNumberId: runtime.PhoneNumberId ?? string.Empty,
             TimeoutSeconds: runtime.TimeoutSeconds <= 0 ? 30 : runtime.TimeoutSeconds,
-            IsConfigured: runtime.Enabled && !string.IsNullOrWhiteSpace(runtime.PhoneNumberId) && !string.IsNullOrWhiteSpace(runtime.AccessToken),
+            IsConfigured: connectionConfigured,
             TokenConfigured: !string.IsNullOrWhiteSpace(runtime.AccessToken),
+            ConnectionConfigured: connectionConfigured,
             Message: BuildWhatsAppStatusMessage(runtime.Enabled, runtime.PhoneNumberId, runtime.AccessToken));
     }
 

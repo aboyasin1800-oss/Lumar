@@ -20,13 +20,21 @@ public sealed class WhatsAppSettingsController(
             return Forbid();
         }
 
-        var status = await store.GetStatusAsync(cancellationToken);
+        var runtime = await store.GetRuntimeSettingsAsync(cancellationToken);
+        var connectionConfigured = runtime.Enabled
+            && !string.IsNullOrWhiteSpace(runtime.PhoneNumberId)
+            && !string.IsNullOrWhiteSpace(runtime.AccessToken);
+
         return Ok(new WhatsAppConnectionSettingsResponseDto(
-            Enabled: status.Enabled,
-            PhoneNumberId: status.PhoneNumberId,
-            TokenConfigured: status.TokenConfigured,
-            ConnectionConfigured: status.ConnectionConfigured,
-            Message: status.Message));
+            Enabled: runtime.Enabled,
+            BaseUrl: string.IsNullOrWhiteSpace(runtime.BaseUrl) ? "https://graph.facebook.com" : runtime.BaseUrl,
+            ApiVersion: string.IsNullOrWhiteSpace(runtime.ApiVersion) ? "v20.0" : runtime.ApiVersion,
+            PhoneNumberId: runtime.PhoneNumberId ?? string.Empty,
+            TimeoutSeconds: runtime.TimeoutSeconds <= 0 ? 30 : runtime.TimeoutSeconds,
+            IsConfigured: connectionConfigured,
+            TokenConfigured: !string.IsNullOrWhiteSpace(runtime.AccessToken),
+            ConnectionConfigured: connectionConfigured,
+            Message: connectionConfigured ? "تمت تهيئة اتصال واتساب بشكل كامل." : "اتصال واتساب غير مكتمل. يلزم رقم الهاتف ورمز الوصول."));
     }
 
     [HttpPut("status")]
@@ -46,11 +54,20 @@ public sealed class WhatsAppSettingsController(
         }
 
         var status = await store.UpdateAsync(request, cancellationToken);
+        var runtime = await store.GetRuntimeSettingsAsync(cancellationToken);
+        var connectionConfigured = runtime.Enabled
+            && !string.IsNullOrWhiteSpace(runtime.PhoneNumberId)
+            && !string.IsNullOrWhiteSpace(runtime.AccessToken);
+
         return Ok(new WhatsAppConnectionSettingsResponseDto(
-            Enabled: status.Enabled,
-            PhoneNumberId: status.PhoneNumberId,
-            TokenConfigured: status.TokenConfigured,
-            ConnectionConfigured: status.ConnectionConfigured,
+            Enabled: runtime.Enabled,
+            BaseUrl: string.IsNullOrWhiteSpace(runtime.BaseUrl) ? "https://graph.facebook.com" : runtime.BaseUrl,
+            ApiVersion: string.IsNullOrWhiteSpace(runtime.ApiVersion) ? "v20.0" : runtime.ApiVersion,
+            PhoneNumberId: runtime.PhoneNumberId ?? string.Empty,
+            TimeoutSeconds: runtime.TimeoutSeconds <= 0 ? 30 : runtime.TimeoutSeconds,
+            IsConfigured: connectionConfigured,
+            TokenConfigured: !string.IsNullOrWhiteSpace(runtime.AccessToken),
+            ConnectionConfigured: connectionConfigured,
             Message: status.Message));
     }
 }
