@@ -5,6 +5,7 @@ using System.Threading;
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Controllers;
 using LUMAR_ERP_API_V2.DTOs.Messages;
+using LUMAR_ERP_API_V2.DTOs.Settings;
 using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Http;
