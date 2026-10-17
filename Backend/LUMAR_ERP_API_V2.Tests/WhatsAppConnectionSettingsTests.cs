@@ -83,7 +83,7 @@ public sealed class WhatsAppConnectionSettingsTests
     {
         var controller = CreateController(
             new WhatsAppConnectionSettingsOptions { Enabled = true, PhoneNumberId = "123456", AccessToken = "secret" },
-            user: null);
+            userExists: false);
 
         var status = await controller.GetStatus(CancellationToken.None);
         Assert.IsType<UnauthorizedResult>(status.Result);
@@ -245,7 +245,8 @@ public sealed class WhatsAppConnectionSettingsTests
     private static WhatsAppSettingsController CreateController(
         WhatsAppConnectionSettingsOptions options,
         string? userRole = "System Administrator",
-        CurrentUserDto? user = null)
+        CurrentUserDto? user = null,
+        bool userExists = true)
     {
         var inMemory = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -269,7 +270,7 @@ public sealed class WhatsAppConnectionSettingsTests
         var store = provider.GetRequiredService<IWhatsAppConnectionSettingsStore>();
         var controller = new WhatsAppSettingsController(
             store,
-            new FakeAuthenticatedUserContext(userRole, user));
+            FakeAuthenticatedUserContext.Create(userRole, user, userExists));
 
         controller.ControllerContext = new ControllerContext
         {
@@ -279,10 +280,32 @@ public sealed class WhatsAppConnectionSettingsTests
         return controller;
     }
 
-    private sealed class FakeAuthenticatedUserContext(string? role, CurrentUserDto? overrideUser = null) : IAuthenticatedUserContext
+    private sealed class FakeAuthenticatedUserContext : IAuthenticatedUserContext
     {
+        private readonly string? role;
+        private readonly CurrentUserDto? overrideUser;
+        private readonly bool userExists;
+
+        private FakeAuthenticatedUserContext(string? role, CurrentUserDto? overrideUser, bool userExists)
+        {
+            this.role = role;
+            this.overrideUser = overrideUser;
+            this.userExists = userExists;
+        }
+
+        public static FakeAuthenticatedUserContext Create(string? role, CurrentUserDto? overrideUser, bool userExists)
+        {
+            if (!userExists)
+            {
+                return new FakeAuthenticatedUserContext(role, overrideUser, false);
+            }
+
+            var user = overrideUser ?? new CurrentUserDto(1, "admin", "Admin User", role ?? "System Administrator", true, DateTime.UtcNow);
+            return new FakeAuthenticatedUserContext(role, user, true);
+        }
+
         public Task<CurrentUserDto?> GetCurrentUserAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult<CurrentUserDto?>(overrideUser ?? new CurrentUserDto(1, "admin", "Admin User", role ?? "System Administrator", true, DateTime.UtcNow));
+            => Task.FromResult(userExists ? overrideUser : null);
     }
 
     private sealed class FakeWhatsAppConnectionSettingsStore(WhatsAppConnectionSettingsOptions options) : IWhatsAppConnectionSettingsStore
