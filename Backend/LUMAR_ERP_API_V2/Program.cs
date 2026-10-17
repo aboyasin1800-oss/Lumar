@@ -16,6 +16,16 @@ builder.Services.AddSwaggerGen(options => options.CustomSchemaIds(type => type.F
 builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection(DatabaseOptions.SectionName));
 builder.Services.Configure<Es7OperationalTestModeOptions>(builder.Configuration.GetSection(Es7OperationalTestModeOptions.SectionName));
 builder.Services.Configure<WhatsAppOptions>(builder.Configuration.GetSection(WhatsAppOptions.SectionName));
+
+var dataProtectionKeysPath = Environment.GetEnvironmentVariable("LUMAR_ERP_API_V2_DATA_PROTECTION_KEYS_PATH");
+var resolvedKeysPath = string.IsNullOrWhiteSpace(dataProtectionKeysPath)
+    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LUMAR_ERP_API_V2", "DataProtection-Keys")
+    : dataProtectionKeysPath;
+
+builder.Services.AddDataProtection()
+    .SetApplicationName("LUMAR_ERP_API_V2")
+    .PersistKeysToFileSystem(new DirectoryInfo(resolvedKeysPath));
+
 builder.Services.AddSingleton<Es7OperationalTestMode>();
 builder.Services.AddSingleton<ReadOnlySqlConnectionFactory>();
 builder.Services.AddSingleton<OperationalSqlConnectionFactory>();

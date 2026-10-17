@@ -99,6 +99,76 @@ public sealed class WhatsAppConnectionSettingsTests
         Assert.False(model.TokenConfigured == false && model.PhoneNumberId == string.Empty ? false : false);
     }
 
+    [Fact]
+    public async Task ProtectedSecretStore_DoesNotWritePlaintextSecretsAndPersistsAcrossRead()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "lumar-whatsapp-secret-tests", Guid.NewGuid().ToString("N"));
+        var secretStorePath = Path.Combine(tempRoot, "whatsapp-secrets.json");
+        var keyDir = Path.Combine(tempRoot, "keys");
+
+        Environment.SetEnvironmentVariable("LUMAR_ERP_API_V2_WHATSAPP_SECRET_STORE_PATH", secretStorePath);
+        Environment.SetEnvironmentVariable("LUMAR_ERP_API_V2_DATA_PROTECTION_KEYS_PATH", keyDir);
+
+        try
+        {
+            var config = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["WhatsApp:Enabled"] = "true",
+                    ["WhatsApp:PhoneNumberId"] = "123456",
+                    ["WhatsApp:BaseUrl"] = "https://graph.facebook.com",
+                    ["WhatsApp:ApiVersion"] = "v20.0",
+                    ["WhatsApp:TimeoutSeconds"] = "30",
+                })
+                .Build();
+
+            var services = new ServiceCollection();
+            services.AddDataProtection()
+                .PersistKeysToFileSystem(new DirectoryInfo(keyDir))
+                .SetApplicationName("LUMAR_ERP_API_V2.Tests");
+
+            using var provider = services.BuildServiceProvider();
+            var store = new WhatsAppConnectionSettingsStore(
+                config,
+                Options.Create(new WhatsAppOptions
+                {
+                    Enabled = true,
+                    PhoneNumberId = "123456",
+                    BaseUrl = "https://graph.facebook.com",
+                    ApiVersion = "v20.0",
+                    TimeoutSeconds = 30,
+                }),
+                provider.GetRequiredService<IDataProtectionProvider>());
+
+            var update = await store.UpdateAsync(new WhatsAppConnectionSettingsUpdateDto
+            {
+                Enabled = true,
+                PhoneNumberId = "123456",
+                AccessToken = "super-secret-token-123"
+            }, CancellationToken.None);
+
+            Assert.True(update.TokenConfigured);
+            Assert.Equal("123456", update.PhoneNumberId);
+
+            var fileContents = await File.ReadAllTextAsync(secretStorePath);
+            Assert.DoesNotContain("super-secret-token-123", fileContents);
+            Assert.DoesNotContain("super-secret-token-123", fileContents, StringComparison.Ordinal);
+
+            var reloaded = await store.GetStatusAsync(CancellationToken.None);
+            Assert.True(reloaded.TokenConfigured);
+            Assert.Equal("123456", reloaded.PhoneNumberId);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("LUMAR_ERP_API_V2_WHATSAPP_SECRET_STORE_PATH", null);
+            Environment.SetEnvironmentVariable("LUMAR_ERP_API_V2_DATA_PROTECTION_KEYS_PATH", null);
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, true);
+            }
+        }
+    }
+
     private static WhatsAppSettingsController CreateController(
         WhatsAppConnectionSettingsOptions options,
         string userRole = "System Administrator")

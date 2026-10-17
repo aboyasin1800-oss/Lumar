@@ -30,7 +30,10 @@ public sealed record WhatsAppConnectionSettingsDto(
     int TimeoutSeconds,
     bool IsConfigured,
     bool TokenConfigured,
-    string? Message);
+    string? Message,
+    string? AccessToken = null,
+    string? VerifyToken = null,
+    string? AppSecret = null);
 public sealed record UpdatePrintSettingsDto(
     string? MeasurementCardHeaderImage,
     string? MeasurementCardHeaderUseImage,

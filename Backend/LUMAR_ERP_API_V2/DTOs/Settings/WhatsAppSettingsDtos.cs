@@ -9,6 +9,16 @@ public sealed record WhatsAppConnectionStatusDto(
     string? AccessTokenMasked,
     string? Message);
 
+public sealed record WhatsAppRuntimeSettings(
+    bool Enabled,
+    string BaseUrl,
+    string ApiVersion,
+    string PhoneNumberId,
+    string AccessToken,
+    string VerifyToken,
+    string AppSecret,
+    int TimeoutSeconds);
+
 public sealed record WhatsAppConnectionSettingsUpdateDto(
     bool Enabled = true,
     string? PhoneNumberId = null,

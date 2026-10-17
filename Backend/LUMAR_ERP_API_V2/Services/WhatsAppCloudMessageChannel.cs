@@ -12,18 +12,18 @@ namespace LUMAR_ERP_API_V2.Services;
 
 public sealed class WhatsAppCloudMessageChannel(
     IHttpClientFactory httpClientFactory,
-    IOptions<WhatsAppOptions> options) : IOutboundMessageChannel
+    IWhatsAppConnectionSettingsStore settingsStore) : IOutboundMessageChannel
 {
-    private readonly WhatsAppOptions _options = options.Value;
-
     public string ChannelName => "WhatsApp";
 
     public async Task<OutboundAdapterResult> SendAsync(CustomerMessageDto message, CancellationToken cancellationToken)
     {
-        if (!_options.Enabled)
+        var options = await settingsStore.GetRuntimeSettingsAsync(cancellationToken);
+
+        if (!options.Enabled)
             return new OutboundAdapterResult(OutboundDispatchOutcome.PermanentFailure, FailureReason: "WhatsApp provider is disabled in configuration.", Retryable: false);
 
-        if (string.IsNullOrWhiteSpace(_options.AccessToken) || string.IsNullOrWhiteSpace(_options.PhoneNumberId))
+        if (string.IsNullOrWhiteSpace(options.AccessToken) || string.IsNullOrWhiteSpace(options.PhoneNumberId))
             return new OutboundAdapterResult(OutboundDispatchOutcome.PermanentFailure, FailureReason: "WhatsApp provider is not configured.", Retryable: false);
 
         var destination = NormalizePhoneNumber(message.PhoneNumber);
@@ -38,15 +38,15 @@ public sealed class WhatsAppCloudMessageChannel(
             text = new { body = message.Body ?? string.Empty }
         };
 
-        var baseUrl = string.IsNullOrWhiteSpace(_options.BaseUrl) ? "https://graph.facebook.com" : _options.BaseUrl.TrimEnd('/');
-        var endpoint = $"{baseUrl}/{_options.ApiVersion.Trim('/')}/{_options.PhoneNumberId}/messages";
+        var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "https://graph.facebook.com" : options.BaseUrl.TrimEnd('/');
+        var endpoint = $"{baseUrl}/{options.ApiVersion.Trim('/')}/{options.PhoneNumberId}/messages";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AccessToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.AccessToken);
         request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
         using var client = httpClientFactory.CreateClient("WhatsAppCloud");
-        client.Timeout = TimeSpan.FromSeconds(Math.Max(10, _options.TimeoutSeconds));
+        client.Timeout = TimeSpan.FromSeconds(Math.Max(10, options.TimeoutSeconds));
 
         try
         {

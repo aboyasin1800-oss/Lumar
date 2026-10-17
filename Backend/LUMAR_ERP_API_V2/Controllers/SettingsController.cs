@@ -1,3 +1,4 @@
+using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.DTOs.Settings;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -6,7 +7,7 @@ namespace LUMAR_ERP_API_V2.Controllers;
 
 [ApiController]
 [Route("settings")]
-public sealed class SettingsController(ISettingsService service) : ControllerBase
+public sealed class SettingsController(ISettingsService service, IAuthenticatedUserContext userContext) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<SystemSettingListDto>>> All(CancellationToken cancellationToken) =>
@@ -82,6 +83,12 @@ public sealed class SettingsController(ISettingsService service) : ControllerBas
     [HttpGet("whatsapp-connection")]
     public async Task<ActionResult<WhatsAppConnectionSettingsDto>> WhatsAppConnection(CancellationToken cancellationToken)
     {
+        var user = await userContext.GetCurrentUserAsync(cancellationToken);
+        if (user is null || !string.Equals(user.Role, "System Administrator", StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
+
         return Ok(await service.GetWhatsAppConnectionSettingsAsync(cancellationToken));
     }
 
@@ -90,6 +97,12 @@ public sealed class SettingsController(ISettingsService service) : ControllerBas
         [FromBody] WhatsAppConnectionSettingsDto request,
         CancellationToken cancellationToken)
     {
+        var user = await userContext.GetCurrentUserAsync(cancellationToken);
+        if (user is null || !string.Equals(user.Role, "System Administrator", StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
+
         if (request is null)
         {
             return BadRequest("يجب إرسال إعدادات واتساب المطلوبة.");

@@ -9,7 +9,8 @@ namespace LUMAR_ERP_API_V2.Services;
 public sealed class SettingsService(
     ISettingsRepository r,
     IConfiguration configuration,
-    IOptionsMonitor<WhatsAppOptions> whatsappOptionsMonitor) : ISettingsService
+    IOptionsMonitor<WhatsAppOptions> whatsappOptionsMonitor,
+    IWhatsAppConnectionSettingsStore whatsappSettingsStore) : ISettingsService
 {
     private static readonly IReadOnlyDictionary<string, string> SupportedCurrencies =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -46,66 +47,41 @@ public sealed class SettingsService(
 
     public Task<MessageSettingsDto> UpdateMessageSettingsAsync(MessageSettingsDto config, CancellationToken c) => r.UpdateMessageSettingsAsync(config, c);
 
-    public Task<WhatsAppConnectionSettingsDto> GetWhatsAppConnectionSettingsAsync(CancellationToken c)
+    public async Task<WhatsAppConnectionSettingsDto> GetWhatsAppConnectionSettingsAsync(CancellationToken c)
     {
-        var options = whatsappOptionsMonitor.CurrentValue;
-        if (options is null)
-        {
-            options = new WhatsAppOptions();
-        }
-
+        var runtime = await whatsappSettingsStore.GetRuntimeSettingsAsync(c);
         var payload = new WhatsAppConnectionSettingsDto(
-            Enabled: options.Enabled,
-            BaseUrl: string.IsNullOrWhiteSpace(options.BaseUrl) ? "https://graph.facebook.com" : options.BaseUrl,
-            ApiVersion: string.IsNullOrWhiteSpace(options.ApiVersion) ? "v20.0" : options.ApiVersion,
-            PhoneNumberId: options.PhoneNumberId ?? string.Empty,
-            TimeoutSeconds: options.TimeoutSeconds <= 0 ? 30 : options.TimeoutSeconds,
-            IsConfigured: HasValidProviderSetup(options),
-            TokenConfigured: !string.IsNullOrWhiteSpace(options.AccessToken),
-            Message: BuildWhatsAppStatusMessage(options));
+            Enabled: runtime.Enabled,
+            BaseUrl: string.IsNullOrWhiteSpace(runtime.BaseUrl) ? "https://graph.facebook.com" : runtime.BaseUrl,
+            ApiVersion: string.IsNullOrWhiteSpace(runtime.ApiVersion) ? "v20.0" : runtime.ApiVersion,
+            PhoneNumberId: runtime.PhoneNumberId ?? string.Empty,
+            TimeoutSeconds: runtime.TimeoutSeconds <= 0 ? 30 : runtime.TimeoutSeconds,
+            IsConfigured: runtime.Enabled && !string.IsNullOrWhiteSpace(runtime.PhoneNumberId) && !string.IsNullOrWhiteSpace(runtime.AccessToken),
+            TokenConfigured: !string.IsNullOrWhiteSpace(runtime.AccessToken),
+            Message: BuildWhatsAppStatusMessage(runtime.Enabled, runtime.PhoneNumberId, runtime.AccessToken));
 
-        return Task.FromResult(payload);
+        return payload;
     }
 
-    public Task<WhatsAppConnectionSettingsDto> UpdateWhatsAppConnectionSettingsAsync(WhatsAppConnectionSettingsDto config, CancellationToken c)
+    public async Task<WhatsAppConnectionSettingsDto> UpdateWhatsAppConnectionSettingsAsync(WhatsAppConnectionSettingsDto config, CancellationToken c)
     {
         if (config is null)
         {
             throw new ArgumentNullException(nameof(config));
         }
 
-        var existing = whatsappOptionsMonitor.CurrentValue ?? new WhatsAppOptions();
-        var next = new WhatsAppOptions
-        {
-            Enabled = config.Enabled,
-            BaseUrl = NormalizeText(config.BaseUrl, existing.BaseUrl, "https://graph.facebook.com"),
-            ApiVersion = NormalizeText(config.ApiVersion, existing.ApiVersion, "v20.0"),
-            PhoneNumberId = NormalizeOptionalText(config.PhoneNumberId, existing.PhoneNumberId),
-            AccessToken = existing.AccessToken,
-            VerifyToken = existing.VerifyToken,
-            AppSecret = existing.AppSecret,
-            TimeoutSeconds = config.TimeoutSeconds <= 0 ? 30 : config.TimeoutSeconds,
-        };
+        var request = new WhatsAppConnectionSettingsUpdateDto(
+            Enabled: config.Enabled,
+            PhoneNumberId: config.PhoneNumberId,
+            AccessToken: config.AccessToken,
+            VerifyToken: config.VerifyToken,
+            AppSecret: config.AppSecret,
+            BaseUrl: config.BaseUrl,
+            ApiVersion: config.ApiVersion,
+            TimeoutSeconds: config.TimeoutSeconds);
 
-        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WhatsApp__AccessToken")))
-        {
-            next.AccessToken = Environment.GetEnvironmentVariable("WhatsApp__AccessToken") ?? next.AccessToken;
-        }
-        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WhatsApp__VerifyToken")))
-        {
-            next.VerifyToken = Environment.GetEnvironmentVariable("WhatsApp__VerifyToken") ?? next.VerifyToken;
-        }
-        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WhatsApp__AppSecret")))
-        {
-            next.AppSecret = Environment.GetEnvironmentVariable("WhatsApp__AppSecret") ?? next.AppSecret;
-        }
-
-        if (configuration is IConfigurationRoot root)
-        {
-            root.Reload();
-        }
-
-        return GetWhatsAppConnectionSettingsAsync(c);
+        await whatsappSettingsStore.UpdateAsync(request, c);
+        return await GetWhatsAppConnectionSettingsAsync(c);
     }
 
     public Task<bool> UpdateCurrencySettingsAsync(string currencyName, string preferredCurrency, CancellationToken c)
@@ -134,14 +110,14 @@ public sealed class SettingsService(
     private static bool HasValidProviderSetup(WhatsAppOptions options)
         => options.Enabled && !string.IsNullOrWhiteSpace(options.PhoneNumberId) && !string.IsNullOrWhiteSpace(options.AccessToken);
 
-    private static string BuildWhatsAppStatusMessage(WhatsAppOptions options)
+    private static string BuildWhatsAppStatusMessage(bool enabled, string? phoneNumberId, string? accessToken)
     {
-        if (!options.Enabled)
+        if (!enabled)
         {
             return "تم إيقاف مزود واتساب مؤقتاً، ولا يتم إرسال الرسائل حتى يتم تفعيله.";
         }
 
-        if (string.IsNullOrWhiteSpace(options.PhoneNumberId) || string.IsNullOrWhiteSpace(options.AccessToken))
+        if (string.IsNullOrWhiteSpace(phoneNumberId) || string.IsNullOrWhiteSpace(accessToken))
         {
             return "تم التحقق من اكتمال إعدادات الاتصال، ولم يتم إدخال رمز الوصول النهائي بعد.";
         }
