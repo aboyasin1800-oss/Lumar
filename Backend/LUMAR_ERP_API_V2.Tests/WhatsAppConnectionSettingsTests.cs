@@ -32,11 +32,29 @@ public sealed class WhatsAppConnectionSettingsTests
         var result = await controller.GetStatus(CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
-        var model = Assert.IsType<WhatsAppConnectionStatusDto>(ok.Value);
+        var model = Assert.IsType<WhatsAppConnectionSettingsResponseDto>(ok.Value);
         Assert.True(model.TokenConfigured);
+        Assert.True(model.ConnectionConfigured);
+        Assert.True(model.IsConfigured);
         Assert.Equal("123456", model.PhoneNumberId);
         Assert.False(string.IsNullOrWhiteSpace(model.PhoneNumberId));
         Assert.False(string.IsNullOrWhiteSpace(model.Message));
+
+        var secretProperties = new[]
+        {
+            "AccessToken",
+            "VerifyToken",
+            "AppSecret",
+            "AccessTokenMasked",
+            "VerifyTokenMasked",
+            "AppSecretMasked"
+        };
+
+        foreach (var propertyName in secretProperties)
+        {
+            var property = typeof(WhatsAppConnectionSettingsResponseDto).GetProperty(propertyName);
+            Assert.Null(property);
+        }
     }
 
     [Fact]
@@ -71,13 +89,17 @@ public sealed class WhatsAppConnectionSettingsTests
             AccessToken = "secret-2"
         }, CancellationToken.None);
         var ok = Assert.IsType<OkObjectResult>(update.Result);
-        var model = Assert.IsType<WhatsAppConnectionStatusDto>(ok.Value);
+        var model = Assert.IsType<WhatsAppConnectionSettingsResponseDto>(ok.Value);
         Assert.Equal("2222", model.PhoneNumberId);
+        Assert.True(model.ConnectionConfigured);
+        Assert.True(model.IsConfigured);
+        Assert.False(model.Message is not null && model.Message.Contains("secret", StringComparison.OrdinalIgnoreCase));
 
         var status = await controller.GetStatus(CancellationToken.None);
         var statusOk = Assert.IsType<OkObjectResult>(status.Result);
-        var statusModel = Assert.IsType<WhatsAppConnectionStatusDto>(statusOk.Value);
+        var statusModel = Assert.IsType<WhatsAppConnectionSettingsResponseDto>(statusOk.Value);
         Assert.Equal("2222", statusModel.PhoneNumberId);
+        Assert.True(statusModel.ConnectionConfigured);
     }
 
     [Fact]
@@ -86,9 +108,10 @@ public sealed class WhatsAppConnectionSettingsTests
         var controller = CreateController(new WhatsAppConnectionSettingsOptions { Enabled = true, PhoneNumberId = "123456", AccessToken = string.Empty });
         var result = await controller.GetStatus(CancellationToken.None);
         var ok = Assert.IsType<OkObjectResult>(result.Result);
-        var model = Assert.IsType<WhatsAppConnectionStatusDto>(ok.Value);
+        var model = Assert.IsType<WhatsAppConnectionSettingsResponseDto>(ok.Value);
         Assert.False(model.ConnectionConfigured);
         Assert.False(model.TokenConfigured);
+        Assert.False(model.IsConfigured);
     }
 
     [Fact]
@@ -97,9 +120,11 @@ public sealed class WhatsAppConnectionSettingsTests
         var controller = CreateController(new WhatsAppConnectionSettingsOptions { Enabled = true, PhoneNumberId = string.Empty, AccessToken = "token" });
         var result = await controller.GetStatus(CancellationToken.None);
         var ok = Assert.IsType<OkObjectResult>(result.Result);
-        var model = Assert.IsType<WhatsAppConnectionStatusDto>(ok.Value);
+        var model = Assert.IsType<WhatsAppConnectionSettingsResponseDto>(ok.Value);
         Assert.False(model.ConnectionConfigured);
-        Assert.False(model.TokenConfigured == false && model.PhoneNumberId == string.Empty ? false : false);
+        Assert.False(model.IsConfigured);
+        Assert.True(string.IsNullOrEmpty(model.PhoneNumberId));
+        Assert.True(model.TokenConfigured);
     }
 
     [Fact]
