@@ -17,7 +17,9 @@ import 'widgets/keyboard_policy.dart';
 import 'widgets/main_shell.dart';
 import 'widgets/workspace_task_close_button.dart';
 
-const bool kUnifiedPreviewEnabled = true;
+// Legacy unified preview is disabled permanently.
+// The official Windows ERP entrypoint is lib/main_windows.dart.
+const bool kUnifiedPreviewEnabled = false;
 
 void main() => runApp(const LumarApp());
 
