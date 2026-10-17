@@ -8,11 +8,13 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart' as intl;
 
 import '../core/app_navigation.dart';
+import '../core/authenticated_api_client.dart';
 import '../core/ui_palette.dart';
 import '../models/customer_creation_models.dart';
 import '../models/sales_reference_models.dart';
 import '../repositories/finance_repository.dart';
 import '../repositories/loyalty_repository.dart';
+import '../services/auth_state.dart';
 import '../services/screen_chrome_state.dart';
 import '../services/sales_reference_cache.dart';
 import '../widgets/cash_account_picker.dart';
@@ -150,6 +152,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   final List<ValueNotifier<int>> _pieceRevisions = [ValueNotifier<int>(0)];
   final LoyaltyRepository _loyaltyRepository = LoyaltyRepository();
   final SalesReferenceCache _referenceCache = SalesReferenceCache();
+  final AuthenticatedApiClient _api =
+      AuthenticatedApiClient(auth: AuthState.instance, baseUrl: _baseUrl);
   Future<void>? _initializationCoordinatorFuture;
   Future<void>? _persistedSessionRestoreFuture;
   Future<void>? _initialSessionRefreshFuture;
@@ -567,37 +571,30 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       _orderRequestReference ??=
           'ORD-UI-${DateTime.now().microsecondsSinceEpoch}';
       final delivery = deliveryDateController.text.trim();
-      final response = await http.post(
-        Uri.parse('$_baseUrl/orders'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'customerId': currentCustomerId,
-          'orderDate': DateTime.now().toUtc().toIso8601String(),
-          'deliveryDate': delivery.isEmpty
-              ? null
-              : DateTime.tryParse(delivery)?.toUtc().toIso8601String(),
-          'totalAmount': total,
-          'discountAmount': discount,
-          'advancePayment': advance,
-          'urgencyStatus': 'Normal',
-          'saleCategory': 'TailoringOrder',
-          'paymentMethod': advance > 0 ? 'Cash' : null,
-          if (advance > 0) 'cashAccountId': _cashAccountId,
-          'requestReference': _orderRequestReference,
-          'items': items,
-        }),
-      );
-      if (response.statusCode != 201) {
-        debugPrint(
-            'Order save failed (${response.statusCode}): ${response.body}');
-        _showMessage(_apiErrorMessage(
-            response.body, 'تعذر حفظ الطلب. تحقق من البيانات وحاول مجددًا.'));
-        return;
-      }
-      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      final payload = {
+        'customerId': currentCustomerId,
+        'orderDate': DateTime.now().toUtc().toIso8601String(),
+        'deliveryDate': delivery.isEmpty
+            ? null
+            : DateTime.tryParse(delivery)?.toUtc().toIso8601String(),
+        'totalAmount': total,
+        'discountAmount': discount,
+        'advancePayment': advance,
+        'urgencyStatus': 'Normal',
+        'saleCategory': 'TailoringOrder',
+        'paymentMethod': advance > 0 ? 'Cash' : null,
+        if (advance > 0) 'cashAccountId': _cashAccountId,
+        'requestReference': _orderRequestReference,
+        'items': items,
+      };
+
+      final decoded = await _api.postObject('/orders', payload);
       await _clearPersistedSession();
       _orderRequestReference = null;
       _showMessage('تم حفظ الطلب ${decoded['orderNumber'] ?? ''} بنجاح.');
+    } on ApiClientException catch (error) {
+      debugPrint('Order creation failed: ${error.message}');
+      _showMessage(error.message);
     } catch (error) {
       debugPrint('Order creation failed: $error');
       _showMessage('تعذر الاتصال بالخادم لحفظ الطلب.');
