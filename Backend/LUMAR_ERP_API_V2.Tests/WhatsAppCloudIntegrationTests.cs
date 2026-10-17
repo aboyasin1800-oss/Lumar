@@ -22,7 +22,14 @@ public sealed class WhatsAppCloudIntegrationTests
     {
         var channel = new WhatsAppCloudMessageChannel(
             new FixedHttpClientFactory(new HttpClient(new StubHandler("{}"))),
-            Options.Create(new WhatsAppOptions { Enabled = false, BaseUrl = "https://graph.facebook.com", ApiVersion = "v20.0", PhoneNumberId = "123", AccessToken = "token" }));
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+            {
+                Enabled = false,
+                BaseUrl = "https://graph.facebook.com",
+                ApiVersion = "v20.0",
+                PhoneNumberId = "123",
+                AccessToken = "token"
+            }));
 
         var result = await channel.SendAsync(new CustomerMessageDto(
             7, 17, 42, "OrderCreated", "OrderCreated", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "966500000000", "ORD-42", "Order", "key"), CancellationToken.None);
@@ -37,7 +44,7 @@ public sealed class WhatsAppCloudIntegrationTests
         var handler = new StubHandler("{\"messages\":[{\"id\":\"wamid.123456789\"}]}");
         var channel = new WhatsAppCloudMessageChannel(
             new FixedHttpClientFactory(new HttpClient(handler)),
-            Options.Create(new WhatsAppOptions
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
             {
                 Enabled = true,
                 BaseUrl = "https://graph.facebook.com",
@@ -69,6 +76,44 @@ public sealed class WhatsAppCloudIntegrationTests
 
         var content = Assert.IsType<ContentResult>(result);
         Assert.Equal("challenge-abc", content.Content);
+    }
+
+    private sealed class FakeWhatsAppConnectionSettingsStore(WhatsAppOptions options) : IWhatsAppConnectionSettingsStore
+    {
+        public Task<WhatsAppConnectionStatusDto> GetStatusAsync(CancellationToken cancellationToken)
+            => Task.FromResult(new WhatsAppConnectionStatusDto(
+                Enabled: options.Enabled,
+                PhoneNumberId: options.PhoneNumberId,
+                TokenConfigured: !string.IsNullOrWhiteSpace(options.AccessToken),
+                ConnectionConfigured: options.Enabled && !string.IsNullOrWhiteSpace(options.PhoneNumberId) && !string.IsNullOrWhiteSpace(options.AccessToken),
+                Message: "test"));
+
+        public Task<WhatsAppRuntimeSettings> GetRuntimeSettingsAsync(CancellationToken cancellationToken)
+            => Task.FromResult(new WhatsAppRuntimeSettings(
+                Enabled: options.Enabled,
+                BaseUrl: string.IsNullOrWhiteSpace(options.BaseUrl) ? "https://graph.facebook.com" : options.BaseUrl,
+                ApiVersion: string.IsNullOrWhiteSpace(options.ApiVersion) ? "v20.0" : options.ApiVersion,
+                PhoneNumberId: options.PhoneNumberId,
+                AccessToken: options.AccessToken,
+                VerifyToken: options.VerifyToken,
+                AppSecret: options.AppSecret,
+                TimeoutSeconds: options.TimeoutSeconds));
+
+        public Task<WhatsAppConnectionStatusDto> UpdateAsync(WhatsAppConnectionSettingsUpdateDto request, CancellationToken cancellationToken)
+        {
+            options.Enabled = request.Enabled;
+            if (!string.IsNullOrWhiteSpace(request.PhoneNumberId)) options.PhoneNumberId = request.PhoneNumberId;
+            if (!string.IsNullOrWhiteSpace(request.AccessToken)) options.AccessToken = request.AccessToken;
+            if (!string.IsNullOrWhiteSpace(request.VerifyToken)) options.VerifyToken = request.VerifyToken;
+            if (!string.IsNullOrWhiteSpace(request.AppSecret)) options.AppSecret = request.AppSecret;
+            if (!string.IsNullOrWhiteSpace(request.BaseUrl)) options.BaseUrl = request.BaseUrl;
+            if (!string.IsNullOrWhiteSpace(request.ApiVersion)) options.ApiVersion = request.ApiVersion;
+            if (request.TimeoutSeconds > 0) options.TimeoutSeconds = request.TimeoutSeconds;
+
+            return GetStatusAsync(cancellationToken);
+        }
+
+        public Task<bool> TestConnectionAsync(CancellationToken cancellationToken) => Task.FromResult(true);
     }
 
     private sealed class FixedHttpClientFactory(HttpClient httpClient) : IHttpClientFactory
