@@ -19,7 +19,11 @@ class FinanceRepository {
     final decoded = jsonDecode(response.body);
     final items = switch (decoded) {
       List list => list,
-      Map map => map['data'] ?? map['items'] ?? map['value'] ?? map['result'] ?? const [],
+      Map map => map['data'] ??
+          map['items'] ??
+          map['value'] ??
+          map['result'] ??
+          const [],
       _ => throw const FormatException('Financial response is not a list.'),
     };
 
@@ -27,10 +31,7 @@ class FinanceRepository {
       throw const FormatException('Financial response is not a list.');
     }
 
-    return items
-        .cast<JsonMap>()
-        .map(fromJson)
-        .toList();
+    return items.cast<JsonMap>().map(fromJson).toList();
   }
 
   Future<JsonMap> _object(String path) async {
@@ -53,6 +54,28 @@ class FinanceRepository {
       _list('/finance/ledger-accounts', LedgerAccount.fromJson);
   Future<List<CashAccount>> getCashAccounts() =>
       _list('/finance/cash-accounts', CashAccount.fromJson);
+  Future<int?> getGeneralCashAccountId() async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_baseUrl/settings/general-cash-account'),
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) {
+        return null;
+      }
+      final value = decoded['cashAccountId'];
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value);
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<CashMovement>> getCashMovements() =>
       _list('/finance/cash-movements', CashMovement.fromJson);
   Future<List<CustomerLedgerEntry>> getCustomerLedger(int customerId) => _list(

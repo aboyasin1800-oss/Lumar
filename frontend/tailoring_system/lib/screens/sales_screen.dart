@@ -454,7 +454,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
             'تعذر تحميل الحسابات النقدية، ولا يمكن تسجيل الدفعة المقدمة الآن.',
           CashAccountAvailability.unavailable =>
             'لا يوجد حساب نقدي عام مفعّل لاستلام العربون. يرجى مراجعة إعدادات الحسابات النقدية.',
-          _ => 'لا يوجد حساب نقدي عام مفعّل لاستلام العربون. يرجى مراجعة إعدادات الحسابات النقدية.',
+          _ =>
+            'لا يوجد حساب نقدي عام مفعّل لاستلام العربون. يرجى مراجعة إعدادات الحسابات النقدية.',
         });
         return;
       }
@@ -465,8 +466,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       final productTypeId =
           _productTypeIdsByType[_normalizePieceTypeKey(pieceTypes[index])];
       if (productTypeId == null || productTypeId <= 0) {
-        _showMessage(
-            'تعذر إنشاء الطلب: نوع القطعة غير مرتبط بمعرف رسمي.');
+        _showMessage('تعذر إنشاء الطلب: نوع القطعة غير مرتبط بمعرف رسمي.');
         return;
       }
       final quantity = int.tryParse(quantityControllers[index].text.trim());
@@ -564,7 +564,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     }
     setState(() => _savingOrder = true);
     try {
-      _orderRequestReference ??= 'ORD-UI-${DateTime.now().microsecondsSinceEpoch}';
+      _orderRequestReference ??=
+          'ORD-UI-${DateTime.now().microsecondsSinceEpoch}';
       final delivery = deliveryDateController.text.trim();
       final response = await http.post(
         Uri.parse('$_baseUrl/orders'),
@@ -607,32 +608,49 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
 
   Future<int?> _resolveOfficialAdvanceCashAccount() async {
     try {
-      final accounts = await FinanceRepository().getCashAccounts();
-      final eligible = accounts
-          .where((account) => account.isActive && account.isReceiptEnabled)
-          .toList(growable: false);
-      if (eligible.isEmpty) {
+      final financeRepository = FinanceRepository();
+      final generalCashAccountId =
+          await financeRepository.getGeneralCashAccountId();
+      if (generalCashAccountId == null || generalCashAccountId <= 0) {
         if (mounted) {
-          setState(() => _cashAccountAvailability = CashAccountAvailability.unavailable);
+          setState(() =>
+              _cashAccountAvailability = CashAccountAvailability.unavailable);
         }
         return null;
       }
 
-      final preferred = eligible
-          .where((account) =>
-              (account.currencyCode ?? '').trim().toUpperCase() == 'YER')
-          .toList(growable: false);
-      final defaultAccount = (preferred.isNotEmpty ? preferred.first : eligible.first);
+      final accounts = await financeRepository.getCashAccounts();
+      int? matchingAccountId;
+      for (final account in accounts) {
+        final isValid = account.id == generalCashAccountId &&
+            account.isActive &&
+            account.isReceiptEnabled &&
+            ((account.currencyCode ?? '').trim().toUpperCase() == 'YER');
+        if (isValid) {
+          matchingAccountId = account.id;
+          break;
+        }
+      }
+
+      if (matchingAccountId == null || matchingAccountId <= 0) {
+        if (mounted) {
+          setState(() =>
+              _cashAccountAvailability = CashAccountAvailability.unavailable);
+        }
+        return null;
+      }
+
       if (mounted) {
         setState(() {
-          _cashAccountId = defaultAccount.id;
+          _cashAccountId = matchingAccountId;
           _cashAccountAvailability = CashAccountAvailability.ready;
         });
       }
-      return defaultAccount.id;
+      return matchingAccountId;
     } catch (_) {
       if (mounted) {
-        setState(() => _cashAccountAvailability = CashAccountAvailability.failed);
+        setState(
+            () => _cashAccountAvailability = CashAccountAvailability.failed);
       }
       return null;
     }
@@ -1267,7 +1285,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       ? _officialPieceTypeOptions
       : _fallbackPieceTypeOptions;
 
-  Future<void> _loadOfficialMeasurementFields({bool forceRefresh = false}) async {
+  Future<void> _loadOfficialMeasurementFields(
+      {bool forceRefresh = false}) async {
     final snapshot = forceRefresh
         ? await _referenceCache.forceRefresh()
         : await _referenceCache.load();
@@ -1304,17 +1323,20 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       final pieceType = _normalizePieceTypeKey(productTypeName);
       if (pieceType.isEmpty || field.nameAr.trim().isEmpty) continue;
       nextFields.putIfAbsent(pieceType, () => <String>[]).add(field.nameAr);
-      nextCodes.putIfAbsent(pieceType, () => <String, String>{})[field.nameAr] = field.code;
+      nextCodes.putIfAbsent(pieceType, () => <String, String>{})[field.nameAr] =
+          field.code;
     }
     _officialMeasurementFieldsByType
       ..clear()
-      ..addAll(nextFields.map((key, value) => MapEntry(key, value.toSet().toList())));
+      ..addAll(nextFields
+          .map((key, value) => MapEntry(key, value.toSet().toList())));
     _measurementCodesByType
       ..clear()
       ..addAll(nextCodes);
     _officialPieceTypeOptions
       ..clear()
-      ..addAll(nextOptions.isNotEmpty ? nextOptions : _fallbackPieceTypeOptions);
+      ..addAll(
+          nextOptions.isNotEmpty ? nextOptions : _fallbackPieceTypeOptions);
     _productTypeIdsByType
       ..clear()
       ..addAll(nextProductTypeIds);
@@ -1396,7 +1418,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     for (final index in indexes) {
       if (index < 0 || index >= pieceTypes.length) continue;
       final fields = {
-        for (final field in _measurementFieldsForPiece(pieceTypes[index])) field: '---',
+        for (final field in _measurementFieldsForPiece(pieceTypes[index]))
+          field: '---',
       };
       final existing = measurementValuesByType[_pieceMeasurementKey(index)];
       if (preserveExisting && existing != null) {
@@ -1823,9 +1846,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
-                color: selected
-                    ? UiPalette.primary
-                    : colorScheme.outlineVariant,
+                color:
+                    selected ? UiPalette.primary : colorScheme.outlineVariant,
                 width: selected ? 4 : 1,
               ),
             ),
@@ -1833,12 +1855,12 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           child: Text(
             label,
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: selected
-                  ? colorScheme.onSurface
-                  : colorScheme.onSurfaceVariant,
-              fontSize: _tabFontSize,
-              fontWeight: FontWeight.bold,
-            ),
+                  color: selected
+                      ? colorScheme.onSurface
+                      : colorScheme.onSurfaceVariant,
+                  fontSize: _tabFontSize,
+                  fontWeight: FontWeight.bold,
+                ),
           ),
         ),
       ),
@@ -2318,8 +2340,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                   child: CashAccountPicker(
                     value: _cashAccountId,
                     enabled: false,
-                    onAvailabilityChanged: (availability) => setState(
-                        () => _cashAccountAvailability = availability),
+                    onAvailabilityChanged: (availability) =>
+                        setState(() => _cashAccountAvailability = availability),
                     onChanged: (value) =>
                         setState(() => _cashAccountId = value),
                   ),
@@ -2498,8 +2520,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     if (values != null && mounted) {
       _updatePieceViewState(
         pieceIndex,
-        () => measurementValuesByType[_pieceMeasurementKey(pieceIndex)] =
-            values,
+        () =>
+            measurementValuesByType[_pieceMeasurementKey(pieceIndex)] = values,
       );
       await _calculateConsumption(pieceIndex);
     }
@@ -2548,9 +2570,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         hoverColor: Colors.transparent,
         focusColor: Colors.transparent,
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-        onTap: pieceType.isEmpty
-            ? null
-          : () => _selectPiece(pieceIndex),
+        onTap: pieceType.isEmpty ? null : () => _selectPiece(pieceIndex),
         child: Padding(
           padding: const EdgeInsets.all(8),
           child: Column(
@@ -2640,11 +2660,11 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                     width: 130,
                     height: 40,
                     child: InputDecorator(
-                      decoration: _pieceDecoration(context, 'معرف القطعة')
-                          .copyWith(
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 9),
-                          ),
+                      decoration:
+                          _pieceDecoration(context, 'معرف القطعة').copyWith(
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 9),
+                      ),
                       child: Text(
                         _productTypeIdsByType[_normalizePieceTypeKey(pieceType)]
                                 ?.toString() ??
@@ -2695,7 +2715,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                         (constraints.maxWidth - spacing * (row2Columns - 1)) /
                             row2Columns;
                     const row1ContentPadding =
-                      EdgeInsets.symmetric(horizontal: 6, vertical: 4);
+                        EdgeInsets.symmetric(horizontal: 6, vertical: 4);
 
                     final row1Fields = <Widget>[
                       FocusTraversalOrder(
@@ -2716,7 +2736,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                             style: theme.textTheme.bodySmall?.copyWith(
                                 fontSize: _fieldFontSize, color: _textMain),
                             decoration: _pieceDecoration(context, 'نوع القطعة',
-                              contentPadding: row1ContentPadding),
+                                contentPadding: row1ContentPadding),
                             items: _pieceTypeOptions
                                 .map((type) => DropdownMenuItem(
                                     value: type,
@@ -2747,7 +2767,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                               'النقاط المتوقعة',
                               _formatExpectedLoyaltyPoints(
                                   _expectedLoyaltyPoints[pieceIndex]),
-                                contentPadding: row1ContentPadding)),
+                              contentPadding: row1ContentPadding)),
                       FocusTraversalOrder(
                         order: const NumericFocusOrder(3),
                         child: _pieceField(
@@ -2787,18 +2807,18 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                       FocusTraversalOrder(
                           order: const NumericFocusOrder(5),
                           child: _legacyReadOnlyField(context, 'نوع القماش',
-                            fabricTypeControllers[pieceIndex].text,
-                            contentPadding: row1ContentPadding)),
+                              fabricTypeControllers[pieceIndex].text,
+                              contentPadding: row1ContentPadding)),
                       FocusTraversalOrder(
                           order: const NumericFocusOrder(6),
                           child: _legacyReadOnlyField(context, 'لون القماش',
-                            fabricColorControllers[pieceIndex].text,
-                            contentPadding: row1ContentPadding)),
+                              fabricColorControllers[pieceIndex].text,
+                              contentPadding: row1ContentPadding)),
                       FocusTraversalOrder(
                           order: const NumericFocusOrder(7),
                           child: _legacyReadOnlyField(context, 'رقم الكتالوج',
-                            catalogNumberControllers[pieceIndex].text,
-                            contentPadding: row1ContentPadding)),
+                              catalogNumberControllers[pieceIndex].text,
+                              contentPadding: row1ContentPadding)),
                     ];
 
                     final row2Fields = <Widget>[
@@ -3020,8 +3040,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       child: TextField(
         controller: controller,
         onChanged: onChanged,
-      decoration: _pieceDecoration(context, label,
-        contentPadding: contentPadding),
+        decoration:
+            _pieceDecoration(context, label, contentPadding: contentPadding),
         keyboardType: number ? TextInputType.number : null,
         textInputAction: TextInputAction.next,
         onSubmitted: (_) => FocusScope.of(context).nextFocus(),
@@ -3033,12 +3053,11 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _legacyReadOnlyField(
-          BuildContext context, String label, String value,
+  Widget _legacyReadOnlyField(BuildContext context, String label, String value,
           {EdgeInsets? contentPadding}) =>
       InputDecorator(
-        decoration: _pieceDecoration(context, label,
-            contentPadding: contentPadding),
+        decoration:
+            _pieceDecoration(context, label, contentPadding: contentPadding),
         child: Text(
           value,
           maxLines: 1,
@@ -3096,7 +3115,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       InputDecorator(
         decoration: _pieceDecoration(context, label).copyWith(
             contentPadding:
-            const EdgeInsets.symmetric(horizontal: 4, vertical: 4)),
+                const EdgeInsets.symmetric(horizontal: 4, vertical: 4)),
         child: Text(
           _formatInches(value),
           maxLines: 2,
@@ -3151,7 +3170,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           borderRadius: BorderRadius.circular(5),
           borderSide: BorderSide(color: borderColor, width: 1.6)),
       isDense: true,
-        contentPadding: contentPadding ??
+      contentPadding: contentPadding ??
           const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
     );
   }

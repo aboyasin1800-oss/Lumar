@@ -8,18 +8,18 @@ enum CashAccountDirection { receiving, disbursing }
 List<CashAccount> eligibleCashAccounts(
   Iterable<CashAccount> accounts, {
   CashAccountDirection direction = CashAccountDirection.receiving,
-}) => accounts
-    .where((account) {
+}) =>
+    accounts.where((account) {
       if (!account.isActive) return false;
       return direction == CashAccountDirection.receiving
           ? account.isReceiptEnabled
           : account.isDisbursementEnabled;
-    })
-    .toList(growable: false);
+    }).toList(growable: false);
 
 List<CashAccount> eligibleReceivingCashAccounts(
   Iterable<CashAccount> accounts,
-) => eligibleCashAccounts(accounts, direction: CashAccountDirection.receiving);
+) =>
+    eligibleCashAccounts(accounts, direction: CashAccountDirection.receiving);
 
 enum CashAccountAvailability { loading, ready, unavailable, failed }
 
@@ -47,37 +47,12 @@ class CashAccountPicker extends StatefulWidget {
 
 class _CashAccountPickerState extends State<CashAccountPicker> {
   late final Future<List<CashAccount>> _accounts;
-  int? _autoSelectedId;
   CashAccountAvailability? _lastAvailability;
 
   @override
   void initState() {
     super.initState();
     _accounts = widget.accountsFuture ?? FinanceRepository().getCashAccounts();
-  }
-
-  int? _defaultCashAccountId(List<CashAccount> accounts) {
-    if (accounts.isEmpty) return null;
-    final eligible = accounts
-        .where((account) => account.isActive && account.isReceiptEnabled)
-        .toList(growable: false);
-    if (eligible.isEmpty) return null;
-
-    final preferred = eligible
-        .where((account) =>
-            (account.currencyCode ?? '').trim().toUpperCase() == 'YER')
-        .toList(growable: false);
-    return (preferred.isNotEmpty ? preferred.first : eligible.first).id;
-  }
-
-  void _selectOnlyEligibleAccount(List<CashAccount> accounts) {
-    final defaultAccountId = _defaultCashAccountId(accounts);
-    if (widget.value != null || defaultAccountId == null) return;
-    if (_autoSelectedId == defaultAccountId) return;
-    _autoSelectedId = defaultAccountId;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && widget.value == null) widget.onChanged(defaultAccountId);
-    });
   }
 
   void _reportAvailability(CashAccountAvailability availability) {
@@ -108,7 +83,6 @@ class _CashAccountPickerState extends State<CashAccountPicker> {
             snapshot.data!,
             direction: widget.direction,
           );
-          _selectOnlyEligibleAccount(accounts);
           if (accounts.isEmpty) {
             _reportAvailability(CashAccountAvailability.unavailable);
             final label = widget.direction == CashAccountDirection.disbursing
@@ -117,9 +91,10 @@ class _CashAccountPickerState extends State<CashAccountPicker> {
             return Text(label);
           }
           _reportAvailability(CashAccountAvailability.ready);
-          final selectedValue = accounts.any((account) => account.id == widget.value)
+          final selectedValue = widget.value != null &&
+                  accounts.any((account) => account.id == widget.value)
               ? widget.value
-              : _defaultCashAccountId(accounts);
+              : null;
           return DropdownButtonFormField<int>(
             initialValue: selectedValue,
             isExpanded: true,
@@ -134,7 +109,8 @@ class _CashAccountPickerState extends State<CashAccountPicker> {
                 .map(
                   (account) => DropdownMenuItem<int>(
                     value: account.id,
-                    child: Text('${account.accountName} (${account.currencyCode ?? '-'})'),
+                    child: Text(
+                        '${account.accountName} (${account.currencyCode ?? '-'})'),
                   ),
                 )
                 .toList(),

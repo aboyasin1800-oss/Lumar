@@ -1,5 +1,6 @@
 using System.Text.Json;
 using LUMAR_ERP_API_V2.Data;
+using LUMAR_ERP_API_V2.DTOs.Finance;
 using LUMAR_ERP_API_V2.DTOs.Settings;
 using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
@@ -352,6 +353,119 @@ public sealed class SettingsRepository(
         }
     }
 
+    public async Task<GeneralCashAccountSettingDto> GetGeneralCashAccountSettingAsync(CancellationToken cancellationToken)
+    {
+        var rawValue = await ReadSettingValueAsync(GeneralCashAccountSettingKey, cancellationToken);
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return new GeneralCashAccountSettingDto(null, null, false, "لم يتم تحديد صندوق نقدي عام افتراضي بعد.");
+        }
+
+        if (!int.TryParse(rawValue.Trim(), out var cashAccountId) || cashAccountId <= 0)
+        {
+            return new GeneralCashAccountSettingDto(null, null, false, "قيمة إعداد الصندوق النقدي العام غير صالحة.");
+        }
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(cancellationToken);
+        var account = await GetCashAccountAsync(connection, null, cashAccountId, cancellationToken);
+
+        if (account is null)
+        {
+            return new GeneralCashAccountSettingDto(cashAccountId, null, false, "الحساب النقدي المحدد غير موجود في النظام.");
+        }
+
+        if (!GeneralCashAccountSettingValidator.IsEligible(account))
+        {
+            return new GeneralCashAccountSettingDto(
+                account.CashAccountId,
+                account.AccountName,
+                false,
+                "الحساب المحدد غير مؤهل ليكون صندوقاً نقدياً عاماً افتراضياً. يجب أن يكون نشطاً، بالعملة YER، وقابلاً للإيراد والمصروفات.");
+        }
+
+        return new GeneralCashAccountSettingDto(
+            account.CashAccountId,
+            account.AccountName,
+            true,
+            "تم تحديد الصندوق النقدي العام الافتراضي بنجاح.");
+    }
+
+    public async Task<GeneralCashAccountSettingDto> UpsertGeneralCashAccountSettingAsync(int? cashAccountId, CancellationToken cancellationToken)
+    {
+        if (cashAccountId is null)
+        {
+            await using var connection = operationalConnections.Create();
+            await connection.OpenAsync(cancellationToken);
+            await using var command = new SqlCommand(
+                "DELETE FROM dbo.System_Settings WHERE SettingName=@key;",
+                connection);
+            command.Parameters.AddWithValue("@key", GeneralCashAccountSettingKey);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            return new GeneralCashAccountSettingDto(null, null, false, "تم إلغاء تحديد الصندوق النقدي العام الافتراضي.");
+        }
+
+        if (cashAccountId <= 0)
+        {
+            throw new ArgumentException("معرف الحساب النقدي العام يجب أن يكون أكبر من صفر.");
+        }
+
+        await using var connectionForCheck = connections.Create();
+        await connectionForCheck.OpenAsync(cancellationToken);
+        var account = await GetCashAccountAsync(connectionForCheck, null, cashAccountId.Value, cancellationToken);
+        if (account is null)
+        {
+            throw new ArgumentException("الحساب النقدي المحدد غير موجود في النظام.");
+        }
+
+        if (!GeneralCashAccountSettingValidator.IsEligible(account))
+        {
+            throw new ArgumentException("لا يمكن تعيين هذا الحساب كصندوق نقدي عام افتراضي إلا إذا كان نشطاً، بالعملة YER، وقابلاً للإيراد والمصروفات.");
+        }
+
+        await using var writeConnection = operationalConnections.Create();
+        await writeConnection.OpenAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await writeConnection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            var exists = await ExistsSettingAsync(writeConnection, transaction, GeneralCashAccountSettingKey, cancellationToken);
+            if (exists)
+            {
+                await using var update = new SqlCommand(
+                    "UPDATE dbo.System_Settings SET SettingValue=@value, Description=@description WHERE SettingName=@key;",
+                    writeConnection,
+                    transaction);
+                update.Parameters.AddWithValue("@key", GeneralCashAccountSettingKey);
+                update.Parameters.AddWithValue("@value", cashAccountId.Value.ToString());
+                update.Parameters.AddWithValue("@description", "Default general cash account selection managed through settings.");
+                await update.ExecuteNonQueryAsync(cancellationToken);
+            }
+            else
+            {
+                await using var insert = new SqlCommand(
+                    "INSERT INTO dbo.System_Settings (SettingName, SettingValue, Description) VALUES (@key, @value, @description);",
+                    writeConnection,
+                    transaction);
+                insert.Parameters.AddWithValue("@key", GeneralCashAccountSettingKey);
+                insert.Parameters.AddWithValue("@value", cashAccountId.Value.ToString());
+                insert.Parameters.AddWithValue("@description", "Default general cash account selection managed through settings.");
+                await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+
+        return await GetGeneralCashAccountSettingAsync(cancellationToken);
+    }
+
+    private const string GeneralCashAccountSettingKey = "GeneralCashAccountId";
+
     private async Task<string?> ReadSettingValueAsync(string settingName, CancellationToken cancellationToken)
     {
         await using var connection = connections.Create();
@@ -362,6 +476,45 @@ public sealed class SettingsRepository(
         command.Parameters.AddWithValue("@key", settingName);
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return value is null ? null : Convert.ToString(value);
+    }
+
+    private async Task<CashAccountDto?> GetCashAccountAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        int cashAccountId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT ca.CashAccountId, ca.AccountName,
+                   COALESCE(SUM(CASE cm.CashDirection WHEN 1 THEN cm.Amount WHEN 2 THEN -cm.Amount ELSE 0 END), 0),
+                   ca.CurrentBalance, ca.IsActive,
+                   CASE WHEN ca.IsActive = 1 AND ca.CashAccountType = 1 AND ca.AllowsReceipts = 1 AND ca.CurrencyCode IS NOT NULL AND ca.LedgerControlAccountId IS NOT NULL THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END,
+                   CASE WHEN ca.IsActive = 1 AND ca.CashAccountType = 1 AND ca.AllowsDisbursements = 1 AND ca.CurrencyCode IS NOT NULL AND ca.LedgerControlAccountId IS NOT NULL THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END,
+                   ca.CurrencyCode, ca.CreatedAt
+            FROM dbo.CashAccounts ca
+            LEFT JOIN dbo.CashMovements cm ON cm.CashAccountId = ca.CashAccountId
+            WHERE ca.CashAccountId = @id
+            GROUP BY ca.CashAccountId, ca.AccountName, ca.CurrentBalance, ca.IsActive, ca.CashAccountType, ca.AllowsReceipts, ca.AllowsDisbursements, ca.CurrencyCode, ca.LedgerControlAccountId, ca.CreatedAt;
+            """;
+
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@id", cashAccountId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new CashAccountDto(
+            reader.GetInt32(0),
+            reader.GetString(1),
+            reader.GetDecimal(2),
+            reader.GetDecimal(3),
+            reader.GetBoolean(4),
+            reader.GetBoolean(5),
+            reader.GetBoolean(6),
+            reader.IsDBNull(7) ? null : reader.GetString(7),
+            reader.GetDateTime(8));
     }
 
     private static bool ParseBoolValue(string? value, bool fallback)

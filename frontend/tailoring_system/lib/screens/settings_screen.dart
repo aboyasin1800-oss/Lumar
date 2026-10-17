@@ -13,6 +13,7 @@ import '../widgets/structure_placeholder.dart';
 import 'settings/code_prefix_settings_screen.dart';
 import 'settings/consumption_rules_settings_screen.dart';
 import 'settings/currency_settings_screen.dart';
+import 'settings/general_cash_account_settings_screen.dart';
 import 'settings/points_settings_screen.dart';
 import 'settings/message_settings_screen.dart';
 import 'settings/print_settings_screen.dart';
@@ -207,6 +208,20 @@ class _SettingsHomeScreenState extends State<SettingsHomeScreen> {
           keywords: const ['تصنيف القماش', 'نوع القماش', 'الأقمشة'],
           icon: Icons.checkroom_outlined,
           builder: (_) => const FabricSettingsScreen(),
+        ),
+        _SettingsSection(
+          title: 'الصندوق النقدي العام الافتراضي',
+          description: 'اختيار الحساب الرئيسي\nللاستخدام كصندوق عام افتراضي',
+          keywords: const [
+            'الصندوق النقدي',
+            'الحساب العام',
+            'الصندوق الافتراضي',
+            'YER',
+            'الإيرادات',
+            'المصروفات'
+          ],
+          icon: Icons.account_balance_wallet_outlined,
+          builder: (_) => const GeneralCashAccountSettingsScreen(),
         ),
         _SettingsSection(
           title: 'إعدادات الرسائل',

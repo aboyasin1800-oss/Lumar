@@ -121,6 +121,37 @@ public sealed class SettingsController(ISettingsService service) : ControllerBas
         }
     }
 
+    [HttpGet("general-cash-account")]
+    public async Task<ActionResult<GeneralCashAccountSettingDto>> GeneralCashAccount(CancellationToken cancellationToken)
+    {
+        var setting = await service.GetGeneralCashAccountSettingAsync(cancellationToken);
+        return Ok(setting);
+    }
+
+    [HttpPut("general-cash-account")]
+    public async Task<ActionResult<GeneralCashAccountSettingDto>> UpdateGeneralCashAccount([FromBody] UpdateGeneralCashAccountSettingDto request, CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return BadRequest("يجب إرسال القيمة المطلوبة للحساب النقدي العام.");
+        }
+
+        if (request.CashAccountId is not null && request.CashAccountId <= 0)
+        {
+            return BadRequest("معرف الحساب النقدي العام يجب أن يكون أكبر من صفر.");
+        }
+
+        try
+        {
+            var result = await service.UpsertGeneralCashAccountSettingAsync(request.CashAccountId, cancellationToken);
+            return Ok(result);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(exception.Message);
+        }
+    }
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<SystemSettingDetailsDto>> One(int id, CancellationToken cancellationToken)
     {

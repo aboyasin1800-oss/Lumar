@@ -8,6 +8,7 @@ import '../../core/app_message.dart';
 import '../../core/ui_palette.dart';
 import '../../models/finance_models.dart';
 import '../../models/order_models.dart';
+import '../../repositories/finance_repository.dart';
 import '../../repositories/order_repository.dart';
 import '../../widgets/cash_account_picker.dart';
 
@@ -143,7 +144,8 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
       }
       if (!mounted) return;
       _showMessage(
-        request.amount > 0 || request.discount > 0 ||
+        request.amount > 0 ||
+                request.discount > 0 ||
                 request.mode == _DeliverySettlementMode.waive
             ? 'تم تسليم الطلب وإثبات الإيراد وتطبيق العربون وتسجيل التسوية بنجاح.'
             : 'تم تسليم الطلب وإثبات الإيراد وتطبيق العربون بنجاح.',
@@ -157,6 +159,13 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
     } finally {
       if (mounted) setState(() => _delivering = false);
     }
+  }
+
+  Future<void> _resolveDefaultCashAccount() async {
+    final generalCashAccountId =
+        await FinanceRepository().getGeneralCashAccountId();
+    if (!mounted || generalCashAccountId == null) return;
+    setState(() => _cashAccountId = generalCashAccountId);
   }
 
   Future<_DeliverySettlementRequest?> _showDeliverySettlementDialog(
@@ -174,13 +183,15 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
               double.tryParse(_discountController.text.trim()) ?? 0;
           final canCollect = mode == _DeliverySettlementMode.full ||
               mode == _DeliverySettlementMode.partial;
-          final remaining = math.max(0, order.remainingAmount - amount - discount);
+          final remaining =
+              math.max(0, order.remainingAmount - amount - discount);
 
           void selectMode(_DeliverySettlementMode nextMode) {
             mode = nextMode;
             if (nextMode == _DeliverySettlementMode.full) {
-              _amountController.text =
-                  math.max(0, order.remainingAmount - discount).toStringAsFixed(2);
+              _amountController.text = math
+                  .max(0, order.remainingAmount - discount)
+                  .toStringAsFixed(2);
             } else if (nextMode == _DeliverySettlementMode.partial) {
               _amountController.clear();
             } else {
@@ -191,7 +202,7 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
             setDialogState(() {});
           }
 
-          void confirm() {
+          Future<void> confirm() async {
             if (canCollect &&
                 (amount < 0 ||
                     discount < 0 ||
@@ -201,8 +212,11 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
               return;
             }
             if (canCollect && amount > 0 && _cashAccountId == null) {
-              _showMessage('اختر الحساب النقدي المستلم قبل تنفيذ التسليم.');
-              return;
+              await _resolveDefaultCashAccount();
+              if (_cashAccountId == null) {
+                _showMessage('لا يوجد صندوق نقدي عام محدد في إعدادات النظام.');
+                return;
+              }
             }
             final reference = _referenceController.text.trim().isEmpty
                 ? 'RCPT-${order.number}-${DateTime.now().millisecondsSinceEpoch}'
@@ -225,7 +239,8 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('المبلغ المتبقي: ${NumberFormat('#,##0.00').format(order.remainingAmount)}'),
+                    Text(
+                        'المبلغ المتبقي: ${NumberFormat('#,##0.00').format(order.remainingAmount)}'),
                     const SizedBox(height: 12),
                     const Text('نوع التسوية'),
                     RadioGroup<_DeliverySettlementMode>(
@@ -258,22 +273,27 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                     TextField(
                       controller: _amountController,
                       enabled: mode == _DeliverySettlementMode.partial,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       onChanged: (_) => setDialogState(() {}),
-                      decoration: const InputDecoration(labelText: 'المبلغ الذي سيُحصّل'),
+                      decoration: const InputDecoration(
+                          labelText: 'المبلغ الذي سيُحصّل'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _discountController,
                       enabled: canCollect,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       onChanged: (value) {
                         if (mode == _DeliverySettlementMode.full) {
                           final updatedDiscount = double.tryParse(value) ?? 0;
-                          _amountController.text = math.max(
-                            0,
-                            order.remainingAmount - updatedDiscount,
-                          ).toStringAsFixed(2);
+                          _amountController.text = math
+                              .max(
+                                0,
+                                order.remainingAmount - updatedDiscount,
+                              )
+                              .toStringAsFixed(2);
                         }
                         setDialogState(() {});
                       },
@@ -299,10 +319,12 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                     TextField(
                       controller: _referenceController,
                       enabled: canCollect && amount > 0,
-                      decoration: const InputDecoration(labelText: 'مرجع التحصيل'),
+                      decoration:
+                          const InputDecoration(labelText: 'مرجع التحصيل'),
                     ),
                     const SizedBox(height: 16),
-                    Text('سيتم تنفيذ العمليات التالية:\n✓ تسليم الطلب\n✓ إثبات الإيراد\n✓ تطبيق العربون إن وجد${canCollect && amount > 0 ? '\n✓ تحصيل المبلغ المحدد' : ''}\n\nالمبلغ المحصل: ${NumberFormat('#,##0.00').format(canCollect ? amount : 0)}\nالمبلغ الذي سيبقى ذمة: ${NumberFormat('#,##0.00').format(remaining)}'),
+                    Text(
+                        'سيتم تنفيذ العمليات التالية:\n✓ تسليم الطلب\n✓ إثبات الإيراد\n✓ تطبيق العربون إن وجد${canCollect && amount > 0 ? '\n✓ تحصيل المبلغ المحدد' : ''}\n\nالمبلغ المحصل: ${NumberFormat('#,##0.00').format(canCollect ? amount : 0)}\nالمبلغ الذي سيبقى ذمة: ${NumberFormat('#,##0.00').format(remaining)}'),
                   ],
                 ),
               ),
@@ -623,8 +645,7 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                               (transaction) => _SummaryRow(
                                 label: _financialTransactionLabel(
                                     transaction.transactionType),
-                                value: numberFormat
-                                    .format(transaction.amount),
+                                value: numberFormat.format(transaction.amount),
                               ),
                             )
                             .toList(),
@@ -636,9 +657,8 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                     _Panel(
                       title: 'إجراء التسليم',
                       child: FilledButton.icon(
-                        onPressed: _delivering
-                            ? null
-                            : () => _deliverOrder(data),
+                        onPressed:
+                            _delivering ? null : () => _deliverOrder(data),
                         icon: _delivering
                             ? const SizedBox(
                                 width: 18,
@@ -648,9 +668,7 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                               )
                             : const Icon(Icons.local_shipping_outlined),
                         label: Text(
-                          _delivering
-                              ? 'جاري تنفيذ التسليم...'
-                              : 'تسليم الطلب',
+                          _delivering ? 'جاري تنفيذ التسليم...' : 'تسليم الطلب',
                         ),
                       ),
                     ),
@@ -658,215 +676,216 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                   ],
                   if (!isReadyForDelivery)
                     _Panel(
-                    title: 'تسوية المبلغ',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'القيمة المقترحة هي المبلغ المتبقي. يمكنك تحصيله كاملاً أو جزئياً، أو تسجيل تبرع بالرصيد المتبقي.',
-                          style: UiPalette.adaptiveTextStyle(
-                            context,
-                            backgroundColor: UiPalette.surfaceCard,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _amountController,
-                          enabled: isReadyForCollection &&
-                              _partialCollectionSelected,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          onChanged: (_) => setState(() {}),
-                          decoration: InputDecoration(
-                            labelText: 'المبلغ الذي سيُحصّل',
-                            filled: true,
-                            fillColor: UiPalette.softBlue,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide:
-                                  BorderSide(color: UiPalette.borderSoft),
+                      title: 'تسوية المبلغ',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'القيمة المقترحة هي المبلغ المتبقي. يمكنك تحصيله كاملاً أو جزئياً، أو تسجيل تبرع بالرصيد المتبقي.',
+                            style: UiPalette.adaptiveTextStyle(
+                              context,
+                              backgroundColor: UiPalette.surfaceCard,
+                              fontSize: 12,
                             ),
                           ),
-                          style: UiPalette.adaptiveTextStyle(
-                            context,
-                            backgroundColor: UiPalette.softBlue,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _discountController,
-                          enabled: isReadyForCollection,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          onChanged: (value) =>
-                              _handleDiscountChanged(order, value),
-                          decoration: InputDecoration(
-                            labelText: 'الخصم',
-                            filled: true,
-                            fillColor: UiPalette.softBlue,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide:
-                                  BorderSide(color: UiPalette.borderSoft),
-                            ),
-                          ),
-                          style: UiPalette.adaptiveTextStyle(
-                            context,
-                            backgroundColor: UiPalette.softBlue,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (enteringAmount > 0) ...[
                           const SizedBox(height: 12),
-                          CashAccountPicker(
-                            value: _cashAccountId,
+                          TextField(
+                            controller: _amountController,
+                            enabled: isReadyForCollection &&
+                                _partialCollectionSelected,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(
+                              labelText: 'المبلغ الذي سيُحصّل',
+                              filled: true,
+                              fillColor: UiPalette.softBlue,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide:
+                                    BorderSide(color: UiPalette.borderSoft),
+                              ),
+                            ),
+                            style: UiPalette.adaptiveTextStyle(
+                              context,
+                              backgroundColor: UiPalette.softBlue,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _discountController,
                             enabled: isReadyForCollection,
-                            accountsFuture: widget.cashAccountsFuture,
-                            onAvailabilityChanged: (availability) =>
-                              setState(() => _cashAccountAvailability =
-                                availability),
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
                             onChanged: (value) =>
-                                setState(() => _cashAccountId = value),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _referenceController,
-                          readOnly: true,
-                          decoration: InputDecoration(
-                            labelText: 'مرجع التحصيل',
-                            filled: true,
-                            fillColor: UiPalette.softBlue,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide:
-                                  BorderSide(color: UiPalette.borderSoft),
-                            ),
-                          ),
-                          style: UiPalette.adaptiveTextStyle(
-                            context,
-                            backgroundColor: UiPalette.softBlue,
-                            fontSize: 13,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextButton.icon(
-                                onPressed: isReadyForCollection
-                                    ? () => _selectFullCollection(order)
-                                    : null,
-                                icon:
-                                    const Icon(Icons.currency_exchange_rounded),
-                                label: const Text('تحصيل كامل المتبقي'),
+                                _handleDiscountChanged(order, value),
+                            decoration: InputDecoration(
+                              labelText: 'الخصم',
+                              filled: true,
+                              fillColor: UiPalette.softBlue,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide:
+                                    BorderSide(color: UiPalette.borderSoft),
                               ),
                             ),
-                            Expanded(
-                              child: TextButton.icon(
-                                onPressed: isReadyForCollection
-                                    ? () => _selectPartialCollection(order)
-                                    : null,
-                                icon: const Icon(Icons.percent_rounded),
-                                label: const Text('تحصيل جزئي'),
+                            style: UiPalette.adaptiveTextStyle(
+                              context,
+                              backgroundColor: UiPalette.softBlue,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (enteringAmount > 0) ...[
+                            const SizedBox(height: 12),
+                            CashAccountPicker(
+                              value: _cashAccountId,
+                              enabled: isReadyForCollection,
+                              accountsFuture: widget.cashAccountsFuture,
+                              onAvailabilityChanged: (availability) => setState(
+                                  () =>
+                                      _cashAccountAvailability = availability),
+                              onChanged: (value) =>
+                                  setState(() => _cashAccountId = value),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _referenceController,
+                            readOnly: true,
+                            decoration: InputDecoration(
+                              labelText: 'مرجع التحصيل',
+                              filled: true,
+                              fillColor: UiPalette.softBlue,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide:
+                                    BorderSide(color: UiPalette.borderSoft),
                               ),
                             ),
-                            Expanded(
-                              child: TextButton.icon(
-                                onPressed: isReadyForCollection &&
-                                        !_waivingBalance &&
-                                        order.remainingAmount > 0
-                                    ? () => _waiveRemainingBalance(order)
-                                    : null,
-                                icon: _waivingBalance
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2),
-                                      )
-                                    : const Icon(
-                                        Icons.volunteer_activism_outlined),
-                                label: Text(
-                                  _waivingBalance
-                                      ? 'جاري التسجيل...'
-                                      : 'تبرع بالرصيد',
+                            style: UiPalette.adaptiveTextStyle(
+                              context,
+                              backgroundColor: UiPalette.softBlue,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextButton.icon(
+                                  onPressed: isReadyForCollection
+                                      ? () => _selectFullCollection(order)
+                                      : null,
+                                  icon: const Icon(
+                                      Icons.currency_exchange_rounded),
+                                  label: const Text('تحصيل كامل المتبقي'),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _InfoCard(
-                                title: 'المبلغ الذي سيُحصّل',
-                                value: amountText,
+                              Expanded(
+                                child: TextButton.icon(
+                                  onPressed: isReadyForCollection
+                                      ? () => _selectPartialCollection(order)
+                                      : null,
+                                  icon: const Icon(Icons.percent_rounded),
+                                  label: const Text('تحصيل جزئي'),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _InfoCard(
-                                title: 'الخصم',
-                                value: discountText,
+                              Expanded(
+                                child: TextButton.icon(
+                                  onPressed: isReadyForCollection &&
+                                          !_waivingBalance &&
+                                          order.remainingAmount > 0
+                                      ? () => _waiveRemainingBalance(order)
+                                      : null,
+                                  icon: _waivingBalance
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        )
+                                      : const Icon(
+                                          Icons.volunteer_activism_outlined),
+                                  label: Text(
+                                    _waivingBalance
+                                        ? 'جاري التسجيل...'
+                                        : 'تبرع بالرصيد',
+                                  ),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _InfoCard(
-                                title: 'المبلغ الذي سيبقى في الذمة',
-                                value:
-                                    numberFormat.format(amountAfterCollection),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _InfoCard(
+                                  title: 'المبلغ الذي سيُحصّل',
+                                  value: amountText,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 18),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: FilledButton.icon(
-                                onPressed: isReadyForCollection &&
-                                        !_submitting &&
-                                        enteringAmount >= 0 &&
-                                        enteringDiscount >= 0 &&
-                                        enteringAmount + enteringDiscount > 0 &&
-                                        enteringAmount + enteringDiscount <=
-                                            order.remainingAmount
-                                    ? () => _submitPayment(data)
-                                    : null,
-                                icon: _submitting
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2),
-                                      )
-                                    : const Icon(
-                                        Icons.check_circle_outline_rounded),
-                                label: Text(_submitting
-                                    ? 'جاري التنفيذ...'
-                                    : 'تأكيد التحصيل'),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _InfoCard(
+                                  title: 'الخصم',
+                                  value: discountText,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: _reload,
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('تحديث البيانات'),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _InfoCard(
+                                  title: 'المبلغ الذي سيبقى في الذمة',
+                                  value: numberFormat
+                                      .format(amountAfterCollection),
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: isReadyForCollection &&
+                                          !_submitting &&
+                                          enteringAmount >= 0 &&
+                                          enteringDiscount >= 0 &&
+                                          enteringAmount + enteringDiscount >
+                                              0 &&
+                                          enteringAmount + enteringDiscount <=
+                                              order.remainingAmount
+                                      ? () => _submitPayment(data)
+                                      : null,
+                                  icon: _submitting
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        )
+                                      : const Icon(
+                                          Icons.check_circle_outline_rounded),
+                                  label: Text(_submitting
+                                      ? 'جاري التنفيذ...'
+                                      : 'تأكيد التحصيل'),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _reload,
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('تحديث البيانات'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),

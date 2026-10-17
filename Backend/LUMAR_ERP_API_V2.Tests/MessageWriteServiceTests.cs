@@ -1509,6 +1509,8 @@ public sealed class MessageWriteServiceTests
 
         public Task<bool> UpdateCurrencySettingsAsync(string currencyName, string preferredCurrency, CancellationToken c) => Task.FromResult(true);
         public Task<bool> UpdatePrintSettingsAsync(IReadOnlyDictionary<string, string> values, CancellationToken c) => Task.FromResult(true);
+        public Task<GeneralCashAccountSettingDto> GetGeneralCashAccountSettingAsync(CancellationToken c) => Task.FromResult(new GeneralCashAccountSettingDto(null, null, false, "لم يتم تحديد صندوق نقدي عام افتراضي بعد."));
+        public Task<GeneralCashAccountSettingDto> UpsertGeneralCashAccountSettingAsync(int? cashAccountId, CancellationToken c) => Task.FromResult(new GeneralCashAccountSettingDto(cashAccountId, null, cashAccountId is not null, ""));
         public Task<IReadOnlyList<SystemSettingListDto>> SearchAsync(string query, CancellationToken c) => Task.FromResult<IReadOnlyList<SystemSettingListDto>>(Array.Empty<SystemSettingListDto>());
         public Task<SystemSettingListDto> ResolveSettingAsync(string key, CancellationToken c) => Task.FromResult(new SystemSettingListDto(0, key, string.Empty, string.Empty));
         public Task<SystemSettingDetailsDto?> UpsertSettingAsync(SystemSettingDetailsDto setting, CancellationToken c) => Task.FromResult<SystemSettingDetailsDto?>(setting);

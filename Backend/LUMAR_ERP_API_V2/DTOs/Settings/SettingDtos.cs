@@ -1,6 +1,8 @@
 namespace LUMAR_ERP_API_V2.DTOs.Settings;
 public sealed record SystemSettingListDto(int SettingId,string? SettingName,string Category,string? Description);
 public sealed record SystemSettingDetailsDto(int SettingId,string? SettingName,string? SettingValue,string Category,string? Description);
+public sealed record GeneralCashAccountSettingDto(int? CashAccountId, string? AccountName, bool IsConfigured, string? Message);
+public sealed record UpdateGeneralCashAccountSettingDto(int? CashAccountId);
 public sealed record SettingCategoryDto(string Category,int SettingCount);
 public sealed record ProductionRouteEntryDto
 {
