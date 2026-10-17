@@ -65,7 +65,8 @@ public sealed class WhatsAppConnectionSettingsTests
             userRole: "Customer");
 
         var status = await controller.GetStatus(CancellationToken.None);
-        Assert.IsType<ForbidResult>(status.Result);
+        var statusResult = Assert.IsType<ObjectResult>(status.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, statusResult.StatusCode);
 
         var update = await controller.Update(new WhatsAppConnectionSettingsUpdateDto
         {
@@ -73,7 +74,51 @@ public sealed class WhatsAppConnectionSettingsTests
             PhoneNumberId = "999",
             AccessToken = "new-token"
         }, CancellationToken.None);
-        Assert.IsType<ForbidResult>(update.Result);
+        var updateResult = Assert.IsType<ObjectResult>(update.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, updateResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task MissingUser_ReturnsUnauthorized()
+    {
+        var controller = CreateController(
+            new WhatsAppConnectionSettingsOptions { Enabled = true, PhoneNumberId = "123456", AccessToken = "secret" },
+            user: null);
+
+        var status = await controller.GetStatus(CancellationToken.None);
+        Assert.IsType<UnauthorizedResult>(status.Result);
+
+        var update = await controller.Update(new WhatsAppConnectionSettingsUpdateDto
+        {
+            Enabled = true,
+            PhoneNumberId = "999",
+            AccessToken = "new-token"
+        }, CancellationToken.None);
+        Assert.IsType<UnauthorizedResult>(update.Result);
+    }
+
+    [Fact]
+    public async Task SystemAdministratorCanReadAndUpdateSettings()
+    {
+        var controller = CreateController(
+            new WhatsAppConnectionSettingsOptions { Enabled = true, PhoneNumberId = "123456", AccessToken = "secret" },
+            userRole: "System Administrator");
+
+        var status = await controller.GetStatus(CancellationToken.None);
+        var statusOk = Assert.IsType<OkObjectResult>(status.Result);
+        var statusModel = Assert.IsType<WhatsAppConnectionSettingsResponseDto>(statusOk.Value);
+        Assert.True(statusModel.ConnectionConfigured);
+
+        var update = await controller.Update(new WhatsAppConnectionSettingsUpdateDto
+        {
+            Enabled = true,
+            PhoneNumberId = "777",
+            AccessToken = "new-secret"
+        }, CancellationToken.None);
+        var updateOk = Assert.IsType<OkObjectResult>(update.Result);
+        var updateModel = Assert.IsType<WhatsAppConnectionSettingsResponseDto>(updateOk.Value);
+        Assert.Equal("777", updateModel.PhoneNumberId);
+        Assert.True(updateModel.ConnectionConfigured);
     }
 
     [Fact]
@@ -199,7 +244,8 @@ public sealed class WhatsAppConnectionSettingsTests
 
     private static WhatsAppSettingsController CreateController(
         WhatsAppConnectionSettingsOptions options,
-        string userRole = "System Administrator")
+        string? userRole = "System Administrator",
+        CurrentUserDto? user = null)
     {
         var inMemory = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -223,7 +269,7 @@ public sealed class WhatsAppConnectionSettingsTests
         var store = provider.GetRequiredService<IWhatsAppConnectionSettingsStore>();
         var controller = new WhatsAppSettingsController(
             store,
-            new FakeAuthenticatedUserContext(userRole));
+            new FakeAuthenticatedUserContext(userRole, user));
 
         controller.ControllerContext = new ControllerContext
         {
@@ -233,10 +279,10 @@ public sealed class WhatsAppConnectionSettingsTests
         return controller;
     }
 
-    private sealed class FakeAuthenticatedUserContext(string role) : IAuthenticatedUserContext
+    private sealed class FakeAuthenticatedUserContext(string? role, CurrentUserDto? overrideUser = null) : IAuthenticatedUserContext
     {
         public Task<CurrentUserDto?> GetCurrentUserAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult<CurrentUserDto?>(new CurrentUserDto(1, "admin", "Admin User", role, true, DateTime.UtcNow));
+            => Task.FromResult<CurrentUserDto?>(overrideUser ?? new CurrentUserDto(1, "admin", "Admin User", role ?? "System Administrator", true, DateTime.UtcNow));
     }
 
     private sealed class FakeWhatsAppConnectionSettingsStore(WhatsAppConnectionSettingsOptions options) : IWhatsAppConnectionSettingsStore

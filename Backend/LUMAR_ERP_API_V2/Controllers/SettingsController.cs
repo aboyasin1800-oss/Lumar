@@ -84,9 +84,14 @@ public sealed class SettingsController(ISettingsService service, IAuthenticatedU
     public async Task<ActionResult<WhatsAppConnectionSettingsResponseDto>> WhatsAppConnection(CancellationToken cancellationToken)
     {
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
-        if (user is null || !string.Equals(user.Role, "System Administrator", StringComparison.OrdinalIgnoreCase))
+        if (user is null)
         {
-            return Forbid();
+            return Unauthorized();
+        }
+
+        if (!string.Equals(user.Role, "System Administrator", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "هذه الشاشة متاحة لمسؤول النظام فقط.");
         }
 
         return Ok(await service.GetWhatsAppConnectionSettingsAsync(cancellationToken));
@@ -98,9 +103,14 @@ public sealed class SettingsController(ISettingsService service, IAuthenticatedU
         CancellationToken cancellationToken)
     {
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
-        if (user is null || !string.Equals(user.Role, "System Administrator", StringComparison.OrdinalIgnoreCase))
+        if (user is null)
         {
-            return Forbid();
+            return Unauthorized();
+        }
+
+        if (!string.Equals(user.Role, "System Administrator", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "هذه الشاشة متاحة لمسؤول النظام فقط.");
         }
 
         if (request is null)
