@@ -27,14 +27,9 @@ public sealed record WhatsAppConnectionSettingsDto(
     string BaseUrl,
     string ApiVersion,
     string PhoneNumberId,
-    string? AccessToken,
-    string? VerifyToken,
-    string? AppSecret,
     int TimeoutSeconds,
     bool IsConfigured,
-    string? AccessTokenMasked,
-    string? VerifyTokenMasked,
-    string? AppSecretMasked,
+    bool TokenConfigured,
     string? Message);
 public sealed record UpdatePrintSettingsDto(
     string? MeasurementCardHeaderImage,

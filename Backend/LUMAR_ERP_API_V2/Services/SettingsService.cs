@@ -59,14 +59,9 @@ public sealed class SettingsService(
             BaseUrl: string.IsNullOrWhiteSpace(options.BaseUrl) ? "https://graph.facebook.com" : options.BaseUrl,
             ApiVersion: string.IsNullOrWhiteSpace(options.ApiVersion) ? "v20.0" : options.ApiVersion,
             PhoneNumberId: options.PhoneNumberId ?? string.Empty,
-            AccessToken: null,
-            VerifyToken: null,
-            AppSecret: null,
             TimeoutSeconds: options.TimeoutSeconds <= 0 ? 30 : options.TimeoutSeconds,
             IsConfigured: HasValidProviderSetup(options),
-            AccessTokenMasked: MaskSecret(options.AccessToken),
-            VerifyTokenMasked: MaskSecret(options.VerifyToken),
-            AppSecretMasked: MaskSecret(options.AppSecret),
+            TokenConfigured: !string.IsNullOrWhiteSpace(options.AccessToken),
             Message: BuildWhatsAppStatusMessage(options));
 
         return Task.FromResult(payload);
@@ -79,29 +74,31 @@ public sealed class SettingsService(
             throw new ArgumentNullException(nameof(config));
         }
 
-        var section = configuration.GetSection(WhatsAppOptions.SectionName);
         var existing = whatsappOptionsMonitor.CurrentValue ?? new WhatsAppOptions();
-
         var next = new WhatsAppOptions
         {
             Enabled = config.Enabled,
             BaseUrl = NormalizeText(config.BaseUrl, existing.BaseUrl, "https://graph.facebook.com"),
             ApiVersion = NormalizeText(config.ApiVersion, existing.ApiVersion, "v20.0"),
             PhoneNumberId = NormalizeOptionalText(config.PhoneNumberId, existing.PhoneNumberId),
-            AccessToken = NormalizeOptionalSecret(config.AccessToken, existing.AccessToken),
-            VerifyToken = NormalizeOptionalSecret(config.VerifyToken, existing.VerifyToken),
-            AppSecret = NormalizeOptionalSecret(config.AppSecret, existing.AppSecret),
+            AccessToken = existing.AccessToken,
+            VerifyToken = existing.VerifyToken,
+            AppSecret = existing.AppSecret,
             TimeoutSeconds = config.TimeoutSeconds <= 0 ? 30 : config.TimeoutSeconds,
         };
 
-        section["Enabled"] = next.Enabled.ToString();
-        section["BaseUrl"] = next.BaseUrl;
-        section["ApiVersion"] = next.ApiVersion;
-        section["PhoneNumberId"] = next.PhoneNumberId;
-        section["AccessToken"] = next.AccessToken;
-        section["VerifyToken"] = next.VerifyToken;
-        section["AppSecret"] = next.AppSecret;
-        section["TimeoutSeconds"] = next.TimeoutSeconds.ToString();
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WhatsApp__AccessToken")))
+        {
+            next.AccessToken = Environment.GetEnvironmentVariable("WhatsApp__AccessToken") ?? next.AccessToken;
+        }
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WhatsApp__VerifyToken")))
+        {
+            next.VerifyToken = Environment.GetEnvironmentVariable("WhatsApp__VerifyToken") ?? next.VerifyToken;
+        }
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WhatsApp__AppSecret")))
+        {
+            next.AppSecret = Environment.GetEnvironmentVariable("WhatsApp__AppSecret") ?? next.AppSecret;
+        }
 
         if (configuration is IConfigurationRoot root)
         {
@@ -146,10 +143,10 @@ public sealed class SettingsService(
 
         if (string.IsNullOrWhiteSpace(options.PhoneNumberId) || string.IsNullOrWhiteSpace(options.AccessToken))
         {
-            return "لم يتم إكمال إعداد مزود واتساب، ويحتاج إلى رقم الهاتف ورمز الوصول قبل إرسال الرسائل.";
+            return "تم التحقق من اكتمال إعدادات الاتصال، ولم يتم إدخال رمز الوصول النهائي بعد.";
         }
 
-        return "إعداد مزود واتساب مكتمل ويمكن استخدامه لإرسال الرسائل.";
+        return "تم التحقق من اكتمال إعدادات الاتصال.";
     }
 
     private static string NormalizeText(string? incoming, string? current, string defaultValue)
@@ -186,21 +183,5 @@ public sealed class SettingsService(
         }
 
         return value;
-    }
-
-    private static string? MaskSecret(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        var trimmed = value.Trim();
-        if (trimmed.Length <= 4)
-        {
-            return new string('*', trimmed.Length);
-        }
-
-        return $"{trimmed[..2]}********{trimmed[^2..]}";
     }
 }
