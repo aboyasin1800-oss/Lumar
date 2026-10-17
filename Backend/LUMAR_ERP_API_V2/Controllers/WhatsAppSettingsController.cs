@@ -20,7 +20,7 @@ public sealed class WhatsAppSettingsController(
             return Unauthorized();
         }
 
-        if (!string.Equals(user.Role, "System Administrator", StringComparison.OrdinalIgnoreCase))
+        if (!IsAdministrativeRole(user.Role))
         {
             return StatusCode(StatusCodes.Status403Forbidden, "هذه الشاشة متاحة لمسؤول النظام فقط.");
         }
@@ -53,7 +53,7 @@ public sealed class WhatsAppSettingsController(
             return Unauthorized();
         }
 
-        if (!string.Equals(user.Role, "System Administrator", StringComparison.OrdinalIgnoreCase))
+        if (!IsAdministrativeRole(user.Role))
         {
             return StatusCode(StatusCodes.Status403Forbidden, "هذه الشاشة متاحة لمسؤول النظام فقط.");
         }
@@ -79,5 +79,19 @@ public sealed class WhatsAppSettingsController(
             TokenConfigured: !string.IsNullOrWhiteSpace(runtime.AccessToken),
             ConnectionConfigured: connectionConfigured,
             Message: status.Message));
+    }
+
+    private static bool IsAdministrativeRole(string? role)
+    {
+        if (string.IsNullOrWhiteSpace(role))
+        {
+            return false;
+        }
+
+        var normalized = role.Trim();
+        return normalized.Equals("Admin", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("System Administrator", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("Admin", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("Administrator", StringComparison.OrdinalIgnoreCase);
     }
 }

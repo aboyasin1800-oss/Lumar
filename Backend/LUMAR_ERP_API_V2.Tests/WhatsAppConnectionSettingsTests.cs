@@ -98,6 +98,30 @@ public sealed class WhatsAppConnectionSettingsTests
     }
 
     [Fact]
+    public async Task AdminRole_IsAlsoAllowedForSettings()
+    {
+        var controller = CreateController(
+            new WhatsAppConnectionSettingsOptions { Enabled = true, PhoneNumberId = "123456", AccessToken = "secret" },
+            userRole: "Admin");
+
+        var status = await controller.GetStatus(CancellationToken.None);
+        var statusOk = Assert.IsType<OkObjectResult>(status.Result);
+        var statusModel = Assert.IsType<WhatsAppConnectionSettingsResponseDto>(statusOk.Value);
+        Assert.True(statusModel.ConnectionConfigured);
+
+        var update = await controller.Update(new WhatsAppConnectionSettingsUpdateDto
+        {
+            Enabled = true,
+            PhoneNumberId = "777",
+            AccessToken = "new-secret"
+        }, CancellationToken.None);
+        var updateOk = Assert.IsType<OkObjectResult>(update.Result);
+        var updateModel = Assert.IsType<WhatsAppConnectionSettingsResponseDto>(updateOk.Value);
+        Assert.Equal("777", updateModel.PhoneNumberId);
+        Assert.True(updateModel.ConnectionConfigured);
+    }
+
+    [Fact]
     public async Task SystemAdministratorCanReadAndUpdateSettings()
     {
         var controller = CreateController(
