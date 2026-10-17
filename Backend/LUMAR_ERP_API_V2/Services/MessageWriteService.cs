@@ -55,22 +55,12 @@ public sealed class MessageWriteService(
             var title = renderer.Render(template.Title, values);
             var body = renderer.Render(template.Body, values);
 
-            int? notificationId = await repository.CreateCustomerNotificationAsync(
-                route.CustomerId,
-                request.OrderId,
-                request.EventType,
-                title,
-                body,
-                null,
-                cancellationToken);
-
-            if (notificationId is null or <= 0)
-                continue;
-
             int? messageId = null;
+            int? notificationId = null;
+
             if (runtimeSettings.WhatsAppEnabled)
             {
-                messageId = await repository.CreateCustomerMessageAsync(
+                var createdPair = await repository.CreateCustomerMessageAndNotificationAsync(
                     route.CustomerId,
                     request.OrderId,
                     request.EventType,
@@ -83,7 +73,24 @@ public sealed class MessageWriteService(
                     request.ReferenceType,
                     idempotencyKey,
                     cancellationToken);
+
+                messageId = createdPair.MessageId;
+                notificationId = createdPair.NotificationId;
             }
+            else
+            {
+                notificationId = await repository.CreateCustomerNotificationAsync(
+                    route.CustomerId,
+                    request.OrderId,
+                    request.EventType,
+                    title,
+                    body,
+                    null,
+                    cancellationToken);
+            }
+
+            if (notificationId is null or <= 0)
+                continue;
 
             createdResults.Add(new MessageWriteResult(true, messageId, notificationId, template.TemplateKey, title, body));
         }

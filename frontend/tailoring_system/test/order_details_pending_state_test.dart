@@ -5,7 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tailoring_system/screens/order_details_content.dart';
 
 void main() {
-  testWidgets('order cancel action does not pass async callback into setState',
+  testWidgets(
+      'pending order details state shows loading spinner and hides cancel action before data is ready',
       (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -15,11 +16,17 @@ void main() {
       ),
     );
 
-    final buttonFinder = find.text('إلغاء الطلب');
-    expect(buttonFinder, findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('إلغاء الطلب'), findsNothing);
+  });
 
-    final button = tester.widget<FilledButton>(buttonFinder);
-    expect(button.onPressed, isNotNull);
+  test('order details gate keeps cancel action behind active loaded state only', () {
+    final source = File('lib/screens/order_details_content.dart').readAsStringSync();
+
+    expect(source, contains('if (snapshot.connectionState != ConnectionState.done)'));
+    expect(source, contains('return const Center(child: CircularProgressIndicator());'));
+    expect(source, contains("order.status.toLowerCase() == 'cancelled'"));
+    expect(source, contains("label: const Text('إلغاء الطلب')"));
   });
 
   test('cancel path keeps async work outside setState', () {
