@@ -1307,6 +1307,20 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "test"
+		},
+		{
+			"label": "whatsapp-preflight-temp",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoLogo",
+				"-NoProfile",
+				"-Command",
+				"Set-Location 'C:\\Users\\LENOVO\\AppData\\Local\\Temp\\lumar-whatsapp-live-attempt'; dotnet restore '.\\lumar-whatsapp-live-attempt.csproj'; dotnet run --project '.\\lumar-whatsapp-live-attempt.csproj' --no-restore --nologo"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }
