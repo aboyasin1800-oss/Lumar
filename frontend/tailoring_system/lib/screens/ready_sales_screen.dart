@@ -91,8 +91,9 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
   Future<void> _loadEmployees() async {
     try {
       final response = await http.get(Uri.parse('$_baseUrl/employees'));
-      if (response.statusCode < 200 || response.statusCode >= 300)
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception();
+      }
       final values = (jsonDecode(response.body) as List)
           .cast<Map<String, dynamic>>()
           .map(_Employee.fromJson)
@@ -132,8 +133,9 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
       final uri = Uri.parse('$_baseUrl/customers/search')
           .replace(queryParameters: {'term': term});
       final response = await http.get(uri);
-      if (response.statusCode < 200 || response.statusCode >= 300)
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception();
+      }
       final values = (jsonDecode(response.body) as List)
           .cast<Map<String, dynamic>>()
           .map(_Customer.fromJson)
@@ -426,9 +428,10 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
             .showSnackBar(const SnackBar(content: Text('لم تكتمل الطباعة.')));
       }
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('تعذرت طباعة الفاتورة: $error')));
+      }
     }
   }
 
@@ -438,12 +441,14 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
         child: FutureBuilder<List<_ReadyProduct>>(
           future: productsFuture,
           builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done)
+            if (snapshot.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
-            if (snapshot.hasError)
+            }
+            if (snapshot.hasError) {
               return _LoadError(
                   onRetry: () =>
                       setState(() => productsFuture = _loadProducts()));
+            }
             final products = snapshot.data!;
             return LayoutBuilder(builder: (context, constraints) {
               if (constraints.maxWidth < 900) {
