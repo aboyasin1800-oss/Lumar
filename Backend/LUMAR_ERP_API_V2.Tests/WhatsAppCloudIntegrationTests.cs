@@ -189,19 +189,92 @@ public sealed class WhatsAppCloudIntegrationTests
     }
 
     [Fact]
-    public void WhatsAppWebhookController_ValidVerificationChallenge_ReturnsChallenge()
+    public async Task WhatsAppWebhookController_ValidVerificationChallenge_ReturnsChallenge()
     {
-        var options = Options.Create(new WhatsAppOptions { Enabled = true, VerifyToken = "valid-token" });
-        var controller = new WhatsAppWebhookController(new StubMessageRepository(), options, NullLogger<WhatsAppWebhookController>.Instance);
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, VerifyToken = "valid-token" });
+        var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, NullLogger<WhatsAppWebhookController>.Instance);
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext()
         };
 
-        var result = controller.VerifyWebhook("subscribe", "challenge-abc", "valid-token");
+        var result = await controller.VerifyWebhook("subscribe", "challenge-abc", "valid-token");
 
         var content = Assert.IsType<ContentResult>(result);
         Assert.Equal("challenge-abc", content.Content);
+    }
+
+    [Fact]
+    public async Task WhatsAppWebhookController_UsesRuntimeSettings_RejectsEmptyVerifyToken()
+    {
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, VerifyToken = string.Empty, AppSecret = "legacy-secret" });
+        var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, NullLogger<WhatsAppWebhookController>.Instance);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var result = await controller.VerifyWebhook("subscribe", "challenge-abc", "runtime-token");
+
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    [Fact]
+    public async Task WhatsAppWebhookController_ValidPostSignature_Accepts_WhenRuntimeAppSecretMatches()
+    {
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, AppSecret = "runtime-secret" });
+        var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, NullLogger<WhatsAppWebhookController>.Instance);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext()
+        };
+
+        var rawBody = "{\"entry\":[{\"changes\":[{\"value\":{\"statuses\":[{\"id\":\"wamid.1\",\"status\":\"sent\",\"timestamp\":123} ]}}]}]}";
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rawBody));
+        controller.ControllerContext.HttpContext.Request.Body = ms;
+        controller.ControllerContext.HttpContext.Request.Headers["X-Hub-Signature-256"] = ComputeSignature(rawBody, "runtime-secret");
+
+        var result = await controller.ReceiveWebhook(CancellationToken.None);
+
+        Assert.IsType<OkResult>(result);
+    }
+
+    [Fact]
+    public async Task WhatsAppWebhookController_InvalidPostSignature_Rejects()
+    {
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, AppSecret = "runtime-secret" });
+        var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, NullLogger<WhatsAppWebhookController>.Instance);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var rawBody = "{\"entry\":[{\"changes\":[{\"value\":{\"statuses\":[{\"id\":\"wamid.1\",\"status\":\"sent\",\"timestamp\":123} ]}}]}]}";
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rawBody));
+        controller.ControllerContext.HttpContext.Request.Body = ms;
+        controller.ControllerContext.HttpContext.Request.Headers["X-Hub-Signature-256"] = "sha256=invalid";
+
+        var result = await controller.ReceiveWebhook(CancellationToken.None);
+
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    [Fact]
+    public async Task WhatsAppWebhookController_EmptyRuntimeAppSecret_RejectsPostSafely()
+    {
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, AppSecret = "" });
+        var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, NullLogger<WhatsAppWebhookController>.Instance);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var rawBody = "{\"entry\":[]}";
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rawBody));
+        controller.ControllerContext.HttpContext.Request.Body = ms;
+        controller.ControllerContext.HttpContext.Request.Headers["X-Hub-Signature-256"] = "sha256=anything";
+
+        var result = await controller.ReceiveWebhook(CancellationToken.None);
+
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    private static string ComputeSignature(string rawBody, string appSecret)
+    {
+        using var hmac = new System.Security.Cryptography.HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
+        var hash = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(rawBody))).ToLowerInvariant();
+        return $"sha256={hash}";
     }
 
     private sealed class FakeWhatsAppConnectionSettingsStore(WhatsAppOptions options) : IWhatsAppConnectionSettingsStore

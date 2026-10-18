@@ -1,10 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Repositories;
+using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
 namespace LUMAR_ERP_API_V2.Controllers;
 
@@ -12,13 +11,11 @@ namespace LUMAR_ERP_API_V2.Controllers;
 [Route("whatsapp")]
 public sealed class WhatsAppWebhookController(
     IMessageRepository messageRepository,
-    IOptions<WhatsAppOptions> options,
+    IWhatsAppConnectionSettingsStore settingsStore,
     ILogger<WhatsAppWebhookController> logger) : ControllerBase
 {
-    private readonly WhatsAppOptions _options = options.Value;
-
     [HttpGet("webhook")]
-    public ActionResult VerifyWebhook([FromQuery] string? mode, [FromQuery] string? challenge, [FromQuery] string? verify_token)
+    public async Task<ActionResult> VerifyWebhook([FromQuery] string? mode, [FromQuery] string? challenge, [FromQuery] string? verify_token)
     {
         if (string.IsNullOrWhiteSpace(mode) || string.IsNullOrWhiteSpace(challenge) || string.IsNullOrWhiteSpace(verify_token))
             return BadRequest();
@@ -26,7 +23,14 @@ public sealed class WhatsAppWebhookController(
         if (!string.Equals(mode, "subscribe", StringComparison.OrdinalIgnoreCase))
             return BadRequest();
 
-        if (!string.Equals(verify_token, _options.VerifyToken, StringComparison.Ordinal))
+        var runtimeSettings = await settingsStore.GetRuntimeSettingsAsync(HttpContext.RequestAborted);
+        if (string.IsNullOrWhiteSpace(runtimeSettings.VerifyToken))
+        {
+            logger.LogWarning("Rejected WhatsApp webhook verification because the runtime VerifyToken is empty.");
+            return Unauthorized();
+        }
+
+        if (!string.Equals(verify_token, runtimeSettings.VerifyToken, StringComparison.Ordinal))
             return Unauthorized();
 
         return Content(challenge);
@@ -41,11 +45,18 @@ public sealed class WhatsAppWebhookController(
         using var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true);
         var rawBody = await reader.ReadToEndAsync(cancellationToken);
 
-        if (!IsValidSignature(rawBody, signatureHeader.ToString()))
-            return Unauthorized();
-
         if (string.IsNullOrWhiteSpace(rawBody))
             return BadRequest();
+
+        var runtimeSettings = await settingsStore.GetRuntimeSettingsAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(runtimeSettings.AppSecret))
+        {
+            logger.LogWarning("Rejected WhatsApp webhook because the runtime AppSecret is empty.");
+            return Unauthorized();
+        }
+
+        if (!IsValidSignature(rawBody, signatureHeader.ToString(), runtimeSettings.AppSecret))
+            return Unauthorized();
 
         try
         {
@@ -96,15 +107,15 @@ public sealed class WhatsAppWebhookController(
         return Ok();
     }
 
-    private bool IsValidSignature(string rawBody, string receivedSignature)
+    private static bool IsValidSignature(string rawBody, string receivedSignature, string appSecret)
     {
-        if (string.IsNullOrWhiteSpace(_options.AppSecret))
-            return true;
+        if (string.IsNullOrWhiteSpace(appSecret))
+            return false;
 
         if (string.IsNullOrWhiteSpace(receivedSignature))
             return false;
 
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_options.AppSecret));
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
         var hash = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(rawBody))).ToLowerInvariant();
         var expected = $"sha256={hash}";
         return string.Equals(receivedSignature.Trim(), expected, StringComparison.OrdinalIgnoreCase);
