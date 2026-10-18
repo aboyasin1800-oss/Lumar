@@ -22,7 +22,7 @@ public sealed class WhatsAppCloudIntegrationTests
     public async Task WhatsAppCloudMessageChannel_WhenDisabled_DoesNotFakeSuccess()
     {
         var channel = new WhatsAppCloudMessageChannel(
-            new FixedHttpClientFactory(new HttpClient(new StubHandler("{}"))),
+            new FixedHttpClientFactory(new HttpClient(new StubHandler(HttpStatusCode.OK, "{}"))),
             new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
             {
                 Enabled = false,
