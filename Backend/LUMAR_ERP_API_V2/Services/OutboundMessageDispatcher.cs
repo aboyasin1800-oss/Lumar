@@ -46,9 +46,16 @@ public sealed class OutboundMessageDispatcher(
             }
             catch (Exception exception)
             {
-                var failureReason = exception.Message;
+                var failureReason = "Unexpected outbound provider failure.";
                 await repository.MarkFailedAsync(message.CustomerMessageId, failureReason, true, cancellationToken);
-                logger.LogError(exception, "Unhandled outbound dispatch failure for message {MessageId}.", message.CustomerMessageId);
+                logger.LogError(
+                    "Unhandled outbound dispatch failure for message {MessageId}. Channel={Channel} Outcome={Outcome} Retryable={Retryable} ExceptionType={ExceptionType} RecipientPresent={RecipientPresent}",
+                    message.CustomerMessageId,
+                    channelName,
+                    OutboundDispatchOutcome.PermanentFailure,
+                    true,
+                    exception.GetType().Name,
+                    !string.IsNullOrWhiteSpace(message.PhoneNumber));
                 return new OutboundDispatchResult(message.CustomerMessageId, message.EventType, channelName, false, null, failureReason, message.AttemptCount, "Failed");
             }
         }

@@ -62,6 +62,7 @@ public sealed class SettingsService(
             TimeoutSeconds: runtime.TimeoutSeconds <= 0 ? 30 : runtime.TimeoutSeconds,
             IsConfigured: connectionConfigured,
             TokenConfigured: !string.IsNullOrWhiteSpace(runtime.AccessToken),
+            ConnectionConfigured: connectionConfigured,
             Message: BuildWhatsAppStatusMessage(runtime.Enabled, runtime.PhoneNumberId, runtime.AccessToken));
     }
 

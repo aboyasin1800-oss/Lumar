@@ -61,7 +61,7 @@ public sealed class WhatsAppCloudMessageChannel(
                     "OutboundWhatsAppResult Channel=WhatsApp CustomerMessageId={CustomerMessageId} HttpStatusCode={HttpStatusCode} Outcome={Outcome} ProviderErrorCode={ProviderErrorCode} ProviderErrorSubcode={ProviderErrorSubcode} Retryable={Retryable} ProviderMessageIdPresent={ProviderMessageIdPresent} RecipientPresent={RecipientPresent}",
                     message.CustomerMessageId,
                     (int)response.StatusCode,
-                    OutboundDispatchOutcome.PermanentFailure,
+                    safeResult.Outcome,
                     safeResult.ProviderErrorCode,
                     safeResult.ProviderErrorSubcode,
                     safeResult.Retryable,
@@ -122,20 +122,38 @@ public sealed class WhatsAppCloudMessageChannel(
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            var failure = new OutboundAdapterResult(OutboundDispatchOutcome.TransientFailure, FailureReason: "WhatsApp request timed out or failed due to network conditions.", Retryable: true);
-            logger?.LogWarning("OutboundWhatsAppResult Channel=WhatsApp CustomerMessageId={CustomerMessageId} Outcome={Outcome} Retryable={Retryable} RecipientPresent={RecipientPresent}", message.CustomerMessageId, OutboundDispatchOutcome.TransientFailure, true, !string.IsNullOrWhiteSpace(message.PhoneNumber));
+            var failure = new OutboundAdapterResult(OutboundDispatchOutcome.TransientFailure, FailureReason: "WhatsApp request timed out.", Retryable: true);
+            logger?.LogWarning(
+                "OutboundWhatsAppResult Channel=WhatsApp CustomerMessageId={CustomerMessageId} Outcome={Outcome} Retryable={Retryable} RecipientPresent={RecipientPresent} ExceptionType={ExceptionType}",
+                message.CustomerMessageId,
+                OutboundDispatchOutcome.TransientFailure,
+                true,
+                !string.IsNullOrWhiteSpace(message.PhoneNumber),
+                nameof(OperationCanceledException));
             return failure;
         }
-        catch (HttpRequestException ex)
+        catch (HttpRequestException)
         {
             var failure = new OutboundAdapterResult(OutboundDispatchOutcome.TransientFailure, FailureReason: "WhatsApp request failed due to network conditions.", Retryable: true);
-            logger?.LogWarning(ex, "OutboundWhatsAppResult Channel=WhatsApp CustomerMessageId={CustomerMessageId} Outcome={Outcome} Retryable={Retryable} RecipientPresent={RecipientPresent}", message.CustomerMessageId, OutboundDispatchOutcome.TransientFailure, true, !string.IsNullOrWhiteSpace(message.PhoneNumber));
+            logger?.LogWarning(
+                "OutboundWhatsAppResult Channel=WhatsApp CustomerMessageId={CustomerMessageId} Outcome={Outcome} Retryable={Retryable} RecipientPresent={RecipientPresent} ExceptionType={ExceptionType}",
+                message.CustomerMessageId,
+                OutboundDispatchOutcome.TransientFailure,
+                true,
+                !string.IsNullOrWhiteSpace(message.PhoneNumber),
+                nameof(HttpRequestException));
             return failure;
         }
         catch (Exception ex)
         {
-            var failure = new OutboundAdapterResult(OutboundDispatchOutcome.PermanentFailure, FailureReason: ex.Message, Retryable: false);
-            logger?.LogError(ex, "OutboundWhatsAppResult Channel=WhatsApp CustomerMessageId={CustomerMessageId} Outcome={Outcome} Retryable={Retryable} RecipientPresent={RecipientPresent}", message.CustomerMessageId, OutboundDispatchOutcome.PermanentFailure, false, !string.IsNullOrWhiteSpace(message.PhoneNumber));
+            var failure = new OutboundAdapterResult(OutboundDispatchOutcome.PermanentFailure, FailureReason: "Unexpected WhatsApp provider failure.", Retryable: false);
+            logger?.LogError(
+                "OutboundWhatsAppResult Channel=WhatsApp CustomerMessageId={CustomerMessageId} Outcome={Outcome} Retryable={Retryable} RecipientPresent={RecipientPresent} ExceptionType={ExceptionType}",
+                message.CustomerMessageId,
+                OutboundDispatchOutcome.PermanentFailure,
+                false,
+                !string.IsNullOrWhiteSpace(message.PhoneNumber),
+                ex.GetType().Name);
             return failure;
         }
     }
