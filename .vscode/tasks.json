@@ -1283,6 +1283,30 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "test"
+		},
+		{
+			"label": "Build WhatsApp Safe Observability",
+			"type": "shell",
+			"command": "dotnet build \"Backend/LUMAR_ERP_API_V2/LUMAR_ERP_API_V2.csproj\" --nologo",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Test WhatsApp Safe Observability",
+			"type": "shell",
+			"command": "dotnet test \"Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj\" --filter 'FullyQualifiedName~WhatsAppConnectionSettingsTests|FullyQualifiedName~WhatsAppCloudIntegrationTests' --nologo --disable-build-servers --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "MessageWrite Safe Scope",
+			"type": "shell",
+			"command": "dotnet test \"Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj\" --filter 'FullyQualifiedName~MessageWriteServiceTests&FullyQualifiedName!~MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists' --nologo --disable-build-servers --logger 'console;verbosity=minimal'",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
 		}
 	]
 }

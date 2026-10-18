@@ -10,6 +10,7 @@ using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -143,6 +144,51 @@ public sealed class WhatsAppCloudIntegrationTests
     }
 
     [Fact]
+    public async Task WhatsAppCloudMessageChannel_SanitizesAccessTokenAndAuthorizationTokensAcrossFailureReasonAndLogger()
+    {
+        var logger = new CaptureLogger<WhatsAppCloudMessageChannel>();
+        var response = "{\"error\":{\"type\":\"OAuthException\",\"code\":100,\"error_subcode\":400010,\"message\":\"AccessToken=SECRET_TOKEN_123 Authorization: Bearer SECRET_BEARER AppSecret=APP_SECRET_VALUE VerifyToken: VERIFY_SECRET_VALUE\"}}";
+        var channel = new WhatsAppCloudMessageChannel(
+            new FixedHttpClientFactory(new HttpClient(new StubHandler(HttpStatusCode.BadRequest, response))),
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+            {
+                Enabled = true,
+                BaseUrl = "https://graph.facebook.com",
+                ApiVersion = "v20.0",
+                PhoneNumberId = "123456",
+                AccessToken = "token-value"
+            }),
+            logger);
+
+        var result = await channel.SendAsync(new CustomerMessageDto(
+            12, 22, 48, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+966500000005", "ORD-48", "Order", "key-6"), CancellationToken.None);
+
+        Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
+        Assert.Equal(400, result.HttpStatusCode);
+        Assert.Equal(100, result.ProviderErrorCode);
+        Assert.Equal(400010, result.ProviderErrorSubcode);
+        Assert.Equal("OAuthException", result.SafeProviderErrorType);
+        Assert.True(result.FailureReason.Length <= 500, $"FailureReason length exceeded safe cap: {result.FailureReason.Length}");
+        Assert.DoesNotContain("SECRET_TOKEN_123", result.FailureReason, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_BEARER", result.FailureReason, StringComparison.Ordinal);
+        Assert.DoesNotContain("APP_SECRET_VALUE", result.FailureReason, StringComparison.Ordinal);
+        Assert.DoesNotContain("VERIFY_SECRET_VALUE", result.FailureReason, StringComparison.Ordinal);
+        Assert.DoesNotContain("AccessToken", result.FailureReason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Authorization", result.FailureReason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Bearer", result.FailureReason, StringComparison.OrdinalIgnoreCase);
+
+        var logText = string.Join(" ", logger.Messages);
+        Assert.DoesNotContain("SECRET_TOKEN_123", logText, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_BEARER", logText, StringComparison.Ordinal);
+        Assert.DoesNotContain("APP_SECRET_VALUE", logText, StringComparison.Ordinal);
+        Assert.DoesNotContain("VERIFY_SECRET_VALUE", logText, StringComparison.Ordinal);
+        Assert.DoesNotContain("AccessToken", logText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Authorization", logText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Bearer", logText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("token-value", logText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void WhatsAppWebhookController_ValidVerificationChallenge_ReturnsChallenge()
     {
         var options = Options.Create(new WhatsAppOptions { Enabled = true, VerifyToken = "valid-token" });
@@ -199,6 +245,24 @@ public sealed class WhatsAppCloudIntegrationTests
     private sealed class FixedHttpClientFactory(HttpClient httpClient) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => httpClient;
+    }
+
+    private sealed class CaptureLogger<T> : ILogger<T>
+    {
+        public List<string> Messages { get; } = new();
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Messages.Add(formatter(state, exception));
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+            public void Dispose() { }
+        }
     }
 
     private sealed class StubHandler : HttpMessageHandler

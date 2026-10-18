@@ -233,11 +233,17 @@ public sealed class WhatsAppCloudMessageChannel(
                         parts.Add(sanitized);
                     }
 
+                    var reason = string.Join(" | ", parts);
+                    if (reason.Length > 500)
+                    {
+                        reason = reason[..497] + "...";
+                    }
+
                     return new OutboundAdapterResult(
                         statusCode == HttpStatusCode.TooManyRequests || statusCode == HttpStatusCode.RequestTimeout || statusCode == (HttpStatusCode)429
                             ? OutboundDispatchOutcome.TransientFailure
                             : OutboundDispatchOutcome.PermanentFailure,
-                        FailureReason: string.Join(" | ", parts),
+                        FailureReason: reason,
                         Retryable: retryable,
                         HttpStatusCode: (int)statusCode,
                         ProviderErrorCode: providerErrorCode,
@@ -251,11 +257,17 @@ public sealed class WhatsAppCloudMessageChannel(
             }
         }
 
+        var fallbackReason = safeReason + " | Meta rejected the request.";
+        if (fallbackReason.Length > 500)
+        {
+            fallbackReason = fallbackReason[..497] + "...";
+        }
+
         return new OutboundAdapterResult(
             statusCode == HttpStatusCode.TooManyRequests || statusCode == HttpStatusCode.RequestTimeout || statusCode == (HttpStatusCode)429
                 ? OutboundDispatchOutcome.TransientFailure
                 : OutboundDispatchOutcome.PermanentFailure,
-            FailureReason: safeReason + " | Meta rejected the request.",
+            FailureReason: fallbackReason,
             Retryable: retryable,
             HttpStatusCode: (int)statusCode,
             ProviderErrorCode: providerErrorCode,
@@ -271,23 +283,33 @@ public sealed class WhatsAppCloudMessageChannel(
         }
 
         var sanitized = value;
-        sanitized = sanitized.Replace("Authorization", "[authorization]", StringComparison.OrdinalIgnoreCase);
-        sanitized = sanitized.Replace("Bearer", "[bearer]", StringComparison.OrdinalIgnoreCase);
-        sanitized = sanitized.Replace("AccessToken", "[access_token]", StringComparison.OrdinalIgnoreCase);
-        sanitized = sanitized.Replace("AppSecret", "[app_secret]", StringComparison.OrdinalIgnoreCase);
-        sanitized = sanitized.Replace("VerifyToken", "[verify_token]", StringComparison.OrdinalIgnoreCase);
-
-        var tokens = new[]
+        var sensitivePatterns = new[]
         {
-            "EAA[0-9A-Za-z]+",
-            "EA[0-9A-Za-z]+",
-            "token[=:\\s][A-Za-z0-9._-]+",
-            "secret[=:\\s][A-Za-z0-9._-]+"
+            @"(?i)\bAccessToken\s*(?:=|:)\s*[A-Za-z0-9._:-]+",
+            @"(?i)\bAppSecret\s*(?:=|:)\s*[A-Za-z0-9._:-]+",
+            @"(?i)\bVerifyToken\s*(?:=|:)\s*[A-Za-z0-9._:-]+",
+            @"(?i)\bAuthorization\s*:\s*Bearer\s+[A-Za-z0-9._:-]+",
+            @"(?i)\bBearer\s+EAA[0-9A-Za-z]+",
+            @"(?i)\bBearer\s+[A-Za-z0-9._:-]+",
+            @"(?i)\btoken\s*(?:=|:)\s*[A-Za-z0-9._:-]+",
+            @"(?i)\bsecret\s*(?:=|:)\s*[A-Za-z0-9._:-]+",
+            @"(?i)\bAccessToken\b",
+            @"(?i)\bAppSecret\b",
+            @"(?i)\bVerifyToken\b",
+            @"(?i)\bAuthorization\b",
+            @"(?i)\bBearer\b",
+            @"(?i)\bEAA[0-9A-Za-z]+\b",
+            @"(?i)\btoken\b",
+            @"(?i)\bsecret\b"
         };
 
-        foreach (var pattern in tokens)
+        foreach (var pattern in sensitivePatterns)
         {
-            sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized, pattern, "[redacted]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            sanitized = System.Text.RegularExpressions.Regex.Replace(
+                sanitized,
+                pattern,
+                "[redacted]",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
         }
 
         return sanitized.Length > 220 ? sanitized[..217] + "..." : sanitized;
