@@ -38,7 +38,6 @@ public sealed class WhatsAppSettingsController(
             TimeoutSeconds: runtime.TimeoutSeconds <= 0 ? 30 : runtime.TimeoutSeconds,
             IsConfigured: connectionConfigured,
             TokenConfigured: !string.IsNullOrWhiteSpace(runtime.AccessToken),
-            ConnectionConfigured: connectionConfigured,
             Message: connectionConfigured ? "تمت تهيئة اتصال واتساب بشكل كامل." : "اتصال واتساب غير مكتمل. يلزم رقم الهاتف ورمز الوصول."));
     }
 
@@ -77,7 +76,6 @@ public sealed class WhatsAppSettingsController(
             TimeoutSeconds: runtime.TimeoutSeconds <= 0 ? 30 : runtime.TimeoutSeconds,
             IsConfigured: connectionConfigured,
             TokenConfigured: !string.IsNullOrWhiteSpace(runtime.AccessToken),
-            ConnectionConfigured: connectionConfigured,
             Message: status.Message));
     }
 

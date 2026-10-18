@@ -34,16 +34,14 @@ public sealed class OutboundMessageDispatcher(
                 if (result.Outcome == OutboundDispatchOutcome.Sent)
                 {
                     await repository.MarkSentAsync(message.CustomerMessageId, result.ProviderMessageId, DateTime.UtcNow, cancellationToken);
-                    logger.LogInformation("Delivered outbound message {MessageId} via {Channel}.", message.CustomerMessageId, channelName);
+                    logger.LogInformation("Delivered outbound message {MessageId} via {Channel}. HttpStatusCode={HttpStatusCode} ProviderMessageIdPresent={ProviderMessageIdPresent}.", message.CustomerMessageId, channelName, result.HttpStatusCode, !string.IsNullOrWhiteSpace(result.ProviderMessageId));
                     return new OutboundDispatchResult(message.CustomerMessageId, message.EventType, channelName, true, result.ProviderMessageId, null, message.AttemptCount, "Sent");
                 }
 
-                var failureReason = string.IsNullOrWhiteSpace(result.FailureReason)
-                    ? (result.Retryable ? "Transient outbound failure" : "Permanent outbound failure")
-                    : result.FailureReason;
+                var failureReason = BuildSafeFailureReason(result);
 
                 await repository.MarkFailedAsync(message.CustomerMessageId, failureReason, result.Retryable, cancellationToken);
-                logger.LogWarning("Outbound message {MessageId} failed via {Channel}: {FailureReason}.", message.CustomerMessageId, channelName, failureReason);
+                logger.LogWarning("Outbound message {MessageId} failed via {Channel}. HttpStatusCode={HttpStatusCode} ProviderErrorCode={ProviderErrorCode} ProviderErrorSubcode={ProviderErrorSubcode} Retryable={Retryable} FailureReason={FailureReason}", message.CustomerMessageId, channelName, result.HttpStatusCode, result.ProviderErrorCode, result.ProviderErrorSubcode, result.Retryable, failureReason);
                 return new OutboundDispatchResult(message.CustomerMessageId, message.EventType, channelName, false, result.ProviderMessageId, failureReason, message.AttemptCount, "Failed");
             }
             catch (Exception exception)
@@ -56,5 +54,41 @@ public sealed class OutboundMessageDispatcher(
         }
 
         return null;
+    }
+
+    private static string BuildSafeFailureReason(OutboundAdapterResult result)
+    {
+        if (!string.IsNullOrWhiteSpace(result.FailureReason))
+        {
+            return result.FailureReason;
+        }
+
+        var fragments = new List<string>();
+        if (result.HttpStatusCode.HasValue)
+        {
+            fragments.Add($"Meta HTTP {result.HttpStatusCode.Value}");
+        }
+
+        if (result.ProviderErrorCode.HasValue)
+        {
+            fragments.Add($"Code {result.ProviderErrorCode.Value}");
+        }
+
+        if (result.ProviderErrorSubcode.HasValue)
+        {
+            fragments.Add($"Subcode {result.ProviderErrorSubcode.Value}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.SafeProviderErrorType))
+        {
+            fragments.Add(result.SafeProviderErrorType);
+        }
+
+        if (fragments.Count == 0)
+        {
+            return result.Retryable ? "Transient outbound failure" : "Permanent outbound failure";
+        }
+
+        return string.Join(" | ", fragments);
     }
 }

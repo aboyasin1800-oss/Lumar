@@ -42,7 +42,7 @@ public sealed class WhatsAppCloudIntegrationTests
     [Fact]
     public async Task WhatsAppCloudMessageChannel_SuccessfulProviderResponse_UsesProviderMessageId()
     {
-        var handler = new StubHandler("{\"messages\":[{\"id\":\"wamid.123456789\"}]}");
+        var handler = new StubHandler(HttpStatusCode.OK, "{\"messages\":[{\"id\":\"wamid.123456789\"}]}");
         var channel = new WhatsAppCloudMessageChannel(
             new FixedHttpClientFactory(new HttpClient(handler)),
             new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
@@ -54,13 +54,92 @@ public sealed class WhatsAppCloudIntegrationTests
                 AccessToken = "token-value",
                 VerifyToken = "verify-token",
                 AppSecret = "secret"
-            }));
+            }),
+            NullLogger<WhatsAppCloudMessageChannel>.Instance);
 
         var result = await channel.SendAsync(new CustomerMessageDto(
             8, 18, 44, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+966500000001", "ORD-44", "Order", "key-2"), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.Sent, result.Outcome);
+        Assert.Equal(200, result.HttpStatusCode);
         Assert.Equal("wamid.123456789", result.ProviderMessageId);
+        Assert.Null(result.FailureReason);
+    }
+
+    [Fact]
+    public async Task WhatsAppCloudMessageChannel_WhenMetaReturns200WithoutMessageId_FailsSafely()
+    {
+        var channel = new WhatsAppCloudMessageChannel(
+            new FixedHttpClientFactory(new HttpClient(new StubHandler(HttpStatusCode.OK, "{\"status\":\"ok\"}"))),
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+            {
+                Enabled = true,
+                BaseUrl = "https://graph.facebook.com",
+                ApiVersion = "v20.0",
+                PhoneNumberId = "123456",
+                AccessToken = "token-value"
+            }),
+            NullLogger<WhatsAppCloudMessageChannel>.Instance);
+
+        var result = await channel.SendAsync(new CustomerMessageDto(
+            9, 19, 45, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+966500000002", "ORD-45", "Order", "key-3"), CancellationToken.None);
+
+        Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
+        Assert.Equal(200, result.HttpStatusCode);
+        Assert.Contains("Meta HTTP 200", result.FailureReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task WhatsAppCloudMessageChannel_WhenMetaRejectsWithErrorDetails_RecordsSafeMetadata()
+    {
+        var response = "{\"error\":{\"type\":\"OAuthException\",\"code\":100,\"error_subcode\":400010,\"message\":\"Auth error: AccessToken=SECRET_TOKEN_123 Authorization: Bearer SECRET_BEARER\"}}";
+        var channel = new WhatsAppCloudMessageChannel(
+            new FixedHttpClientFactory(new HttpClient(new StubHandler(HttpStatusCode.BadRequest, response))),
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+            {
+                Enabled = true,
+                BaseUrl = "https://graph.facebook.com",
+                ApiVersion = "v20.0",
+                PhoneNumberId = "123456",
+                AccessToken = "token-value"
+            }),
+            NullLogger<WhatsAppCloudMessageChannel>.Instance);
+
+        var result = await channel.SendAsync(new CustomerMessageDto(
+            10, 20, 46, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+966500000003", "ORD-46", "Order", "key-4"), CancellationToken.None);
+
+        Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
+        Assert.Equal(400, result.HttpStatusCode);
+        Assert.Equal(100, result.ProviderErrorCode);
+        Assert.Equal(400010, result.ProviderErrorSubcode);
+        Assert.Equal("OAuthException", result.SafeProviderErrorType);
+        Assert.DoesNotContain("SECRET_TOKEN_123", result.FailureReason, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_BEARER", result.FailureReason, StringComparison.Ordinal);
+        Assert.DoesNotContain("AccessToken", result.FailureReason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Authorization", result.FailureReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task WhatsAppCloudMessageChannel_WhenMetaRejectsWith429_ReportsTransientFailure()
+    {
+        var channel = new WhatsAppCloudMessageChannel(
+            new FixedHttpClientFactory(new HttpClient(new StubHandler(HttpStatusCode.TooManyRequests, "{\"error\":{\"type\":\"RateLimit\",\"code\":190,\"message\":\"Rate limit exceeded\"}}"))),
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+            {
+                Enabled = true,
+                BaseUrl = "https://graph.facebook.com",
+                ApiVersion = "v20.0",
+                PhoneNumberId = "123456",
+                AccessToken = "token-value"
+            }),
+            NullLogger<WhatsAppCloudMessageChannel>.Instance);
+
+        var result = await channel.SendAsync(new CustomerMessageDto(
+            11, 21, 47, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+966500000004", "ORD-47", "Order", "key-5"), CancellationToken.None);
+
+        Assert.Equal(OutboundDispatchOutcome.TransientFailure, result.Outcome);
+        Assert.Equal(429, result.HttpStatusCode);
+        Assert.True(result.Retryable);
     }
 
     [Fact]
@@ -122,13 +201,22 @@ public sealed class WhatsAppCloudIntegrationTests
         public HttpClient CreateClient(string name) => httpClient;
     }
 
-    private sealed class StubHandler(string responseBody) : HttpMessageHandler
+    private sealed class StubHandler : HttpMessageHandler
     {
+        private readonly HttpStatusCode _statusCode;
+        private readonly string _responseBody;
+
+        public StubHandler(HttpStatusCode statusCode, string responseBody)
+        {
+            _statusCode = statusCode;
+            _responseBody = responseBody;
+        }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return Task.FromResult(new HttpResponseMessage(_statusCode)
             {
-                Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
+                Content = new StringContent(_responseBody, Encoding.UTF8, "application/json")
             });
         }
     }

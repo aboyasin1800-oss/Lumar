@@ -24,7 +24,6 @@ var resolvedKeysPath = string.IsNullOrWhiteSpace(dataProtectionKeysPath)
     : dataProtectionKeysPath;
 
 builder.Services.AddDataProtection()
-    .SetApplicationName("LUMAR_ERP_API_V2")
     .PersistKeysToFileSystem(new DirectoryInfo(resolvedKeysPath));
 
 builder.Services.AddSingleton<Es7OperationalTestMode>();

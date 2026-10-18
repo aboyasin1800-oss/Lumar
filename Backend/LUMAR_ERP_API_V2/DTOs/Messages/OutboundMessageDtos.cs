@@ -21,4 +21,8 @@ public sealed record OutboundAdapterResult(
     OutboundDispatchOutcome Outcome,
     string? ProviderMessageId = null,
     string? FailureReason = null,
-    bool Retryable = false);
+    bool Retryable = false,
+    int? HttpStatusCode = null,
+    int? ProviderErrorCode = null,
+    int? ProviderErrorSubcode = null,
+    string? SafeProviderErrorType = null);
