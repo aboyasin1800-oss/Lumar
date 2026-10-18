@@ -217,6 +217,37 @@ public sealed class WhatsAppCloudIntegrationTests
     }
 
     [Fact]
+    public async Task WhatsAppWebhookController_RejectsWrongNonEmptyVerifyToken()
+    {
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, VerifyToken = "valid-token" });
+        var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, NullLogger<WhatsAppWebhookController>.Instance);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var result = await controller.VerifyWebhook("subscribe", "challenge-abc", "wrong-token");
+
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    [Fact]
+    public async Task WhatsAppWebhookController_ConvertsUnixSecondsTimestampToUtc()
+    {
+        var repository = new StubMessageRepository();
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, AppSecret = "runtime-secret" });
+        var controller = new WhatsAppWebhookController(repository, store, NullLogger<WhatsAppWebhookController>.Instance);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var rawBody = "{\"entry\":[{\"changes\":[{\"value\":{\"statuses\":[{\"id\":\"wamid.1\",\"status\":\"sent\",\"timestamp\":1718633029} ]}}]}]}";
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rawBody));
+        controller.ControllerContext.HttpContext.Request.Body = ms;
+        controller.ControllerContext.HttpContext.Request.Headers["X-Hub-Signature-256"] = ComputeSignature(rawBody, "runtime-secret");
+
+        var result = await controller.ReceiveWebhook(CancellationToken.None);
+
+        Assert.IsType<OkResult>(result);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1718633029).UtcDateTime, repository.LastOccurredAtUtc);
+    }
+
+    [Fact]
     public async Task WhatsAppWebhookController_ValidPostSignature_Accepts_WhenRuntimeAppSecretMatches()
     {
         var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, AppSecret = "runtime-secret" });
@@ -360,6 +391,8 @@ public sealed class WhatsAppCloudIntegrationTests
 
     private sealed class StubMessageRepository : IMessageRepository
     {
+        public DateTime LastOccurredAtUtc { get; private set; }
+
         public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<CustomerMessageDto>>(Array.Empty<CustomerMessageDto>());
         public Task<CustomerMessageDto?> GetCustomerMessageAsync(int id, CancellationToken c) => Task.FromResult<CustomerMessageDto?>(null);
         public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(int customerId, CancellationToken c) => Task.FromResult<IReadOnlyList<CustomerMessageDto>>(Array.Empty<CustomerMessageDto>());
@@ -377,7 +410,11 @@ public sealed class WhatsAppCloudIntegrationTests
         public Task<bool> HasProcessedAsync(string idempotencyKey, CancellationToken c) => Task.FromResult(false);
         public Task<CustomerMessageDto?> ClaimNextAsync(string channel, int maxAttempts, TimeSpan staleProcessingWindow, CancellationToken cancellationToken) => Task.FromResult<CustomerMessageDto?>(null);
         public Task<CustomerMessageDto?> GetByProviderMessageIdAsync(string providerMessageId, CancellationToken cancellationToken) => Task.FromResult<CustomerMessageDto?>(null);
-        public Task UpdateDeliveryStatusByProviderIdAsync(string providerMessageId, string status, DateTime occurredAtUtc, string? failureReason, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task UpdateDeliveryStatusByProviderIdAsync(string providerMessageId, string status, DateTime occurredAtUtc, string? failureReason, CancellationToken cancellationToken)
+        {
+            LastOccurredAtUtc = occurredAtUtc;
+            return Task.CompletedTask;
+        }
         public Task MarkSentAsync(int customerMessageId, string? providerMessageId, DateTime sentAtUtc, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task MarkFailedAsync(int customerMessageId, string failureReason, bool retryable, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c) => Task.FromResult<(int? MessageId, int? NotificationId)>((null, null));

@@ -79,12 +79,12 @@ public sealed class WhatsAppWebhookController(
                             {
                                 var providerMessageId = status.TryGetProperty("id", out var idElement) ? idElement.GetString() : null;
                                 var statusName = status.TryGetProperty("status", out var statusValue) ? statusValue.GetString() : null;
-                                var timestamp = status.TryGetProperty("timestamp", out var ts) ? ts.GetInt64() : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                                var timestamp = status.TryGetProperty("timestamp", out var ts) ? ts.GetInt64() : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
                                 if (string.IsNullOrWhiteSpace(providerMessageId) || string.IsNullOrWhiteSpace(statusName))
                                     continue;
 
-                                var occurredAtUtc = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).UtcDateTime;
+                                var occurredAtUtc = DateTimeOffset.FromUnixTimeSeconds(timestamp).UtcDateTime;
                                 string? failureReason = null;
                                 if (status.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array && errors.GetArrayLength() > 0)
                                 {
