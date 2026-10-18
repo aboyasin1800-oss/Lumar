@@ -1307,6 +1307,14 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "test"
+		},
+		{
+			"label": "WhatsApp Live Attempt 2",
+			"type": "shell",
+			"command": "dotnet run --project \"D:\\YASIN\\_tmp\\whatsapp-live-attempt-2\\whatsapp-live-attempt-2.csproj\" --nologo --no-restore",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
 		}
 	]
 }
