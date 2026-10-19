@@ -7,8 +7,11 @@ namespace LUMAR_ERP_API_V2.Services;
 public sealed class MessageWriteService(
     IMessageRepository repository,
     IMessageTemplateRenderer renderer,
-    ISettingsRepository? settingsRepository = null) : IMessageWriteService
+    ISettingsRepository? settingsRepository = null,
+    IYemenPhoneNumberNormalizer? phoneNormalizer = null) : IMessageWriteService
 {
+    private readonly IYemenPhoneNumberNormalizer _phoneNormalizer = phoneNormalizer ?? new YemenPhoneNumberNormalizer();
+
     public async Task<MessageWriteResult> TryCreateAsync(MessageWriteRequest request, CancellationToken cancellationToken)
     {
         if (request.CustomerId <= 0)
@@ -57,8 +60,9 @@ public sealed class MessageWriteService(
 
             int? messageId = null;
             int? notificationId = null;
+            var normalizedPhone = _phoneNormalizer.TryNormalizeMobileNumber(route.PhoneNumber);
 
-            if (runtimeSettings.WhatsAppEnabled && IsValidYemenMobileNumber(route.PhoneNumber))
+            if (runtimeSettings.WhatsAppEnabled && !string.IsNullOrWhiteSpace(normalizedPhone))
             {
                 var createdPair = await repository.CreateCustomerMessageAndNotificationAsync(
                     route.CustomerId,
@@ -68,7 +72,7 @@ public sealed class MessageWriteService(
                     "WhatsApp",
                     title,
                     body,
-                    route.PhoneNumber,
+                    normalizedPhone,
                     request.ReferenceId,
                     request.ReferenceType,
                     idempotencyKey,
@@ -103,8 +107,9 @@ public sealed class MessageWriteService(
     private async Task<List<MessageRoute>> ResolveRoutesAsync(MessageWriteRequest request, MessageSettingsDto runtimeSettings, CancellationToken cancellationToken)
     {
         var ctx = request.Context ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        var customerPhone = NormalizePhone(GetContextValue(ctx, "CustomerPhoneNumber", "PhoneNumber", request.PhoneNumber));
-        var referrerPhone = NormalizePhone(GetContextValue(ctx, "ReferrerPhoneNumber", "ReferrerPhone", "ReferrerMobile", "ReferrerMobileNumber"));
+        var requestedCustomerPhone = _phoneNormalizer.TryNormalizeMobileNumber(request.PhoneNumber) ?? string.Empty;
+        var customerPhone = _phoneNormalizer.TryNormalizeMobileNumber(GetContextValue(ctx, "CustomerPhoneNumber", "PhoneNumber", request.PhoneNumber)) ?? string.Empty;
+        var referrerPhone = _phoneNormalizer.TryNormalizeMobileNumber(GetContextValue(ctx, "ReferrerPhoneNumber", "ReferrerPhone", "ReferrerMobile", "ReferrerMobileNumber")) ?? string.Empty;
         var referrerCustomerId = GetIntValue(ctx, "ReferrerCustomerId", "ReferrerId");
         var referrerName = GetStringValue(ctx, "ReferrerName");
         var referrerCode = GetStringValue(ctx, "ReferrerCode");
@@ -117,7 +122,7 @@ public sealed class MessageWriteService(
         {
             var customerTemplate = ResolveLegacyTemplateKey(normalizedKey, "order-created-customer-smart", "OrderCreated");
             var customerValues = ToValueDictionary(ctx, allowReferrerValues: false);
-            routePlans.Add(new MessageRoute(customerTemplate, request.CustomerId, request.PhoneNumber, "customer", customerValues));
+            routePlans.Add(new MessageRoute(customerTemplate, request.CustomerId, requestedCustomerPhone, "customer", customerValues));
             return routePlans;
         }
 
@@ -128,13 +133,13 @@ public sealed class MessageWriteService(
 
             var combinedTemplate = ResolveLegacyTemplateKey(normalizedKey, "order-referrer-combined-smart", "OrderCreated");
             var combinedValues = ToValueDictionary(ctx, allowReferrerValues: true);
-            routePlans.Add(new MessageRoute(combinedTemplate, request.CustomerId, request.PhoneNumber, "combined", combinedValues));
+            routePlans.Add(new MessageRoute(combinedTemplate, request.CustomerId, requestedCustomerPhone, "combined", combinedValues));
             return routePlans;
         }
 
         var customerTemplateKeyForDifferentPhone = ResolveLegacyTemplateKey(normalizedKey, "order-created-customer-smart", "OrderCreated");
         var customerValuesForDifferentPhone = ToValueDictionary(ctx, allowReferrerValues: false);
-        routePlans.Add(new MessageRoute(customerTemplateKeyForDifferentPhone, request.CustomerId, request.PhoneNumber, "customer", customerValuesForDifferentPhone));
+        routePlans.Add(new MessageRoute(customerTemplateKeyForDifferentPhone, request.CustomerId, requestedCustomerPhone, "customer", customerValuesForDifferentPhone));
 
         if (runtimeSettings.OtherReferralDefaultOff)
             return routePlans;
@@ -258,33 +263,6 @@ public sealed class MessageWriteService(
         }
 
         return null;
-    }
-
-    private static string NormalizePhone(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
-
-        var cleaned = new string(value.Where(char.IsDigit).ToArray());
-        if (cleaned.Length >= 10)
-            return cleaned;
-
-        return value.Trim();
-    }
-
-    private static bool IsValidYemenMobileNumber(string? phoneNumber)
-    {
-        var normalized = NormalizePhone(phoneNumber);
-        if (string.IsNullOrWhiteSpace(normalized))
-            return false;
-
-        if (normalized.StartsWith("967", StringComparison.Ordinal))
-        {
-            var local = normalized[3..];
-            return local.Length == 9 && local.StartsWith("7", StringComparison.Ordinal);
-        }
-
-        return normalized.Length == 9 && normalized.StartsWith("7", StringComparison.Ordinal);
     }
 
     private static string BuildIdempotencyKey(MessageWriteRequest request, string templateKey, string targetKind)

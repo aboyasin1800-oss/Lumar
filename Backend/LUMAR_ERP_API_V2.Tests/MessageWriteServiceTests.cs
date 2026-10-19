@@ -1668,7 +1668,7 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
-    public async Task MessageWriteService_WhenWhatsAppIsEnabledButPhoneIsMissing_OnlyCreatesNotificationWithoutChannelMessage()
+    public async Task MessageWriteService_WhenPhoneIsLocalFormat_UsesNormalizedWhatsAppNumber()
     {
         var repo = new FakeMessageRepository();
         repo.TemplateExists = true;
@@ -1679,15 +1679,167 @@ public sealed class MessageWriteServiceTests
             FridayGreetingEnabled: true,
             CampaignEnabled: true,
             WhatsAppEnabled: true));
-        var service = new MessageWriteService(repo, new MessageTemplateRenderer(), settingsRepo);
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer(), settingsRepo, new YemenPhoneNumberNormalizer());
 
         var result = await service.TryCreateAsync(new MessageWriteRequest(
             CustomerId: 7,
             OrderId: 42,
             EventType: "ManualCampaign",
             TemplateKey: "general-campaign-smart",
-            PhoneNumber: string.Empty,
+            PhoneNumber: "775106545",
+            ReferenceId: "manual-campaign-local-phone",
+            ReferenceType: "ManualCampaign",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["CampaignText"] = "عرض خاص لعملائنا",
+            }), CancellationToken.None);
+
+        Assert.True(result.Created);
+        Assert.NotNull(result.CustomerMessageId);
+        Assert.Equal("WhatsApp", repo.Messages[0].Channel);
+        Assert.Equal("967775106545", repo.Messages[0].PhoneNumber);
+    }
+
+    [Fact]
+    public async Task MessageWriteService_WhenPhoneUsesPlusPrefix_UsesNormalizedWhatsAppNumber()
+    {
+        var repo = new FakeMessageRepository();
+        repo.TemplateExists = true;
+        var settingsRepo = new FakeSettingsRepository(new MessageSettingsDto(
+            MessageMasterEnabled: true,
+            DirectReferralDefaultOn: true,
+            OtherReferralDefaultOff: false,
+            FridayGreetingEnabled: true,
+            CampaignEnabled: true,
+            WhatsAppEnabled: true));
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer(), settingsRepo, new YemenPhoneNumberNormalizer());
+
+        var result = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 7,
+            OrderId: 42,
+            EventType: "ManualCampaign",
+            TemplateKey: "general-campaign-smart",
+            PhoneNumber: "+967775106545",
+            ReferenceId: "manual-campaign-plus-phone",
+            ReferenceType: "ManualCampaign",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["CampaignText"] = "عرض خاص لعملائنا",
+            }), CancellationToken.None);
+
+        Assert.True(result.Created);
+        Assert.NotNull(result.CustomerMessageId);
+        Assert.Equal("967775106545", repo.Messages[0].PhoneNumber);
+    }
+
+    [Fact]
+    public async Task MessageWriteService_WhenPhoneUsesDoubleZeroPrefix_UsesNormalizedWhatsAppNumber()
+    {
+        var repo = new FakeMessageRepository();
+        repo.TemplateExists = true;
+        var settingsRepo = new FakeSettingsRepository(new MessageSettingsDto(
+            MessageMasterEnabled: true,
+            DirectReferralDefaultOn: true,
+            OtherReferralDefaultOff: false,
+            FridayGreetingEnabled: true,
+            CampaignEnabled: true,
+            WhatsAppEnabled: true));
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer(), settingsRepo, new YemenPhoneNumberNormalizer());
+
+        var result = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 7,
+            OrderId: 42,
+            EventType: "ManualCampaign",
+            TemplateKey: "general-campaign-smart",
+            PhoneNumber: "00967775106545",
+            ReferenceId: "manual-campaign-00967-phone",
+            ReferenceType: "ManualCampaign",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["CampaignText"] = "عرض خاص لعملائنا",
+            }), CancellationToken.None);
+
+        Assert.True(result.Created);
+        Assert.NotNull(result.CustomerMessageId);
+        Assert.Equal("967775106545", repo.Messages[0].PhoneNumber);
+    }
+
+    [Fact]
+    public async Task MessageWriteService_WhenPhoneIsMissingOrInvalid_OnlyCreatesNotificationWithoutChannelMessage()
+    {
+        var repo = new FakeMessageRepository();
+        repo.TemplateExists = true;
+        var settingsRepo = new FakeSettingsRepository(new MessageSettingsDto(
+            MessageMasterEnabled: true,
+            DirectReferralDefaultOn: true,
+            OtherReferralDefaultOff: false,
+            FridayGreetingEnabled: true,
+            CampaignEnabled: true,
+            WhatsAppEnabled: true));
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer(), settingsRepo, new YemenPhoneNumberNormalizer());
+
+        var invalidResult = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 7,
+            OrderId: 42,
+            EventType: "ManualCampaign",
+            TemplateKey: "general-campaign-smart",
+            PhoneNumber: "0775106545",
+            ReferenceId: "manual-campaign-invalid-phone",
+            ReferenceType: "ManualCampaign",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["CampaignText"] = "عرض خاص لعملائنا",
+            }), CancellationToken.None);
+
+        var emptyResult = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 7,
+            OrderId: 42,
+            EventType: "ManualCampaign",
+            TemplateKey: "general-campaign-smart",
+            PhoneNumber: "  ",
             ReferenceId: "manual-campaign-empty-phone",
+            ReferenceType: "ManualCampaign",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["CampaignText"] = "عرض خاص لعملائنا",
+            }), CancellationToken.None);
+
+        Assert.True(invalidResult.Created);
+        Assert.NotNull(invalidResult.CustomerNotificationId);
+        Assert.Null(invalidResult.CustomerMessageId);
+        Assert.True(emptyResult.Created);
+        Assert.NotNull(emptyResult.CustomerNotificationId);
+        Assert.Null(emptyResult.CustomerMessageId);
+        Assert.Equal(2, repo.Notifications.Count);
+        Assert.Empty(repo.Messages);
+    }
+
+    [Fact]
+    public async Task MessageWriteService_WhenWhatsAppIsEnabledAndTemplateIsInApp_UsesWhatsAppTransportWithSameContent()
+    {
+        var repo = new FakeMessageRepository();
+        repo.TemplateExists = true;
+        var settingsRepo = new FakeSettingsRepository(new MessageSettingsDto(
+            MessageMasterEnabled: true,
+            DirectReferralDefaultOn: true,
+            OtherReferralDefaultOff: false,
+            FridayGreetingEnabled: true,
+            CampaignEnabled: true,
+            WhatsAppEnabled: true));
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer(), settingsRepo, new YemenPhoneNumberNormalizer());
+
+        var result = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 7,
+            OrderId: 42,
+            EventType: "ManualCampaign",
+            TemplateKey: "general-campaign-smart",
+            PhoneNumber: "967775106545",
+            ReferenceId: "manual-campaign-inapp-template",
             ReferenceType: "ManualCampaign",
             Context: new Dictionary<string, object?>
             {
@@ -1697,9 +1849,12 @@ public sealed class MessageWriteServiceTests
 
         Assert.True(result.Created);
         Assert.NotNull(result.CustomerNotificationId);
-        Assert.Null(result.CustomerMessageId);
-        Assert.Equal(1, repo.Notifications.Count);
-        Assert.Equal(0, repo.Messages.Count);
+        Assert.NotNull(result.CustomerMessageId);
+        Assert.Equal("WhatsApp", repo.Messages[0].Channel);
+        Assert.Equal(result.Title, repo.Notifications[0].Title);
+        Assert.Equal(result.Body, repo.Notifications[0].Body);
+        Assert.Equal(repo.Messages[0].Title, repo.Notifications[0].Title);
+        Assert.Equal(repo.Messages[0].Body, repo.Notifications[0].Body);
     }
 
     [Fact]
@@ -2191,7 +2346,7 @@ public sealed class MessageWriteServiceTests
             var messageId = Messages.Count + 1;
             var notificationId = Notifications.Count + 1;
             ProcessedKeys.Add(idempotencyKey);
-            Messages.Add(new CustomerMessageDto(messageId, customerId, orderId, eventType, templateKey, channel, title, body, "Pending", DateTime.UtcNow, null, null, 0, null, null, null, phoneNumber, referenceId, referenceType, idempotencyKey));
+            Messages.Add(new CustomerMessageDto(messageId, customerId, orderId, eventType, templateKey, channel, title, body, "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, phoneNumber, referenceId, referenceType, idempotencyKey));
             Notifications.Add(new CustomerNotificationDto(notificationId, customerId, orderId, eventType, title, body, "Unread", false, DateTime.UtcNow, null, messageId));
             return Task.FromResult((MessageId: (int?)messageId, NotificationId: (int?)notificationId));
         }
@@ -2200,7 +2355,7 @@ public sealed class MessageWriteServiceTests
         {
             var id = Messages.Count + 1;
             ProcessedKeys.Add(idempotencyKey);
-            Messages.Add(new CustomerMessageDto(id, customerId, orderId, eventType, templateKey, channel, title, body, "Pending", DateTime.UtcNow, null, null, 0, null, null, null, phoneNumber, referenceId, referenceType, idempotencyKey));
+            Messages.Add(new CustomerMessageDto(id, customerId, orderId, eventType, templateKey, channel, title, body, "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, phoneNumber, referenceId, referenceType, idempotencyKey));
             return Task.FromResult<int?>(id);
         }
         public Task<int> CreateCustomerNotificationAsync(int customerId, int? orderId, string eventType, string title, string body, int? customerMessageId, CancellationToken c)
