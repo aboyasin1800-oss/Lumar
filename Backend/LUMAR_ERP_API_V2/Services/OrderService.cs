@@ -24,14 +24,16 @@ public sealed class OrderService(
         {
             if (vipLevelEvaluationService is not null)
                 await vipLevelEvaluationService.EvaluateNetworkAsync(created.CustomerId, cancellationToken);
+
+            OrderLoyaltyProcessingResult? loyaltyResult = null;
             if (orderLoyaltyIntegrationService is not null)
-                await orderLoyaltyIntegrationService.ProcessIfEligibleAsync(created.OrderId, cancellationToken);
+                loyaltyResult = await orderLoyaltyIntegrationService.ProcessIfEligibleAsync(created.OrderId, cancellationToken);
 
             if (messageWriteService is not null)
             {
                 try
                 {
-                    var messageContext = await BuildOrderLifecycleContextAsync(created, cancellationToken);
+                    var messageContext = await BuildOrderLifecycleContextAsync(created, cancellationToken, loyaltyResult);
                     var messageRequest = new MessageWriteRequest(
                         created.CustomerId,
                         created.OrderId,
@@ -124,7 +126,7 @@ public sealed class OrderService(
 
         return delivered;
     }
-    private async Task<Dictionary<string, object?>> BuildOrderLifecycleContextAsync(OrderDetailsDto order, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, object?>> BuildOrderLifecycleContextAsync(OrderDetailsDto order, CancellationToken cancellationToken, OrderLoyaltyProcessingResult? loyaltyResult = null)
     {
         var context = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
@@ -138,9 +140,11 @@ public sealed class OrderService(
             ["DeliveryDate"] = order.DeliveryDate ?? DateTime.UtcNow,
             ["PhoneNumber"] = order.PhoneNumber,
             ["CustomerPhoneNumber"] = order.PhoneNumber,
-            ["CurrencyName"] = await GetRequiredSettingValueAsync("Currency", cancellationToken) ?? "الريال اليمني",
-            ["StoreName"] = await GetRequiredSettingValueAsync("StoreName", cancellationToken) ?? "LUMAR",
+            ["CurrencyName"] = await GetRequiredSettingValueAsync("Currency", cancellationToken),
+            ["StoreName"] = await GetRequiredSettingValueAsync("StoreName", cancellationToken),
             ["CustomerCode"] = await GetCustomerCodeAsync(order.CustomerId, cancellationToken),
+            ["PointsEarned"] = loyaltyResult?.BuyerDelta ?? 0m,
+            ["PointsBalance"] = loyaltyResult?.BuyerAccount.CurrentPoints ?? 0m,
         };
 
         var items = await repository.GetItemsAsync(order.OrderId, cancellationToken);

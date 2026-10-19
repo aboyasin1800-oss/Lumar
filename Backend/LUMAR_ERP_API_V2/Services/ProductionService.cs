@@ -78,8 +78,8 @@ public sealed class ProductionService(
                 ["TotalAmount"] = totalAmount,
                 ["PhoneNumber"] = phoneNumber,
                 ["CustomerPhoneNumber"] = phoneNumber,
-                ["CurrencyName"] = await GetSettingValueAsync("Currency", cancellationToken) ?? "الريال اليمني",
-                ["StoreName"] = await GetSettingValueAsync("StoreName", cancellationToken) ?? "LUMAR",
+                ["CurrencyName"] = await GetSettingValueAsync("Currency", cancellationToken),
+                ["StoreName"] = await GetSettingValueAsync("StoreName", cancellationToken),
             };
 
             var order = await orderRepository.GetByIdAsync(orderId, cancellationToken);

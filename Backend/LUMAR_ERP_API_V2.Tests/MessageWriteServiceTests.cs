@@ -1102,6 +1102,117 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task OrderService_CreateAsync_UsesOfficialLoyaltyAndSystemSettingValuesInOrderCreatedContext()
+    {
+        var messageService = new RecordingMessageWriteService();
+        var order = new OrderDetailsDto(
+            301,
+            "ORD-301",
+            9,
+            "أحمد",
+            "0500000301",
+            DateTime.UtcNow,
+            null,
+            220m,
+            50m,
+            170m,
+            0m,
+            "Normal",
+            "Created",
+            null,
+            DateTime.UtcNow,
+            null,
+            null,
+            null,
+            null,
+            "TailoringOrder",
+            false,
+            null,
+            false,
+            null);
+
+        var loyaltyResult = new OrderLoyaltyProcessingResult(
+            301,
+            9,
+            30m,
+            15m,
+            15m,
+            [],
+            new LoyaltyAccountDto(5, 9, 250m, 1000m, 50m, 0m, null, DateTime.UtcNow, DateTime.UtcNow, DateTime.UtcNow, "Active"),
+            [new LoyaltyAccountDto(5, 9, 250m, 1000m, 50m, 0m, null, DateTime.UtcNow, DateTime.UtcNow, DateTime.UtcNow, "Active")],
+            [],
+            [],
+            []);
+
+        var service = new OrderService(
+            new FakeOrderRepository(order, order),
+            new FakeVipLevelEvaluationService(),
+            new FakeOrderLoyaltyIntegrationService(loyaltyResult),
+            messageService,
+            customerRepository: new FakeCustomerRepository(
+                new CustomerDetailsDto(9, "C-301", "أحمد", "0500000301", null, null, null, null, null, true, null, null, null, null)),
+            settingsRepository: new FakeSettingsRepository(new MessageSettingsDto(true, true, false, true, true, true))
+            {
+                StoreName = "LUMAR",
+                CurrencyName = "الريال اليمني"
+            });
+
+        var createRequest = new CreateOrderDto
+        {
+            CustomerId = 9,
+            TotalAmount = 220m,
+            DiscountAmount = 0m,
+            AdvancePayment = 50m,
+            UrgencyStatus = "Normal",
+            SaleCategory = "TailoringOrder",
+            Items = Array.Empty<CreateOrderItemDto>()
+        };
+
+        var result = await service.CreateAsync(createRequest, CancellationToken.None);
+
+        Assert.NotNull(result);
+        var request = Assert.Single(messageService.Requests);
+        Assert.Equal("OrderCreated", request.EventType);
+        Assert.Equal(15m, request.Context!["PointsEarned"]);
+        Assert.Equal(250m, request.Context["PointsBalance"]);
+        Assert.Equal("الريال اليمني", request.Context["CurrencyName"]);
+        Assert.Equal("LUMAR", request.Context["StoreName"]);
+    }
+
+    [Fact]
+    public void MessageTemplateRenderer_RendersLifecycleTokensWithoutUnresolvedPlaceholders()
+    {
+        var renderer = new MessageTemplateRenderer();
+        var orderCreated = "مرحباً {{CustomerName}}، طلبك {{OrderNumber}} بقيمة {{TotalAmount}} {{CurrencyName}}، المدفوع {{PaidAmount}}، المتبقي {{RemainingAmount}}، تاريخ التسليم {{DeliveryDate}}، نقاطك الآن {{PointsBalance}}، نقاطك المكتسبة {{PointsEarned}}، الكود {{CustomerCode}}، المتجر {{StoreName}}، التفاصيل {{OrderDetails}}.";
+        var orderReady = "عزيزي {{CustomerName}}، طلبك رقم {{OrderNumber}} أصبح جاهزاً للاستلام، المتبقي {{RemainingAmount}}، المتجر {{StoreName}}.";
+        var orderDelivered = "شكرًا {{CustomerName}}، تم تسليم الطلب {{OrderNumber}} من متجر {{StoreName}}. المجموع {{TotalAmount}} {{CurrencyName}}.";
+
+        var values = new Dictionary<string, object?>
+        {
+            ["CustomerName"] = "أحمد",
+            ["OrderNumber"] = "ORD-301",
+            ["TotalAmount"] = 220m,
+            ["CurrencyName"] = "الريال اليمني",
+            ["PaidAmount"] = 50m,
+            ["RemainingAmount"] = 170m,
+            ["DeliveryDate"] = new DateTime(2026, 10, 20),
+            ["PointsBalance"] = 250m,
+            ["PointsEarned"] = 15m,
+            ["CustomerCode"] = "C-301",
+            ["StoreName"] = "LUMAR",
+            ["OrderDetails"] = "قميص + بنطال",
+        };
+
+        var created = renderer.Render(orderCreated, values);
+        var ready = renderer.Render(orderReady, values);
+        var delivered = renderer.Render(orderDelivered, values);
+
+        Assert.DoesNotContain("{{", created, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("{{", ready, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("{{", delivered, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task TryCreateAsync_WhenCustomerHasNoReferrer_CreatesOnlyCustomerMessage()
     {
         var repo = new FakeMessageRepository();
@@ -2041,7 +2152,37 @@ public sealed class MessageWriteServiceTests
     {
         public Task<IReadOnlyList<OrderListDto>> GetListAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<OrderListDto>>(Array.Empty<OrderListDto>());
         public Task<OrderDetailsDto?> GetByIdAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult(currentOrder ?? cancelledOrder);
-        public Task<OrderDetailsDto?> CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<OrderDetailsDto?> CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)
+        {
+            var created = new OrderDetailsDto(
+                301,
+                "ORD-301",
+                order.CustomerId,
+                "أحمد",
+                "0500000301",
+                order.OrderDate ?? DateTime.UtcNow,
+                order.DeliveryDate ?? DateTime.UtcNow,
+                order.TotalAmount,
+                order.DiscountAmount,
+                order.AdvancePayment,
+                Math.Max(0m, order.TotalAmount - order.AdvancePayment - order.DiscountAmount),
+                "Normal",
+                "Created",
+                null,
+                DateTime.UtcNow,
+                null,
+                null,
+                null,
+                null,
+                order.SaleCategory,
+                false,
+                null,
+                false,
+                null,
+                null);
+
+            return Task.FromResult<OrderDetailsDto?>(created);
+        }
         public Task<IReadOnlyList<OrderItemDto>> GetItemsAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<OrderItemDto>>(Array.Empty<OrderItemDto>());
         public Task<IReadOnlyList<OrderPieceDto>> GetPiecesAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<OrderPieceDto>>(Array.Empty<OrderPieceDto>());
         public Task<IReadOnlyList<OrderFabricDto>> GetFabricsAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<OrderFabricDto>>(Array.Empty<OrderFabricDto>());
@@ -2156,7 +2297,14 @@ public sealed class MessageWriteServiceTests
 
     private sealed class FakeOrderLoyaltyIntegrationService : IOrderLoyaltyIntegrationService
     {
-        public Task<OrderLoyaltyProcessingResult?> ProcessIfEligibleAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult<OrderLoyaltyProcessingResult?>(null);
+        private readonly OrderLoyaltyProcessingResult? _result;
+
+        public FakeOrderLoyaltyIntegrationService(OrderLoyaltyProcessingResult? result = null)
+        {
+            _result = result;
+        }
+
+        public Task<OrderLoyaltyProcessingResult?> ProcessIfEligibleAsync(int orderId, CancellationToken cancellationToken) => Task.FromResult(_result);
         public Task<OrderLoyaltyProcessingResult> ProcessOrderAsync(int orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
