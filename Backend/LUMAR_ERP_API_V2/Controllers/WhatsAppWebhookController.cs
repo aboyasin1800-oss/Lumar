@@ -15,9 +15,12 @@ public sealed class WhatsAppWebhookController(
     ILogger<WhatsAppWebhookController> logger) : ControllerBase
 {
     [HttpGet("webhook")]
-    public async Task<ActionResult> VerifyWebhook([FromQuery] string? mode, [FromQuery] string? challenge, [FromQuery] string? verify_token)
+    public async Task<ActionResult> VerifyWebhook(
+        [FromQuery(Name = "hub.mode")] string? mode,
+        [FromQuery(Name = "hub.challenge")] string? challenge,
+        [FromQuery(Name = "hub.verify_token")] string? verifyToken)
     {
-        if (string.IsNullOrWhiteSpace(mode) || string.IsNullOrWhiteSpace(challenge) || string.IsNullOrWhiteSpace(verify_token))
+        if (string.IsNullOrWhiteSpace(mode) || string.IsNullOrWhiteSpace(challenge) || string.IsNullOrWhiteSpace(verifyToken))
             return BadRequest();
 
         if (!string.Equals(mode, "subscribe", StringComparison.OrdinalIgnoreCase))
@@ -30,7 +33,7 @@ public sealed class WhatsAppWebhookController(
             return Unauthorized();
         }
 
-        if (!string.Equals(verify_token, runtimeSettings.VerifyToken, StringComparison.Ordinal))
+        if (!string.Equals(verifyToken, runtimeSettings.VerifyToken, StringComparison.Ordinal))
             return Unauthorized();
 
         return Content(challenge);

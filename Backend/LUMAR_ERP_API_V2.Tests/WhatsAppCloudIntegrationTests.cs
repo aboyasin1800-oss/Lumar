@@ -189,16 +189,18 @@ public sealed class WhatsAppCloudIntegrationTests
     }
 
     [Fact]
-    public async Task WhatsAppWebhookController_ValidVerificationChallenge_ReturnsChallenge()
+    public async Task WhatsAppWebhookController_ValidMetaQueryStringVerification_ReturnsChallenge()
     {
         var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, VerifyToken = "valid-token" });
         var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, NullLogger<WhatsAppWebhookController>.Instance);
-        controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new DefaultHttpContext()
-        };
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.QueryString = new QueryString("?hub.mode=subscribe&hub.challenge=challenge-abc&hub.verify_token=valid-token");
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
-        var result = await controller.VerifyWebhook("subscribe", "challenge-abc", "valid-token");
+        var result = await controller.VerifyWebhook(
+            httpContext.Request.Query["hub.mode"],
+            httpContext.Request.Query["hub.challenge"],
+            httpContext.Request.Query["hub.verify_token"]);
 
         var content = Assert.IsType<ContentResult>(result);
         Assert.Equal("challenge-abc", content.Content);
@@ -209,9 +211,14 @@ public sealed class WhatsAppCloudIntegrationTests
     {
         var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, VerifyToken = string.Empty, AppSecret = "legacy-secret" });
         var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, NullLogger<WhatsAppWebhookController>.Instance);
-        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.QueryString = new QueryString("?hub.mode=subscribe&hub.challenge=challenge-abc&hub.verify_token=runtime-token");
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
-        var result = await controller.VerifyWebhook("subscribe", "challenge-abc", "runtime-token");
+        var result = await controller.VerifyWebhook(
+            httpContext.Request.Query["hub.mode"],
+            httpContext.Request.Query["hub.challenge"],
+            httpContext.Request.Query["hub.verify_token"]);
 
         Assert.IsType<UnauthorizedResult>(result);
     }
@@ -221,11 +228,41 @@ public sealed class WhatsAppCloudIntegrationTests
     {
         var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, VerifyToken = "valid-token" });
         var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, NullLogger<WhatsAppWebhookController>.Instance);
-        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.QueryString = new QueryString("?hub.mode=subscribe&hub.challenge=challenge-abc&hub.verify_token=wrong-token");
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
-        var result = await controller.VerifyWebhook("subscribe", "challenge-abc", "wrong-token");
+        var result = await controller.VerifyWebhook(
+            httpContext.Request.Query["hub.mode"],
+            httpContext.Request.Query["hub.challenge"],
+            httpContext.Request.Query["hub.verify_token"]);
 
         Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    [Fact]
+    public async Task WhatsAppWebhookController_RejectsMissingOrInvalidModeAndTokenMetaQueryValues()
+    {
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, VerifyToken = "valid-token" });
+        var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, NullLogger<WhatsAppWebhookController>.Instance);
+
+        var missingTokenCtx = new DefaultHttpContext();
+        missingTokenCtx.Request.QueryString = new QueryString("?hub.mode=subscribe&hub.challenge=challenge-abc");
+        controller.ControllerContext = new ControllerContext { HttpContext = missingTokenCtx };
+        var missingTokenResult = await controller.VerifyWebhook(
+            missingTokenCtx.Request.Query["hub.mode"],
+            missingTokenCtx.Request.Query["hub.challenge"],
+            missingTokenCtx.Request.Query["hub.verify_token"]);
+        Assert.IsType<BadRequestResult>(missingTokenResult);
+
+        var invalidModeCtx = new DefaultHttpContext();
+        invalidModeCtx.Request.QueryString = new QueryString("?hub.mode=not-subscribe&hub.challenge=challenge-abc&hub.verify_token=valid-token");
+        controller.ControllerContext = new ControllerContext { HttpContext = invalidModeCtx };
+        var invalidModeResult = await controller.VerifyWebhook(
+            invalidModeCtx.Request.Query["hub.mode"],
+            invalidModeCtx.Request.Query["hub.challenge"],
+            invalidModeCtx.Request.Query["hub.verify_token"]);
+        Assert.IsType<BadRequestResult>(invalidModeResult);
     }
 
     [Fact]
