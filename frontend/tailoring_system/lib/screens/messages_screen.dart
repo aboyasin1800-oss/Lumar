@@ -392,8 +392,23 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
   List<_CustomerSearchResult> _customerResults = const [];
   _CustomerSearchResult? _selectedCustomer;
 
+  void _refreshCampaignUiState() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController.addListener(_refreshCampaignUiState);
+    _messageController.addListener(_refreshCampaignUiState);
+  }
+
   @override
   void dispose() {
+    _titleController.removeListener(_refreshCampaignUiState);
+    _messageController.removeListener(_refreshCampaignUiState);
     _titleController.dispose();
     _messageController.dispose();
     _customerSearchController.dispose();
@@ -565,7 +580,12 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
               TextField(
                 controller: _customerSearchController,
                 textInputAction: TextInputAction.search,
-                onChanged: (_) => _searchCustomers(),
+                onChanged: (_) {
+                  _searchCustomers();
+                  if (_customerSearchController.text.trim().isEmpty) {
+                    setState(() => _selectedCustomer = null);
+                  }
+                },
                 decoration: InputDecoration(
                   hintText: 'ابحث باسم العميل أو رقم الهاتف أو الكود',
                   filled: true,
@@ -688,6 +708,7 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
             const SizedBox(height: 18),
             TextField(
               controller: _titleController,
+              onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                 labelText: 'عنوان الحملة',
                 filled: true,
@@ -704,6 +725,7 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
               minLines: 5,
               maxLines: 8,
               textInputAction: TextInputAction.newline,
+              onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                 labelText: 'نص الحملة',
                 filled: true,
