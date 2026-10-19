@@ -1,3 +1,4 @@
+using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -6,7 +7,7 @@ namespace LUMAR_ERP_API_V2.Controllers;
 
 [ApiController]
 [Route("messages")]
-public sealed class MessagesController(IMessageService service, ICustomerService customers) : ControllerBase
+public sealed class MessagesController(IMessageService service, ICustomerService customers, IManualCampaignService manualCampaigns, IAuthenticatedUserContext userContext) : ControllerBase
 {
 	[HttpGet("customer-messages")]
 	public async Task<ActionResult<IReadOnlyList<CustomerMessageDto>>> GetCustomerMessages(CancellationToken ct) => Ok(await service.GetCustomerMessagesAsync(ct));
@@ -94,6 +95,22 @@ public sealed class MessagesController(IMessageService service, ICustomerService
 
 	[HttpGet("sent-log")]
 	public async Task<ActionResult<IReadOnlyList<SentLogDto>>> GetSentLog(CancellationToken ct) => Ok(await service.GetSentLogAsync(ct));
+
+	[HttpPost("manual-campaigns")]
+	[HttpPost("campaigns")]
+	public async Task<ActionResult<ManualCampaignResult>> TriggerManualCampaign([FromBody] ManualCampaignRequest request, CancellationToken ct)
+	{
+		if (string.IsNullOrWhiteSpace(request.CampaignReference)) return BadRequest("CampaignReference is required.");
+		if (string.IsNullOrWhiteSpace(request.TemplateKey)) return BadRequest("TemplateKey is required.");
+		if (string.IsNullOrWhiteSpace(request.MessageText)) return BadRequest("MessageText is required.");
+
+		var user = await userContext.GetCurrentUserAsync(ct);
+		if (user is not null && string.Equals(user.AccountType, "Employee", StringComparison.OrdinalIgnoreCase))
+			return StatusCode(StatusCodes.Status403Forbidden, "Employee accounts cannot send manual campaigns.");
+
+		var result = await manualCampaigns.ProcessAsync(request, ct);
+		return Ok(result);
+	}
 
 	[HttpPost]
 	[HttpPut("{id:int}")]

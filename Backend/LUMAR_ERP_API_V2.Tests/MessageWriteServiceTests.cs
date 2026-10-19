@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Data;
+using LUMAR_ERP_API_V2.DTOs.Customers;
 using LUMAR_ERP_API_V2.DTOs.Loyalty;
 using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.Settings;
@@ -1841,6 +1842,39 @@ public sealed class MessageWriteServiceTests
         command.Parameters.AddWithValue("@isRetryable", isRetryable);
         var result = await command.ExecuteScalarAsync();
         return Convert.ToInt32(result);
+    }
+
+    private sealed class FakeCustomerRepository(params CustomerDetailsDto[] customers) : ICustomerRepository
+    {
+        public Task<IReadOnlyList<CustomerListDto>> GetListAsync(CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<CustomerListDto>>(customers.Select(item => new CustomerListDto(
+                item.CustomerId,
+                item.CustomerCode,
+                item.CustomerName,
+                item.PhoneNumber,
+                item.TotalPoints,
+                item.TotalPieces,
+                item.TotalDebts,
+                item.RelationshipType)).ToList());
+
+        public Task<CustomerDetailsDto?> GetByIdAsync(int customerId, CancellationToken cancellationToken)
+            => Task.FromResult(customers.FirstOrDefault(item => item.CustomerId == customerId));
+
+        public Task<IReadOnlyList<CustomerMeasurementDto>> GetMeasurementsAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerMeasurementDto>>(Array.Empty<CustomerMeasurementDto>());
+        public Task<IReadOnlyList<CustomerMeasurementDto>?> UpsertMeasurementsAsync(int customerId, UpsertCustomerMeasurementsDto measurements, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerMeasurementDto>?>(Array.Empty<CustomerMeasurementDto>());
+        public Task<IReadOnlyList<CustomerLedgerEntryDto>> GetLedgerAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerLedgerEntryDto>>(Array.Empty<CustomerLedgerEntryDto>());
+        public Task<CustomerLoyaltyDto?> GetLoyaltyAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<CustomerLoyaltyDto?>(null);
+        public Task<CustomerReferralDto?> GetReferralsAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<CustomerReferralDto?>(null);
+        public Task<CustomerDetailsDto> CreateAsync(CreateCustomerDto customer, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<CustomerCreationResultDto> CreateWithReferralAsync(CreateCustomerWithReferralDto customer, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<CustomerCreationResultDto> CreateWithReferralInTransactionAsync(SqlConnection connection, SqlTransaction transaction, CreateCustomerWithReferralDto customer, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<CustomerDetailsDto?> UpdateAsync(int customerId, UpdateCustomerDto customer, CancellationToken cancellationToken) => Task.FromResult<CustomerDetailsDto?>(null);
+        public Task<IReadOnlyList<CustomerListDto>> SearchAsync(string term, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerListDto>>(Array.Empty<CustomerListDto>());
+        public Task<IReadOnlyList<CustomerReferralCandidateDto>> SearchReferralCandidatesAsync(string term, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerReferralCandidateDto>>(Array.Empty<CustomerReferralCandidateDto>());
+        public Task<IReadOnlyList<CustomerDetailsDto>> GetAncestorsAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerDetailsDto>>(Array.Empty<CustomerDetailsDto>());
+        public Task<IReadOnlyList<ReferralTreeNodeDto>> GetDescendantsAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ReferralTreeNodeDto>>(Array.Empty<ReferralTreeNodeDto>());
+        public Task<int?> ResolveReferralCodeAsync(string referralCode, CancellationToken cancellationToken) => Task.FromResult<int?>(null);
+        public Task<bool> WouldCreateCycleAsync(int customerId, int parentCustomerId, CancellationToken cancellationToken) => Task.FromResult(false);
     }
 
     private sealed class FakeSettingsRepository : ISettingsRepository
