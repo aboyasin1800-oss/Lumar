@@ -8,7 +8,9 @@ public sealed class OrderService(
     IOrderRepository repository,
     IVipLevelEvaluationService vipLevelEvaluationService,
     IOrderLoyaltyIntegrationService orderLoyaltyIntegrationService,
-    IMessageWriteService? messageWriteService = null) : IOrderService
+    IMessageWriteService? messageWriteService = null,
+    ICustomerRepository? customerRepository = null,
+    ISettingsRepository? settingsRepository = null) : IOrderService
 {
     public Task<IReadOnlyList<OrderListDto>> GetListAsync(CancellationToken cancellationToken) => repository.GetListAsync(cancellationToken);
     public Task<OrderDetailsDto?> GetByIdAsync(int orderId, CancellationToken cancellationToken) => repository.GetByIdAsync(orderId, cancellationToken);
@@ -29,6 +31,7 @@ public sealed class OrderService(
             {
                 try
                 {
+                    var messageContext = await BuildOrderLifecycleContextAsync(created, cancellationToken);
                     var messageRequest = new MessageWriteRequest(
                         created.CustomerId,
                         created.OrderId,
@@ -37,15 +40,7 @@ public sealed class OrderService(
                         created.PhoneNumber ?? string.Empty,
                         created.OrderNumber,
                         "Order",
-                        new Dictionary<string, object?>
-                        {
-                            ["CustomerName"] = created.CustomerName,
-                            ["OrderNumber"] = created.OrderNumber,
-                            ["OrderId"] = created.OrderId,
-                            ["Amount"] = created.TotalAmount,
-                            ["PhoneNumber"] = created.PhoneNumber,
-                            ["CustomerPhoneNumber"] = created.PhoneNumber,
-                        });
+                        messageContext);
 
                     await messageWriteService.TryCreateAsync(messageRequest, cancellationToken);
                 }
@@ -110,6 +105,7 @@ public sealed class OrderService(
         {
             try
             {
+                var messageContext = await BuildOrderLifecycleContextAsync(delivered, cancellationToken);
                 await messageWriteService.TryCreateAsync(new MessageWriteRequest(
                     delivered.CustomerId,
                     delivered.OrderId,
@@ -118,15 +114,7 @@ public sealed class OrderService(
                     delivered.PhoneNumber ?? string.Empty,
                     delivered.OrderNumber,
                     "Order",
-                    new Dictionary<string, object?>
-                    {
-                        ["CustomerName"] = delivered.CustomerName ?? "Customer",
-                        ["OrderNumber"] = delivered.OrderNumber,
-                        ["OrderId"] = delivered.OrderId,
-                        ["Amount"] = delivered.TotalAmount,
-                        ["PhoneNumber"] = delivered.PhoneNumber,
-                        ["CustomerPhoneNumber"] = delivered.PhoneNumber,
-                    }), cancellationToken);
+                    messageContext), cancellationToken);
             }
             catch
             {
@@ -136,6 +124,49 @@ public sealed class OrderService(
 
         return delivered;
     }
+    private async Task<Dictionary<string, object?>> BuildOrderLifecycleContextAsync(OrderDetailsDto order, CancellationToken cancellationToken)
+    {
+        var context = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["CustomerName"] = order.CustomerName ?? "Customer",
+            ["OrderNumber"] = order.OrderNumber,
+            ["OrderId"] = order.OrderId,
+            ["Amount"] = order.TotalAmount,
+            ["TotalAmount"] = order.TotalAmount,
+            ["PaidAmount"] = order.PaidAmount,
+            ["RemainingAmount"] = order.RemainingAmount,
+            ["DeliveryDate"] = order.DeliveryDate ?? DateTime.UtcNow,
+            ["PhoneNumber"] = order.PhoneNumber,
+            ["CustomerPhoneNumber"] = order.PhoneNumber,
+            ["CurrencyName"] = await GetRequiredSettingValueAsync("Currency", cancellationToken) ?? "الريال اليمني",
+            ["StoreName"] = await GetRequiredSettingValueAsync("StoreName", cancellationToken) ?? "LUMAR",
+            ["CustomerCode"] = await GetCustomerCodeAsync(order.CustomerId, cancellationToken),
+        };
+
+        var items = await repository.GetItemsAsync(order.OrderId, cancellationToken);
+        context["OrderDetails"] = string.Join(", ", items.Select(item => item.PieceType).Where(static value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase));
+
+        return context;
+    }
+
+    private async Task<string?> GetCustomerCodeAsync(int customerId, CancellationToken cancellationToken)
+    {
+        if (customerRepository is null)
+            return null;
+
+        var customer = await customerRepository.GetByIdAsync(customerId, cancellationToken);
+        return string.IsNullOrWhiteSpace(customer?.CustomerCode) ? null : customer.CustomerCode;
+    }
+
+    private async Task<string?> GetRequiredSettingValueAsync(string settingName, CancellationToken cancellationToken)
+    {
+        if (settingsRepository is null)
+            return null;
+
+        var setting = await settingsRepository.GetByKeyAsync(settingName, cancellationToken);
+        return string.IsNullOrWhiteSpace(setting?.SettingValue) ? null : setting.SettingValue;
+    }
+
     public Task<OrderDetailsDto?> WaiveRemainingBalanceAsync(int orderId, CancellationToken cancellationToken) => repository.WaiveRemainingBalanceAsync(orderId, cancellationToken);
     public Task<OrderDetailsDto?> RecognizeDeliveryRevenueAsync(int orderId, CancellationToken cancellationToken) => repository.RecognizeDeliveryRevenueAsync(orderId, cancellationToken);
     public async Task<OrderDetailsDto?> CancelOrderAsync(int orderId, string? reason, string? cancelledBy, CancellationToken cancellationToken)

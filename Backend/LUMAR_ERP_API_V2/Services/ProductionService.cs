@@ -8,7 +8,9 @@ public sealed class ProductionService(
     IProductionRepository repository,
     IOrderLoyaltyIntegrationService orderLoyaltyIntegrationService,
     IOrderRepository orderRepository,
-    IMessageWriteService? messageWriteService = null) : IProductionService
+    IMessageWriteService? messageWriteService = null,
+    ICustomerRepository? customerRepository = null,
+    ISettingsRepository? settingsRepository = null) : IProductionService
 {
     public Task<IReadOnlyList<PieceDto>> GetPiecesAsync(CancellationToken ct) => repository.GetPiecesAsync(ct);
     public Task<IReadOnlyList<PieceDto>> GetReadyMadePiecesAsync(CancellationToken ct) => repository.GetReadyMadePiecesAsync(ct);
@@ -67,6 +69,29 @@ public sealed class ProductionService(
 
         try
         {
+            var context = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["CustomerName"] = customerName ?? "Customer",
+                ["OrderNumber"] = orderNumber,
+                ["OrderId"] = orderId,
+                ["Amount"] = totalAmount,
+                ["TotalAmount"] = totalAmount,
+                ["PhoneNumber"] = phoneNumber,
+                ["CustomerPhoneNumber"] = phoneNumber,
+                ["CurrencyName"] = await GetSettingValueAsync("Currency", cancellationToken) ?? "الريال اليمني",
+                ["StoreName"] = await GetSettingValueAsync("StoreName", cancellationToken) ?? "LUMAR",
+            };
+
+            var order = await orderRepository.GetByIdAsync(orderId, cancellationToken);
+            if (order is not null)
+            {
+                context["PaidAmount"] = order.PaidAmount;
+                context["RemainingAmount"] = order.RemainingAmount;
+                context["DeliveryDate"] = order.DeliveryDate ?? DateTime.UtcNow;
+                context["OrderDetails"] = order.OrderNumber;
+                context["CustomerCode"] = await GetCustomerCodeAsync(customerId, cancellationToken);
+            }
+
             await messageWriteService.TryCreateAsync(new MessageWriteRequest(
                 customerId,
                 orderId,
@@ -75,19 +100,29 @@ public sealed class ProductionService(
                 phoneNumber,
                 orderNumber,
                 "Order",
-                new Dictionary<string, object?>
-                {
-                    ["CustomerName"] = customerName ?? "Customer",
-                    ["OrderNumber"] = orderNumber,
-                    ["OrderId"] = orderId,
-                    ["Amount"] = totalAmount,
-                    ["PhoneNumber"] = phoneNumber,
-                    ["CustomerPhoneNumber"] = phoneNumber,
-                }), cancellationToken);
+                context), cancellationToken);
         }
         catch
         {
             // Ignore message-side failure so production flow remains durable.
         }
+    }
+
+    private async Task<string?> GetCustomerCodeAsync(int customerId, CancellationToken cancellationToken)
+    {
+        if (customerRepository is null)
+            return null;
+
+        var customer = await customerRepository.GetByIdAsync(customerId, cancellationToken);
+        return string.IsNullOrWhiteSpace(customer?.CustomerCode) ? null : customer.CustomerCode;
+    }
+
+    private async Task<string?> GetSettingValueAsync(string settingName, CancellationToken cancellationToken)
+    {
+        if (settingsRepository is null)
+            return null;
+
+        var setting = await settingsRepository.GetByKeyAsync(settingName, cancellationToken);
+        return string.IsNullOrWhiteSpace(setting?.SettingValue) ? null : setting.SettingValue;
     }
 }

@@ -1499,7 +1499,14 @@ public sealed class MessageWriteServiceTests
             new FakeOrderRepository(order, order),
             new FakeVipLevelEvaluationService(),
             new FakeOrderLoyaltyIntegrationService(),
-            messageService);
+            messageService,
+            customerRepository: new FakeCustomerRepository(
+                new CustomerDetailsDto(8, "C-201", "أحمد", "0500000201", null, null, null, null, null, true, null, null, null, null)),
+            settingsRepository: new FakeSettingsRepository(new MessageSettingsDto(true, true, false, true, true, true))
+            {
+                StoreName = "LUMAR",
+                CurrencyName = "الريال اليمني"
+            });
 
         var result = await service.DeliverAsync(201, CancellationToken.None);
 
@@ -1509,6 +1516,9 @@ public sealed class MessageWriteServiceTests
         Assert.Equal(200m, Assert.IsType<decimal>(request.Context!["Amount"]));
         Assert.Equal("0500000201", request.PhoneNumber);
         Assert.Equal("ORD-201", request.Context["OrderNumber"]);
+        Assert.Equal("الريال اليمني", request.Context["CurrencyName"]);
+        Assert.Equal("LUMAR", request.Context["StoreName"]);
+        Assert.Equal("C-201", request.Context["CustomerCode"]);
     }
 
     [Fact]
@@ -2216,6 +2226,8 @@ public sealed class MessageWriteServiceTests
 
     private sealed class FakeCustomerRepository(params CustomerDetailsDto[] customers) : ICustomerRepository
     {
+        public string? CustomerCode { get; set; }
+
         public Task<IReadOnlyList<CustomerListDto>> GetListAsync(CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<CustomerListDto>>(customers.Select(item => new CustomerListDto(
                 item.CustomerId,
@@ -2251,6 +2263,9 @@ public sealed class MessageWriteServiceTests
     {
         private MessageSettingsDto _settings;
 
+        public string? StoreName { get; set; }
+        public string? CurrencyName { get; set; }
+
         public FakeSettingsRepository() : this(new MessageSettingsDto(true, true, false, true, true))
         {
         }
@@ -2267,7 +2282,21 @@ public sealed class MessageWriteServiceTests
 
         public Task<IReadOnlyList<SystemSettingListDto>> GetAllAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SystemSettingListDto>>(Array.Empty<SystemSettingListDto>());
         public Task<SystemSettingDetailsDto?> GetByIdAsync(int id, CancellationToken c) => Task.FromResult<SystemSettingDetailsDto?>(null);
-        public Task<SystemSettingDetailsDto?> GetByKeyAsync(string key, CancellationToken c) => Task.FromResult<SystemSettingDetailsDto?>(null);
+        public Task<SystemSettingDetailsDto?> GetByKeyAsync(string key, CancellationToken c)
+        {
+            var value = key switch
+            {
+                "StoreName" => StoreName,
+                "Currency" => CurrencyName,
+                _ => null,
+            };
+
+            if (string.IsNullOrWhiteSpace(value))
+                return Task.FromResult<SystemSettingDetailsDto?>(null);
+
+            return Task.FromResult<SystemSettingDetailsDto?>(new SystemSettingDetailsDto(0, key, value, "General", null));
+        }
+
         public Task<IReadOnlyList<SettingCategoryDto>> GetCategoriesAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SettingCategoryDto>>(Array.Empty<SettingCategoryDto>());
         public Task<IReadOnlyList<SystemSettingListDto>> GetByCategoryAsync(string category, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SystemSettingListDto>>(Array.Empty<SystemSettingListDto>());
         public Task<ProductionRoutesConfigDto> GetProductionRoutesConfigAsync(CancellationToken c) => Task.FromResult(new ProductionRoutesConfigDto(Array.Empty<ProductionRouteEntryDto>()));
