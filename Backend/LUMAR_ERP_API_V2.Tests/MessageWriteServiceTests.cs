@@ -282,6 +282,57 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public void ManualCampaignRequest_BindsNumericRecipientModeValues()
+    {
+        var single = System.Text.Json.JsonSerializer.Deserialize<ManualCampaignRequest>("""
+            {
+              "campaignReference": "campaign-001",
+              "recipientMode": 0,
+              "customerId": 15,
+              "messageText": "اختبار من لومار لنجاح الحملات",
+              "templateKey": "general-campaign-smart",
+              "title": "حملة إعلانية"
+            }
+            """);
+
+        var all = System.Text.Json.JsonSerializer.Deserialize<ManualCampaignRequest>("""
+            {
+              "campaignReference": "campaign-002",
+              "recipientMode": 1,
+              "customerId": 15,
+              "messageText": "نتيجة جيدة",
+              "templateKey": "general-campaign-smart",
+              "title": "حملة إعلانية"
+            }
+            """);
+
+        Assert.NotNull(single);
+        Assert.Equal(ManualCampaignRecipientMode.SingleCustomer, single!.RecipientMode);
+        Assert.NotNull(all);
+        Assert.Equal(ManualCampaignRecipientMode.AllEligibleCustomers, all!.RecipientMode);
+    }
+
+    [Fact]
+    public void ManualCampaignRequest_RejectsUnknownRecipientModeValue()
+    {
+        var payload = """
+            {
+              "campaignReference": "campaign-003",
+              "recipientMode": 99,
+              "customerId": 15,
+              "messageText": "اختبار",
+              "templateKey": "general-campaign-smart",
+              "title": "حملة"
+            }
+            """;
+
+        var exception = Assert.Throws<System.Text.Json.JsonException>(() =>
+            System.Text.Json.JsonSerializer.Deserialize<ManualCampaignRequest>(payload));
+
+        Assert.Contains("recipientMode", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task MessageWriteService_RespectsMasterAndReferralRuntimeSettings()
     {
         var repo = new FakeMessageRepository();

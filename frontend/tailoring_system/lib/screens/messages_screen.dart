@@ -221,10 +221,45 @@ class MessagesRepository {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final payload = jsonDecode(response.body);
-      final message = payload is Map && payload['message'] is String
-          ? payload['message'] as String
-          : 'فشل طلب الحملة.';
-      throw Exception(message);
+      String? extractSafeMessage(Object? value) {
+        if (value is Map<String, dynamic>) {
+          final candidates = [
+            value['message'],
+            value['detail'],
+            value['title'],
+            value['errors'],
+          ];
+          for (final candidate in candidates) {
+            if (candidate is String && candidate.trim().isNotEmpty) return candidate.trim();
+            if (candidate is Map && candidate.values.isNotEmpty) {
+              for (final nested in candidate.values) {
+                if (nested is String && nested.trim().isNotEmpty) return nested.trim();
+                if (nested is List) {
+                  for (final item in nested) {
+                    if (item is String && item.trim().isNotEmpty) return item.trim();
+                  }
+                }
+              }
+            }
+            if (candidate is List) {
+              for (final item in candidate) {
+                if (item is String && item.trim().isNotEmpty) return item.trim();
+                if (item is Map && item.values.isNotEmpty) {
+                  for (final nested in item.values) {
+                    if (nested is String && nested.trim().isNotEmpty) return nested.trim();
+                  }
+                }
+              }
+            }
+          }
+        }
+        return null;
+      }
+
+      final safeMessage = extractSafeMessage(payload);
+      throw Exception(
+        safeMessage ?? 'فشل طلب الحملة (HTTP ${response.statusCode})',
+      );
     }
 
     final decoded = jsonDecode(response.body);
@@ -233,6 +268,26 @@ class MessagesRepository {
     }
 
     return ManualCampaignResult.fromJson(decoded);
+  }
+}
+
+enum ManualCampaignRecipientMode {
+  singleCustomer(0),
+  allEligibleCustomers(1);
+
+  const ManualCampaignRecipientMode(this.value);
+
+  final int value;
+
+  static ManualCampaignRecipientMode fromValue(int value) {
+    switch (value) {
+      case 0:
+        return ManualCampaignRecipientMode.singleCustomer;
+      case 1:
+        return ManualCampaignRecipientMode.allEligibleCustomers;
+      default:
+        throw ArgumentError.value(value, 'value', 'RecipientMode must be 0 or 1.');
+    }
   }
 }
 
@@ -247,7 +302,7 @@ class ManualCampaignRequest {
   });
 
   final String campaignReference;
-  final String recipientMode;
+  final ManualCampaignRecipientMode recipientMode;
   final int? customerId;
   final String messageText;
   final String templateKey;
@@ -255,7 +310,7 @@ class ManualCampaignRequest {
 
   Map<String, dynamic> toJson() => {
         'campaignReference': campaignReference,
-        'recipientMode': recipientMode,
+        'recipientMode': recipientMode.value,
         if (customerId != null) 'customerId': customerId,
         'messageText': messageText,
         'templateKey': templateKey,
@@ -480,7 +535,9 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
       final result = await MessagesRepository().createManualCampaign(
         request: ManualCampaignRequest(
           campaignReference: 'manual-campaign-${DateTime.now().millisecondsSinceEpoch}',
-          recipientMode: _recipientMode,
+          recipientMode: _recipientMode == 'SingleCustomer'
+              ? ManualCampaignRecipientMode.singleCustomer
+              : ManualCampaignRecipientMode.allEligibleCustomers,
           customerId: _recipientMode == 'SingleCustomer' ? _selectedCustomer!.customerId : null,
           messageText: messageText,
           templateKey: _campaignTemplateKey,

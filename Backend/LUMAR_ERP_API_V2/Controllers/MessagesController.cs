@@ -100,6 +100,9 @@ public sealed class MessagesController(IMessageService service, ICustomerService
 	[HttpPost("campaigns")]
 	public async Task<ActionResult<ManualCampaignResult>> TriggerManualCampaign([FromBody] ManualCampaignRequest request, CancellationToken ct)
 	{
+		if (!Enum.IsDefined(typeof(ManualCampaignRecipientMode), request.RecipientMode))
+			return BadRequest("RecipientMode must be 0 (SingleCustomer) or 1 (AllEligibleCustomers).");
+
 		if (string.IsNullOrWhiteSpace(request.CampaignReference)) return BadRequest("CampaignReference is required.");
 		if (string.IsNullOrWhiteSpace(request.TemplateKey)) return BadRequest("TemplateKey is required.");
 		if (string.IsNullOrWhiteSpace(request.MessageText)) return BadRequest("MessageText is required.");
