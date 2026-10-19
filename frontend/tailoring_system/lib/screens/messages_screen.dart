@@ -228,6 +228,8 @@ class MessagesRepository {
             value['detail'],
             value['title'],
             value['errors'],
+            value['plainText'],
+            value['plain text'],
           ];
           for (final candidate in candidates) {
             if (candidate is String && candidate.trim().isNotEmpty) return candidate.trim();
@@ -253,6 +255,11 @@ class MessagesRepository {
             }
           }
         }
+
+        if (value is String && value.trim().isNotEmpty) {
+          return value.trim();
+        }
+
         return null;
       }
 

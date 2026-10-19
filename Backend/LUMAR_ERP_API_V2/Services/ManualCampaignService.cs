@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using LUMAR_ERP_API_V2.DTOs.Customers;
 using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.Settings;
@@ -11,6 +13,41 @@ public enum ManualCampaignRecipientMode
     AllEligibleCustomers,
 }
 
+public sealed class ManualCampaignRecipientModeJsonConverter : JsonConverter<ManualCampaignRecipientMode>
+{
+    public override ManualCampaignRecipientMode Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out var numericValue))
+        {
+            return numericValue switch
+            {
+                0 => ManualCampaignRecipientMode.SingleCustomer,
+                1 => ManualCampaignRecipientMode.AllEligibleCustomers,
+                _ => throw new JsonException("RecipientMode must be 0 (SingleCustomer) or 1 (AllEligibleCustomers).")
+            };
+        }
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var text = reader.GetString();
+            if (string.Equals(text, "0", StringComparison.OrdinalIgnoreCase))
+                return ManualCampaignRecipientMode.SingleCustomer;
+            if (string.Equals(text, "1", StringComparison.OrdinalIgnoreCase))
+                return ManualCampaignRecipientMode.AllEligibleCustomers;
+            if (Enum.TryParse<ManualCampaignRecipientMode>(text, true, out var parsed) && Enum.IsDefined(parsed))
+                return parsed;
+        }
+
+        throw new JsonException("RecipientMode must be 0 (SingleCustomer) or 1 (AllEligibleCustomers).");
+    }
+
+    public override void Write(Utf8JsonWriter writer, ManualCampaignRecipientMode value, JsonSerializerOptions options)
+    {
+        writer.WriteNumberValue((int)value);
+    }
+}
+
+[JsonConverter(typeof(ManualCampaignRequestJsonConverter))]
 public sealed record ManualCampaignRequest(
     string CampaignReference,
     ManualCampaignRecipientMode RecipientMode,
@@ -19,6 +56,74 @@ public sealed record ManualCampaignRequest(
     string TemplateKey,
     string Title,
     CancellationToken CancellationToken = default);
+
+public sealed class ManualCampaignRequestJsonConverter : JsonConverter<ManualCampaignRequest>
+{
+    public override ManualCampaignRequest? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        using var document = JsonDocument.ParseValue(ref reader);
+        var root = document.RootElement;
+
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new JsonException("Manual campaign request payload must be an object.");
+
+        var campaignReference = root.TryGetProperty("campaignReference", out var campaignReferenceElement)
+            ? campaignReferenceElement.GetString() ?? string.Empty
+            : string.Empty;
+
+        var recipientMode = root.TryGetProperty("recipientMode", out var recipientModeElement)
+            ? recipientModeElement.ValueKind switch
+            {
+                JsonValueKind.Number when recipientModeElement.TryGetInt32(out var numericValue) => numericValue,
+                JsonValueKind.String when int.TryParse(recipientModeElement.GetString(), out var numericValue) => numericValue,
+                _ => throw new JsonException("RecipientMode must be 0 (SingleCustomer) or 1 (AllEligibleCustomers).")
+            }
+            : throw new JsonException("RecipientMode is required.");
+
+        int? customerId = null;
+        if (root.TryGetProperty("customerId", out var customerIdElement) && customerIdElement.ValueKind != JsonValueKind.Null)
+        {
+            customerId = customerIdElement.GetInt32();
+        }
+
+        var messageText = root.TryGetProperty("messageText", out var messageTextElement)
+            ? messageTextElement.GetString() ?? string.Empty
+            : string.Empty;
+
+        var templateKey = root.TryGetProperty("templateKey", out var templateKeyElement)
+            ? templateKeyElement.GetString() ?? string.Empty
+            : string.Empty;
+
+        var title = root.TryGetProperty("title", out var titleElement)
+            ? titleElement.GetString() ?? string.Empty
+            : string.Empty;
+
+        return new ManualCampaignRequest(
+            CampaignReference: campaignReference,
+            RecipientMode: recipientMode switch
+            {
+                0 => ManualCampaignRecipientMode.SingleCustomer,
+                1 => ManualCampaignRecipientMode.AllEligibleCustomers,
+                _ => throw new JsonException("RecipientMode must be 0 (SingleCustomer) or 1 (AllEligibleCustomers).")
+            },
+            CustomerId: customerId,
+            MessageText: messageText,
+            TemplateKey: templateKey,
+            Title: title);
+    }
+
+    public override void Write(Utf8JsonWriter writer, ManualCampaignRequest value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("campaignReference", value.CampaignReference);
+        writer.WriteNumber("recipientMode", (int)value.RecipientMode);
+        if (value.CustomerId.HasValue) writer.WriteNumber("customerId", value.CustomerId.Value);
+        writer.WriteString("messageText", value.MessageText);
+        writer.WriteString("templateKey", value.TemplateKey);
+        writer.WriteString("title", value.Title);
+        writer.WriteEndObject();
+    }
+}
 
 public sealed record ManualCampaignResult(
     int CreatedCount,
