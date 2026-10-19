@@ -351,7 +351,7 @@ public sealed class WhatsAppCloudIntegrationTests
         var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, logger);
         controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
 
-        var rawBody = "{\"entry\":[{\"changes\":[{\"value\":{\"metadata\":{\"phone_number_id\":\"123456789\"},\"messages\":[{\"from\":\"967000000001\",\"type\":\"text\",\"text\":{\"body\":\"اختبار استقبال LUMAR\"}}]}}}]}]}";
+        var rawBody = "{\"entry\":[{\"changes\":[{\"value\":{\"metadata\":{\"phone_number_id\":\"123456789\"},\"messages\":[{\"from\":\"967000000001\",\"type\":\"text\",\"text\":{\"body\":\"اختبار استقبال LUMAR\"}}]}}]}]}";
         using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rawBody));
         controller.ControllerContext.HttpContext.Request.Body = ms;
         controller.ControllerContext.HttpContext.Request.Headers["X-Hub-Signature-256"] = ComputeSignature(rawBody, "runtime-secret");
@@ -379,7 +379,7 @@ public sealed class WhatsAppCloudIntegrationTests
         var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, logger);
         controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
 
-        var rawBody = "{\"entry\":[{\"changes\":[{\"value\":{\"statuses\":[{\"id\":\"wamid.1\",\"status\":\"sent\",\"timestamp\":123}]}}}]}]}";
+        var rawBody = "{\"entry\":[{\"changes\":[{\"value\":{\"statuses\":[{\"id\":\"wamid.1\",\"status\":\"sent\",\"timestamp\":123}]}}]}]}";
         using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rawBody));
         controller.ControllerContext.HttpContext.Request.Body = ms;
         controller.ControllerContext.HttpContext.Request.Headers["X-Hub-Signature-256"] = ComputeSignature(rawBody, "runtime-secret");
