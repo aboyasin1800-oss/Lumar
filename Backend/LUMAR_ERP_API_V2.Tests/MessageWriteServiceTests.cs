@@ -1289,6 +1289,50 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task ProductionService_AdvancePieceStageAsync_WhenOrderBecomesReadyForDelivery_UsesOfficialOrderValuesInContext()
+    {
+        var messageService = new RecordingMessageWriteService();
+        var order = new OrderDetailsDto(
+            100,
+            "ORD-100",
+            7,
+            "سالم",
+            "0500000100",
+            DateTime.UtcNow,
+            null,
+            150m,
+            0m,
+            0m,
+            150m,
+            "Normal",
+            "ReadyForDelivery",
+            "Ready",
+            DateTime.UtcNow,
+            null,
+            null,
+            null,
+            null,
+            "TailoringOrder",
+            false,
+            null,
+            false,
+            null);
+
+        var productionRepository = new FakeProductionRepository(
+            new PieceDto(13, 1, "TRK-100", "Ready", 1, DateTime.UtcNow, "YALAQ", 100, "ORD-100", 9),
+            new ProductionTrackingAdvanceResultDto(13, "TRK-100", "Ready", "ReadyForDelivery", null, "Order is ready for delivery and can be packed.", true, false, true));
+        var orderRepository = new FakeOrderRepository(order);
+        var service = new ProductionService(productionRepository, new FakeOrderLoyaltyIntegrationService(), orderRepository, messageService);
+
+        await service.AdvancePieceStageAsync(new ProductionTrackingAdvanceRequestDto(13, "TRK-100", "YALAQ", "ReadyForDelivery", "SCN-2", "EMP-2", "REF-2", 9), CancellationToken.None);
+
+        var request = Assert.Single(messageService.Requests);
+        Assert.Equal(150m, Assert.IsType<decimal>(request.Context!["Amount"]));
+        Assert.Equal("0500000100", request.PhoneNumber);
+        Assert.Equal("ORD-100", request.Context["OrderNumber"]);
+    }
+
+    [Fact]
     public async Task ProductionService_AdvancePieceStageAsync_WhenMessageMentionsReadyForDeliveryButTransitionDidNotOccur_DoesNotSendOrderReady()
     {
         var messageService = new RecordingMessageWriteService();
@@ -1419,6 +1463,52 @@ public sealed class MessageWriteServiceTests
 
         Assert.Null(result);
         Assert.Empty(messageService.Requests);
+    }
+
+    [Fact]
+    public async Task OrderService_DeliverAsync_WhenOrderIsOfficiallyDelivered_UsesOfficialOrderValuesInContext()
+    {
+        var messageService = new RecordingMessageWriteService();
+        var order = new OrderDetailsDto(
+            201,
+            "ORD-201",
+            8,
+            "أحمد",
+            "0500000201",
+            DateTime.UtcNow,
+            null,
+            200m,
+            0m,
+            200m,
+            0m,
+            "Normal",
+            "ReadyForDelivery",
+            null,
+            DateTime.UtcNow,
+            null,
+            null,
+            null,
+            null,
+            "TailoringOrder",
+            false,
+            null,
+            false,
+            null);
+
+        var service = new OrderService(
+            new FakeOrderRepository(order, order),
+            new FakeVipLevelEvaluationService(),
+            new FakeOrderLoyaltyIntegrationService(),
+            messageService);
+
+        var result = await service.DeliverAsync(201, CancellationToken.None);
+
+        Assert.NotNull(result);
+        var request = Assert.Single(messageService.Requests);
+        Assert.Equal("OrderDelivered", request.EventType);
+        Assert.Equal(200m, Assert.IsType<decimal>(request.Context!["Amount"]));
+        Assert.Equal("0500000201", request.PhoneNumber);
+        Assert.Equal("ORD-201", request.Context["OrderNumber"]);
     }
 
     [Fact]

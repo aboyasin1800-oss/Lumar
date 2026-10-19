@@ -43,7 +43,8 @@ public sealed class OrderService(
                             ["OrderNumber"] = created.OrderNumber,
                             ["OrderId"] = created.OrderId,
                             ["Amount"] = created.TotalAmount,
-                            ["PhoneNumber"] = created.PhoneNumber
+                            ["PhoneNumber"] = created.PhoneNumber,
+                            ["CustomerPhoneNumber"] = created.PhoneNumber,
                         });
 
                     await messageWriteService.TryCreateAsync(messageRequest, cancellationToken);
@@ -123,6 +124,8 @@ public sealed class OrderService(
                         ["OrderNumber"] = delivered.OrderNumber,
                         ["OrderId"] = delivered.OrderId,
                         ["Amount"] = delivered.TotalAmount,
+                        ["PhoneNumber"] = delivered.PhoneNumber,
+                        ["CustomerPhoneNumber"] = delivered.PhoneNumber,
                     }), cancellationToken);
             }
             catch

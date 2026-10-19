@@ -51,6 +51,7 @@ public sealed class ProductionService(
                         order?.CustomerName,
                         order?.OrderNumber ?? piece.OrderNumber,
                         order?.PhoneNumber ?? string.Empty,
+                        order?.TotalAmount ?? 0m,
                         ct);
                 }
             }
@@ -59,7 +60,7 @@ public sealed class ProductionService(
         return result;
     }
 
-    private async Task TrySendMessageAsync(int customerId, int orderId, string eventType, string templateKey, string? customerName, string orderNumber, string phoneNumber, CancellationToken cancellationToken)
+    private async Task TrySendMessageAsync(int customerId, int orderId, string eventType, string templateKey, string? customerName, string orderNumber, string phoneNumber, decimal totalAmount, CancellationToken cancellationToken)
     {
         if (messageWriteService is null || customerId <= 0)
             return;
@@ -79,6 +80,9 @@ public sealed class ProductionService(
                     ["CustomerName"] = customerName ?? "Customer",
                     ["OrderNumber"] = orderNumber,
                     ["OrderId"] = orderId,
+                    ["Amount"] = totalAmount,
+                    ["PhoneNumber"] = phoneNumber,
+                    ["CustomerPhoneNumber"] = phoneNumber,
                 }), cancellationToken);
         }
         catch
