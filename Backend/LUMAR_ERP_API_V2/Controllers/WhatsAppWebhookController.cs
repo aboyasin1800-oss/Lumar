@@ -42,7 +42,10 @@ public sealed class WhatsAppWebhookController(
     [HttpPost("webhook")]
     public async Task<IActionResult> ReceiveWebhook(CancellationToken cancellationToken)
     {
-        if (!Request.Headers.TryGetValue("X-Hub-Signature-256", out var signatureHeader))
+        var signatureHeaderPresent = Request.Headers.TryGetValue("X-Hub-Signature-256", out var signatureHeader);
+        logger.LogInformation("WhatsApp webhook POST arrived. SignatureHeaderPresent={SignatureHeaderPresent}", signatureHeaderPresent);
+
+        if (!signatureHeaderPresent)
             return Unauthorized();
 
         using var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true);
@@ -58,12 +61,20 @@ public sealed class WhatsAppWebhookController(
             return Unauthorized();
         }
 
-        if (!IsValidSignature(rawBody, signatureHeader.ToString(), runtimeSettings.AppSecret))
+        var signatureValid = IsValidSignature(rawBody, signatureHeader.ToString(), runtimeSettings.AppSecret);
+        logger.LogInformation("WhatsApp webhook signature validation completed. SignatureValid={SignatureValid}", signatureValid);
+        if (!signatureValid)
             return Unauthorized();
 
         try
         {
             using var document = JsonDocument.Parse(rawBody);
+            var statusWebhookPresent = false;
+            var inboundMessagePresent = false;
+            var inboundMessageType = "not_proven";
+            var phoneNumberIdMatchedRuntime = false;
+            var senderPresent = false;
+
             if (document.RootElement.TryGetProperty("entry", out var entries))
             {
                 foreach (var entry in entries.EnumerateArray())
@@ -76,8 +87,9 @@ public sealed class WhatsAppWebhookController(
                         if (!change.TryGetProperty("value", out var value))
                             continue;
 
-                        if (value.TryGetProperty("statuses", out var statuses))
+                        if (value.TryGetProperty("statuses", out var statuses) && statuses.ValueKind == JsonValueKind.Array && statuses.GetArrayLength() > 0)
                         {
+                            statusWebhookPresent = true;
                             foreach (var status in statuses.EnumerateArray())
                             {
                                 var providerMessageId = status.TryGetProperty("id", out var idElement) ? idElement.GetString() : null;
@@ -97,8 +109,47 @@ public sealed class WhatsAppWebhookController(
                                 await messageRepository.UpdateDeliveryStatusByProviderIdAsync(providerMessageId, MapStatus(statusName), occurredAtUtc, failureReason, cancellationToken);
                             }
                         }
+
+                        if (value.TryGetProperty("messages", out var messages) && messages.ValueKind == JsonValueKind.Array && messages.GetArrayLength() > 0)
+                        {
+                            inboundMessagePresent = true;
+                            var metadataPhoneNumberId = value.TryGetProperty("metadata", out var metadata)
+                                && metadata.TryGetProperty("phone_number_id", out var phoneElement)
+                                ? phoneElement.GetString()
+                                : null;
+                            phoneNumberIdMatchedRuntime = !string.IsNullOrWhiteSpace(metadataPhoneNumberId)
+                                && string.Equals(metadataPhoneNumberId.Trim(), runtimeSettings.PhoneNumberId.Trim(), StringComparison.Ordinal);
+
+                            foreach (var message in messages.EnumerateArray())
+                            {
+                                if (!message.TryGetProperty("from", out var fromElement) || string.IsNullOrWhiteSpace(fromElement.GetString()))
+                                    continue;
+
+                                senderPresent = true;
+                            }
+
+                            if (messages[0].TryGetProperty("type", out var messageType))
+                            {
+                                var typeValue = messageType.GetString();
+                                inboundMessageType = string.IsNullOrWhiteSpace(typeValue) ? "other" : typeValue.Trim().ToLowerInvariant();
+                            }
+                        }
                     }
                 }
+            }
+
+            logger.LogInformation(
+                "WhatsApp webhook payload classified. SignatureValid={SignatureValid} StatusWebhookPresent={StatusWebhookPresent} InboundMessagePresent={InboundMessagePresent} InboundMessageType={InboundMessageType} PhoneNumberIdMatchedRuntime={PhoneNumberIdMatchedRuntime} SenderPresent={SenderPresent}",
+                signatureValid,
+                statusWebhookPresent,
+                inboundMessagePresent,
+                inboundMessageType,
+                phoneNumberIdMatchedRuntime,
+                senderPresent);
+
+            if (statusWebhookPresent && !inboundMessagePresent)
+            {
+                logger.LogInformation("WhatsApp webhook status-only payload accepted. InboundMessagePresent={InboundMessagePresent}", false);
             }
         }
         catch (JsonException ex)

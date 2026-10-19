@@ -338,6 +338,61 @@ public sealed class WhatsAppCloudIntegrationTests
         Assert.IsType<UnauthorizedResult>(result);
     }
 
+    [Fact]
+    public async Task WhatsAppWebhookController_ValidIncomingMessageWebhook_LogsSafeInboundObservability()
+    {
+        var logger = new CaptureLogger<WhatsAppWebhookController>();
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+        {
+            Enabled = true,
+            PhoneNumberId = "123456789",
+            AppSecret = "runtime-secret"
+        });
+        var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, logger);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var rawBody = "{\"entry\":[{\"changes\":[{\"value\":{\"metadata\":{\"phone_number_id\":\"123456789\"},\"messages\":[{\"from\":\"967000000001\",\"type\":\"text\",\"text\":{\"body\":\"اختبار استقبال LUMAR\"}}]}}}]}]}";
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rawBody));
+        controller.ControllerContext.HttpContext.Request.Body = ms;
+        controller.ControllerContext.HttpContext.Request.Headers["X-Hub-Signature-256"] = ComputeSignature(rawBody, "runtime-secret");
+
+        var result = await controller.ReceiveWebhook(CancellationToken.None);
+
+        Assert.IsType<OkResult>(result);
+        var logText = string.Join(" ", logger.Messages).ToLowerInvariant();
+        Assert.Contains("signaturevalid=true", logText, StringComparison.Ordinal);
+        Assert.Contains("inboundmessagepresent=true", logText, StringComparison.Ordinal);
+        Assert.Contains("phonenumberidmatchedruntime=true", logText, StringComparison.Ordinal);
+        Assert.Contains("senderpresent=true", logText, StringComparison.Ordinal);
+        Assert.Contains("inboundmessagetype=text", logText, StringComparison.Ordinal);
+        Assert.DoesNotContain("اختبار استقبال LUMAR", logText, StringComparison.Ordinal);
+        Assert.DoesNotContain("967000000001", logText, StringComparison.Ordinal);
+        Assert.DoesNotContain("runtime-secret", logText, StringComparison.Ordinal);
+        Assert.DoesNotContain("sha256=", logText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhatsAppWebhookController_StatusOnlyWebhook_LogsStatusObservabilityWithoutInboundMessage()
+    {
+        var logger = new CaptureLogger<WhatsAppWebhookController>();
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, AppSecret = "runtime-secret" });
+        var controller = new WhatsAppWebhookController(new StubMessageRepository(), store, logger);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var rawBody = "{\"entry\":[{\"changes\":[{\"value\":{\"statuses\":[{\"id\":\"wamid.1\",\"status\":\"sent\",\"timestamp\":123}]}}}]}]}";
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rawBody));
+        controller.ControllerContext.HttpContext.Request.Body = ms;
+        controller.ControllerContext.HttpContext.Request.Headers["X-Hub-Signature-256"] = ComputeSignature(rawBody, "runtime-secret");
+
+        var result = await controller.ReceiveWebhook(CancellationToken.None);
+
+        Assert.IsType<OkResult>(result);
+        var logText = string.Join(" ", logger.Messages).ToLowerInvariant();
+        Assert.Contains("statuswebhookpresent=true", logText, StringComparison.Ordinal);
+        Assert.Contains("inboundmessagepresent=false", logText, StringComparison.Ordinal);
+        Assert.DoesNotContain("wamid.1", logText, StringComparison.Ordinal);
+    }
+
     private static string ComputeSignature(string rawBody, string appSecret)
     {
         using var hmac = new System.Security.Cryptography.HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
