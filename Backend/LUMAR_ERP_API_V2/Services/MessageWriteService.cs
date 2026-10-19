@@ -60,12 +60,13 @@ public sealed class MessageWriteService(
 
             if (runtimeSettings.WhatsAppEnabled)
             {
+                var outboundTransportChannel = string.IsNullOrWhiteSpace(route.PhoneNumber) ? "InApp" : "WhatsApp";
                 var createdPair = await repository.CreateCustomerMessageAndNotificationAsync(
                     route.CustomerId,
                     request.OrderId,
                     request.EventType,
                     template.TemplateKey,
-                    template.Channel,
+                    outboundTransportChannel,
                     title,
                     body,
                     route.PhoneNumber,

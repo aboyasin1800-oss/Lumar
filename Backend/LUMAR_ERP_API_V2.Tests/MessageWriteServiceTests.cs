@@ -1629,6 +1629,45 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task MessageWriteService_WhenWhatsAppIsEnabled_UsesWhatsAppTransportChannelEvenWhenTemplateIsInApp()
+    {
+        var repo = new FakeMessageRepository();
+        repo.TemplateExists = true;
+        var settingsRepo = new FakeSettingsRepository(new MessageSettingsDto(
+            MessageMasterEnabled: true,
+            DirectReferralDefaultOn: true,
+            OtherReferralDefaultOff: false,
+            FridayGreetingEnabled: true,
+            CampaignEnabled: true,
+            WhatsAppEnabled: true));
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer(), settingsRepo);
+
+        var result = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 7,
+            OrderId: 42,
+            EventType: "ManualCampaign",
+            TemplateKey: "general-campaign-smart",
+            PhoneNumber: "967775106545",
+            ReferenceId: "manual-campaign-001",
+            ReferenceType: "ManualCampaign",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["CampaignText"] = "عرض خاص لعملائنا",
+            }), CancellationToken.None);
+
+        Assert.True(result.Created);
+        Assert.NotNull(result.CustomerNotificationId);
+        Assert.NotNull(result.CustomerMessageId);
+        Assert.Equal(1, repo.Notifications.Count);
+        Assert.Equal(1, repo.Messages.Count);
+        Assert.Equal("WhatsApp", repo.Messages[0].Channel);
+        Assert.Equal("general-campaign-smart", repo.Messages[0].TemplateKey);
+        Assert.Equal(result.Title, repo.Notifications[0].Title);
+        Assert.Equal(result.Body, repo.Notifications[0].Body);
+    }
+
+    [Fact]
     public async Task MessageWriteService_WhenWhatsAppChannelIsDisabled_StillCreatesNotificationWithoutChannelMessage()
     {
         var repo = new FakeMessageRepository();
@@ -2044,7 +2083,7 @@ public sealed class MessageWriteServiceTests
         public Task<IReadOnlyList<SentMessageDto>> GetSentAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SentMessageDto>>(Array.Empty<SentMessageDto>());
         public Task<IReadOnlyList<SentLogDto>> GetSentLogAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SentLogDto>>(Array.Empty<SentLogDto>());
         public Task<MessageTemplateRecord?> GetActiveTemplateAsync(string templateKey, CancellationToken c)
-            => TemplateExists ? Task.FromResult<MessageTemplateRecord?>(new MessageTemplateRecord(1, templateKey, "إنشاء الطلب", "sms", "مرحباً {{CustomerName}}، تم إنشاء الطلب رقم {{OrderNumber}} بقيمة {{Amount}} ريال.")) : Task.FromResult<MessageTemplateRecord?>(null);
+            => TemplateExists ? Task.FromResult<MessageTemplateRecord?>(new MessageTemplateRecord(1, templateKey, "إنشاء الطلب", "InApp", "مرحباً {{CustomerName}}، تم إنشاء الطلب رقم {{OrderNumber}} بقيمة {{Amount}} ريال.")) : Task.FromResult<MessageTemplateRecord?>(null);
 
         public Task<bool> HasProcessedAsync(string idempotencyKey, CancellationToken c) => Task.FromResult(ProcessedKeys.Contains(idempotencyKey));
 

@@ -558,7 +558,7 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
         SnackBar(
           content: Text(
             result.createdCount > 0
-                ? 'تم إنشاء الحملة بنجاح. تم إرسال ${result.createdCount} عميل.'
+                ? 'تم إنشاء الحملة ل${result.createdCount} عميل بنجاح.'
                 : result.skippedCount > 0
                     ? 'تمت معالجة الحملة، لكن لا يوجد عملاء مؤهلون للتمرير.'
                     : 'تمت معالجة الحملة بنجاح.',
