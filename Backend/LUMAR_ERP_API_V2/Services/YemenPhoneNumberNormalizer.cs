@@ -19,9 +19,6 @@ public sealed class YemenPhoneNumberNormalizer : IYemenPhoneNumberNormalizer
         if (digitsOnly.StartsWith("00", StringComparison.Ordinal))
             digitsOnly = digitsOnly[2..];
 
-        if (digitsOnly.StartsWith("+", StringComparison.Ordinal))
-            digitsOnly = digitsOnly.TrimStart('+');
-
         if (digitsOnly.StartsWith("967", StringComparison.Ordinal))
         {
             var local = digitsOnly[3..];

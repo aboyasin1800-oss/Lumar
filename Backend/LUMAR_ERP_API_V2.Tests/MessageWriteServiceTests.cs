@@ -228,6 +228,59 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task MessageRepository_ClaimNextAsync_RespectsPersistedRetryabilityState()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Retryability validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var repo = new MessageRepository(
+            new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+            new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+        var retryableChannel = "ValidationRetryable-" + Guid.NewGuid().ToString("N")[..16];
+        var permanentChannel = "ValidationPermanent-" + Guid.NewGuid().ToString("N")[..16];
+        var retryableId = await SeedQueuedMessageAsync(connectionString, retryableChannel, "ValidationRetryable-" + Guid.NewGuid().ToString("N")[..12], deliveryStatus: "Failed", attemptCount: 0, failureReason: "Transient failure");
+        var permanentId = await SeedQueuedMessageAsync(connectionString, permanentChannel, "ValidationPermanent-" + Guid.NewGuid().ToString("N")[..12], deliveryStatus: "Failed", attemptCount: 0, failureReason: "Invalid WhatsApp destination.");
+
+        try
+        {
+            await repo.MarkFailedAsync(retryableId, "Transient failure", true, CancellationToken.None);
+            await repo.MarkFailedAsync(permanentId, "Invalid WhatsApp destination.", false, CancellationToken.None);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(@"SELECT IsRetryable FROM dbo.CustomerMessages WHERE CustomerMessageID IN (@retryableId, @permanentId) ORDER BY CustomerMessageID;", connection);
+            command.Parameters.AddWithValue("@retryableId", retryableId);
+            command.Parameters.AddWithValue("@permanentId", permanentId);
+            await using var reader = await command.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(true, reader.GetBoolean(0));
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(false, reader.GetBoolean(0));
+
+            var retryableClaim = await repo.ClaimNextAsync(retryableChannel, 3, TimeSpan.FromMinutes(30), CancellationToken.None);
+            var permanentClaim = await repo.ClaimNextAsync(permanentChannel, 3, TimeSpan.FromMinutes(30), CancellationToken.None);
+
+            Assert.NotNull(retryableClaim);
+            Assert.Equal(retryableId, retryableClaim!.CustomerMessageId);
+            Assert.Null(permanentClaim);
+        }
+        finally
+        {
+            await using var cleanup = new SqlConnection(connectionString);
+            await cleanup.OpenAsync();
+            await using var delete = new SqlCommand("DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID IN (@retryableId, @permanentId);", cleanup);
+            delete.Parameters.AddWithValue("@retryableId", retryableId);
+            delete.Parameters.AddWithValue("@permanentId", permanentId);
+            await delete.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
     public async Task MessageWriteService_RespectsMasterAndReferralRuntimeSettings()
     {
         var repo = new FakeMessageRepository();
