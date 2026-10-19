@@ -313,6 +313,96 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task ManualCampaignService_SingleCustomer_UsesOfficialCustomerAndMessageWriteServiceOnce()
+    {
+        var messageWrite = new RecordingMessageWriteService();
+        var customerRepo = new FakeCustomerRepository(
+            new CustomerDetailsDto(15, "C-15", "سالم", "967775106545", null, null, null, null, null, true, 0m, 0, 0m, null));
+        var service = new ManualCampaignService(
+            customerRepo,
+            messageWrite,
+            new YemenPhoneNumberNormalizer(),
+            new FakeSettingsRepository(new MessageSettingsDto(true, true, false, true, true, true)));
+
+        var result = await service.ProcessAsync(new ManualCampaignRequest(
+            CampaignReference: "manual-campaign-001",
+            RecipientMode: ManualCampaignRecipientMode.SingleCustomer,
+            CustomerId: 15,
+            MessageText: "عرض خاص لعملائنا",
+            TemplateKey: "general-campaign-smart",
+            Title: "حملة إعلانية",
+            CancellationToken.None), CancellationToken.None);
+
+        Assert.Equal(1, result.CreatedCount);
+        Assert.Equal(0, result.SkippedCount);
+        Assert.Single(messageWrite.Requests);
+        Assert.Equal(15, messageWrite.Requests[0].CustomerId);
+        Assert.Equal("general-campaign-smart", messageWrite.Requests[0].TemplateKey);
+        Assert.Equal("manual-campaign-001", messageWrite.Requests[0].ReferenceId);
+    }
+
+    [Fact]
+    public async Task ManualCampaignService_InvalidPhone_SkipsWithoutCallingMessageWriteService()
+    {
+        var messageWrite = new RecordingMessageWriteService();
+        var customerRepo = new FakeCustomerRepository(
+            new CustomerDetailsDto(22, "C-22", "علي", "0775106545", null, null, null, null, null, true, 0m, 0, 0m, null));
+        var service = new ManualCampaignService(
+            customerRepo,
+            messageWrite,
+            new YemenPhoneNumberNormalizer(),
+            new FakeSettingsRepository(new MessageSettingsDto(true, true, false, true, true, true)));
+
+        var result = await service.ProcessAsync(new ManualCampaignRequest(
+            CampaignReference: "manual-campaign-invalid-phone",
+            RecipientMode: ManualCampaignRecipientMode.SingleCustomer,
+            CustomerId: 22,
+            MessageText: "رسالة تجريبية",
+            TemplateKey: "general-campaign-smart",
+            Title: "حملة",
+            CancellationToken.None), CancellationToken.None);
+
+        Assert.Equal(0, result.CreatedCount);
+        Assert.Equal(1, result.SkippedCount);
+        Assert.Empty(messageWrite.Requests);
+    }
+
+    [Fact]
+    public async Task ManualCampaignService_DuplicateCampaignReferenceForSameCustomer_IsBlocked()
+    {
+        var messageWrite = new RecordingMessageWriteService();
+        var customerRepo = new FakeCustomerRepository(
+            new CustomerDetailsDto(7, "C-7", "أحمد", "967775106545", null, null, null, null, null, true, 0m, 0, 0m, null));
+        var service = new ManualCampaignService(
+            customerRepo,
+            messageWrite,
+            new YemenPhoneNumberNormalizer(),
+            new FakeSettingsRepository(new MessageSettingsDto(true, true, false, true, true, true)));
+
+        var first = await service.ProcessAsync(new ManualCampaignRequest(
+            CampaignReference: "duplicate-campaign",
+            RecipientMode: ManualCampaignRecipientMode.SingleCustomer,
+            CustomerId: 7,
+            MessageText: "عرض", 
+            TemplateKey: "general-campaign-smart",
+            Title: "حملة",
+            CancellationToken.None), CancellationToken.None);
+
+        var second = await service.ProcessAsync(new ManualCampaignRequest(
+            CampaignReference: "duplicate-campaign",
+            RecipientMode: ManualCampaignRecipientMode.SingleCustomer,
+            CustomerId: 7,
+            MessageText: "عرض",
+            TemplateKey: "general-campaign-smart",
+            Title: "حملة",
+            CancellationToken.None), CancellationToken.None);
+
+        Assert.Equal(1, first.CreatedCount);
+        Assert.Equal(1, second.DuplicateCount);
+        Assert.Single(messageWrite.Requests);
+    }
+
+    [Fact]
     public async Task MessageService_ExposesTemplateManagementContract()
     {
         var repo = new FakeMessageRepository();
