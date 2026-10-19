@@ -70,6 +70,26 @@ class _MessagesScreenState extends State<MessagesScreen> {
     await _future;
   }
 
+  void _showManualCampaignSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => SafeArea(
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(sheetContext).size.height * 0.9,
+          ),
+          decoration: const BoxDecoration(
+            color: UiPalette.screenBackground,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: const _ManualCampaignSheet(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -79,6 +99,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
         foregroundColor: UiPalette.adaptiveTextColor(UiPalette.primary),
         title: const Text('مركز إدارة الرسائل'),
         actions: [
+          IconButton(
+            tooltip: 'إنشاء حملة',
+            onPressed: () => _showManualCampaignSheet(context),
+            icon: const Icon(Icons.campaign_rounded),
+          ),
           IconButton(
             tooltip: 'قوالب الرسائل',
             onPressed: () => AppNavigation.push(context, (_) => const MessageTemplatesScreen()),
@@ -181,6 +206,89 @@ class MessagesRepository {
     final items = decoded.whereType<Map<String, dynamic>>();
     return items.map(CustomerMessageRecord.fromJson).toList();
   }
+
+  Future<ManualCampaignResult> createManualCampaign({
+    required ManualCampaignRequest request,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_apiBaseUrl/messages/manual-campaigns'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: jsonEncode(request.toJson()),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final payload = jsonDecode(response.body);
+      final message = payload is Map && payload['message'] is String
+          ? payload['message'] as String
+          : 'فشل طلب الحملة.';
+      throw Exception(message);
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('استجابة الحملة غير صالحة.');
+    }
+
+    return ManualCampaignResult.fromJson(decoded);
+  }
+}
+
+class ManualCampaignRequest {
+  const ManualCampaignRequest({
+    required this.campaignReference,
+    required this.recipientMode,
+    this.customerId,
+    required this.messageText,
+    required this.templateKey,
+    required this.title,
+  });
+
+  final String campaignReference;
+  final String recipientMode;
+  final int? customerId;
+  final String messageText;
+  final String templateKey;
+  final String title;
+
+  Map<String, dynamic> toJson() => {
+        'campaignReference': campaignReference,
+        'recipientMode': recipientMode,
+        if (customerId != null) 'customerId': customerId,
+        'messageText': messageText,
+        'templateKey': templateKey,
+        'title': title,
+      };
+}
+
+class ManualCampaignResult {
+  const ManualCampaignResult({
+    required this.createdCount,
+    required this.skippedCount,
+    required this.duplicateCount,
+    required this.customerIds,
+  });
+
+  factory ManualCampaignResult.fromJson(Map<String, dynamic> json) {
+    final ids = (json['customerIds'] as List? ?? const [])
+        .whereType<num>()
+        .map((item) => item.toInt())
+        .toList();
+
+    return ManualCampaignResult(
+      createdCount: (json['createdCount'] as num?)?.toInt() ?? 0,
+      skippedCount: (json['skippedCount'] as num?)?.toInt() ?? 0,
+      duplicateCount: (json['duplicateCount'] as num?)?.toInt() ?? 0,
+      customerIds: ids,
+    );
+  }
+
+  final int createdCount;
+  final int skippedCount;
+  final int duplicateCount;
+  final List<int> customerIds;
 }
 
 class CustomerMessageRecord {
@@ -261,6 +369,429 @@ class CustomerMessageRecord {
 DateTime _dateFromJson(Object? value) {
   if (value == null || value == '') return DateTime.fromMillisecondsSinceEpoch(0);
   return DateTime.tryParse(value.toString()) ?? DateTime.fromMillisecondsSinceEpoch(0);
+}
+
+class _ManualCampaignSheet extends StatefulWidget {
+  const _ManualCampaignSheet();
+
+  @override
+  State<_ManualCampaignSheet> createState() => _ManualCampaignSheetState();
+}
+
+class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
+  static const _campaignTemplateKey = 'general-campaign-smart';
+
+  final TextEditingController _titleController = TextEditingController(text: 'حملة إعلانية');
+  final TextEditingController _messageController = TextEditingController();
+  final TextEditingController _customerSearchController = TextEditingController();
+
+  String _recipientMode = 'SingleCustomer';
+  bool _confirmation = false;
+  bool _isSubmitting = false;
+  bool _isSearchingCustomers = false;
+  List<_CustomerSearchResult> _customerResults = const [];
+  _CustomerSearchResult? _selectedCustomer;
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _messageController.dispose();
+    _customerSearchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _searchCustomers() async {
+    final term = _customerSearchController.text.trim();
+    if (term.isEmpty) {
+      setState(() => _customerResults = const []);
+      return;
+    }
+
+    setState(() => _isSearchingCustomers = true);
+    try {
+      final uri = Uri.parse('$_apiBaseUrl/customers/search')
+          .replace(queryParameters: {'term': term});
+      final response = await http.get(uri, headers: {'Accept': 'application/json'});
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('تعذر البحث عن العملاء.');
+      }
+
+      final decoded = jsonDecode(response.body);
+      final values = decoded is List
+          ? decoded.whereType<Map<String, dynamic>>().toList()
+          : <Map<String, dynamic>>[];
+      setState(() {
+        _customerResults = values
+            .map(_CustomerSearchResult.fromJson)
+            .where((item) => item.phoneNumber.trim().isNotEmpty)
+            .toList();
+      });
+    } catch (_) {
+      setState(() => _customerResults = const []);
+    } finally {
+      if (mounted) {
+        setState(() => _isSearchingCustomers = false);
+      }
+    }
+  }
+
+  Future<void> _submitCampaign() async {
+    if (_isSubmitting) return;
+
+    if (_recipientMode == 'SingleCustomer' && _selectedCustomer == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اختر عميل واحد أولاً من المصدر الرسمي.')),
+      );
+      return;
+    }
+
+    if (_recipientMode == 'AllEligibleCustomers' && !_confirmation) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يجب تأكيد الحملة على جميع العملاء المؤهلين أولاً.')),
+      );
+      return;
+    }
+
+    final messageText = _messageController.text.trim();
+    if (messageText.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اكتب نص الحملة قبل التنفيذ.')),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      final result = await MessagesRepository().createManualCampaign(
+        request: ManualCampaignRequest(
+          campaignReference: 'manual-campaign-${DateTime.now().millisecondsSinceEpoch}',
+          recipientMode: _recipientMode,
+          customerId: _recipientMode == 'SingleCustomer' ? _selectedCustomer!.customerId : null,
+          messageText: messageText,
+          templateKey: _campaignTemplateKey,
+          title: _titleController.text.trim().isEmpty ? 'حملة إعلانية' : _titleController.text.trim(),
+        ),
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.createdCount > 0
+                ? 'تم إنشاء الحملة بنجاح. تم إرسال ${result.createdCount} عميل.'
+                : result.skippedCount > 0
+                    ? 'تمت معالجة الحملة، لكن لا يوجد عملاء مؤهلون للتمرير.'
+                    : 'تمت معالجة الحملة بنجاح.',
+          ),
+          backgroundColor: const Color(0xFF2E9D5A),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Exception: ', '')),
+            backgroundColor: const Color(0xFFD64B4B),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final previewText = _messageController.text.trim().isEmpty
+        ? 'سيظهر نص الحملة هنا قبل التنفيذ.'
+        : _messageController.text.trim();
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'إنشاء حملة',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'نوع المستهدف',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('عميل واحد'),
+                  selected: _recipientMode == 'SingleCustomer',
+                  onSelected: (_) => setState(() => _recipientMode = 'SingleCustomer'),
+                ),
+                ChoiceChip(
+                  label: const Text('جميع العملاء المؤهلين'),
+                  selected: _recipientMode == 'AllEligibleCustomers',
+                  onSelected: (_) => setState(() => _recipientMode = 'AllEligibleCustomers'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            if (_recipientMode == 'SingleCustomer') ...[
+              Text(
+                'بحث العميل الرسمي',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _customerSearchController,
+                textInputAction: TextInputAction.search,
+                onChanged: (_) => _searchCustomers(),
+                decoration: InputDecoration(
+                  hintText: 'ابحث باسم العميل أو رقم الهاتف أو الكود',
+                  filled: true,
+                  fillColor: UiPalette.surfaceCard,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  suffixIcon: _isSearchingCustomers
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : const Icon(Icons.search_rounded),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (_selectedCustomer != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: UiPalette.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.person_rounded, color: UiPalette.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _selectedCustomer!.customerName,
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(_selectedCustomer!.phoneNumber),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (_customerResults.isNotEmpty)
+                ..._customerResults.map((customer) {
+                  final selected = _selectedCustomer?.customerId == customer.customerId;
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedCustomer = customer;
+                        _customerResults = const [];
+                        _customerSearchController.text = '${customer.customerName} • ${customer.phoneNumber}';
+                      });
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: selected ? UiPalette.primary.withValues(alpha: 0.16) : UiPalette.surfaceCard,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: selected ? UiPalette.primary : UiPalette.borderSoft),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(customer.customerName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                const SizedBox(height: 4),
+                                Text(customer.phoneNumber),
+                              ],
+                            ),
+                          ),
+                          if (selected) const Icon(Icons.check_circle_rounded, color: UiPalette.primary),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF5D6),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE5B93A)),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Color(0xFFE5B93A)),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'سيتم استهداف جميع العملاء المؤهلين في النظام. تأكد من التحقق قبل التنفيذ.',
+                        style: TextStyle(color: Color(0xFF7C5D00), height: 1.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('تأكيد التنفيذ للحملة على جميع العملاء المؤهلين'),
+                value: _confirmation,
+                onChanged: (value) => setState(() => _confirmation = value ?? false),
+              ),
+            ],
+            const SizedBox(height: 18),
+            TextField(
+              controller: _titleController,
+              decoration: InputDecoration(
+                labelText: 'عنوان الحملة',
+                filled: true,
+                fillColor: UiPalette.surfaceCard,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _messageController,
+              minLines: 5,
+              maxLines: 8,
+              textInputAction: TextInputAction.newline,
+              decoration: InputDecoration(
+                labelText: 'نص الحملة',
+                filled: true,
+                fillColor: UiPalette.surfaceCard,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: UiPalette.surfaceCard,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: UiPalette.borderSoft),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'معاينة',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _titleController.text.trim().isEmpty ? 'حملة إعلانية' : _titleController.text.trim(),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    previewText,
+                    style: const TextStyle(height: 1.6),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: (_isSubmitting || !_canSubmit) ? null : _submitCampaign,
+                icon: _isSubmitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.send_rounded),
+                label: Text(_isSubmitting ? 'جارٍ التنفيذ...' : 'تنفيذ الحملة'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool get _canSubmit {
+    if (_messageController.text.trim().isEmpty) return false;
+    if (_recipientMode == 'SingleCustomer') return _selectedCustomer != null;
+    return _confirmation;
+  }
+}
+
+class _CustomerSearchResult {
+  const _CustomerSearchResult({
+    required this.customerId,
+    required this.customerName,
+    required this.phoneNumber,
+  });
+
+  factory _CustomerSearchResult.fromJson(Map<String, dynamic> json) {
+    final customerId = json['customerId'] as num? ?? 0;
+    return _CustomerSearchResult(
+      customerId: customerId.toInt(),
+      customerName: (json['customerName'] as String?)?.trim().isNotEmpty == true
+          ? json['customerName'] as String
+          : 'عميل غير مسمى',
+      phoneNumber: (json['phoneNumber'] as String?)?.trim() ?? 'غير متوفر',
+    );
+  }
+
+  final int customerId;
+  final String customerName;
+  final String phoneNumber;
 }
 
 String _normalizeStatus(String value) {
