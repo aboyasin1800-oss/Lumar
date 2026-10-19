@@ -20,6 +20,23 @@ namespace LUMAR_ERP_API_V2.Tests;
 public sealed class WhatsAppCloudIntegrationTests
 {
     [Fact]
+    public void YemenPhoneNumberNormalizer_NormalizesSupportedYemenFormats()
+    {
+        var normalizer = new YemenPhoneNumberNormalizer();
+
+        Assert.Equal("967775106545", normalizer.TryNormalizeMobileNumber("775106545"));
+        Assert.Equal("967775106545", normalizer.TryNormalizeMobileNumber("+967775106545"));
+        Assert.Equal("967775106545", normalizer.TryNormalizeMobileNumber("967775106545"));
+        Assert.Equal("967775106545", normalizer.TryNormalizeMobileNumber("00967775106545"));
+        Assert.Equal("967775106545", normalizer.TryNormalizeMobileNumber("+ 967 775 106 545"));
+        Assert.Equal("967775106545", normalizer.TryNormalizeMobileNumber("967 775 106 545"));
+        Assert.Null(normalizer.TryNormalizeMobileNumber("966500000000"));
+        Assert.Null(normalizer.TryNormalizeMobileNumber("12345"));
+        Assert.Null(normalizer.TryNormalizeMobileNumber(""));
+        Assert.Null(normalizer.TryNormalizeMobileNumber(null));
+    }
+
+    [Fact]
     public async Task WhatsAppCloudMessageChannel_WhenDisabled_DoesNotFakeSuccess()
     {
         var channel = new WhatsAppCloudMessageChannel(

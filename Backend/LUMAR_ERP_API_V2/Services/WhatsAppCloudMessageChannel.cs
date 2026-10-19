@@ -14,6 +14,8 @@ public sealed class WhatsAppCloudMessageChannel(
     IWhatsAppConnectionSettingsStore settingsStore,
     ILogger<WhatsAppCloudMessageChannel>? logger = null) : IOutboundMessageChannel
 {
+    private static readonly YemenPhoneNumberNormalizer Normalizer = new();
+
     public string ChannelName => "WhatsApp";
 
     public async Task<OutboundAdapterResult> SendAsync(CustomerMessageDto message, CancellationToken cancellationToken)
@@ -159,25 +161,7 @@ public sealed class WhatsAppCloudMessageChannel(
     }
 
     private static string? NormalizePhoneNumber(string? phoneNumber)
-    {
-        if (string.IsNullOrWhiteSpace(phoneNumber))
-            return null;
-
-        var cleaned = new string(phoneNumber.Where(char.IsDigit).ToArray());
-        if (cleaned.Length < 8)
-            return null;
-
-        if (cleaned.StartsWith("966", StringComparison.Ordinal))
-            return "+" + cleaned;
-
-        if (cleaned.Length == 10 && cleaned.StartsWith("5", StringComparison.Ordinal))
-            return "+966" + cleaned.TrimStart('0');
-
-        if (cleaned.Length > 10)
-            return "+" + cleaned.TrimStart('0');
-
-        return null;
-    }
+        => Normalizer.TryNormalizeMobileNumber(phoneNumber);
 
     private static OutboundAdapterResult BuildSafeMetaFailure(HttpStatusCode statusCode, string raw, bool retryable)
     {

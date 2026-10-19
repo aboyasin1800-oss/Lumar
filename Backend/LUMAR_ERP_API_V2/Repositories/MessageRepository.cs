@@ -214,7 +214,7 @@ WHERE MessageTemplateID = @id;";
                 WHERE m.Channel = @channel
                   AND (
                         (m.DeliveryStatus = N'Pending')
-                        OR (m.DeliveryStatus = N'Failed' AND m.AttemptCount < @maxAttempts)
+                        OR (m.DeliveryStatus = N'Failed' AND m.IsRetryable = 1 AND m.AttemptCount < @maxAttempts)
                         OR (m.DeliveryStatus = N'Processing' AND m.AttemptCount < @maxAttempts AND m.ProcessingAtUtc IS NOT NULL AND DATEDIFF(MINUTE, m.ProcessingAtUtc, SYSUTCDATETIME()) >= @staleMinutes)
                     )
                 ORDER BY m.CreatedAtUtc ASC, m.CustomerMessageID ASC
@@ -250,7 +250,7 @@ WHERE MessageTemplateID = @id;";
                 ON c.CustomerMessageID = m.CustomerMessageID
             WHERE (
                     (m.DeliveryStatus = N'Pending')
-                    OR (m.DeliveryStatus = N'Failed' AND m.AttemptCount < @maxAttempts)
+                    OR (m.DeliveryStatus = N'Failed' AND m.IsRetryable = 1 AND m.AttemptCount < @maxAttempts)
                     OR (m.DeliveryStatus = N'Processing' AND m.AttemptCount < @maxAttempts AND m.ProcessingAtUtc IS NOT NULL AND DATEDIFF(MINUTE, m.ProcessingAtUtc, SYSUTCDATETIME()) >= @staleMinutes)
                 );";
 
@@ -366,6 +366,7 @@ WHERE MessageTemplateID = @id;";
         const string sql = @"
             UPDATE dbo.CustomerMessages
             SET DeliveryStatus = N'Failed',
+                IsRetryable = @isRetryable,
                 FailureReason = @failureReason,
                 ProcessingAtUtc = NULL
             WHERE CustomerMessageID = @customerMessageId;";
@@ -374,13 +375,14 @@ WHERE MessageTemplateID = @id;";
         await connection.OpenAsync(cancellationToken);
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@customerMessageId", customerMessageId);
+        command.Parameters.AddWithValue("@isRetryable", retryable);
         command.Parameters.AddWithValue("@failureReason", failureReason.Length > 500 ? failureReason[..497] + "..." : failureReason);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c)
     {
-        const string insertMessageSql = "INSERT INTO dbo.CustomerMessages (CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,AttemptCount,IdempotencyKey,PhoneNumber,ReferenceID,ReferenceType) OUTPUT INSERTED.CustomerMessageID VALUES (@customerId,@orderId,@eventType,@templateKey,@channel,@title,@body,N'Pending',GETUTCDATE(),0,@idempotencyKey,@phoneNumber,@referenceId,@referenceType)";
+        const string insertMessageSql = "INSERT INTO dbo.CustomerMessages (CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,AttemptCount,IdempotencyKey,PhoneNumber,ReferenceID,ReferenceType,IsRetryable) OUTPUT INSERTED.CustomerMessageID VALUES (@customerId,@orderId,@eventType,@templateKey,@channel,@title,@body,N'Pending',GETUTCDATE(),0,@idempotencyKey,@phoneNumber,@referenceId,@referenceType,1)";
         const string insertNotificationSql = "INSERT INTO dbo.CustomerNotifications (CustomerID,OrderID,EventType,Title,Body,Status,IsRead,CreatedAtUtc,CustomerMessageID) OUTPUT INSERTED.CustomerNotificationID VALUES (@customerId,@orderId,@eventType,@title,@body,N'Unread',0,GETUTCDATE(),@customerMessageId)";
 
         await using var connection = connections.Create();
@@ -468,7 +470,7 @@ WHERE MessageTemplateID = @id;";
 
     public async Task<int?> CreateCustomerMessageAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c)
     {
-        const string sql = "INSERT INTO dbo.CustomerMessages (CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,AttemptCount,IdempotencyKey,PhoneNumber,ReferenceID,ReferenceType) OUTPUT INSERTED.CustomerMessageID VALUES (@customerId,@orderId,@eventType,@templateKey,@channel,@title,@body,N'Pending',GETUTCDATE(),0,@idempotencyKey,@phoneNumber,@referenceId,@referenceType)";
+        const string sql = "INSERT INTO dbo.CustomerMessages (CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,AttemptCount,IdempotencyKey,PhoneNumber,ReferenceID,ReferenceType,IsRetryable) OUTPUT INSERTED.CustomerMessageID VALUES (@customerId,@orderId,@eventType,@templateKey,@channel,@title,@body,N'Pending',GETUTCDATE(),0,@idempotencyKey,@phoneNumber,@referenceId,@referenceType,1)";
         await using var connection = connections.Create();
         await connection.OpenAsync(c);
         await using var command = new SqlCommand(sql, connection);
