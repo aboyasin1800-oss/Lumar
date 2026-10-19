@@ -327,6 +327,7 @@ WHERE MessageTemplateID = @id;";
                 DeliveredAtUtc = CASE WHEN @status = N'Delivered' AND DeliveredAtUtc IS NULL THEN @occurredAtUtc ELSE DeliveredAtUtc END,
                 ReadAtUtc = CASE WHEN @status = N'Read' AND ReadAtUtc IS NULL THEN @occurredAtUtc ELSE ReadAtUtc END,
                 ProcessingAtUtc = CASE WHEN @status IN (N'Sent', N'Delivered', N'Read', N'Failed') THEN NULL ELSE ProcessingAtUtc END,
+                IsRetryable = CASE WHEN @status = N'Failed' THEN 0 ELSE IsRetryable END,
                 FailureReason = CASE WHEN @status = N'Failed' AND @failureReason IS NOT NULL THEN @failureReason WHEN @status = N'Failed' AND @failureReason IS NULL THEN FailureReason ELSE NULL END
             WHERE ProviderMessageId = @providerMessageId;";
 

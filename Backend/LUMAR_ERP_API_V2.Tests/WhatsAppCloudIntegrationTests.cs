@@ -30,6 +30,7 @@ public sealed class WhatsAppCloudIntegrationTests
         Assert.Equal("967775106545", normalizer.TryNormalizeMobileNumber("00967775106545"));
         Assert.Equal("967775106545", normalizer.TryNormalizeMobileNumber("+ 967 775 106 545"));
         Assert.Equal("967775106545", normalizer.TryNormalizeMobileNumber("967 775 106 545"));
+        Assert.Null(normalizer.TryNormalizeMobileNumber("0775106545"));
         Assert.Null(normalizer.TryNormalizeMobileNumber("966500000000"));
         Assert.Null(normalizer.TryNormalizeMobileNumber("12345"));
         Assert.Null(normalizer.TryNormalizeMobileNumber(""));

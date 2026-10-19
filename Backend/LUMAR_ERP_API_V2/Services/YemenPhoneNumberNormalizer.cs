@@ -31,9 +31,6 @@ public sealed class YemenPhoneNumberNormalizer : IYemenPhoneNumberNormalizer
         if (digitsOnly.Length == 9 && digitsOnly.StartsWith("7", StringComparison.Ordinal))
             return $"967{digitsOnly}";
 
-        if (digitsOnly.Length == 10 && digitsOnly.StartsWith("0", StringComparison.Ordinal) && digitsOnly[1..].StartsWith("7", StringComparison.Ordinal))
-            return $"967{digitsOnly[1..]}";
-
         return null;
     }
 }

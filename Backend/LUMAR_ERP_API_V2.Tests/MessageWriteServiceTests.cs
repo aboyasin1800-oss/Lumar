@@ -552,6 +552,51 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task MessageRepository_UpdateDeliveryStatusByProviderIdAsync_FailedWebhook_SetsRetryabilityToZero_AndBlocksReclaim()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Webhook failed validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var repo = new MessageRepository(
+            new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+            new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+        var providerMessageId = "provider-webhook-failed-" + Guid.NewGuid().ToString("N")[..12];
+        var messageId = await SeedQueuedMessageAsync(connectionString, "ValidationWebhookFailed", Guid.NewGuid().ToString("N")[..10], deliveryStatus: "Sent", attemptCount: 1, failureReason: null, providerMessageId: providerMessageId, isRetryable: true);
+
+        try
+        {
+            await repo.UpdateDeliveryStatusByProviderIdAsync(providerMessageId, "Failed", DateTime.UtcNow, "Permanent failure from provider callback", CancellationToken.None);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(@"SELECT DeliveryStatus, IsRetryable, ProcessingAtUtc, FailureReason FROM dbo.CustomerMessages WHERE CustomerMessageID = @messageId;", connection);
+            command.Parameters.AddWithValue("@messageId", messageId);
+            await using var reader = await command.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("Failed", reader.GetString(0));
+            Assert.False(reader.GetBoolean(1));
+            Assert.Equal(DBNull.Value, reader[2]);
+            Assert.Equal("Permanent failure from provider callback", reader.GetString(3));
+
+            var reclaimed = await repo.ClaimNextAsync("ValidationWebhookFailed", 3, TimeSpan.FromMinutes(30), CancellationToken.None);
+            Assert.Null(reclaimed);
+        }
+        finally
+        {
+            await using var cleanup = new SqlConnection(connectionString);
+            await cleanup.OpenAsync();
+            await using var command = new SqlCommand("DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID = @messageId;", cleanup);
+            command.Parameters.AddWithValue("@messageId", messageId);
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
     public async Task MessageRepository_UpdateDeliveryStatusByProviderIdAsync_RejectsLateDowngrades_AndPreservesHighStatus()
     {
         var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
@@ -1673,7 +1718,8 @@ public sealed class MessageWriteServiceTests
         int attemptCount = 1,
         DateTime? processingAtUtc = null,
         string? failureReason = "Transient failure",
-        string? providerMessageId = null)
+        string? providerMessageId = null,
+        bool isRetryable = true)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
@@ -1681,11 +1727,11 @@ public sealed class MessageWriteServiceTests
             INSERT INTO dbo.CustomerMessages (
                 CustomerID, EventType, TemplateKey, Channel, Title, Body, DeliveryStatus,
                 CreatedAtUtc, AttemptCount, ProcessingAtUtc, FailureReason, ProviderMessageId,
-                PhoneNumber, ReferenceID, ReferenceType, IdempotencyKey)
+                PhoneNumber, ReferenceID, ReferenceType, IdempotencyKey, IsRetryable)
             OUTPUT INSERTED.CustomerMessageID
             VALUES (@customerId, @eventType, @templateKey, @channel, @title, @body, @deliveryStatus,
                     SYSUTCDATETIME(), @attemptCount, @processingAtUtc, @failureReason, @providerMessageId,
-                    @phoneNumber, @referenceId, @referenceType, @idempotencyKey);", connection);
+                    @phoneNumber, @referenceId, @referenceType, @idempotencyKey, @isRetryable);", connection);
         command.Parameters.AddWithValue("@customerId", 101);
         command.Parameters.AddWithValue("@eventType", "ValidationConcurrentClaim");
         command.Parameters.AddWithValue("@templateKey", "ValidationCustomerProjection");
@@ -1702,6 +1748,7 @@ public sealed class MessageWriteServiceTests
         command.Parameters.AddWithValue("@referenceId", "validation-" + uniqueSuffix);
         command.Parameters.AddWithValue("@referenceType", "Validation");
         command.Parameters.AddWithValue("@idempotencyKey", "validation-" + uniqueSuffix);
+        command.Parameters.AddWithValue("@isRetryable", isRetryable);
         var result = await command.ExecuteScalarAsync();
         return Convert.ToInt32(result);
     }
