@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -94,7 +95,7 @@ public sealed class WhatsAppWebhookController(
                             {
                                 var providerMessageId = status.TryGetProperty("id", out var idElement) ? idElement.GetString() : null;
                                 var statusName = status.TryGetProperty("status", out var statusValue) ? statusValue.GetString() : null;
-                                var timestamp = status.TryGetProperty("timestamp", out var ts) ? ts.GetInt64() : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                                var timestamp = TryReadUnixSeconds(status, "timestamp");
 
                                 if (string.IsNullOrWhiteSpace(providerMessageId) || string.IsNullOrWhiteSpace(statusName))
                                     continue;
@@ -173,6 +174,34 @@ public sealed class WhatsAppWebhookController(
         var hash = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(rawBody))).ToLowerInvariant();
         var expected = $"sha256={hash}";
         return string.Equals(receivedSignature.Trim(), expected, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static long TryReadUnixSeconds(JsonElement status, string propertyName)
+    {
+        if (!status.TryGetProperty(propertyName, out var timestampElement))
+        {
+            return DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        }
+
+        if (timestampElement.ValueKind == JsonValueKind.Number && timestampElement.TryGetInt64(out var numericTimestamp))
+        {
+            return IsValidUnixSeconds(numericTimestamp) ? numericTimestamp : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        }
+
+        if (timestampElement.ValueKind == JsonValueKind.String &&
+            long.TryParse(timestampElement.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var stringTimestamp))
+        {
+            return IsValidUnixSeconds(stringTimestamp) ? stringTimestamp : DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        }
+
+        return DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    }
+
+    private static bool IsValidUnixSeconds(long unixSeconds)
+    {
+        var minSeconds = DateTimeOffset.MinValue.ToUnixTimeSeconds();
+        var maxSeconds = DateTimeOffset.MaxValue.ToUnixTimeSeconds();
+        return unixSeconds >= minSeconds && unixSeconds <= maxSeconds;
     }
 
     private static string MapStatus(string status)

@@ -285,6 +285,63 @@ public sealed class WhatsAppCloudIntegrationTests
     }
 
     [Fact]
+    public async Task WhatsAppWebhookController_ValidPostSignature_Accepts_WhenStatusTimestampIsNumericString()
+    {
+        var repository = new StubMessageRepository();
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, AppSecret = "runtime-secret" });
+        var controller = new WhatsAppWebhookController(repository, store, NullLogger<WhatsAppWebhookController>.Instance);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var rawBody = "{\"entry\":[{\"changes\":[{\"value\":{\"statuses\":[{\"id\":\"wamid.string\",\"status\":\"sent\",\"timestamp\":\"1750263773\"}]}}]}]}";
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rawBody));
+        controller.ControllerContext.HttpContext.Request.Body = ms;
+        controller.ControllerContext.HttpContext.Request.Headers["X-Hub-Signature-256"] = ComputeSignature(rawBody, "runtime-secret");
+
+        var result = await controller.ReceiveWebhook(CancellationToken.None);
+
+        Assert.IsType<OkResult>(result);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1750263773).UtcDateTime, repository.LastOccurredAtUtc);
+    }
+
+    [Fact]
+    public async Task WhatsAppWebhookController_ValidPostSignature_AppliesSafeFallback_WhenTimestampMissing()
+    {
+        var repository = new StubMessageRepository();
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, AppSecret = "runtime-secret" });
+        var controller = new WhatsAppWebhookController(repository, store, NullLogger<WhatsAppWebhookController>.Instance);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var rawBody = "{\"entry\":[{\"changes\":[{\"value\":{\"statuses\":[{\"id\":\"wamid.missing\",\"status\":\"sent\"}]}}]}]}";
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rawBody));
+        controller.ControllerContext.HttpContext.Request.Body = ms;
+        controller.ControllerContext.HttpContext.Request.Headers["X-Hub-Signature-256"] = ComputeSignature(rawBody, "runtime-secret");
+
+        var result = await controller.ReceiveWebhook(CancellationToken.None);
+
+        Assert.IsType<OkResult>(result);
+        Assert.InRange(repository.LastOccurredAtUtc, DateTime.UtcNow.AddMinutes(-1), DateTime.UtcNow.AddMinutes(1));
+    }
+
+    [Fact]
+    public async Task WhatsAppWebhookController_ValidPostSignature_AppliesSafeFallback_WhenTimestampInvalid()
+    {
+        var repository = new StubMessageRepository();
+        var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, AppSecret = "runtime-secret" });
+        var controller = new WhatsAppWebhookController(repository, store, NullLogger<WhatsAppWebhookController>.Instance);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var rawBody = "{\"entry\":[{\"changes\":[{\"value\":{\"statuses\":[{\"id\":\"wamid.invalid\",\"status\":\"sent\",\"timestamp\":\"not-a-number\"}]}}]}]}";
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rawBody));
+        controller.ControllerContext.HttpContext.Request.Body = ms;
+        controller.ControllerContext.HttpContext.Request.Headers["X-Hub-Signature-256"] = ComputeSignature(rawBody, "runtime-secret");
+
+        var result = await controller.ReceiveWebhook(CancellationToken.None);
+
+        Assert.IsType<OkResult>(result);
+        Assert.InRange(repository.LastOccurredAtUtc, DateTime.UtcNow.AddMinutes(-1), DateTime.UtcNow.AddMinutes(1));
+    }
+
+    [Fact]
     public async Task WhatsAppWebhookController_ValidPostSignature_Accepts_WhenRuntimeAppSecretMatches()
     {
         var store = new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, AppSecret = "runtime-secret" });
