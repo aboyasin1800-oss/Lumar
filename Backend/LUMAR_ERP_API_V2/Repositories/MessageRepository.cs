@@ -317,16 +317,16 @@ WHERE MessageTemplateID = @id;";
         const string sql = @"
             UPDATE dbo.CustomerMessages
             SET DeliveryStatus = CASE
-                    WHEN @status = N'Sent' THEN N'Sent'
-                    WHEN @status = N'Delivered' THEN CASE WHEN DeliveryStatus IN (N'Sent', N'Delivered', N'Read') THEN DeliveryStatus ELSE N'Delivered' END
-                    WHEN @status = N'Read' THEN CASE WHEN DeliveryStatus = N'Read' THEN N'Read' ELSE N'Read' END
+                    WHEN @status = N'Sent' AND DeliveryStatus IN (N'Pending', N'Processing', N'Failed', N'Sent') THEN N'Sent'
+                    WHEN @status = N'Delivered' AND DeliveryStatus IN (N'Pending', N'Processing', N'Failed', N'Sent', N'Delivered') THEN N'Delivered'
+                    WHEN @status = N'Read' AND DeliveryStatus IN (N'Pending', N'Processing', N'Failed', N'Sent', N'Delivered', N'Read') THEN N'Read'
                     WHEN @status = N'Failed' THEN N'Failed'
                     ELSE DeliveryStatus
                 END,
                 SentAtUtc = CASE WHEN @status = N'Sent' AND SentAtUtc IS NULL THEN @occurredAtUtc ELSE SentAtUtc END,
                 DeliveredAtUtc = CASE WHEN @status = N'Delivered' AND DeliveredAtUtc IS NULL THEN @occurredAtUtc ELSE DeliveredAtUtc END,
                 ReadAtUtc = CASE WHEN @status = N'Read' AND ReadAtUtc IS NULL THEN @occurredAtUtc ELSE ReadAtUtc END,
-                ProcessingAtUtc = CASE WHEN @status = N'Sent' THEN NULL ELSE ProcessingAtUtc END,
+                ProcessingAtUtc = CASE WHEN @status IN (N'Sent', N'Delivered', N'Read', N'Failed') THEN NULL ELSE ProcessingAtUtc END,
                 FailureReason = CASE WHEN @status = N'Failed' AND @failureReason IS NOT NULL THEN @failureReason WHEN @status = N'Failed' AND @failureReason IS NULL THEN FailureReason ELSE NULL END
             WHERE ProviderMessageId = @providerMessageId;";
 
@@ -345,11 +345,11 @@ WHERE MessageTemplateID = @id;";
         const string sql = @"
             UPDATE dbo.CustomerMessages
             SET DeliveryStatus = N'Sent',
-                ProviderMessageId = @providerMessageId,
-                SentAtUtc = @sentAtUtc,
+                ProviderMessageId = CASE WHEN @providerMessageId IS NOT NULL THEN @providerMessageId ELSE ProviderMessageId END,
+                SentAtUtc = CASE WHEN SentAtUtc IS NULL THEN @sentAtUtc ELSE SentAtUtc END,
                 ProcessingAtUtc = NULL,
                 FailureReason = NULL,
-                DeliveredAtUtc = CASE WHEN DeliveredAtUtc IS NULL THEN @sentAtUtc ELSE DeliveredAtUtc END
+                DeliveredAtUtc = DeliveredAtUtc
             WHERE CustomerMessageID = @customerMessageId;";
 
         await using var connection = connections.Create();

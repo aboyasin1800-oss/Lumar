@@ -382,6 +382,184 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task MessageRepository_MarkSentAsync_DoesNotSetDeliveredAtUtc_AndTracksProviderMessageId()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Outbound messaging validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var uniqueSuffix = Guid.NewGuid().ToString("N")[..12];
+        var providerMessageId = "provider-live-" + uniqueSuffix;
+        var messageId = await SeedQueuedMessageAsync(connectionString, "ValidationDeliveryState", uniqueSuffix, deliveryStatus: "Pending", providerMessageId: providerMessageId);
+        try
+        {
+            var repo = new MessageRepository(
+                new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+                new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+            var sentAtUtc = new DateTime(2026, 10, 19, 12, 15, 0, DateTimeKind.Utc);
+            await repo.MarkSentAsync(messageId, providerMessageId, sentAtUtc, CancellationToken.None);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(@"
+                SELECT DeliveryStatus, ProviderMessageId, SentAtUtc, DeliveredAtUtc, ProcessingAtUtc, FailureReason
+                FROM dbo.CustomerMessages WHERE CustomerMessageID = @id;", connection);
+            command.Parameters.AddWithValue("@id", messageId);
+            await using var reader = await command.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("Sent", reader.GetString(0));
+            Assert.Equal("provider-live-" + uniqueSuffix, reader.GetString(1));
+            Assert.Equal(sentAtUtc, reader.GetDateTime(2));
+            Assert.Equal(DBNull.Value, reader[3]);
+            Assert.Equal(DBNull.Value, reader[4]);
+            Assert.Equal(DBNull.Value, reader[5]);
+        }
+        finally
+        {
+            await using var cleanup = new SqlConnection(connectionString);
+            await cleanup.OpenAsync();
+            await using var command = new SqlCommand("DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID = @id;", cleanup);
+            command.Parameters.AddWithValue("@id", messageId);
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
+    public async Task MessageRepository_UpdateDeliveryStatusByProviderIdAsync_RespectsDeliveryLifecycle_WithoutDowngrades()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Outbound messaging validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var repo = new MessageRepository(
+            new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+            new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+        var pendingProviderMessageId = "provider-pending-" + Guid.NewGuid().ToString("N")[..12];
+        var sentProviderMessageId = "provider-sent-" + Guid.NewGuid().ToString("N")[..12];
+        var deliveredProviderMessageId = "provider-delivered-" + Guid.NewGuid().ToString("N")[..12];
+        var readProviderMessageId = "provider-read-" + Guid.NewGuid().ToString("N")[..12];
+
+        var pendingId = await SeedQueuedMessageAsync(connectionString, "ValidationDeliveryFlow", Guid.NewGuid().ToString("N")[..10], deliveryStatus: "Pending", failureReason: null, providerMessageId: pendingProviderMessageId);
+        var sentId = await SeedQueuedMessageAsync(connectionString, "ValidationDeliveryFlow", Guid.NewGuid().ToString("N")[..10], deliveryStatus: "Sent", failureReason: null, providerMessageId: sentProviderMessageId);
+        var deliveredId = await SeedQueuedMessageAsync(connectionString, "ValidationDeliveryFlow", Guid.NewGuid().ToString("N")[..10], deliveryStatus: "Delivered", failureReason: null, providerMessageId: deliveredProviderMessageId);
+        var readId = await SeedQueuedMessageAsync(connectionString, "ValidationDeliveryFlow", Guid.NewGuid().ToString("N")[..10], deliveryStatus: "Read", failureReason: null, providerMessageId: readProviderMessageId);
+
+        try
+        {
+            var sentAt = new DateTime(2026, 10, 18, 10, 0, 0, DateTimeKind.Utc);
+            await repo.UpdateDeliveryStatusByProviderIdAsync(pendingProviderMessageId, "Sent", sentAt, null, CancellationToken.None);
+            await repo.UpdateDeliveryStatusByProviderIdAsync(sentProviderMessageId, "Delivered", sentAt.AddMinutes(1), null, CancellationToken.None);
+            await repo.UpdateDeliveryStatusByProviderIdAsync(deliveredProviderMessageId, "Read", sentAt.AddMinutes(2), null, CancellationToken.None);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(@"
+                SELECT CustomerMessageID, DeliveryStatus, SentAtUtc, DeliveredAtUtc, ReadAtUtc
+                FROM dbo.CustomerMessages
+                WHERE CustomerMessageID IN (@pendingId, @sentId, @deliveredId, @readId)
+                ORDER BY CustomerMessageID;", connection);
+            command.Parameters.AddWithValue("@pendingId", pendingId);
+            command.Parameters.AddWithValue("@sentId", sentId);
+            command.Parameters.AddWithValue("@deliveredId", deliveredId);
+            command.Parameters.AddWithValue("@readId", readId);
+            await using var reader = await command.ExecuteReaderAsync();
+
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("Sent", reader.GetString(1));
+            Assert.NotEqual(DBNull.Value, reader[2]);
+            Assert.Equal(DBNull.Value, reader[3]);
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("Delivered", reader.GetString(1));
+            Assert.NotEqual(DBNull.Value, reader[3]);
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("Read", reader.GetString(1));
+            Assert.NotEqual(DBNull.Value, reader[4]);
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("Read", reader.GetString(1));
+        }
+        finally
+        {
+            await using var cleanup = new SqlConnection(connectionString);
+            await cleanup.OpenAsync();
+            await using var command = new SqlCommand("DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID IN (@pendingId, @sentId, @deliveredId, @readId);", cleanup);
+            command.Parameters.AddWithValue("@pendingId", pendingId);
+            command.Parameters.AddWithValue("@sentId", sentId);
+            command.Parameters.AddWithValue("@deliveredId", deliveredId);
+            command.Parameters.AddWithValue("@readId", readId);
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
+    public async Task MessageRepository_UpdateDeliveryStatusByProviderIdAsync_RejectsLateDowngrades_AndPreservesHighStatus()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Outbound messaging validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var repo = new MessageRepository(
+            new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+            new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+        var deliveredProviderMessageId = "provider-delivered-late-" + Guid.NewGuid().ToString("N")[..12];
+        var readProviderMessageId = "provider-read-late-" + Guid.NewGuid().ToString("N")[..12];
+        var failedProviderMessageId = "provider-failed-late-" + Guid.NewGuid().ToString("N")[..12];
+
+        var deliveredId = await SeedQueuedMessageAsync(connectionString, "ValidationLateDowngrade", Guid.NewGuid().ToString("N")[..10], deliveryStatus: "Delivered", failureReason: null, providerMessageId: deliveredProviderMessageId);
+        var readId = await SeedQueuedMessageAsync(connectionString, "ValidationLateDowngrade", Guid.NewGuid().ToString("N")[..10], deliveryStatus: "Read", failureReason: null, providerMessageId: readProviderMessageId);
+        var failedId = await SeedQueuedMessageAsync(connectionString, "ValidationLateDowngrade", Guid.NewGuid().ToString("N")[..10], deliveryStatus: "Failed", failureReason: null, providerMessageId: failedProviderMessageId);
+
+        try
+        {
+            await repo.UpdateDeliveryStatusByProviderIdAsync(deliveredProviderMessageId, "Sent", DateTime.UtcNow, null, CancellationToken.None);
+            await repo.UpdateDeliveryStatusByProviderIdAsync(readProviderMessageId, "Sent", DateTime.UtcNow.AddMinutes(1), null, CancellationToken.None);
+            await repo.UpdateDeliveryStatusByProviderIdAsync(readProviderMessageId, "Delivered", DateTime.UtcNow.AddMinutes(2), null, CancellationToken.None);
+            await repo.UpdateDeliveryStatusByProviderIdAsync(failedProviderMessageId, "Failed", DateTime.UtcNow.AddMinutes(3), "Bad phone number", CancellationToken.None);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(@"
+                SELECT CustomerMessageID, DeliveryStatus, DeliveredAtUtc, ReadAtUtc, FailureReason
+                FROM dbo.CustomerMessages
+                WHERE CustomerMessageID IN (@deliveredId, @readId, @failedId)
+                ORDER BY CustomerMessageID;", connection);
+            command.Parameters.AddWithValue("@deliveredId", deliveredId);
+            command.Parameters.AddWithValue("@readId", readId);
+            command.Parameters.AddWithValue("@failedId", failedId);
+            await using var reader = await command.ExecuteReaderAsync();
+
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("Delivered", reader.GetString(1));
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("Read", reader.GetString(1));
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("Failed", reader.GetString(1));
+            Assert.Equal("Bad phone number", reader.GetString(4));
+        }
+        finally
+        {
+            await using var cleanup = new SqlConnection(connectionString);
+            await cleanup.OpenAsync();
+            await using var command = new SqlCommand("DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID IN (@deliveredId, @readId, @failedId);", cleanup);
+            command.Parameters.AddWithValue("@deliveredId", deliveredId);
+            command.Parameters.AddWithValue("@readId", readId);
+            command.Parameters.AddWithValue("@failedId", failedId);
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
     public async Task MessageRepository_ClaimNextAsync_ConcurrentClaims_OnlyOneConnectionWins_AndLifecyclePersists()
     {
         var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
@@ -1441,7 +1619,8 @@ public sealed class MessageWriteServiceTests
         string deliveryStatus = "Failed",
         int attemptCount = 1,
         DateTime? processingAtUtc = null,
-        string? failureReason = "Transient failure")
+        string? failureReason = "Transient failure",
+        string? providerMessageId = null)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
@@ -1465,7 +1644,7 @@ public sealed class MessageWriteServiceTests
         var effectiveProcessingAtUtc = processingAtUtc ?? DateTime.UtcNow;
         command.Parameters.AddWithValue("@processingAtUtc", effectiveProcessingAtUtc);
         command.Parameters.AddWithValue("@failureReason", (object?)failureReason ?? DBNull.Value);
-        command.Parameters.AddWithValue("@providerMessageId", "provider-live-" + uniqueSuffix);
+        command.Parameters.AddWithValue("@providerMessageId", (object?)(providerMessageId ?? ("provider-live-" + uniqueSuffix)) ?? DBNull.Value);
         command.Parameters.AddWithValue("@phoneNumber", "0500000000");
         command.Parameters.AddWithValue("@referenceId", "validation-" + uniqueSuffix);
         command.Parameters.AddWithValue("@referenceType", "Validation");
@@ -1623,9 +1802,9 @@ public sealed class MessageWriteServiceTests
 
             var updated = status switch
             {
-                "Sent" => message with { DeliveryStatus = "Sent", SentAtUtc = occurredAtUtc, ProcessingAtUtc = null, FailureReason = null, ProviderMessageId = providerMessageId, DeliveredAtUtc = message.DeliveredAtUtc ?? occurredAtUtc },
-                "Delivered" => message with { DeliveryStatus = "Delivered", DeliveredAtUtc = occurredAtUtc, ProcessingAtUtc = null, FailureReason = null },
-                "Read" => message with { DeliveryStatus = "Read", ReadAtUtc = occurredAtUtc, ProcessingAtUtc = null, FailureReason = null },
+                "Sent" => message with { DeliveryStatus = message.DeliveryStatus is "Pending" or "Processing" or "Failed" or "Sent" ? "Sent" : message.DeliveryStatus, SentAtUtc = message.SentAtUtc ?? occurredAtUtc, ProcessingAtUtc = null, FailureReason = null, ProviderMessageId = providerMessageId },
+                "Delivered" => message with { DeliveryStatus = message.DeliveryStatus is "Pending" or "Processing" or "Failed" or "Sent" or "Delivered" ? "Delivered" : message.DeliveryStatus, DeliveredAtUtc = message.DeliveredAtUtc ?? occurredAtUtc, ProcessingAtUtc = null, FailureReason = null },
+                "Read" => message with { DeliveryStatus = message.DeliveryStatus is "Pending" or "Processing" or "Failed" or "Sent" or "Delivered" or "Read" ? "Read" : message.DeliveryStatus, ReadAtUtc = message.ReadAtUtc ?? occurredAtUtc, ProcessingAtUtc = null, FailureReason = null },
                 "Failed" => message with { DeliveryStatus = "Failed", FailureReason = failureReason ?? message.FailureReason, ProcessingAtUtc = null },
                 _ => message
             };
@@ -1638,7 +1817,7 @@ public sealed class MessageWriteServiceTests
         public Task MarkSentAsync(int customerMessageId, string? providerMessageId, DateTime sentAtUtc, CancellationToken cancellationToken)
         {
             var message = Messages.First(x => x.CustomerMessageId == customerMessageId);
-            var updated = message with { DeliveryStatus = "Sent", SentAtUtc = sentAtUtc, ProcessingAtUtc = null, FailureReason = null, ProviderMessageId = providerMessageId, DeliveredAtUtc = message.DeliveredAtUtc ?? sentAtUtc };
+            var updated = message with { DeliveryStatus = "Sent", SentAtUtc = message.SentAtUtc ?? sentAtUtc, ProcessingAtUtc = null, FailureReason = null, ProviderMessageId = providerMessageId, DeliveredAtUtc = message.DeliveredAtUtc };
             var index = Messages.IndexOf(message);
             Messages[index] = updated;
             return Task.CompletedTask;
