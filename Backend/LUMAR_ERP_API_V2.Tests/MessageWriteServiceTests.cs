@@ -1668,6 +1668,41 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task MessageWriteService_WhenWhatsAppIsEnabledButPhoneIsMissing_OnlyCreatesNotificationWithoutChannelMessage()
+    {
+        var repo = new FakeMessageRepository();
+        repo.TemplateExists = true;
+        var settingsRepo = new FakeSettingsRepository(new MessageSettingsDto(
+            MessageMasterEnabled: true,
+            DirectReferralDefaultOn: true,
+            OtherReferralDefaultOff: false,
+            FridayGreetingEnabled: true,
+            CampaignEnabled: true,
+            WhatsAppEnabled: true));
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer(), settingsRepo);
+
+        var result = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 7,
+            OrderId: 42,
+            EventType: "ManualCampaign",
+            TemplateKey: "general-campaign-smart",
+            PhoneNumber: string.Empty,
+            ReferenceId: "manual-campaign-empty-phone",
+            ReferenceType: "ManualCampaign",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["CampaignText"] = "عرض خاص لعملائنا",
+            }), CancellationToken.None);
+
+        Assert.True(result.Created);
+        Assert.NotNull(result.CustomerNotificationId);
+        Assert.Null(result.CustomerMessageId);
+        Assert.Equal(1, repo.Notifications.Count);
+        Assert.Equal(0, repo.Messages.Count);
+    }
+
+    [Fact]
     public async Task MessageWriteService_WhenWhatsAppChannelIsDisabled_StillCreatesNotificationWithoutChannelMessage()
     {
         var repo = new FakeMessageRepository();

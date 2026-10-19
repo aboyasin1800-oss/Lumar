@@ -58,15 +58,14 @@ public sealed class MessageWriteService(
             int? messageId = null;
             int? notificationId = null;
 
-            if (runtimeSettings.WhatsAppEnabled)
+            if (runtimeSettings.WhatsAppEnabled && IsValidYemenMobileNumber(route.PhoneNumber))
             {
-                var outboundTransportChannel = string.IsNullOrWhiteSpace(route.PhoneNumber) ? "InApp" : "WhatsApp";
                 var createdPair = await repository.CreateCustomerMessageAndNotificationAsync(
                     route.CustomerId,
                     request.OrderId,
                     request.EventType,
                     template.TemplateKey,
-                    outboundTransportChannel,
+                    "WhatsApp",
                     title,
                     body,
                     route.PhoneNumber,
@@ -271,6 +270,21 @@ public sealed class MessageWriteService(
             return cleaned;
 
         return value.Trim();
+    }
+
+    private static bool IsValidYemenMobileNumber(string? phoneNumber)
+    {
+        var normalized = NormalizePhone(phoneNumber);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return false;
+
+        if (normalized.StartsWith("967", StringComparison.Ordinal))
+        {
+            var local = normalized[3..];
+            return local.Length == 9 && local.StartsWith("7", StringComparison.Ordinal);
+        }
+
+        return normalized.Length == 9 && normalized.StartsWith("7", StringComparison.Ordinal);
     }
 
     private static string BuildIdempotencyKey(MessageWriteRequest request, string templateKey, string targetKind)
