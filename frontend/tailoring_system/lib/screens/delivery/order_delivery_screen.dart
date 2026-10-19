@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/app_error.dart';
 import '../../core/app_navigation.dart';
 import '../../core/app_message.dart';
 import '../../core/ui_palette.dart';
@@ -475,9 +476,33 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
     );
   }
 
+  String _friendlyErrorMessage(Object? error) {
+    if (error is AppError) {
+      return error.userFriendlyMessage.trim().isNotEmpty
+          ? error.userFriendlyMessage.trim()
+          : 'تعذر تحميل تفاصيل الطلب.';
+    }
+    if (error is OrderApiException) {
+      return error.userFriendlyMessage.trim().isNotEmpty
+          ? error.userFriendlyMessage.trim()
+          : 'تعذر تحميل تفاصيل الطلب.';
+    }
+    if (error != null) {
+      final raw = error.toString();
+      final trimmed = raw
+          .replaceFirst(RegExp(r'^(Exception|Error):\s*', caseSensitive: false), '')
+          .trim();
+      if (trimmed.isNotEmpty && trimmed.toLowerCase() != 'null') {
+        return trimmed;
+      }
+    }
+    return 'تعذر تحميل تفاصيل الطلب.';
+  }
+
   Future<void> _showError(Object error) {
     if (!mounted) return Future.value();
-    return AppMessage.showErrorDialog(context, error);
+    final currentContext = context;
+    return AppMessage.showErrorDialog(currentContext, error);
   }
 
   @override
@@ -524,7 +549,7 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      snapshot.error?.toString() ?? 'يرجى المحاولة مرة أخرى.',
+                      _friendlyErrorMessage(snapshot.error),
                       style: UiPalette.adaptiveTextStyle(
                         context,
                         backgroundColor: UiPalette.screenBackground,

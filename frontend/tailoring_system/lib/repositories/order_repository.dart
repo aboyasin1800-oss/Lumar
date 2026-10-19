@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../core/app_error.dart';
 import '../models/order_models.dart';
+import '../services/auth_state.dart';
 
 class OrderRepository {
   OrderRepository({http.Client? client}) : _client = client ?? http.Client();
@@ -14,8 +15,23 @@ class OrderRepository {
 
   http.Client get client => _client;
 
+  Map<String, String> _headers({Map<String, String>? extra}) {
+    final headers = <String, String>{
+      if (extra != null) ...extra,
+      'Accept': 'application/json',
+    };
+    final token = AuthState.instance.token;
+    if (token != null && token.trim().isNotEmpty) {
+      headers['Authorization'] = 'Bearer ${token.trim()}';
+    }
+    return headers;
+  }
+
   Future<List<T>> _list<T>(String path, T Function(OrderJson) fromJson) async {
-    final response = await _client.get(Uri.parse('$_baseUrl$path'));
+    final response = await _client.get(
+      Uri.parse('$_baseUrl$path'),
+      headers: _headers(),
+    );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw OrderApiException.fromResponse(response);
     }
@@ -26,7 +42,10 @@ class OrderRepository {
   }
 
   Future<OrderJson> _object(String path) async {
-    final response = await _client.get(Uri.parse('$_baseUrl$path'));
+    final response = await _client.get(
+      Uri.parse('$_baseUrl$path'),
+      headers: _headers(),
+    );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw OrderApiException.fromResponse(response);
     }
@@ -79,7 +98,7 @@ class OrderRepository {
   }) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/orders/$orderId/collect'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
       body: jsonEncode({
         'amount': amount,
         'paymentMethod': paymentMethod ?? 'Cash',
@@ -105,7 +124,7 @@ class OrderRepository {
   }) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/orders/$orderId/settle'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
       body: jsonEncode({
         'amount': amount,
         'discountAmount': discountAmount,
@@ -124,7 +143,7 @@ class OrderRepository {
   Future<OrderDetails> recognizeDeliveryRevenue(int orderId) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/orders/$orderId/delivery/revenue-recognize'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
         throw OrderApiException.fromResponse(response);
@@ -135,7 +154,7 @@ class OrderRepository {
   Future<OrderDetails> deliverOrder(int orderId) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/orders/$orderId/delivery/confirm'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
         throw OrderApiException.fromResponse(response);
@@ -146,7 +165,7 @@ class OrderRepository {
   Future<OrderDetails> waiveRemainingBalance(int orderId) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/orders/$orderId/delivery/balance-waiver'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
         throw OrderApiException.fromResponse(response);
@@ -161,7 +180,7 @@ class OrderRepository {
   }) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/orders/$orderId/cancel'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
       body: jsonEncode({
         'reason': reason ?? 'إلغاء الطلب من شاشة التفاصيل',
         'cancelledBy': cancelledBy ?? 'FlutterApp',
@@ -176,6 +195,7 @@ class OrderRepository {
   Future<ProductionStageRoute> getPieceRoute(int pieceId) async {
     final response = await _client.get(
       Uri.parse('$_baseUrl/production/pieces/route?pieceId=$pieceId'),
+      headers: _headers(),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
         throw OrderApiException.fromResponse(response);
@@ -196,7 +216,7 @@ class OrderRepository {
   }) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/production/pieces/advance'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
       body: jsonEncode({
         'pieceId': pieceId,
         'pieceType': pieceType,
@@ -224,7 +244,7 @@ class OrderRepository {
   }) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/cancelled-piece-dispositions'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
       body: jsonEncode({
         'pieceId': pieceId,
         'decision': decision,
@@ -242,7 +262,7 @@ class OrderRepository {
   Future<CancelledPieceDisposition> executePieceDisposition(int pieceId) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/cancelled-piece-dispositions/$pieceId/execute'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
         throw OrderApiException.fromResponse(response);
