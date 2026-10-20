@@ -66,6 +66,9 @@ builder.Services.AddScoped<IPieceCostManagementRepository, PieceCostManagementRe
 builder.Services.AddScoped<IPricingProfitSettingsRepository, PricingProfitSettingsRepository>();
 builder.Services.AddScoped<IConsumptionRulesRepository, ConsumptionRulesRepository>();
 builder.Services.AddScoped<IAuthRepository, AuthRepository>();
+builder.Services.AddScoped<IMobilePushDeviceRepository, MobilePushDeviceRepository>();
+builder.Services.AddScoped<IPushDeviceService, PushDeviceService>();
+builder.Services.AddScoped<IPushSender, FirebasePushSender>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IReferralService, ReferralService>();
 builder.Services.AddScoped<ILoyaltyService, LoyaltyService>();
