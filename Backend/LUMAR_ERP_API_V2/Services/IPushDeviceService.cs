@@ -9,4 +9,13 @@ public interface IPushDeviceService
     Task<PushDeviceSummaryDto?> DisableAsync(int deviceId, string reason, CancellationToken cancellationToken);
     Task<IReadOnlyList<PushDeviceSummaryDto>> GetActiveAsync(CancellationToken cancellationToken);
     Task<PushDeliveryResult> DispatchAsync(PushDeliveryRequest request, CancellationToken cancellationToken);
+    Task<PushDeliveryResult> DispatchForOfficialNotificationAsync(
+        int? customerId,
+        int? employeeId,
+        int? supplierId,
+        string title,
+        string body,
+        string referenceType,
+        string referenceId,
+        CancellationToken cancellationToken);
 }

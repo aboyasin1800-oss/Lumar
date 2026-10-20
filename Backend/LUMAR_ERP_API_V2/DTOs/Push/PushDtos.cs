@@ -12,7 +12,6 @@ public sealed class RegisterPushDeviceRequest
 
 public sealed record PushDeviceSummaryDto(
     int DeviceId,
-    int MobileAccountId,
     string Provider,
     string Platform,
     string DeviceKey,
@@ -22,14 +21,9 @@ public sealed record PushDeviceSummaryDto(
     DateTime UpdatedAtUtc,
     DateTime? LastRegisteredAtUtc,
     DateTime? DisabledAtUtc,
-    string? DisabledReason,
-    string? TokenCiphertext = null,
-    string? TokenHash = null);
+    string? DisabledReason);
 
 public sealed record PushDeliveryRequest(
-    int? CustomerId,
-    int? SupplierId,
-    int? MobileAccountId,
     string Title,
     string Body,
     string? ReferenceType = null,

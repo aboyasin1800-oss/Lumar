@@ -40,7 +40,8 @@ public sealed class PushDeviceService(
             return null;
 
         var currentMobileAccountId = await ResolveMobileAccountIdAsync(currentUser, cancellationToken);
-        if (currentMobileAccountId != existing.MobileAccountId)
+        var deviceOwnerId = await GetDeviceOwnerAccountIdAsync(deviceId, cancellationToken);
+        if (currentMobileAccountId != deviceOwnerId)
             throw new UnauthorizedAccessException("Device ownership does not match the authenticated account.");
 
         return await repository.RefreshAsync(deviceId, request, cancellationToken);
@@ -57,7 +58,8 @@ public sealed class PushDeviceService(
             return null;
 
         var currentMobileAccountId = await ResolveMobileAccountIdAsync(currentUser, cancellationToken);
-        if (currentMobileAccountId != existing.MobileAccountId)
+        var deviceOwnerId = await GetDeviceOwnerAccountIdAsync(deviceId, cancellationToken);
+        if (currentMobileAccountId != deviceOwnerId)
             throw new UnauthorizedAccessException("Device ownership does not match the authenticated account.");
 
         return await repository.DisableAsync(deviceId, reason, cancellationToken);
@@ -79,7 +81,7 @@ public sealed class PushDeviceService(
         if (currentUser is null)
             return new PushDeliveryResult(false, null, "Unauthorized", "Authentication is required for push dispatch.", false, 0, 0, Array.Empty<string>());
 
-        var targetMobileAccountId = request.MobileAccountId ?? await ResolveMobileAccountIdAsync(currentUser, cancellationToken);
+        var targetMobileAccountId = await ResolveMobileAccountIdAsync(currentUser, cancellationToken);
         if (targetMobileAccountId <= 0)
             return new PushDeliveryResult(false, null, "NoAccount", "No official MobileAccount could be resolved for the authenticated user.", false, 0, 0, Array.Empty<string>());
 
@@ -109,8 +111,55 @@ public sealed class PushDeviceService(
         return new PushDeliveryResult(sentCount > 0, null, failedCount == 0 ? "Completed" : "Partial", failedCount == 0 ? null : "One or more device deliveries failed.", failedCount > 0, sentCount, failedCount, deviceKeys);
     }
 
+    public async Task<PushDeliveryResult> DispatchForOfficialNotificationAsync(
+        int? customerId,
+        int? employeeId,
+        int? supplierId,
+        string title,
+        string body,
+        string referenceType,
+        string referenceId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            throw new ArgumentException("Title is required for official push delivery.", nameof(title));
+        if (string.IsNullOrWhiteSpace(body))
+            throw new ArgumentException("Body is required for official push delivery.", nameof(body));
+        if (string.IsNullOrWhiteSpace(referenceType))
+            throw new ArgumentException("ReferenceType is required for official push delivery.", nameof(referenceType));
+        if (string.IsNullOrWhiteSpace(referenceId))
+            throw new ArgumentException("ReferenceId is required for official push delivery.", nameof(referenceId));
+
+        var currentUser = await userContext.GetCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+            return new PushDeliveryResult(false, null, "Unauthorized", "Authentication is required for official push delivery.", false, 0, 0, Array.Empty<string>());
+
+        var resolvedMobileAccountId = await ResolveMobileAccountIdAsync(currentUser, cancellationToken);
+        if (resolvedMobileAccountId <= 0)
+            return new PushDeliveryResult(false, null, "NoAccount", "No official MobileAccount could be resolved for the authenticated user.", false, 0, 0, Array.Empty<string>());
+
+        _ = customerId;
+        _ = employeeId;
+        _ = supplierId;
+
+        var request = new PushDeliveryRequest(title, body, referenceType, referenceId, "Push");
+        return await DispatchAsync(request, cancellationToken);
+    }
+
     private async Task<int> ResolveMobileAccountIdAsync(CurrentUserDto currentUser, CancellationToken cancellationToken)
     {
+        if (connections is null)
+        {
+            var normalizedAccountType = (currentUser.AccountType ?? string.Empty).Trim();
+            if (string.Equals(normalizedAccountType, "Customer", StringComparison.OrdinalIgnoreCase) && currentUser.CustomerId is > 0)
+                return currentUser.CustomerId.Value;
+            if (string.Equals(normalizedAccountType, "Employee", StringComparison.OrdinalIgnoreCase) && currentUser.EmployeeId is > 0)
+                return currentUser.EmployeeId.Value;
+            if (string.Equals(normalizedAccountType, "Supplier", StringComparison.OrdinalIgnoreCase) && currentUser.SupplierId is > 0)
+                return currentUser.SupplierId.Value;
+            return 0;
+        }
+
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
 
@@ -125,6 +174,22 @@ public sealed class PushDeviceService(
         command.Parameters.AddWithValue("@customerId", customerId);
         command.Parameters.AddWithValue("@employeeId", employeeId);
         command.Parameters.AddWithValue("@supplierId", supplierId);
+
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is null ? 0 : Convert.ToInt32(result);
+    }
+
+    private async Task<int> GetDeviceOwnerAccountIdAsync(int deviceId, CancellationToken cancellationToken)
+    {
+        if (connections is null)
+            return 0;
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(cancellationToken);
+
+        const string sql = @"SELECT TOP (1) MobileAccountId FROM dbo.MobilePushDevices WHERE MobilePushDeviceId = @deviceId;";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@deviceId", deviceId);
 
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return result is null ? 0 : Convert.ToInt32(result);

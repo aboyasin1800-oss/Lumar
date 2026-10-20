@@ -28,7 +28,7 @@ public sealed class MobilePushDeviceRepository(
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
 
-        await EnsureSchemaAsync(connection, cancellationToken);
+        await EnsureRequiredSchemaAsync(connection, cancellationToken);
 
         await using var ownerCheck = new SqlCommand("SELECT TOP (1) MobileAccountId FROM dbo.MobilePushDevices WITH (NOLOCK) WHERE TokenHash = @tokenHash AND IsActive = 1 AND MobileAccountId <> @mobileAccountId;", connection);
         ownerCheck.Parameters.AddWithValue("@tokenHash", tokenHash);
@@ -90,7 +90,7 @@ public sealed class MobilePushDeviceRepository(
 
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
-        await EnsureSchemaAsync(connection, cancellationToken);
+        await EnsureRequiredSchemaAsync(connection, cancellationToken);
 
         await using var check = new SqlCommand("SELECT TOP (1) MobileAccountId FROM dbo.MobilePushDevices WHERE MobilePushDeviceId = @deviceId;", connection);
         check.Parameters.AddWithValue("@deviceId", deviceId);
@@ -145,7 +145,7 @@ public sealed class MobilePushDeviceRepository(
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
-        await EnsureSchemaAsync(connection, cancellationToken);
+        await EnsureRequiredSchemaAsync(connection, cancellationToken);
 
         var disabledReason = string.IsNullOrWhiteSpace(reason) ? "Disabled by user." : reason.Trim();
         await using var update = new SqlCommand(
@@ -172,7 +172,7 @@ public sealed class MobilePushDeviceRepository(
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
-        await EnsureSchemaAsync(connection, cancellationToken);
+        await EnsureRequiredSchemaAsync(connection, cancellationToken);
 
         const string sql = @"SELECT MobilePushDeviceId, MobileAccountId, Provider, Platform, DeviceKey, IsActive, IsDisabled, CreatedAtUtc, UpdatedAtUtc, LastRegisteredAtUtc, DisabledAtUtc, DisabledReason, PushTokenCiphertext, TokenHash FROM dbo.MobilePushDevices WHERE MobileAccountId = @mobileAccountId AND IsActive = 1 ORDER BY UpdatedAtUtc DESC;";
         await using var command = new SqlCommand(sql, connection);
@@ -192,7 +192,7 @@ public sealed class MobilePushDeviceRepository(
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
-        await EnsureSchemaAsync(connection, cancellationToken);
+        await EnsureRequiredSchemaAsync(connection, cancellationToken);
 
         const string sql = @"SELECT MobilePushDeviceId, MobileAccountId, Provider, Platform, DeviceKey, PushTokenCiphertext, TokenHash, IsActive, IsDisabled, UpdatedAtUtc, DisabledAtUtc, DisabledReason FROM dbo.MobilePushDevices WHERE MobileAccountId = @mobileAccountId AND IsActive = 1 ORDER BY UpdatedAtUtc DESC;";
         await using var command = new SqlCommand(sql, connection);
@@ -227,7 +227,7 @@ public sealed class MobilePushDeviceRepository(
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
-        await EnsureSchemaAsync(connection, cancellationToken);
+        await EnsureRequiredSchemaAsync(connection, cancellationToken);
 
         const string sql = @"SELECT MobilePushDeviceId, MobileAccountId, Provider, Platform, DeviceKey, IsActive, IsDisabled, CreatedAtUtc, UpdatedAtUtc, LastRegisteredAtUtc, DisabledAtUtc, DisabledReason, PushTokenCiphertext, TokenHash FROM dbo.MobilePushDevices WHERE MobilePushDeviceId = @deviceId;";
         await using var command = new SqlCommand(sql, connection);
@@ -246,7 +246,7 @@ public sealed class MobilePushDeviceRepository(
 
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
-        await EnsureSchemaAsync(connection, cancellationToken);
+        await EnsureRequiredSchemaAsync(connection, cancellationToken);
 
         await using var command = new SqlCommand("SELECT TOP (1) 1 FROM dbo.MobilePushDevices WITH (NOLOCK) WHERE TokenHash = @tokenHash AND MobileAccountId <> @mobileAccountId AND IsActive = 1;", connection);
         command.Parameters.AddWithValue("@tokenHash", tokenHash);
@@ -254,55 +254,16 @@ public sealed class MobilePushDeviceRepository(
         return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
-    private async Task EnsureSchemaAsync(SqlConnection connection, CancellationToken cancellationToken)
+    private async Task EnsureRequiredSchemaAsync(SqlConnection connection, CancellationToken cancellationToken)
     {
         await using var command = new SqlCommand(
-            @"IF OBJECT_ID(N'dbo.MobilePushDevices', N'U') IS NULL
-                BEGIN
-                    CREATE TABLE dbo.MobilePushDevices (
-                        MobilePushDeviceId int IDENTITY(1,1) NOT NULL,
-                        MobileAccountId int NOT NULL,
-                        Provider nvarchar(32) NOT NULL,
-                        Platform nvarchar(32) NOT NULL,
-                        DeviceKey nvarchar(128) NOT NULL,
-                        PushTokenCiphertext nvarchar(max) NOT NULL,
-                        TokenHash nvarchar(128) NOT NULL,
-                        IsActive bit NOT NULL CONSTRAINT DF_MobilePushDevices_IsActive DEFAULT ((1)),
-                        IsDisabled bit NOT NULL CONSTRAINT DF_MobilePushDevices_IsDisabled DEFAULT ((0)),
-                        CreatedAtUtc datetime2(3) NOT NULL CONSTRAINT DF_MobilePushDevices_CreatedAtUtc DEFAULT (SYSUTCDATETIME()),
-                        UpdatedAtUtc datetime2(3) NOT NULL CONSTRAINT DF_MobilePushDevices_UpdatedAtUtc DEFAULT (SYSUTCDATETIME()),
-                        LastRegisteredAtUtc datetime2(3) NULL,
-                        DisabledAtUtc datetime2(3) NULL,
-                        DisabledReason nvarchar(256) NULL,
-                        DeviceName nvarchar(128) NULL,
-                        AppVersion nvarchar(64) NULL,
-                        CONSTRAINT PK_MobilePushDevices PRIMARY KEY (MobilePushDeviceId),
-                        CONSTRAINT FK_MobilePushDevices_MobileAccounts FOREIGN KEY (MobileAccountId) REFERENCES dbo.MobileAccounts(MobileAccountId),
-                        CONSTRAINT CK_MobilePushDevices_Provider CHECK (Provider IN (N'FCM')),
-                        CONSTRAINT CK_MobilePushDevices_Platform CHECK (Platform IN (N'Android')),
-                        CONSTRAINT UQ_MobilePushDevices_TokenHash UNIQUE (TokenHash)
-                    );
-
-                    CREATE INDEX IX_MobilePushDevices_MobileAccountId_IsActive
-                        ON dbo.MobilePushDevices(MobileAccountId, IsActive, UpdatedAtUtc DESC);
-
-                    CREATE INDEX IX_MobilePushDevices_DeviceKey
-                        ON dbo.MobilePushDevices(DeviceKey);
-                END;
-
-                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.MobilePushDevices') AND name = N'IX_MobilePushDevices_MobileAccountId_IsActive')
-                BEGIN
-                    CREATE INDEX IX_MobilePushDevices_MobileAccountId_IsActive
-                        ON dbo.MobilePushDevices(MobileAccountId, IsActive, UpdatedAtUtc DESC);
-                END;
-
-                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.MobilePushDevices') AND name = N'IX_MobilePushDevices_DeviceKey')
-                BEGIN
-                    CREATE INDEX IX_MobilePushDevices_DeviceKey
-                        ON dbo.MobilePushDevices(DeviceKey);
-                END;",
+            @"SELECT CASE WHEN OBJECT_ID(N'dbo.MobilePushDevices', N'U') IS NULL THEN 1 ELSE 0 END;",
             connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        var tableMissing = await command.ExecuteScalarAsync(cancellationToken) is int value && value == 1;
+        if (tableMissing)
+        {
+            throw new InvalidOperationException("MobilePushDevices schema is missing. Apply the official migration before push device operations.");
+        }
     }
 
     private static void ValidateRequest(RegisterPushDeviceRequest request, int mobileAccountId)
@@ -350,7 +311,6 @@ public sealed class MobilePushDeviceRepository(
     private static PushDeviceSummaryDto MapSummary(SqlDataReader reader, int mobileAccountId)
         => new(
             reader.GetInt32(0),
-            mobileAccountId,
             reader.GetString(2),
             reader.GetString(3),
             reader.GetString(4),
@@ -360,7 +320,5 @@ public sealed class MobilePushDeviceRepository(
             reader.GetDateTime(8),
             reader.IsDBNull(9) ? null : reader.GetDateTime(9),
             reader.IsDBNull(10) ? null : reader.GetDateTime(10),
-            reader.IsDBNull(11) ? null : reader.GetString(11),
-            reader.IsDBNull(12) ? null : reader.GetString(12),
-            reader.IsDBNull(13) ? null : reader.GetString(13));
+            reader.IsDBNull(11) ? null : reader.GetString(11));
 }
