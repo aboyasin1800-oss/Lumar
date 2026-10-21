@@ -51,13 +51,13 @@ public sealed class FirebasePushSenderTests
                 };
             });
 
-            var sender = new FirebasePushSender(
-                Options.Create(new FirebasePushOptions
+            var sender = FirebasePushSender.CreateForTesting(
+                new FirebasePushOptions
                 {
                     Enabled = true,
                     ProjectId = "demo-project-id",
                     ServiceAccountJsonPath = credentialPath
-                }),
+                },
                 new HttpClient(handler),
                 NullLogger<FirebasePushSender>.Instance,
                 _ => Task.FromResult("fake-access-token"));
@@ -83,8 +83,8 @@ public sealed class FirebasePushSenderTests
     [Fact]
     public async Task SendAsync_WhenCredentialsAreMissing_ReturnsNotConfigured()
     {
-        var sender = new FirebasePushSender(
-            Options.Create(new FirebasePushOptions { Enabled = true, ProjectId = string.Empty, ServiceAccountJsonPath = string.Empty }),
+        var sender = FirebasePushSender.CreateForTesting(
+            new FirebasePushOptions { Enabled = true, ProjectId = string.Empty, ServiceAccountJsonPath = string.Empty },
             new HttpClient(new FakeHttpMessageHandler((_, _) => throw new InvalidOperationException("HTTP should not be called."))),
             NullLogger<FirebasePushSender>.Instance,
             _ => Task.FromResult("fake-access-token"));

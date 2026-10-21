@@ -19,10 +19,12 @@ public sealed class FirebasePushSender : IPushSender
     {
     }
 
-    public FirebasePushSender(IOptions<FirebasePushOptions> options, HttpClient httpClient, ILogger<FirebasePushSender>? logger = null, Func<string, Task<string>>? accessTokenResolver = null)
-        : this(options.Value, httpClient, logger, accessTokenResolver ?? ResolveAccessTokenAsync)
-    {
-    }
+    public static FirebasePushSender CreateForTesting(
+        FirebasePushOptions options,
+        HttpClient httpClient,
+        ILogger<FirebasePushSender>? logger = null,
+        Func<string, Task<string>>? accessTokenResolver = null)
+        => new FirebasePushSender(options, httpClient, logger, accessTokenResolver ?? ResolveAccessTokenAsync);
 
     private FirebasePushSender(FirebasePushOptions options, HttpClient httpClient, ILogger<FirebasePushSender>? logger, Func<string, Task<string>> accessTokenResolver)
     {
