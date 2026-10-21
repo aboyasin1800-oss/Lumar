@@ -25,6 +25,7 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(cancellationToken);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        var committed = false;
         try
         {
             await using (var customerCommand = new SqlCommand("SELECT 1 FROM dbo.Customers WITH (UPDLOCK, HOLDLOCK) WHERE CustomerID=@customerId", connection, transaction))
@@ -47,11 +48,22 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
                 saved.Add(new CustomerMeasurementDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetString(3), reader.GetDecimal(4), reader.GetDateTime(5), reader.GetInt32(6)));
             }
             await transaction.CommitAsync(cancellationToken);
+            committed = true;
             return saved;
         }
         catch
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            if (ShouldRollbackAfterFailure(committed, transaction.Connection is not null && transaction.Connection.State == System.Data.ConnectionState.Open))
+            {
+                try
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+                catch
+                {
+                    // Ignore rollback failures after the original exception is already active.
+                }
+            }
             throw;
         }
     }
@@ -78,6 +90,7 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        var committed = false;
         try
         {
             var name = NormalizeCustomerName(customer.CustomerName!);
@@ -95,11 +108,22 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
             AddNullable(command, "@relationshipType", customer.RelationshipType);
             var customerId = (int)(await command.ExecuteScalarAsync(cancellationToken))!;
             await transaction.CommitAsync(cancellationToken);
+            committed = true;
             return (await GetByIdAsync(customerId, cancellationToken))!;
         }
         catch
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            if (ShouldRollbackAfterFailure(committed, transaction.Connection is not null && transaction.Connection.State == System.Data.ConnectionState.Open))
+            {
+                try
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+                catch
+                {
+                    // Ignore rollback failures after the original exception is already active.
+                }
+            }
             throw;
         }
     }
@@ -109,15 +133,27 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(cancellationToken);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        var committed = false;
         try
         {
             var created = await CreateWithReferralInTransactionAsync(connection, transaction, customer, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+            committed = true;
             return created;
         }
         catch
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            if (ShouldRollbackAfterFailure(committed, transaction.Connection is not null && transaction.Connection.State == System.Data.ConnectionState.Open))
+            {
+                try
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+                catch
+                {
+                    // Ignore rollback failures after the original exception is already active.
+                }
+            }
             throw;
         }
     }
@@ -390,6 +426,7 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(cancellationToken);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        var committed = false;
 
         try
         {
@@ -441,6 +478,8 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
                 var customerId = reader.GetInt32(0);
                 var createdCode = reader.IsDBNull(1) ? null : reader.GetString(1);
                 var createdName = reader.IsDBNull(2) ? null : reader.GetString(2);
+                await reader.CloseAsync();
+                await accountReader.CloseAsync();
 
                 const string insertAccessSql = @"INSERT INTO dbo.MobileAccountCustomerAccess (MobileAccountId, CustomerId, AccessRole, IsActive, RelationshipType, CreatedAtUtc)
                     VALUES (@mobileAccountId, @customerId, N'Managed', 1, @relationshipType, SYSUTCDATETIME());";
@@ -451,12 +490,23 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
                 await insertAccess.ExecuteNonQueryAsync(cancellationToken);
 
                 await transaction.CommitAsync(cancellationToken);
+                committed = true;
                 return new LinkedCustomerAccessDto(customerId, createdCode, createdName, relationshipType, "Managed", true);
             }
         }
         catch
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            if (ShouldRollbackAfterFailure(committed, transaction.Connection is not null && transaction.Connection.State == System.Data.ConnectionState.Open))
+            {
+                try
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+                catch
+                {
+                    // Ignore rollback failures after the original exception is already active.
+                }
+            }
             throw;
         }
     }
@@ -498,6 +548,9 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
     {
         return QueryWithTextAsync(sql, reader => new CustomerListDto(reader.GetInt32(0), reader.NullableString("CustomerCode"), reader.NullableString("CustomerName"), reader.NullableString("PhoneNumber"), reader.NullableDecimal("TotalPoints"), reader.NullableInt32("TotalPieces"), reader.NullableDecimal("TotalDebts"), reader.NullableString("RelationshipType")), term, cancellationToken);
     }
+
+    public static bool ShouldRollbackAfterFailure(bool committed, bool transactionUsable)
+        => !committed && transactionUsable;
 
     private static async Task<CustomerReferralCandidateDto?> GetReferralCandidateAsync(int customerId, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
     {
