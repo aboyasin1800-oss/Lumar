@@ -44,23 +44,42 @@ class CustomerRepository {
 
   Future<CustomerDetailsData> getDetails(int customerId) async {
     final initial = await Future.wait([
-      _object('/customers/$customerId'),
-      _optionalObject('/customers/$customerId/loyalty'),
-      _optionalObject('/customers/$customerId/referrals'),
-      _list('/customers/$customerId/ledger', CustomerLedgerRecord.fromJson),
-      _list<CustomerJson>('/orders', (json) => json),
-      _list('/finance/transactions', CustomerFinancialTransaction.fromJson),
+      _object('/customers/$customerId').catchError((_) => const <String, dynamic>{}),
+      _optionalObject('/customers/$customerId/loyalty').catchError((_) => null),
+      _optionalObject('/customers/$customerId/referrals').catchError((_) => null),
+      _list('/customers/$customerId/ledger', CustomerLedgerRecord.fromJson)
+          .catchError((_) => const <CustomerLedgerRecord>[]),
+      _list<CustomerJson>('/orders', (json) => json)
+          .catchError((_) => const <CustomerJson>[]),
+      _list('/finance/transactions', CustomerFinancialTransaction.fromJson)
+          .catchError((_) => const <CustomerFinancialTransaction>[]),
     ]);
+
+    final customerJson = initial[0] as CustomerJson;
+    if (customerJson.isEmpty) {
+      throw CustomerApiException('/customers/$customerId', 404);
+    }
 
     final orderIds = (initial[4] as List<CustomerJson>)
         .where((json) => json['customerId'] == customerId)
-        .map((json) => json['orderId'] as int)
+        .map((json) => json['orderId'] as int?)
+        .whereType<int>()
         .toList();
-    final orders = await Future.wait(orderIds.map((orderId) async =>
-        CustomerOrder.fromJson(await _object('/orders/$orderId'))));
+
+    final orders = await Future.wait(orderIds.map((orderId) async {
+      try {
+        return CustomerOrder.fromJson(await _object('/orders/$orderId'));
+      } catch (_) {
+        return null;
+      }
+    })).then((items) => items.whereType<CustomerOrder>().toList());
+
     final paymentLists = await Future.wait(orderIds.map((orderId) =>
-        _list('/orders/$orderId/payments', CustomerOrderPayment.fromJson)));
-    final payments = paymentLists.expand((items) => items).toList()
+            _list('/orders/$orderId/payments', CustomerOrderPayment.fromJson)
+                .catchError((_) => const <CustomerOrderPayment>[])));
+    final payments = paymentLists
+        .expand((items) => items)
+        .toList()
       ..sort((left, right) => right.paymentDate.compareTo(left.paymentDate));
     final orderNumbers = orders.map((order) => order.number).toSet();
     final financialTransactions =
@@ -73,7 +92,7 @@ class CustomerRepository {
     final loyaltyJson = initial[1] as CustomerJson?;
     final referralJson = initial[2] as CustomerJson?;
     return CustomerDetailsData(
-      customer: CustomerDetails.fromJson(initial[0] as CustomerJson),
+      customer: CustomerDetails.fromJson(customerJson),
       loyalty:
           loyaltyJson == null ? null : CustomerLoyalty.fromJson(loyaltyJson),
       referral:

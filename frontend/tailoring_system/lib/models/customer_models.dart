@@ -1,12 +1,47 @@
 typedef CustomerJson = Map<String, dynamic>;
 
+DateTime _parseDateSafely(Object? value, {DateTime? fallback}) {
+  if (value == null || value is! String || value.trim().isEmpty) {
+    return fallback ?? DateTime(1970, 1, 1);
+  }
+
+  try {
+    return DateTime.parse(value);
+  } catch (_) {
+    return fallback ?? DateTime(1970, 1, 1);
+  }
+}
+
 DateTime _date(CustomerJson json, String key) =>
-    DateTime.parse(json[key] as String);
-DateTime? _nullableDate(CustomerJson json, String key) =>
-    json[key] == null ? null : DateTime.parse(json[key] as String);
-double _amount(CustomerJson json, String key) => (json[key] as num).toDouble();
-double? _nullableAmount(CustomerJson json, String key) =>
-    (json[key] as num?)?.toDouble();
+    _parseDateSafely(json[key], fallback: DateTime(1970, 1, 1));
+DateTime? _nullableDate(CustomerJson json, String key) {
+  final value = json[key];
+  if (value == null || (value is String && value.trim().isEmpty)) return null;
+  return _parseDateSafely(value, fallback: null);
+}
+
+double _parseAmountSafely(Object? value, {double fallback = 0}) {
+  if (value == null) return fallback;
+  if (value is num) return value.toDouble();
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return fallback;
+    final parsed = double.tryParse(trimmed);
+    if (parsed != null) return parsed;
+  }
+  return fallback;
+}
+
+double _amount(CustomerJson json, String key) =>
+    _parseAmountSafely(json[key], fallback: 0);
+double? _nullableAmount(CustomerJson json, String key) {
+  final value = json[key];
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  if (value is String && value.trim().isEmpty) return null;
+  if (value is String) return double.tryParse(value.trim());
+  return null;
+}
 
 class CustomerDetails {
   const CustomerDetails(
