@@ -1,3 +1,5 @@
+using LUMAR_ERP_API_V2.Authorization;
+using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Customers;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -6,7 +8,7 @@ namespace LUMAR_ERP_API_V2.Controllers;
 
 [ApiController]
 [Route("customers")]
-public sealed class CustomersController(ICustomerService service) : ControllerBase
+public sealed class CustomersController(ICustomerService service, IAuthenticatedUserContext userContext) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<CustomerListDto>>(StatusCodes.Status200OK)]
@@ -119,5 +121,42 @@ public sealed class CustomersController(ICustomerService service) : ControllerBa
     {
         var referrals = await service.GetReferralsAsync(id, cancellationToken);
         return referrals is null ? NotFound() : Ok(referrals);
+    }
+
+    [HttpGet("/mobile/customers/linked")]
+    [ProducesResponseType<IReadOnlyList<LinkedCustomerAccessDto>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<LinkedCustomerAccessDto>>> GetLinkedCustomersForCurrentMobileAccount(CancellationToken cancellationToken)
+    {
+        var user = await userContext.GetCurrentUserAsync(cancellationToken);
+        if (user is null) return Unauthorized();
+        if (!string.Equals(user.AccountType, "Customer", StringComparison.OrdinalIgnoreCase)) return Forbid();
+
+        var linked = await service.GetLinkedCustomersAsync(user.Username, cancellationToken);
+        return Ok(linked);
+    }
+
+    [HttpPost("/mobile/customers/family")]
+    [ProducesResponseType<LinkedCustomerAccessDto>(StatusCodes.Status201Created)]
+    public async Task<ActionResult<LinkedCustomerAccessDto>> CreateManagedCustomerForCurrentMobileAccount([FromBody] CreateManagedCustomerDto request, CancellationToken cancellationToken)
+    {
+        if (request is null) return BadRequest("Family customer payload is required.");
+
+        var user = await userContext.GetCurrentUserAsync(cancellationToken);
+        if (user is null) return Unauthorized();
+        if (!string.Equals(user.AccountType, "Customer", StringComparison.OrdinalIgnoreCase)) return Forbid();
+
+        try
+        {
+            var created = await service.CreateManagedCustomerAsync(user.Username, request, cancellationToken);
+            return Created("/mobile/customers/linked", created);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(exception.Message);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Forbid();
+        }
     }
 }

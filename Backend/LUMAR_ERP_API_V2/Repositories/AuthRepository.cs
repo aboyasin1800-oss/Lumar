@@ -859,7 +859,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
     {
         var ids = new List<int>();
         await using var command = new SqlCommand(
-            "SELECT CustomerId FROM dbo.MobileAccountCustomerAccess WITH (NOLOCK) WHERE MobileAccountId = @mobileAccountId ORDER BY CustomerId",
+            "SELECT CustomerId FROM dbo.MobileAccountCustomerAccess WITH (NOLOCK) WHERE MobileAccountId = @mobileAccountId AND AccessRole = N'Managed' AND IsActive = 1 AND (RevokedAtUtc IS NULL OR RevokedAtUtc > SYSUTCDATETIME()) ORDER BY CustomerId",
             connection);
         command.Parameters.AddWithValue("@mobileAccountId", mobileAccountId);
 

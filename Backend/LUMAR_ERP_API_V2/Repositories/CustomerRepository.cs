@@ -334,6 +334,133 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
         return results;
     }
 
+    public async Task<IReadOnlyList<LinkedCustomerAccessDto>> GetLinkedCustomersAsync(string username, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            return [];
+
+        const string sql = @"
+            SELECT c.CustomerID, c.CustomerCode, c.CustomerName, c.RelationshipType,
+                   CASE WHEN ma.CustomerId = c.CustomerID THEN N'Primary' ELSE N'Managed' END AS AccessRole,
+                   c.IsActive
+            FROM dbo.MobileAccountCustomerAccess mac
+            JOIN dbo.MobileAccounts ma ON ma.MobileAccountId = mac.MobileAccountId
+            JOIN dbo.Customers c ON c.CustomerID = mac.CustomerId
+            WHERE (ma.Username = @username OR ma.NormalizedUsername = @username)
+              AND mac.AccessRole = CASE WHEN ma.CustomerId = c.CustomerID THEN N'Primary' ELSE N'Managed' END
+              AND mac.IsActive = 1
+              AND (mac.RevokedAtUtc IS NULL OR mac.RevokedAtUtc > SYSUTCDATETIME())
+            ORDER BY CASE WHEN ma.CustomerId = c.CustomerID THEN 0 ELSE 1 END, c.CustomerName;";
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@username", username.Trim());
+
+        var results = new List<LinkedCustomerAccessDto>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(new LinkedCustomerAccessDto(
+                reader.GetInt32(0),
+                reader.NullableString("CustomerCode"),
+                reader.NullableString("CustomerName"),
+                reader.NullableString("RelationshipType"),
+                reader.GetString(4),
+                reader.GetBoolean(5)));
+        }
+
+        return results;
+    }
+
+    public async Task<LinkedCustomerAccessDto> CreateManagedCustomerAsync(string username, CreateManagedCustomerDto request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            throw new ArgumentException("المستخدم الحالي غير مصرح له بإضافة فرد العائلة.");
+
+        if (request is null)
+            throw new ArgumentException("بيانات الفرد غير صالحة.");
+
+        if (string.IsNullOrWhiteSpace(request.CustomerName))
+            throw new ArgumentException("اسم الفرد مطلوب.");
+
+        if (string.IsNullOrWhiteSpace(request.PhoneNumber) && string.IsNullOrWhiteSpace(request.RelationshipType))
+            throw new ArgumentException("رقم التواصل أو صلة القرابة مطلوبة.");
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+
+        try
+        {
+            var normalizedUsername = username.Trim();
+            await using (var accountCommand = new SqlCommand(
+                "SELECT TOP (1) MobileAccountId, AccountType, CustomerId FROM dbo.MobileAccounts WITH (UPDLOCK, HOLDLOCK) WHERE (Username = @username OR NormalizedUsername = @username OR NormalizedUsername = @normalizedUsername) AND IsActive = 1 ORDER BY MobileAccountId",
+                connection,
+                transaction))
+            {
+                accountCommand.Parameters.AddWithValue("@username", normalizedUsername);
+                accountCommand.Parameters.AddWithValue("@normalizedUsername", normalizedUsername.ToUpperInvariant());
+                await using var accountReader = await accountCommand.ExecuteReaderAsync(cancellationToken);
+                if (!await accountReader.ReadAsync(cancellationToken))
+                    throw new UnauthorizedAccessException("لا توجد صلاحية لإنشاء فرد العائلة.");
+
+                var accountType = accountReader.IsDBNull(1) ? null : accountReader.GetString(1);
+                if (!string.Equals(accountType, "Customer", StringComparison.OrdinalIgnoreCase))
+                    throw new UnauthorizedAccessException("لا توجد صلاحية لإنشاء فرد العائلة.");
+
+                var currentUser = new { MobileAccountId = accountReader.GetInt32(0), CustomerId = accountReader.IsDBNull(2) ? (int?)null : accountReader.GetInt32(2) };
+                if (currentUser.CustomerId is null)
+                    throw new UnauthorizedAccessException("لا توجد صلاحية لإنشاء فرد العائلة.");
+
+                var customerName = request.CustomerName.Trim();
+                var phoneNumber = NormalizeCustomerPhone(request.PhoneNumber);
+                var relationshipType = string.IsNullOrWhiteSpace(request.RelationshipType) ? "Family" : request.RelationshipType.Trim();
+
+                var customerPrefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "CustomerCodePrefix", "C", cancellationToken);
+                var customerNumber = await SystemCodeGenerator.GetNextNumberAsync(connection, transaction, "dbo.Customers", "CustomerCode", "CustomerCodePrefix", "C", cancellationToken);
+                var customerCode = customerPrefix + customerNumber.ToString(CultureInfo.InvariantCulture);
+
+                const string insertCustomerSql = @"INSERT INTO dbo.Customers (CustomerCode, CustomerName, PhoneNumber, Address, Notes, IsActive, ParentCustomerId, RelationshipType)
+                    OUTPUT INSERTED.CustomerID, INSERTED.CustomerCode, INSERTED.CustomerName, INSERTED.PhoneNumber, INSERTED.RelationshipType
+                    VALUES (@customerCode, @customerName, @phoneNumber, @address, @notes, 1, @parentCustomerId, @relationshipType);";
+
+                await using var createCustomer = new SqlCommand(insertCustomerSql, connection, transaction);
+                createCustomer.Parameters.AddWithValue("@customerCode", customerCode);
+                createCustomer.Parameters.AddWithValue("@customerName", customerName);
+                AddNullable(createCustomer, "@phoneNumber", phoneNumber);
+                AddNullable(createCustomer, "@address", string.IsNullOrWhiteSpace(request.Address) ? null : request.Address.Trim());
+                AddNullable(createCustomer, "@notes", string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim());
+                createCustomer.Parameters.AddWithValue("@parentCustomerId", DBNull.Value);
+                createCustomer.Parameters.AddWithValue("@relationshipType", relationshipType);
+
+                await using var reader = await createCustomer.ExecuteReaderAsync(cancellationToken);
+                if (!await reader.ReadAsync(cancellationToken))
+                    throw new InvalidOperationException("تعذر إنشاء العميل الرسمي للفرد.");
+
+                var customerId = reader.GetInt32(0);
+                var createdCode = reader.IsDBNull(1) ? null : reader.GetString(1);
+                var createdName = reader.IsDBNull(2) ? null : reader.GetString(2);
+
+                const string insertAccessSql = @"INSERT INTO dbo.MobileAccountCustomerAccess (MobileAccountId, CustomerId, AccessRole, IsActive, RelationshipType, CreatedAtUtc)
+                    VALUES (@mobileAccountId, @customerId, N'Managed', 1, @relationshipType, SYSUTCDATETIME());";
+                await using var insertAccess = new SqlCommand(insertAccessSql, connection, transaction);
+                insertAccess.Parameters.AddWithValue("@mobileAccountId", currentUser.MobileAccountId);
+                insertAccess.Parameters.AddWithValue("@customerId", customerId);
+                insertAccess.Parameters.AddWithValue("@relationshipType", relationshipType);
+                await insertAccess.ExecuteNonQueryAsync(cancellationToken);
+
+                await transaction.CommitAsync(cancellationToken);
+                return new LinkedCustomerAccessDto(customerId, createdCode, createdName, relationshipType, "Managed", true);
+            }
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
     public Task<IReadOnlyList<CustomerDetailsDto>> GetAncestorsAsync(int customerId, CancellationToken cancellationToken) => QueryAsync("WITH Ancestors AS (SELECT CustomerID, CustomerCode, CustomerName, PhoneNumber, ParentCustomerId, Address, Notes, IsActive, TotalPoints, TotalPieces, TotalDebts, RelationshipType, 0 AS Depth FROM dbo.Customers WHERE CustomerID=@customerId UNION ALL SELECT p.CustomerID,p.CustomerCode,p.CustomerName,p.PhoneNumber,p.ParentCustomerId,p.Address,p.Notes,p.IsActive,p.TotalPoints,p.TotalPieces,p.TotalDebts,p.RelationshipType,a.Depth+1 FROM dbo.Customers p JOIN Ancestors a ON a.ParentCustomerId=p.CustomerID) SELECT a.CustomerID,a.CustomerCode,a.CustomerName,a.PhoneNumber,p.CustomerCode AS ParentCustomerCode,a.ParentCustomerId,p.CustomerName AS ParentCustomerName,a.Address,a.Notes,a.IsActive,a.TotalPoints,a.TotalPieces,a.TotalDebts,a.RelationshipType FROM Ancestors a LEFT JOIN dbo.Customers p ON p.CustomerID=a.ParentCustomerId WHERE a.Depth>0 ORDER BY a.Depth OPTION (MAXRECURSION 100)", MapDetails, customerId, cancellationToken);
 
     public async Task<IReadOnlyList<ReferralTreeNodeDto>> GetDescendantsAsync(int customerId, CancellationToken cancellationToken)

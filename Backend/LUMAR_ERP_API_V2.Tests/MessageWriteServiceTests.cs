@@ -2401,6 +2401,9 @@ public sealed class MessageWriteServiceTests
         public Task<CustomerDetailsDto?> UpdateAsync(int customerId, UpdateCustomerDto customer, CancellationToken cancellationToken) => Task.FromResult<CustomerDetailsDto?>(null);
         public Task<IReadOnlyList<CustomerListDto>> SearchAsync(string term, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerListDto>>(Array.Empty<CustomerListDto>());
         public Task<IReadOnlyList<CustomerReferralCandidateDto>> SearchReferralCandidatesAsync(string term, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerReferralCandidateDto>>(Array.Empty<CustomerReferralCandidateDto>());
+        public Task<IReadOnlyList<LinkedCustomerAccessDto>> GetLinkedCustomersAsync(string username, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<LinkedCustomerAccessDto>>(Array.Empty<LinkedCustomerAccessDto>());
+        public Task<LinkedCustomerAccessDto> CreateManagedCustomerAsync(string username, CreateManagedCustomerDto request, CancellationToken cancellationToken)
+            => Task.FromResult(new LinkedCustomerAccessDto(0, null, request.CustomerName, request.RelationshipType ?? "Family", "Managed", true));
         public Task<IReadOnlyList<CustomerDetailsDto>> GetAncestorsAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerDetailsDto>>(Array.Empty<CustomerDetailsDto>());
         public Task<IReadOnlyList<ReferralTreeNodeDto>> GetDescendantsAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ReferralTreeNodeDto>>(Array.Empty<ReferralTreeNodeDto>());
         public Task<int?> ResolveReferralCodeAsync(string referralCode, CancellationToken cancellationToken) => Task.FromResult<int?>(null);
