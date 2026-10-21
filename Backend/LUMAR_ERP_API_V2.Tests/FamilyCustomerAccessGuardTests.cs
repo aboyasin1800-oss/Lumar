@@ -67,6 +67,42 @@ public sealed class FamilyCustomerAccessGuardTests
         }
     }
 
+    [Fact]
+    public async Task CreateManagedCustomerAsync_Reuses_Existing_Customer_When_Name_And_Phone_Match()
+    {
+        var connectionString = GetValidationConnectionString();
+        var repository = CreateRepository(connectionString);
+        var username = "ياسين الفقيه";
+        var customerName = $"مستخدم متكرر {Guid.NewGuid():N}";
+        var phoneNumber = $"967{Random.Shared.Next(700000000, 799999999)}";
+
+        try
+        {
+            var first = await repository.CreateManagedCustomerAsync(username, new CreateManagedCustomerDto
+            {
+                CustomerName = customerName,
+                PhoneNumber = phoneNumber,
+                RelationshipType = "أخ",
+                Address = "اختبار إعادة الاستخدام"
+            }, CancellationToken.None);
+
+            var second = await repository.CreateManagedCustomerAsync(username, new CreateManagedCustomerDto
+            {
+                CustomerName = customerName,
+                PhoneNumber = phoneNumber,
+                RelationshipType = "أخ",
+                Address = "اختبار إعادة الاستخدام"
+            }, CancellationToken.None);
+
+            Assert.Equal(first.CustomerId, second.CustomerId);
+            Assert.Equal(first.CustomerCode, second.CustomerCode);
+        }
+        finally
+        {
+            await CleanupManagedCustomerAsync(connectionString, customerName);
+        }
+    }
+
     private static CustomerRepository CreateRepository(string connectionString)
     {
         var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });

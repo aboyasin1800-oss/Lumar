@@ -41,12 +41,16 @@ public sealed record LinkedCustomerAccessDto(
 
 public sealed class CreateManagedCustomerDto
 {
+    [StringLength(20)] public string? CustomerCode { get; init; }
     [Required, StringLength(100)] public string? CustomerName { get; init; }
     [StringLength(20)] public string? PhoneNumber { get; init; }
     [StringLength(100)] public string? RelationshipType { get; init; }
     [StringLength(250)] public string? Address { get; init; }
     [StringLength(1000)] public string? Notes { get; init; }
 }
+
+public sealed record ReferrerLookupRequest(string? CustomerCode, string? CustomerName, string? PhoneNumber);
+public sealed record ReferrerLookupResultDto(int ReferrerCustomerId, string CustomerCode, string CustomerName);
 
 public sealed record ReferralTreeNodeDto(int CustomerId, string? CustomerCode, string? CustomerName, int? ParentCustomerId, IReadOnlyList<ReferralTreeNodeDto> Children);
 public sealed record ReferralHierarchyDto(int CustomerId, IReadOnlyList<CustomerDetailsDto> Ancestors, IReadOnlyList<ReferralTreeNodeDto> Descendants);

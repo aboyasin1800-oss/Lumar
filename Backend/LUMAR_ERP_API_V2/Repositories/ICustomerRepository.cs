@@ -20,6 +20,7 @@ public interface ICustomerRepository
     Task<IReadOnlyList<CustomerReferralCandidateDto>> SearchReferralCandidatesAsync(string term, CancellationToken cancellationToken);
     Task<IReadOnlyList<LinkedCustomerAccessDto>> GetLinkedCustomersAsync(string username, CancellationToken cancellationToken);
     Task<LinkedCustomerAccessDto> CreateManagedCustomerAsync(string username, CreateManagedCustomerDto request, CancellationToken cancellationToken);
+    Task<ReferrerLookupResultDto?> ResolveReferrerAsync(ReferrerLookupRequest request, CancellationToken cancellationToken);
     Task<IReadOnlyList<CustomerDetailsDto>> GetAncestorsAsync(int customerId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ReferralTreeNodeDto>> GetDescendantsAsync(int customerId, CancellationToken cancellationToken);
     Task<int?> ResolveReferralCodeAsync(string referralCode, CancellationToken cancellationToken);

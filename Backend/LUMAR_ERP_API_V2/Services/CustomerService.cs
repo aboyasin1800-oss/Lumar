@@ -51,6 +51,7 @@ public sealed class CustomerService(
     public Task<IReadOnlyList<CustomerReferralCandidateDto>> SearchReferralCandidatesAsync(string term, CancellationToken cancellationToken) => repository.SearchReferralCandidatesAsync(term, cancellationToken);
     public Task<IReadOnlyList<LinkedCustomerAccessDto>> GetLinkedCustomersAsync(string username, CancellationToken cancellationToken) => repository.GetLinkedCustomersAsync(username, cancellationToken);
     public Task<LinkedCustomerAccessDto> CreateManagedCustomerAsync(string username, CreateManagedCustomerDto request, CancellationToken cancellationToken) => repository.CreateManagedCustomerAsync(username, request, cancellationToken);
+    public Task<ReferrerLookupResultDto?> ResolveReferrerAsync(ReferrerLookupRequest request, CancellationToken cancellationToken) => repository.ResolveReferrerAsync(request, cancellationToken);
     public async Task<ReferralHierarchyDto?> GetReferralHierarchyAsync(int customerId, CancellationToken cancellationToken)
     {
         if (await repository.GetByIdAsync(customerId, cancellationToken) is null) return null;

@@ -1,3 +1,4 @@
+using System.Reflection;
 using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.Repositories;
 using Microsoft.Data.SqlClient;
@@ -63,6 +64,21 @@ public sealed class AuthRepositoryAuthContractTests
             "   ");
 
         Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData("775106545", "775106545")]
+    [InlineData("+967775106545", "775106545")]
+    [InlineData("00967775106545", "775106545")]
+    [InlineData("967775106545", "775106545")]
+    [InlineData("966501234567", "966501234567")]
+    public void NormalizeCustomerPhone_Uses_Yemen_Formatting_Without_Saudi_966_Logic(string input, string expected)
+    {
+        var method = typeof(AuthRepository).GetMethod("NormalizeCustomerPhone", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var result = method!.Invoke(null, [input]);
+        Assert.Equal(expected, result);
     }
 
     [Fact]

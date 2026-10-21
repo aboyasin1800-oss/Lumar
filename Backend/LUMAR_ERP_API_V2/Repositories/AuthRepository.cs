@@ -1,5 +1,6 @@
 ﻿using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Customers;
@@ -917,14 +918,19 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         if (string.IsNullOrWhiteSpace(phone))
             return null;
 
-        var digits = new string(phone.Where(char.IsDigit).ToArray());
+        var cleaned = Regex.Replace(phone.Trim(), @"[\s\-()]+", string.Empty);
+        var digits = new string(cleaned.Where(char.IsDigit).ToArray());
         if (string.IsNullOrWhiteSpace(digits))
             return null;
 
-        if (digits.StartsWith("00966", StringComparison.Ordinal))
-            digits = "0" + digits.Substring(5);
-        else if (digits.StartsWith("966", StringComparison.Ordinal) && digits.Length > 9)
-            digits = "0" + digits.Substring(3);
+        if (digits.StartsWith("00967", StringComparison.Ordinal))
+            return digits.Substring(5);
+
+        if (digits.StartsWith("967", StringComparison.Ordinal))
+            return digits.Substring(3);
+
+        if (digits.StartsWith("+967", StringComparison.Ordinal))
+            return digits.Substring(4);
 
         return digits;
     }
@@ -1027,8 +1033,8 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         if (string.IsNullOrWhiteSpace(providedPhoneNumber))
             return false;
 
-        var normalizedProvidedPhone = NormalizeCustomerPhone(providedPhoneNumber);
-        var normalizedOfficialPhone = NormalizeCustomerPhone(officialPhoneNumber);
+        var normalizedProvidedPhone = NormalizePhoneForComparison(providedPhoneNumber);
+        var normalizedOfficialPhone = NormalizePhoneForComparison(officialPhoneNumber);
 
         if (string.IsNullOrWhiteSpace(normalizedProvidedPhone) || string.IsNullOrWhiteSpace(normalizedOfficialPhone))
             return false;
@@ -1071,13 +1077,28 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         if (string.IsNullOrWhiteSpace(providedPhoneNumber))
             return false;
 
-        var normalizedProvidedPhone = NormalizeCustomerPhone(providedPhoneNumber);
-        var normalizedOfficialPhone = NormalizeCustomerPhone(officialPhoneNumber);
+        var normalizedProvidedPhone = NormalizePhoneForComparison(providedPhoneNumber);
+        var normalizedOfficialPhone = NormalizePhoneForComparison(officialPhoneNumber);
 
         if (string.IsNullOrWhiteSpace(normalizedProvidedPhone) || string.IsNullOrWhiteSpace(normalizedOfficialPhone))
             return false;
 
         return string.Equals(normalizedProvidedPhone, normalizedOfficialPhone, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? NormalizePhoneForComparison(string? phone)
+    {
+        var normalized = NormalizeCustomerPhone(phone);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        if (normalized.StartsWith("0", StringComparison.Ordinal))
+            normalized = normalized[1..];
+
+        if (normalized.StartsWith("966", StringComparison.Ordinal))
+            normalized = normalized[3..];
+
+        return normalized;
     }
 
     private static string DeriveEmployeeProvisioningUsernameFromFullName(string fullName)

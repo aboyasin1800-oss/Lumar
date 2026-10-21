@@ -123,6 +123,26 @@ public sealed class CustomersController(ICustomerService service, IAuthenticated
         return referrals is null ? NotFound() : Ok(referrals);
     }
 
+    [HttpPost("referrer/lookup")]
+    [ProducesResponseType<ReferrerLookupResultDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ReferrerLookupResultDto>> ResolveReferrer([FromBody] ReferrerLookupRequest request, CancellationToken cancellationToken)
+    {
+        if (request is null) return BadRequest("Referrer lookup payload is required.");
+
+        try
+        {
+            var resolved = await service.ResolveReferrerAsync(request, cancellationToken);
+            if (resolved is null) return NotFound(new { message = "No active customer matched the supplied referrer details." });
+            return Ok(resolved);
+        }
+        catch (InvalidOperationException)
+        {
+            return Conflict(new { message = "Multiple matching customers were found. Use CustomerCode to disambiguate." });
+        }
+    }
+
     [HttpGet("/mobile/customers/linked")]
     [ProducesResponseType<IReadOnlyList<LinkedCustomerAccessDto>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<LinkedCustomerAccessDto>>> GetLinkedCustomersForCurrentMobileAccount(CancellationToken cancellationToken)

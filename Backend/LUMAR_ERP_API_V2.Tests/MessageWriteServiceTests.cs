@@ -2404,6 +2404,35 @@ public sealed class MessageWriteServiceTests
         public Task<IReadOnlyList<LinkedCustomerAccessDto>> GetLinkedCustomersAsync(string username, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<LinkedCustomerAccessDto>>(Array.Empty<LinkedCustomerAccessDto>());
         public Task<LinkedCustomerAccessDto> CreateManagedCustomerAsync(string username, CreateManagedCustomerDto request, CancellationToken cancellationToken)
             => Task.FromResult(new LinkedCustomerAccessDto(0, null, request.CustomerName, request.RelationshipType ?? "Family", "Managed", true));
+        public Task<ReferrerLookupResultDto?> ResolveReferrerAsync(ReferrerLookupRequest request, CancellationToken cancellationToken)
+        {
+            if (request is null)
+                return Task.FromResult<ReferrerLookupResultDto?>(null);
+
+            if (!string.IsNullOrWhiteSpace(request.CustomerCode))
+            {
+                var match = customers.FirstOrDefault(item => item.CustomerCode == request.CustomerCode && item.IsActive);
+                return Task.FromResult(match is null ? null : new ReferrerLookupResultDto(match.CustomerId, match.CustomerCode ?? string.Empty, match.CustomerName ?? string.Empty));
+            }
+
+            if (string.IsNullOrWhiteSpace(request.CustomerName) || string.IsNullOrWhiteSpace(request.PhoneNumber))
+                return Task.FromResult<ReferrerLookupResultDto?>(null);
+
+            var matches = customers
+                .Where(item => item.IsActive && string.Equals(item.CustomerName, request.CustomerName.Trim(), StringComparison.OrdinalIgnoreCase) && string.Equals(item.PhoneNumber, request.PhoneNumber.Trim(), StringComparison.OrdinalIgnoreCase))
+                .OrderBy(item => item.CustomerId)
+                .Select(item => new ReferrerLookupResultDto(item.CustomerId, item.CustomerCode ?? string.Empty, item.CustomerName ?? string.Empty))
+                .ToList();
+
+            if (matches.Count == 0)
+                return Task.FromResult<ReferrerLookupResultDto?>(null);
+
+            if (matches.Count > 1)
+                throw new InvalidOperationException("Multiple active customers matched the supplied name and phone number. Use CustomerCode.");
+
+            return Task.FromResult<ReferrerLookupResultDto?>(matches[0]);
+        }
+
         public Task<IReadOnlyList<CustomerDetailsDto>> GetAncestorsAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerDetailsDto>>(Array.Empty<CustomerDetailsDto>());
         public Task<IReadOnlyList<ReferralTreeNodeDto>> GetDescendantsAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ReferralTreeNodeDto>>(Array.Empty<ReferralTreeNodeDto>());
         public Task<int?> ResolveReferralCodeAsync(string referralCode, CancellationToken cancellationToken) => Task.FromResult<int?>(null);
