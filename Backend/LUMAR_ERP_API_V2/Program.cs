@@ -17,6 +17,24 @@ builder.Services.AddSwaggerGen(options => options.CustomSchemaIds(type => type.F
 builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection(DatabaseOptions.SectionName));
 builder.Services.Configure<Es7OperationalTestModeOptions>(builder.Configuration.GetSection(Es7OperationalTestModeOptions.SectionName));
 builder.Services.Configure<WhatsAppOptions>(builder.Configuration.GetSection(WhatsAppOptions.SectionName));
+builder.Services.Configure<FirebasePushOptions>(options =>
+{
+    var config = builder.Configuration.GetSection(FirebasePushOptions.SectionName);
+    config.Bind(options);
+
+    var projectId = Environment.GetEnvironmentVariable("LUMAR_FIREBASE_PROJECT_ID");
+    var serviceAccountPath = Environment.GetEnvironmentVariable("LUMAR_FIREBASE_SERVICE_ACCOUNT_PATH")
+        ?? Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS");
+
+    options.Enabled = (config.GetValue<bool?>("Enabled") ?? false)
+        || !string.IsNullOrWhiteSpace(projectId)
+        || !string.IsNullOrWhiteSpace(serviceAccountPath);
+    options.ProjectId = string.IsNullOrWhiteSpace(projectId) ? config["ProjectId"] ?? string.Empty : projectId;
+    options.ServiceAccountJsonPath = string.IsNullOrWhiteSpace(serviceAccountPath) ? config["ServiceAccountJsonPath"] ?? string.Empty : serviceAccountPath;
+    options.OAuthTokenUrl = string.IsNullOrWhiteSpace(config["OAuthTokenUrl"]) ? options.OAuthTokenUrl : config["OAuthTokenUrl"]!;
+    options.FcmSendUrl = string.IsNullOrWhiteSpace(config["FcmSendUrl"]) ? options.FcmSendUrl : config["FcmSendUrl"]!;
+    options.TimeoutSeconds = config.GetValue<int?>("TimeoutSeconds") ?? options.TimeoutSeconds;
+});
 
 var dataProtectionKeysPath = Environment.GetEnvironmentVariable("LUMAR_ERP_API_V2_DATA_PROTECTION_KEYS_PATH");
 var resolvedKeysPath = string.IsNullOrWhiteSpace(dataProtectionKeysPath)
