@@ -30,7 +30,14 @@ public sealed record CurrentUserDto(
     string? AccountType = null,
     int? CustomerId = null,
     int? EmployeeId = null,
-    int? SupplierId = null);
+    int? SupplierId = null)
+{
+    public IReadOnlyList<int> ManagedCustomerIds { get; init; } = Array.Empty<int>();
+
+    public bool HasCustomerAccess(int customerId)
+        => customerId > 0 && (CustomerId == customerId || ManagedCustomerIds.Contains(customerId));
+}
+
 public sealed record SessionDto(string Token, DateTime ExpiresAtUtc, CurrentUserDto User);
 
 // Mobile Auth DTOs

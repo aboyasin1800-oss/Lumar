@@ -18,11 +18,10 @@ public static class CustomerOrderOwnershipGuard
         if (!string.Equals(user.AccountType, "Customer", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        var customerId = user.CustomerId;
-        if (!customerId.HasValue || customerId.Value <= 0 || !orderCustomerId.HasValue)
+        if (!orderCustomerId.HasValue || orderCustomerId.Value <= 0)
             return false;
 
-        return customerId.Value == orderCustomerId.Value;
+        return user.HasCustomerAccess(orderCustomerId.Value);
     }
 
     public static bool IsCrossCustomerViolation(CurrentUserDto? user, int? orderCustomerId)
@@ -34,7 +33,13 @@ public static class CustomerOrderOwnershipGuard
             || !orderCustomerId.HasValue)
             return false;
 
+        if (orderCustomerId.Value <= 0)
+            return false;
+
         var currentCustomerId = user.CustomerId;
-        return currentCustomerId.HasValue && currentCustomerId.Value > 0 && currentCustomerId.Value != orderCustomerId.Value;
+        if (currentCustomerId.HasValue && currentCustomerId.Value > 0 && currentCustomerId.Value == orderCustomerId.Value)
+            return false;
+
+        return !user.ManagedCustomerIds.Contains(orderCustomerId.Value);
     }
 }

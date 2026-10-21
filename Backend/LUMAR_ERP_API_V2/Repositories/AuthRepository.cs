@@ -12,10 +12,18 @@ namespace LUMAR_ERP_API_V2.Repositories;
 public sealed class AuthRepository(OperationalSqlConnectionFactory connections, ICustomerRepository customerRepository) : IAuthRepository
 {
     private sealed record MobileAccountIdentity(
+        int MobileAccountId,
         string AccountType,
         int? CustomerId,
         int? EmployeeId,
-        int? SupplierId);
+        int? SupplierId,
+        IReadOnlyList<int> ManagedCustomerIds)
+    {
+        public MobileAccountIdentity(string accountType, int? customerId, int? employeeId, int? supplierId)
+            : this(0, accountType, customerId, employeeId, supplierId, Array.Empty<int>())
+        {
+        }
+    }
 
     public async Task<SessionDto> RegisterMobileCustomerAsync(MobileCustomerRegistrationDto request, CancellationToken ct)
     {
@@ -162,7 +170,10 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
             mobileAccount?.AccountType,
             mobileAccount?.CustomerId,
             mobileAccount?.EmployeeId,
-            mobileAccount?.SupplierId);
+            mobileAccount?.SupplierId)
+        {
+            ManagedCustomerIds = mobileAccount?.ManagedCustomerIds ?? Array.Empty<int>()
+        };
         return await CreateSessionAsync(connection, currentUser, login.RememberMe, null, ct);
     }
 
@@ -750,7 +761,10 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
             mobileAccount?.AccountType,
             mobileAccount?.CustomerId,
             mobileAccount?.EmployeeId,
-            mobileAccount?.SupplierId);
+            mobileAccount?.SupplierId)
+        {
+            ManagedCustomerIds = mobileAccount?.ManagedCustomerIds ?? Array.Empty<int>()
+        };
     }
 
     internal static bool IsAdministrativeRole(string? role)
@@ -808,7 +822,7 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
     }
 
     internal static readonly string MobileAccountLookupSql =
-        @"SELECT TOP 1 AccountType, CustomerId, EmployeeId, SupplierId, IsActive
+        @"SELECT TOP 1 MobileAccountId, AccountType, CustomerId, EmployeeId, SupplierId, IsActive
           FROM dbo.MobileAccounts
           WHERE (Username = @username OR NormalizedUsername = @username OR NormalizedUsername = @normalizedUsername)
             AND IsActive = 1
@@ -828,15 +842,36 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         if (!await reader.ReadAsync(ct))
             return null;
 
-        var accountType = reader.IsDBNull(0) ? null : reader.GetString(0);
-        int? customerId = reader.IsDBNull(1) ? null : reader.GetInt32(1);
-        int? employeeId = reader.IsDBNull(2) ? null : reader.GetInt32(2);
-        int? supplierId = reader.IsDBNull(3) ? null : reader.GetInt32(3);
+        var mobileAccountId = reader.GetInt32(0);
+        var accountType = reader.IsDBNull(1) ? null : reader.GetString(1);
+        int? customerId = reader.IsDBNull(2) ? null : reader.GetInt32(2);
+        int? employeeId = reader.IsDBNull(3) ? null : reader.GetInt32(3);
+        int? supplierId = reader.IsDBNull(4) ? null : reader.GetInt32(4);
 
         if (string.IsNullOrWhiteSpace(accountType) || !MobileAccountIdentityValidator.IsValid(accountType, customerId, employeeId, supplierId))
             return null;
 
-        return new MobileAccountIdentity(accountType, customerId, employeeId, supplierId);
+        var managedCustomerIds = await GetManagedCustomerIdsAsync(connection, mobileAccountId, ct);
+        return new MobileAccountIdentity(mobileAccountId, accountType, customerId, employeeId, supplierId, managedCustomerIds);
+    }
+
+    private static async Task<IReadOnlyList<int>> GetManagedCustomerIdsAsync(SqlConnection connection, int mobileAccountId, CancellationToken ct)
+    {
+        var ids = new List<int>();
+        await using var command = new SqlCommand(
+            "SELECT CustomerId FROM dbo.MobileAccountCustomerAccess WITH (NOLOCK) WHERE MobileAccountId = @mobileAccountId ORDER BY CustomerId",
+            connection);
+        command.Parameters.AddWithValue("@mobileAccountId", mobileAccountId);
+
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var customerId = reader.GetInt32(0);
+            if (customerId > 0)
+                ids.Add(customerId);
+        }
+
+        return ids;
     }
 
     internal static string NormalizeUsername(string? username)
