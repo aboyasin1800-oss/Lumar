@@ -335,6 +335,24 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public void ManualCampaignRequest_PreservesCampaignImageUrl()
+    {
+        var request = new ManualCampaignRequest(
+            CampaignReference: "campaign-004",
+            RecipientMode: ManualCampaignRecipientMode.SingleCustomer,
+            CustomerId: 15,
+            MessageText: "اختبار صورة الحملة",
+            TemplateKey: "general-campaign-smart",
+            Title: "حملة إعلانية",
+            CampaignImageUrl: "https://cdn.example.com/campaign.png");
+
+        var json = System.Text.Json.JsonSerializer.Serialize(request);
+
+        Assert.Contains("campaignImageUrl", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("https://cdn.example.com/campaign.png", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task MessageWriteService_RespectsMasterAndReferralRuntimeSettings()
     {
         var repo = new FakeMessageRepository();

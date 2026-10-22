@@ -306,6 +306,7 @@ class ManualCampaignRequest {
     required this.messageText,
     required this.templateKey,
     required this.title,
+    this.campaignImageUrl,
   });
 
   final String campaignReference;
@@ -314,6 +315,7 @@ class ManualCampaignRequest {
   final String messageText;
   final String templateKey;
   final String title;
+  final String? campaignImageUrl;
 
   Map<String, dynamic> toJson() => {
         'campaignReference': campaignReference,
@@ -322,6 +324,7 @@ class ManualCampaignRequest {
         'messageText': messageText,
         'templateKey': templateKey,
         'title': title,
+        if ((campaignImageUrl ?? '').trim().isNotEmpty) 'campaignImageUrl': campaignImageUrl!.trim(),
       };
 }
 
@@ -376,6 +379,7 @@ class CustomerMessageRecord {
     required this.referenceId,
     required this.referenceType,
     required this.idempotencyKey,
+    this.campaignImageUrl,
   });
 
   factory CustomerMessageRecord.fromJson(Map<String, dynamic> json) => CustomerMessageRecord(
@@ -400,6 +404,7 @@ class CustomerMessageRecord {
         referenceId: json['referenceId'] as String?,
         referenceType: json['referenceType'] as String?,
         idempotencyKey: json['idempotencyKey'] as String?,
+        campaignImageUrl: json['campaignImageUrl'] as String?,
       );
 
   final int id;
@@ -423,6 +428,7 @@ class CustomerMessageRecord {
   final String? referenceId;
   final String? referenceType;
   final String? idempotencyKey;
+  final String? campaignImageUrl;
 
   String get displayStatus => _statusLabel(deliveryStatus);
   Color get statusColor => _statusColor(deliveryStatus);
@@ -445,6 +451,7 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
 
   final TextEditingController _titleController = TextEditingController(text: 'حملة إعلانية');
   final TextEditingController _messageController = TextEditingController();
+  final TextEditingController _campaignImageUrlController = TextEditingController();
   final TextEditingController _customerSearchController = TextEditingController();
 
   String _recipientMode = 'SingleCustomer';
@@ -460,19 +467,32 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
     }
   }
 
+  static bool _isValidCampaignImageUrl(String? value) {
+    final trimmed = (value ?? '').trim();
+    if (trimmed.isEmpty) return false;
+
+    final uri = Uri.tryParse(trimmed);
+    return uri != null && (uri.scheme == 'http' || uri.scheme == 'https') && uri.hasAbsolutePath;
+  }
+
+  bool get _hasCampaignImage => _isValidCampaignImageUrl(_campaignImageUrlController.text);
+
   @override
   void initState() {
     super.initState();
     _titleController.addListener(_refreshCampaignUiState);
     _messageController.addListener(_refreshCampaignUiState);
+    _campaignImageUrlController.addListener(_refreshCampaignUiState);
   }
 
   @override
   void dispose() {
     _titleController.removeListener(_refreshCampaignUiState);
     _messageController.removeListener(_refreshCampaignUiState);
+    _campaignImageUrlController.removeListener(_refreshCampaignUiState);
     _titleController.dispose();
     _messageController.dispose();
+    _campaignImageUrlController.dispose();
     _customerSearchController.dispose();
     super.dispose();
   }
@@ -537,6 +557,14 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
       return;
     }
 
+    final campaignImageUrl = _campaignImageUrlController.text.trim();
+    if (campaignImageUrl.isNotEmpty && !_isValidCampaignImageUrl(campaignImageUrl)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('رابط صورة الحملة غير صالح. استخدم رابط HTTP أو HTTPS صحيحاً.')),
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
     try {
       final result = await MessagesRepository().createManualCampaign(
@@ -549,6 +577,7 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
           messageText: messageText,
           templateKey: _campaignTemplateKey,
           title: _titleController.text.trim().isEmpty ? 'حملة إعلانية' : _titleController.text.trim(),
+          campaignImageUrl: campaignImageUrl.isEmpty ? null : campaignImageUrl,
         ),
       );
 
@@ -785,6 +814,29 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
             ),
             const SizedBox(height: 12),
             TextField(
+              controller: _campaignImageUrlController,
+              keyboardType: TextInputType.url,
+              textInputAction: TextInputAction.next,
+              decoration: InputDecoration(
+                labelText: 'رابط صورة الحملة (اختياري)',
+                hintText: 'https://example.com/campaign.png',
+                filled: true,
+                fillColor: UiPalette.surfaceCard,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                suffixIcon: _hasCampaignImage
+                    ? IconButton(
+                        tooltip: 'إزالة الصورة',
+                        onPressed: () => _campaignImageUrlController.clear(),
+                        icon: const Icon(Icons.delete_outline_rounded),
+                      )
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
               controller: _messageController,
               minLines: 5,
               maxLines: 8,
@@ -800,6 +852,67 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            if (_hasCampaignImage)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: UiPalette.surfaceCard,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: UiPalette.borderSoft),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.image_rounded),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'معاينة الصورة',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => _campaignImageUrlController.clear(),
+                          icon: const Icon(Icons.close_rounded),
+                          label: const Text('إزالة'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        _campaignImageUrlController.text.trim(),
+                        fit: BoxFit.cover,
+                        height: 180,
+                        width: double.infinity,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          height: 180,
+                          width: double.infinity,
+                          color: UiPalette.primary.withValues(alpha: 0.12),
+                          alignment: Alignment.center,
+                          child: const Text('تعذر تحميل الصورة من الرابط.'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: UiPalette.surfaceCard,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: UiPalette.borderSoft),
+                ),
+                child: const Text('لا توجد صورة مرفقة حالياً. أضف رابط صورة صالح للحملة.'),
+              ),
             const SizedBox(height: 16),
             Container(
               width: double.infinity,
