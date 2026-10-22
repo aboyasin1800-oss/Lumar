@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Controllers;
@@ -119,6 +120,115 @@ public sealed class WhatsAppCloudIntegrationTests
             WhatsAppCloudMessageChannel.MetaTemplateCatalog.Resolve("lumar_general_campaign", "ManualCampaign")!);
 
         Assert.Null(headerComponent);
+    }
+
+    [Fact]
+    public async Task WhatsAppCloudMessageChannel_UsesOfficialContextValues_InsteadOfTitleBodyReferenceFallback()
+    {
+        var handler = new CaptureHandler();
+        var channel = new WhatsAppCloudMessageChannel(
+            new FixedHttpClientFactory(new HttpClient(handler)),
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+            {
+                Enabled = true,
+                BaseUrl = "https://graph.facebook.com",
+                ApiVersion = "v20.0",
+                PhoneNumberId = "123456",
+                AccessToken = "token-value"
+            }),
+            NullLogger<WhatsAppCloudMessageChannel>.Instance);
+
+        var message = new CustomerMessageDto(
+            200, 201, 202, "OrderCreated", "lumar_order_created", "WhatsApp",
+            "العنوان غير الرسمي", "نص بديل غير رسمي", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null,
+            "+967700000010", "ORD-202", "Order", "key-202", null,
+            new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["CustomerName"] = "أحمد",
+                ["CustomerCode"] = "C-202",
+                ["OrderNumber"] = "ORD-202",
+                ["TotalAmount"] = 1250m,
+                ["CurrencyName"] = "الريال اليمني",
+                ["PaidAmount"] = 950m,
+                ["RemainingAmount"] = 300m,
+                ["DeliveryDate"] = new DateTime(2026, 10, 25),
+                ["PointsEarned"] = 18m,
+                ["PointsBalance"] = 320m,
+                ["OrderDetails"] = "قميص + بنطال",
+                ["StoreName"] = "LUMAR",
+            });
+
+        var result = await channel.SendAsync(message, CancellationToken.None);
+
+        Assert.Equal(OutboundDispatchOutcome.Sent, result.Outcome);
+
+        using var payloadDoc = JsonDocument.Parse(handler.LastRequestBody);
+        var payloadValues = new List<string>();
+        CollectTextValues(payloadDoc.RootElement, payloadValues);
+
+        Assert.Contains("أحمد", payloadValues, StringComparer.Ordinal);
+        Assert.Contains("ORD-202", payloadValues, StringComparer.Ordinal);
+        Assert.Contains("1250", payloadValues, StringComparer.Ordinal);
+        Assert.DoesNotContain("العنوان غير الرسمي", payloadValues, StringComparer.Ordinal);
+        Assert.DoesNotContain("نص بديل غير رسمي", payloadValues, StringComparer.Ordinal);
+
+        static void CollectTextValues(JsonElement element, List<string> values)
+        {
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                values.Add(element.GetString() ?? string.Empty);
+                return;
+            }
+
+            if (element.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var child in element.EnumerateArray())
+                    CollectTextValues(child, values);
+                return;
+            }
+
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in element.EnumerateObject())
+                    CollectTextValues(property.Value, values);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task WhatsAppCloudMessageChannel_WhenRequiredParameterIsMissing_StopsBeforeMetaHttpCall()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "{\"messages\":[{\"id\":\"wamid.fail\"}]}");
+        var channel = new WhatsAppCloudMessageChannel(
+            new FixedHttpClientFactory(new HttpClient(handler)),
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+            {
+                Enabled = true,
+                BaseUrl = "https://graph.facebook.com",
+                ApiVersion = "v20.0",
+                PhoneNumberId = "123456",
+                AccessToken = "token-value"
+            }),
+            NullLogger<WhatsAppCloudMessageChannel>.Instance);
+
+        var message = new CustomerMessageDto(
+            201, 202, 203, "OrderCreated", "lumar_order_created", "WhatsApp",
+            "العنوان", "الجسم", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null,
+            "+967700000011", "ORD-203", "Order", "key-203", null,
+            new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["CustomerName"] = "أحمد",
+                ["OrderNumber"] = "ORD-203",
+                ["PaidAmount"] = 100m,
+                ["RemainingAmount"] = 50m,
+            });
+
+        var result = await channel.SendAsync(message, CancellationToken.None);
+
+        Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
+        Assert.Contains("Missing Required Meta Parameter", result.FailureReason, StringComparison.Ordinal);
+        Assert.Contains("total_amount", result.FailureReason, StringComparison.OrdinalIgnoreCase);
+        Assert.False(handler.WasCalled);
     }
 
     [Fact]
@@ -670,8 +780,11 @@ public sealed class WhatsAppCloudIntegrationTests
             _responseBody = responseBody;
         }
 
+        public bool WasCalled { get; private set; }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            WasCalled = true;
             return Task.FromResult(new HttpResponseMessage(_statusCode)
             {
                 Content = new StringContent(_responseBody, Encoding.UTF8, "application/json")

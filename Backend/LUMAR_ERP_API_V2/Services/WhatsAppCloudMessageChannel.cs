@@ -33,7 +33,30 @@ public sealed class WhatsAppCloudMessageChannel(
         if (string.IsNullOrWhiteSpace(destination))
             return new OutboundAdapterResult(OutboundDispatchOutcome.PermanentFailure, FailureReason: "Invalid WhatsApp destination.", Retryable: false);
 
-        var payload = CreateOutboundPayload(message, destination);
+        var payloadResult = CreateOutboundPayload(message, destination);
+        if (payloadResult is null)
+        {
+            return new OutboundAdapterResult(OutboundDispatchOutcome.PermanentFailure, FailureReason: "Missing required WhatsApp template payload data.", Retryable: false);
+        }
+
+        var (payload, missingRequired) = payloadResult.Value;
+        if (!string.IsNullOrWhiteSpace(missingRequired))
+        {
+            var failure = new OutboundAdapterResult(
+                OutboundDispatchOutcome.PermanentFailure,
+                FailureReason: $"Missing Required Meta Parameter: {missingRequired}",
+                Retryable: false);
+
+            logger?.LogWarning(
+                "OutboundWhatsAppResult Channel=WhatsApp CustomerMessageId={CustomerMessageId} Outcome={Outcome} Retryable={Retryable} RecipientPresent={RecipientPresent} MissingParameter={MissingParameter}",
+                message.CustomerMessageId,
+                OutboundDispatchOutcome.PermanentFailure,
+                false,
+                !string.IsNullOrWhiteSpace(message.PhoneNumber),
+                missingRequired);
+
+            return failure;
+        }
 
         var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "https://graph.facebook.com" : options.BaseUrl.TrimEnd('/');
         var endpoint = $"{baseUrl}/{options.ApiVersion.Trim('/')}/{options.PhoneNumberId}/messages";
@@ -155,11 +178,20 @@ public sealed class WhatsAppCloudMessageChannel(
         }
     }
 
-    private static object CreateOutboundPayload(CustomerMessageDto message, string destination)
+    private static (object Payload, string? MissingRequiredParameter)? CreateOutboundPayload(CustomerMessageDto message, string destination)
     {
         var templateDefinition = MetaTemplateCatalog.Resolve(message.TemplateKey, message.EventType);
         if (templateDefinition is not null)
         {
+            var missingRequired = templateDefinition.Parameters
+                .Select(parameter => new { parameter.Name, Value = ResolveTemplateParameterValue(message, parameter.Name) })
+                .FirstOrDefault(item => item.Value is null || string.IsNullOrWhiteSpace(Convert.ToString(item.Value, CultureInfo.InvariantCulture)));
+
+            if (missingRequired is not null)
+            {
+                return (null, $"{missingRequired.Name}");
+            }
+
             var components = new List<object>();
             if (templateDefinition.RequiresHeader)
             {
@@ -180,7 +212,7 @@ public sealed class WhatsAppCloudMessageChannel(
                 });
             }
 
-            return new
+            return (new
             {
                 messaging_product = "whatsapp",
                 to = destination,
@@ -191,16 +223,16 @@ public sealed class WhatsAppCloudMessageChannel(
                     language = new { code = templateDefinition.LanguageCode },
                     components = components.ToArray()
                 }
-            };
+            }, null);
         }
 
-        return new
+        return (new
         {
             messaging_product = "whatsapp",
             to = destination,
             type = "text",
             text = new { body = message.Body ?? string.Empty }
-        };
+        }, null);
     }
 
     private static List<object> BuildBodyParameters(CustomerMessageDto message, MetaTemplateDefinition definition)
@@ -215,38 +247,73 @@ public sealed class WhatsAppCloudMessageChannel(
             output.Add(new { type = "text", text = value });
         }
 
-        if (output.Count == 0 && !string.IsNullOrWhiteSpace(message.Body))
-        {
-            output.Add(new { type = "text", text = message.Body });
-        }
-
         return output;
     }
 
     private static string? ResolveTemplateParameterValue(CustomerMessageDto message, string parameterName)
     {
         var key = parameterName.Trim();
+        if (message.Context is not null)
+        {
+            var value = TryResolveFromContext(message.Context, key);
+            if (value is not null)
+                return value;
+        }
+
         return key switch
         {
             "customer_name" => message.Title,
-            "customer_code" => message.ReferenceId,
-            "order_number" => message.ReferenceId,
-            "order_details" => message.Body,
-            "total_amount" => message.Body,
-            "paid_amount" => message.Body,
-            "remaining_amount" => message.Body,
-            "delivery_date" => message.Title,
-            "customer_points_earned" => message.Body,
-            "customer_points_balance" => message.Body,
-            "referrer_name" => message.Title,
-            "referrer_code" => message.ReferenceId,
-            "referral_points_earned" => message.Body,
-            "referrer_points_balance" => message.Body,
-            "relationship" => message.Title,
-            "relation_welcome" => message.Title,
+            "customer_code" => null,
+            "order_number" => null,
+            "order_details" => null,
+            "total_amount" => null,
+            "paid_amount" => null,
+            "remaining_amount" => null,
+            "delivery_date" => null,
+            "customer_points_earned" => null,
+            "customer_points_balance" => null,
+            "referrer_name" => null,
+            "referrer_code" => null,
+            "referral_points_earned" => null,
+            "referrer_points_balance" => null,
+            "relationship" => null,
+            "relation_welcome" => null,
             "campaign_text" => message.Body,
-            _ => message.Body
+            _ => null
         };
+    }
+
+    private static string? TryResolveFromContext(IReadOnlyDictionary<string, object?> context, string parameterName)
+    {
+        var aliasMap = parameterName switch
+        {
+            "customer_name" => new[] { "CustomerName", "CustomerFullName", "Name" },
+            "customer_code" => new[] { "CustomerCode", "CustomerIdentifier" },
+            "order_number" => new[] { "OrderNumber", "OrderCode", "OrderReference" },
+            "order_details" => new[] { "OrderDetails", "OrderItemSummary", "ItemSummary" },
+            "total_amount" => new[] { "TotalAmount", "Amount", "OrderTotal" },
+            "paid_amount" => new[] { "PaidAmount" },
+            "remaining_amount" => new[] { "RemainingAmount" },
+            "delivery_date" => new[] { "DeliveryDate" },
+            "customer_points_earned" => new[] { "PointsEarned", "CustomerPointsEarned" },
+            "customer_points_balance" => new[] { "PointsBalance", "CustomerPointsBalance" },
+            "referrer_name" => new[] { "ReferrerName" },
+            "referrer_code" => new[] { "ReferrerCode" },
+            "referral_points_earned" => new[] { "ReferralPointsEarned" },
+            "referrer_points_balance" => new[] { "ReferrerPointsBalance" },
+            "relationship" => new[] { "Relationship", "Relation" },
+            "relation_welcome" => new[] { "RelationWelcome" },
+            "campaign_text" => new[] { "CampaignText", "MessageText", "CampaignBody", "Body" },
+            _ => Array.Empty<string>()
+        };
+
+        foreach (var alias in aliasMap)
+        {
+            if (context.TryGetValue(alias, out var value) && value is not null)
+                return Convert.ToString(value, CultureInfo.InvariantCulture);
+        }
+
+        return null;
     }
 
     private static string? NormalizePhoneNumber(string? phoneNumber)
