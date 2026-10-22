@@ -134,16 +134,107 @@ public sealed class PushDeviceService(
         if (currentUser is null)
             return new PushDeliveryResult(false, null, "Unauthorized", "Authentication is required for official push delivery.", false, 0, 0, Array.Empty<string>());
 
-        var resolvedMobileAccountId = await ResolveMobileAccountIdAsync(currentUser, cancellationToken);
-        if (resolvedMobileAccountId <= 0)
-            return new PushDeliveryResult(false, null, "NoAccount", "No official MobileAccount could be resolved for the authenticated user.", false, 0, 0, Array.Empty<string>());
+        var targetMobileAccountIds = await ResolveOfficialTargetMobileAccountIdsAsync(customerId, employeeId, supplierId, cancellationToken);
+        if (targetMobileAccountIds.Count == 0)
+            return new PushDeliveryResult(false, null, "NoAccount", "No active MobileAccount(s) are authorized for the requested official target.", false, 0, 0, Array.Empty<string>());
 
-        _ = customerId;
-        _ = employeeId;
-        _ = supplierId;
+        var deviceList = new List<PushDeviceTokenRecord>();
+        foreach (var targetMobileAccountId in targetMobileAccountIds.Distinct())
+        {
+            var targetDevices = await repository.GetActiveTokensAsync(targetMobileAccountId, cancellationToken);
+            deviceList.AddRange(targetDevices);
+        }
 
-        var request = new PushDeliveryRequest(title, body, referenceType, referenceId, "Push");
-        return await DispatchAsync(request, cancellationToken);
+        if (deviceList.Count == 0)
+            return new PushDeliveryResult(false, null, "NoDevices", "No active devices are registered for the authorized official target accounts.", false, 0, 0, Array.Empty<string>());
+
+        var sentCount = 0;
+        var failedCount = 0;
+        var deviceKeys = new List<string>();
+
+        foreach (var device in deviceList.DistinctBy(d => d.DeviceKey))
+        {
+            deviceKeys.Add(device.DeviceKey);
+            var outcome = await sender.SendAsync(device, title, body, referenceType, referenceId, cancellationToken);
+            if (outcome.Success)
+            {
+                sentCount++;
+                logger.LogInformation("Official push sent successfully for target mobile account {MobileAccountId} device {DeviceId} provider {Provider}.", device.MobileAccountId, device.DeviceId, device.Provider);
+                continue;
+            }
+
+            failedCount++;
+            logger.LogWarning("Official push delivery failed for target mobile account {MobileAccountId} device {DeviceId} provider {Provider}. Error={Error}", device.MobileAccountId, device.DeviceId, device.Provider, outcome.Error);
+        }
+
+        return new PushDeliveryResult(sentCount > 0, null, failedCount == 0 ? "Completed" : "Partial", failedCount == 0 ? null : "One or more device deliveries failed.", failedCount > 0, sentCount, failedCount, deviceKeys);
+    }
+
+    private async Task<List<int>> ResolveOfficialTargetMobileAccountIdsAsync(int? customerId, int? employeeId, int? supplierId, CancellationToken cancellationToken)
+    {
+        if (connections is null)
+        {
+            var fallbackIds = new HashSet<int>();
+            if (customerId is > 0)
+                fallbackIds.Add(customerId.Value);
+            if (employeeId is > 0)
+                fallbackIds.Add(employeeId.Value);
+            if (supplierId is > 0)
+                fallbackIds.Add(supplierId.Value);
+            return fallbackIds.ToList();
+        }
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(cancellationToken);
+
+        var accountIds = new HashSet<int>();
+
+        if (customerId is > 0)
+        {
+            const string sql = @"
+                SELECT DISTINCT ma.MobileAccountId
+                FROM dbo.MobileAccountCustomerAccess mac
+                INNER JOIN dbo.MobileAccounts ma ON ma.MobileAccountId = mac.MobileAccountId
+                WHERE mac.CustomerId = @customerId
+                  AND mac.IsActive = 1
+                  AND (mac.RevokedAtUtc IS NULL OR mac.RevokedAtUtc > SYSUTCDATETIME())
+                  AND ma.IsActive = 1
+                ORDER BY ma.MobileAccountId;";
+
+            await using var customerCommand = new SqlCommand(sql, connection);
+            customerCommand.Parameters.AddWithValue("@customerId", customerId.Value);
+            await using var customerReader = await customerCommand.ExecuteReaderAsync(cancellationToken);
+            while (await customerReader.ReadAsync(cancellationToken))
+            {
+                accountIds.Add(customerReader.GetInt32(0));
+            }
+        }
+
+        if (employeeId is > 0)
+        {
+            const string sql = @"SELECT MobileAccountId FROM dbo.MobileAccounts WHERE EmployeeId = @employeeId AND IsActive = 1 ORDER BY MobileAccountId;";
+            await using var employeeCommand = new SqlCommand(sql, connection);
+            employeeCommand.Parameters.AddWithValue("@employeeId", employeeId.Value);
+            await using var employeeReader = await employeeCommand.ExecuteReaderAsync(cancellationToken);
+            while (await employeeReader.ReadAsync(cancellationToken))
+            {
+                accountIds.Add(employeeReader.GetInt32(0));
+            }
+        }
+
+        if (supplierId is > 0)
+        {
+            const string sql = @"SELECT MobileAccountId FROM dbo.MobileAccounts WHERE SupplierId = @supplierId AND IsActive = 1 ORDER BY MobileAccountId;";
+            await using var supplierCommand = new SqlCommand(sql, connection);
+            supplierCommand.Parameters.AddWithValue("@supplierId", supplierId.Value);
+            await using var supplierReader = await supplierCommand.ExecuteReaderAsync(cancellationToken);
+            while (await supplierReader.ReadAsync(cancellationToken))
+            {
+                accountIds.Add(supplierReader.GetInt32(0));
+            }
+        }
+
+        return accountIds.OrderBy(id => id).ToList();
     }
 
     private async Task<int> ResolveMobileAccountIdAsync(CurrentUserDto currentUser, CancellationToken cancellationToken)

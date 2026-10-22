@@ -245,6 +245,37 @@ public sealed class MobilePushDeviceServiceTests
     }
 
     [Fact]
+    public async Task DispatchForOfficialNotification_UsesExplicitTargetCustomerAccount_NotCurrentUser()
+    {
+        var fakeRepo = new FakePushRepository(new[]
+        {
+            new PushDeviceTokenRecord(9, 101, "FCM", "Android", "target-device", "cipher-target", "hash-target", "token-target", true, false, DateTime.UtcNow, null, null)
+        });
+
+        var service = new PushDeviceService(
+            fakeRepo,
+            new TestAuthenticatedUserContext(new CurrentUserDto(12, "current-user", "Current User", "Customer", true, DateTime.UtcNow, "Customer", 77, null, null)),
+            new TestPushSender(new[] { new PushSendOutcome(true, "target-msg", null, false, "Success") }),
+            null!,
+            NullLogger<PushDeviceService>.Instance);
+
+        var result = await service.DispatchForOfficialNotificationAsync(
+            customerId: 101,
+            employeeId: null,
+            supplierId: null,
+            title: "Customer target title",
+            body: "Customer target body",
+            referenceType: "CustomerNotification",
+            referenceId: "C-101",
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.Success, $"Expected dispatch to target customer 101 but got status '{result.Status}'.");
+        Assert.Equal(1, result.SentCount);
+        Assert.Contains("target-device", result.DeviceKeys, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(101, fakeRepo.AccountIdSeenForDispatch);
+    }
+
+    [Fact]
     public async Task RuntimeRepository_RejectsMissingSchema_WithoutCreatingOne()
     {
         var masterConnectionString = GetMasterConnectionString();
