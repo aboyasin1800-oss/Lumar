@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 import '../core/app_navigation.dart';
 import '../core/ui_palette.dart';
@@ -205,6 +207,37 @@ class MessagesRepository {
 
     final items = decoded.whereType<Map<String, dynamic>>();
     return items.map(CustomerMessageRecord.fromJson).toList();
+  }
+
+  Future<String> uploadCampaignImage(File file) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$_apiBaseUrl/messages/campaign-image-upload'),
+    );
+
+    final fileName = file.path.split(Platform.pathSeparator).last;
+    request.files.add(
+      await http.MultipartFile.fromPath('file', file.path, filename: fileName),
+    );
+
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('تعذرت رفع الصورة (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('استجابة رفع الصورة غير صالحة.');
+    }
+
+    final url = decoded['campaignImageUrl'] as String? ?? decoded['url'] as String? ?? decoded['relativeUrl'] as String?;
+    if (url == null || url.trim().isEmpty) {
+      throw Exception('لم يتم إرجاع رابط ثابت للصورة بعد الرفع.');
+    }
+
+    return url.trim();
   }
 
   Future<ManualCampaignResult> createManualCampaign({
@@ -458,8 +491,11 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
   bool _confirmation = false;
   bool _isSubmitting = false;
   bool _isSearchingCustomers = false;
+  bool _isUploadingImage = false;
+  bool _hasPickedImage = false;
   List<_CustomerSearchResult> _customerResults = const [];
   _CustomerSearchResult? _selectedCustomer;
+  File? _selectedImageFile;
 
   void _refreshCampaignUiState() {
     if (mounted) {
@@ -529,6 +565,52 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
       if (mounted) {
         setState(() => _isSearchingCustomers = false);
       }
+    }
+  }
+
+  Future<void> _pickCampaignImage() async {
+    if (_isUploadingImage) return;
+
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 2000,
+        imageQuality: 85,
+      );
+
+      if (picked == null) return;
+
+      final file = File(picked.path);
+      if (!await file.exists()) {
+        throw Exception('الملف المختار غير موجود.');
+      }
+
+      setState(() {
+        _selectedImageFile = file;
+        _hasPickedImage = true;
+        _isUploadingImage = true;
+      });
+
+      final uploadedUrl = await MessagesRepository().uploadCampaignImage(file);
+      if (!mounted) return;
+
+      setState(() {
+        _campaignImageUrlController.text = uploadedUrl;
+        _isUploadingImage = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _selectedImageFile = null;
+        _hasPickedImage = false;
+        _isUploadingImage = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: const Color(0xFFD64B4B),
+        ),
+      );
     }
   }
 
@@ -813,27 +895,49 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
               ),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _campaignImageUrlController,
-              keyboardType: TextInputType.url,
-              textInputAction: TextInputAction.next,
-              decoration: InputDecoration(
-                labelText: 'رابط صورة الحملة (اختياري)',
-                hintText: 'https://example.com/campaign.png',
-                filled: true,
-                fillColor: UiPalette.surfaceCard,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _campaignImageUrlController,
+                    keyboardType: TextInputType.url,
+                    textInputAction: TextInputAction.next,
+                    enabled: false,
+                    decoration: InputDecoration(
+                      labelText: 'صورة الحملة',
+                      hintText: 'سيظهر رابط الصورة بعد الرفع',
+                      filled: true,
+                      fillColor: UiPalette.surfaceCard,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
                 ),
-                suffixIcon: _hasCampaignImage
-                    ? IconButton(
-                        tooltip: 'إزالة الصورة',
-                        onPressed: () => _campaignImageUrlController.clear(),
-                        icon: const Icon(Icons.delete_outline_rounded),
-                      )
-                    : null,
-              ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  tooltip: 'اختيار صورة',
+                  onPressed: _isUploadingImage ? null : _pickCampaignImage,
+                  icon: _isUploadingImage
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.image_rounded),
+                ),
+                if (_hasCampaignImage || _selectedImageFile != null) ...[
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    tooltip: 'إزالة الصورة',
+                    onPressed: () {
+                      setState(() {
+                        _campaignImageUrlController.clear();
+                        _selectedImageFile = null;
+                        _hasPickedImage = false;
+                      });
+                    },
+                    icon: const Icon(Icons.delete_outline_rounded),
+                  ),
+                ],
+              ],
             ),
             const SizedBox(height: 12),
             TextField(
@@ -853,7 +957,7 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            if (_hasCampaignImage)
+            if (_hasCampaignImage || _selectedImageFile != null)
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -876,7 +980,13 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
                           ),
                         ),
                         TextButton.icon(
-                          onPressed: () => _campaignImageUrlController.clear(),
+                          onPressed: () {
+                            setState(() {
+                              _campaignImageUrlController.clear();
+                              _selectedImageFile = null;
+                              _hasPickedImage = false;
+                            });
+                          },
                           icon: const Icon(Icons.close_rounded),
                           label: const Text('إزالة'),
                         ),
@@ -885,19 +995,33 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
                     const SizedBox(height: 10),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        _campaignImageUrlController.text.trim(),
-                        fit: BoxFit.cover,
-                        height: 180,
-                        width: double.infinity,
-                        errorBuilder: (context, error, stackTrace) => Container(
-                          height: 180,
-                          width: double.infinity,
-                          color: UiPalette.primary.withValues(alpha: 0.12),
-                          alignment: Alignment.center,
-                          child: const Text('تعذر تحميل الصورة من الرابط.'),
-                        ),
-                      ),
+                      child: _selectedImageFile != null
+                          ? Image.file(
+                              _selectedImageFile!,
+                              fit: BoxFit.cover,
+                              height: 180,
+                              width: double.infinity,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                height: 180,
+                                width: double.infinity,
+                                color: UiPalette.primary.withValues(alpha: 0.12),
+                                alignment: Alignment.center,
+                                child: const Text('تعذر تحميل الصورة المختارة.'),
+                              ),
+                            )
+                          : Image.network(
+                              _campaignImageUrlController.text.trim(),
+                              fit: BoxFit.cover,
+                              height: 180,
+                              width: double.infinity,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                height: 180,
+                                width: double.infinity,
+                                color: UiPalette.primary.withValues(alpha: 0.12),
+                                alignment: Alignment.center,
+                                child: const Text('تعذر تحميل الصورة من الرابط.'),
+                              ),
+                            ),
                     ),
                   ],
                 ),
@@ -911,7 +1035,7 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: UiPalette.borderSoft),
                 ),
-                child: const Text('لا توجد صورة مرفقة حالياً. أضف رابط صورة صالح للحملة.'),
+                child: const Text('لا توجد صورة مرفقة حالياً. اختر صورة من الجهاز لإرفاقها بالحملة.'),
               ),
             const SizedBox(height: 16),
             Container(

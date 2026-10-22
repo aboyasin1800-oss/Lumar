@@ -36,6 +36,53 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task CampaignImageUploadService_StoresValidImageAndRejectsUnsafePayload()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "lumar-campaign-image-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var service = new CampaignMediaStorageService(tempRoot, new NullLogger<CampaignMediaStorageService>());
+            await using var stream = new MemoryStream(CreatePngBytes());
+            var formFile = new FormFile(stream, 0, stream.Length, "file", "campaign.png");
+
+            var saved = await service.SaveAsync(formFile, CancellationToken.None);
+
+            Assert.NotNull(saved);
+            Assert.EndsWith("campaign.png", saved.FileName, StringComparison.OrdinalIgnoreCase);
+            Assert.True(File.Exists(Path.Combine(tempRoot, saved.FileName)));
+            Assert.StartsWith("/campaign-media/", saved.RelativeUrl, StringComparison.OrdinalIgnoreCase);
+
+            await using var invalidStream = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+            var invalidFile = new FormFile(invalidStream, 0, invalidStream.Length, "file", "evil.exe");
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.SaveAsync(invalidFile, CancellationToken.None));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    private static byte[] CreatePngBytes()
+    {
+        return new byte[]
+        {
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+            0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x10,
+            0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0xF3, 0xFF,
+            0x6A, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+            0x54, 0x78, 0x9C, 0x63, 0xF8, 0xFF, 0xFF, 0x3F,
+            0x00, 0x05, 0x01, 0x01, 0x01, 0x00, 0x18, 0xDD,
+            0x8D, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+            0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
+        };
+    }
+
+    [Fact]
     public async Task MessageRepository_GetCustomerMessagesAsync_ProjectsAllRequiredMessageFields()
     {
         var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")

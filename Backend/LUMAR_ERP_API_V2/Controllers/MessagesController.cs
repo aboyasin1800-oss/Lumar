@@ -7,7 +7,12 @@ namespace LUMAR_ERP_API_V2.Controllers;
 
 [ApiController]
 [Route("messages")]
-public sealed class MessagesController(IMessageService service, ICustomerService customers, IManualCampaignService manualCampaigns, IAuthenticatedUserContext userContext) : ControllerBase
+public sealed class MessagesController(
+    IMessageService service,
+    ICustomerService customers,
+    IManualCampaignService manualCampaigns,
+    IAuthenticatedUserContext userContext,
+    CampaignMediaStorageService campaignMediaStorage) : ControllerBase
 {
 	[HttpGet("customer-messages")]
 	public async Task<ActionResult<IReadOnlyList<CustomerMessageDto>>> GetCustomerMessages(CancellationToken ct) => Ok(await service.GetCustomerMessagesAsync(ct));
@@ -95,6 +100,27 @@ public sealed class MessagesController(IMessageService service, ICustomerService
 
 	[HttpGet("sent-log")]
 	public async Task<ActionResult<IReadOnlyList<SentLogDto>>> GetSentLog(CancellationToken ct) => Ok(await service.GetSentLogAsync(ct));
+
+	[HttpPost("campaign-image-upload")]
+	public async Task<ActionResult<CampaignMediaUploadResult>> UploadCampaignImage(IFormFile? file, CancellationToken ct)
+	{
+		if (file is null || file.Length == 0)
+			return BadRequest("Campaign image file is required.");
+
+		try
+		{
+			var result = await campaignMediaStorage.SaveAsync(file, ct);
+			return Ok(result);
+		}
+		catch (InvalidOperationException ex)
+		{
+			return BadRequest(ex.Message);
+		}
+		catch (IOException ex)
+		{
+			return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+		}
+	}
 
 	[HttpPost("manual-campaigns")]
 	[HttpPost("campaigns")]

@@ -48,6 +48,8 @@ builder.Services.AddDataProtection()
 builder.Services.AddSingleton<Es7OperationalTestMode>();
 builder.Services.AddSingleton<ReadOnlySqlConnectionFactory>();
 builder.Services.AddSingleton<OperationalSqlConnectionFactory>();
+builder.Services.AddSingleton<CampaignMediaStorageService>(_ => new CampaignMediaStorageService(
+    Path.Combine(Environment.CurrentDirectory, "wwwroot", "campaign-media"), null));
 builder.Services.AddScoped<IProductionProductTypeIdentityResolver, ProductionProductTypeIdentityResolver>();
 builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 builder.Services.AddScoped<IReferralRepository, ReferralRepository>();
@@ -142,6 +144,7 @@ builder.Services.AddScoped<ICancelledPieceDispositionService, CancelledPieceDisp
 
 var app = builder.Build();
 
+app.UseStaticFiles();
 app.UseRouting();
 app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 app.UseSwagger();
