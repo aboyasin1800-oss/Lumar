@@ -55,6 +55,7 @@ public sealed record ManualCampaignRequest(
     string MessageText,
     string TemplateKey,
     string Title,
+    string? CampaignImageUrl = null,
     CancellationToken CancellationToken = default);
 
 public sealed class ManualCampaignRequestJsonConverter : JsonConverter<ManualCampaignRequest>
@@ -98,6 +99,10 @@ public sealed class ManualCampaignRequestJsonConverter : JsonConverter<ManualCam
             ? titleElement.GetString() ?? string.Empty
             : string.Empty;
 
+        var campaignImageUrl = root.TryGetProperty("campaignImageUrl", out var campaignImageUrlElement)
+            ? campaignImageUrlElement.ValueKind == JsonValueKind.Null ? null : campaignImageUrlElement.GetString()
+            : null;
+
         return new ManualCampaignRequest(
             CampaignReference: campaignReference,
             RecipientMode: recipientMode switch
@@ -109,7 +114,8 @@ public sealed class ManualCampaignRequestJsonConverter : JsonConverter<ManualCam
             CustomerId: customerId,
             MessageText: messageText,
             TemplateKey: templateKey,
-            Title: title);
+            Title: title,
+            CampaignImageUrl: campaignImageUrl);
     }
 
     public override void Write(Utf8JsonWriter writer, ManualCampaignRequest value, JsonSerializerOptions options)
@@ -121,6 +127,10 @@ public sealed class ManualCampaignRequestJsonConverter : JsonConverter<ManualCam
         writer.WriteString("messageText", value.MessageText);
         writer.WriteString("templateKey", value.TemplateKey);
         writer.WriteString("title", value.Title);
+        if (!string.IsNullOrWhiteSpace(value.CampaignImageUrl))
+            writer.WriteString("campaignImageUrl", value.CampaignImageUrl);
+        else
+            writer.WriteNull("campaignImageUrl");
         writer.WriteEndObject();
     }
 }
@@ -203,6 +213,8 @@ public sealed class ManualCampaignService(
                         ["Title"] = request.Title,
                         ["RecipientMode"] = request.RecipientMode.ToString(),
                         ["CampaignBody"] = request.MessageText,
+                        ["CampaignText"] = request.MessageText,
+                        ["CampaignImageUrl"] = request.CampaignImageUrl,
                     }),
                 cancellationToken);
 

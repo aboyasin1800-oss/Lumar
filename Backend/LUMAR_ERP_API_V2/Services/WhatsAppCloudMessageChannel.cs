@@ -65,12 +65,14 @@ public sealed class WhatsAppCloudMessageChannel(
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.AccessToken);
         request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
-        using var client = httpClientFactory.CreateClient("WhatsAppCloud");
-        client.Timeout = TimeSpan.FromSeconds(Math.Max(10, options.TimeoutSeconds));
+        var client = httpClientFactory.CreateClient("WhatsAppCloud");
+        var requestTimeout = TimeSpan.FromSeconds(Math.Max(10, options.TimeoutSeconds));
 
         try
         {
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var response = await client
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                .WaitAsync(requestTimeout, cancellationToken);
             var raw = await response.Content.ReadAsStringAsync(cancellationToken);
             var isRetryable = response.StatusCode == HttpStatusCode.TooManyRequests || response.StatusCode == HttpStatusCode.RequestTimeout || response.StatusCode == (HttpStatusCode)429;
 
@@ -255,32 +257,10 @@ public sealed class WhatsAppCloudMessageChannel(
         var key = parameterName.Trim();
         if (message.Context is not null)
         {
-            var value = TryResolveFromContext(message.Context, key);
-            if (value is not null)
-                return value;
+            return TryResolveFromContext(message.Context, key);
         }
 
-        return key switch
-        {
-            "customer_name" => message.Title,
-            "customer_code" => null,
-            "order_number" => null,
-            "order_details" => null,
-            "total_amount" => null,
-            "paid_amount" => null,
-            "remaining_amount" => null,
-            "delivery_date" => null,
-            "customer_points_earned" => null,
-            "customer_points_balance" => null,
-            "referrer_name" => null,
-            "referrer_code" => null,
-            "referral_points_earned" => null,
-            "referrer_points_balance" => null,
-            "relationship" => null,
-            "relation_welcome" => null,
-            "campaign_text" => message.Body,
-            _ => null
-        };
+        return null;
     }
 
     private static string? TryResolveFromContext(IReadOnlyDictionary<string, object?> context, string parameterName)
@@ -310,10 +290,30 @@ public sealed class WhatsAppCloudMessageChannel(
         foreach (var alias in aliasMap)
         {
             if (context.TryGetValue(alias, out var value) && value is not null)
-                return Convert.ToString(value, CultureInfo.InvariantCulture);
+                return FormatMetaValue(value);
         }
 
         return null;
+    }
+
+    private static string FormatMetaValue(object value)
+    {
+        if (value is DateTime date)
+            return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        if (value is DateTimeOffset offset)
+            return offset.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        if (value is decimal decimalValue)
+            return decimalValue.ToString(CultureInfo.InvariantCulture);
+
+        if (value is double doubleValue)
+            return doubleValue.ToString(CultureInfo.InvariantCulture);
+
+        if (value is float floatValue)
+            return floatValue.ToString(CultureInfo.InvariantCulture);
+
+        return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
     }
 
     private static string? NormalizePhoneNumber(string? phoneNumber)

@@ -76,6 +76,7 @@ public sealed class MessageWriteService(
                     request.ReferenceId,
                     request.ReferenceType,
                     idempotencyKey,
+                    GetContextStringValue(request.Context, "CampaignImageUrl"),
                     cancellationToken);
 
                 messageId = createdPair.MessageId;
@@ -263,6 +264,17 @@ public sealed class MessageWriteService(
         }
 
         return null;
+    }
+
+    private static string? GetContextStringValue(IReadOnlyDictionary<string, object?>? context, string key)
+    {
+        if (context is null)
+            return null;
+
+        if (!context.TryGetValue(key, out var value) || value is null)
+            return null;
+
+        return Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static string BuildIdempotencyKey(MessageWriteRequest request, string templateKey, string targetKind)

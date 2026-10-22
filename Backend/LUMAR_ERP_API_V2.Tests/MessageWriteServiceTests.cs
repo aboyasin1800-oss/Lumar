@@ -113,6 +113,7 @@ public sealed class MessageWriteServiceTests
                     "validation-duplicate", 
                     "Validation",
                     idempotencyKey,
+                    null,
                     CancellationToken.None),
                 repo2.CreateCustomerMessageAndNotificationAsync(
                     101,
@@ -126,6 +127,7 @@ public sealed class MessageWriteServiceTests
                     "validation-duplicate",
                     "Validation",
                     idempotencyKey,
+                    null,
                     CancellationToken.None)
             };
 
@@ -383,7 +385,8 @@ public sealed class MessageWriteServiceTests
             MessageText: "عرض خاص لعملائنا",
             TemplateKey: "general-campaign-smart",
             Title: "حملة إعلانية",
-            CancellationToken.None), CancellationToken.None);
+            CampaignImageUrl: null,
+            CancellationToken: CancellationToken.None), CancellationToken.None);
 
         Assert.Equal(1, result.CreatedCount);
         Assert.Equal(0, result.SkippedCount);
@@ -412,7 +415,8 @@ public sealed class MessageWriteServiceTests
             MessageText: "رسالة تجريبية",
             TemplateKey: "general-campaign-smart",
             Title: "حملة",
-            CancellationToken.None), CancellationToken.None);
+            CampaignImageUrl: null,
+            CancellationToken: CancellationToken.None), CancellationToken.None);
 
         Assert.Equal(0, result.CreatedCount);
         Assert.Equal(1, result.SkippedCount);
@@ -438,7 +442,8 @@ public sealed class MessageWriteServiceTests
             MessageText: "عرض", 
             TemplateKey: "general-campaign-smart",
             Title: "حملة",
-            CancellationToken.None), CancellationToken.None);
+            CampaignImageUrl: null,
+            CancellationToken: CancellationToken.None), CancellationToken.None);
 
         var second = await service.ProcessAsync(new ManualCampaignRequest(
             CampaignReference: "duplicate-campaign",
@@ -447,7 +452,8 @@ public sealed class MessageWriteServiceTests
             MessageText: "عرض",
             TemplateKey: "general-campaign-smart",
             Title: "حملة",
-            CancellationToken.None), CancellationToken.None);
+            CampaignImageUrl: null,
+            CancellationToken: CancellationToken.None), CancellationToken.None);
 
         Assert.Equal(1, first.CreatedCount);
         Assert.Equal(1, second.DuplicateCount);
@@ -2534,7 +2540,7 @@ public sealed class MessageWriteServiceTests
         public Task UpdateDeliveryStatusByProviderIdAsync(string providerMessageId, string status, DateTime occurredAtUtc, string? failureReason, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task MarkSentAsync(int customerMessageId, string? providerMessageId, DateTime sentAtUtc, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task MarkFailedAsync(int customerMessageId, string failureReason, bool retryable, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c)
+        public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, CancellationToken c)
             => Task.FromResult((MessageId: (int?)1, NotificationId: (int?)1));
         public Task<int?> CreateCustomerMessageAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c) => Task.FromResult<int?>(1);
         public Task<int> CreateCustomerNotificationAsync(int customerId, int? orderId, string eventType, string title, string body, int? customerMessageId, CancellationToken c) => Task.FromResult(1);
@@ -2635,7 +2641,7 @@ public sealed class MessageWriteServiceTests
             return Task.CompletedTask;
         }
 
-        public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c)
+        public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, CancellationToken c)
         {
             if (FailNotificationCreation)
             {

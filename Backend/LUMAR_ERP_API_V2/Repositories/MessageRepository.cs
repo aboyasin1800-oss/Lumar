@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Globalization;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Messages;
 using Microsoft.Data.SqlClient;
@@ -381,9 +382,9 @@ WHERE MessageTemplateID = @id;";
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c)
+    public async Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, CancellationToken c)
     {
-        const string insertMessageSql = "INSERT INTO dbo.CustomerMessages (CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,AttemptCount,IdempotencyKey,PhoneNumber,ReferenceID,ReferenceType,IsRetryable) OUTPUT INSERTED.CustomerMessageID VALUES (@customerId,@orderId,@eventType,@templateKey,@channel,@title,@body,N'Pending',GETUTCDATE(),0,@idempotencyKey,@phoneNumber,@referenceId,@referenceType,1)";
+        const string insertMessageSql = "INSERT INTO dbo.CustomerMessages (CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,AttemptCount,IdempotencyKey,PhoneNumber,ReferenceID,ReferenceType,IsRetryable,CampaignImageUrl) OUTPUT INSERTED.CustomerMessageID VALUES (@customerId,@orderId,@eventType,@templateKey,@channel,@title,@body,N'Pending',GETUTCDATE(),0,@idempotencyKey,@phoneNumber,@referenceId,@referenceType,1,@campaignImageUrl)";
         const string insertNotificationSql = "INSERT INTO dbo.CustomerNotifications (CustomerID,OrderID,EventType,Title,Body,Status,IsRead,CreatedAtUtc,CustomerMessageID) OUTPUT INSERTED.CustomerNotificationID VALUES (@customerId,@orderId,@eventType,@title,@body,N'Unread',0,GETUTCDATE(),@customerMessageId)";
 
         await using var connection = connections.Create();
@@ -406,6 +407,7 @@ WHERE MessageTemplateID = @id;";
                 messageCommand.Parameters.AddWithValue("@phoneNumber", phoneNumber ?? string.Empty);
                 messageCommand.Parameters.AddWithValue("@referenceId", referenceId ?? string.Empty);
                 messageCommand.Parameters.AddWithValue("@referenceType", referenceType ?? string.Empty);
+                messageCommand.Parameters.AddWithValue("@campaignImageUrl", (object?)campaignImageUrl ?? DBNull.Value);
                 var messageValue = await messageCommand.ExecuteScalarAsync(c);
                 messageId = messageValue is int id ? id : null;
             }
@@ -448,6 +450,17 @@ WHERE MessageTemplateID = @id;";
     }
 
     private static bool IsDuplicateKeyException(SqlException ex) => ex.Number is 2601 or 2627;
+
+    private static string? GetContextStringValue(IReadOnlyDictionary<string, object?>? context, string key)
+    {
+        if (context is null)
+            return null;
+
+        if (!context.TryGetValue(key, out var value) || value is null)
+            return null;
+
+        return Convert.ToString(value, CultureInfo.InvariantCulture);
+    }
 
     private async Task<(int? MessageId, int? NotificationId)?> GetExistingMessageAndNotificationAsync(SqlConnection connection, string idempotencyKey, CancellationToken c)
     {
