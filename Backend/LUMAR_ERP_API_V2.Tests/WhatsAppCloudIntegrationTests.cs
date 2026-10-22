@@ -38,6 +38,49 @@ public sealed class WhatsAppCloudIntegrationTests
     }
 
     [Fact]
+    public void MetaTemplateCatalog_UsesApprovedMetaNamesAndHeaderImagePathForCampaigns()
+    {
+        var catalogEntries = new[]
+        {
+            ("lumar_order_created", "lumar_order_created", "ar", false),
+            ("lumar_order_ready", "lumar_order_ready", "ar", false),
+            ("lumar_order_delivered", "lumar_order_delivered", "ar", false),
+            ("lumar_piece_cancelled", "lumar_piece_cancelled", "ar", false),
+            ("lumar_order_cancelled", "lumar_order_cancelled", "ar", false),
+            ("lumar_referrer_reward", "lumar_referrer_reward", "ar", false),
+            ("lumar_referrer_reward_relation", "lumar_referrer_reward_relation", "ar", false),
+            ("lumar_order_created_with_referrer", "lumar_order_created_with_referrer", "ar", false),
+            ("lumar_order_created_with_referrer_relation", "lumar_order_created_with_referrer_relation", "ar", false),
+            ("lumar_friday_greeting", "lumar_friday_greeting", "ar", false),
+            ("lumar_general_campaign", "lumar_general_campaign", "ar", true)
+        };
+
+        foreach (var (templateKey, expectedMetaName, expectedLanguage, expectedHeader) in catalogEntries)
+        {
+            var definition = WhatsAppCloudMessageChannel.MetaTemplateCatalog.Resolve(templateKey, templateKey);
+            Assert.NotNull(definition);
+            Assert.Equal(expectedMetaName, definition!.MetaName);
+            Assert.Equal(expectedLanguage, definition.LanguageCode);
+            Assert.Equal(expectedHeader, definition.RequiresHeader);
+        }
+
+        var campaignMessage = new CustomerMessageDto(
+            91, 92, 93, "ManualCampaign", "lumar_general_campaign", "WhatsApp",
+            "العنوان", "نص الحملة", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null,
+            "+967700000099", "campaign-099", "ManualCampaign", "key-99");
+
+        var headerComponent = WhatsAppCloudMessageChannel.MetaTemplateCatalog.TryCreateHeaderComponent(
+            campaignMessage with { ReferenceId = "https://example.com/campaign.png" },
+            WhatsAppCloudMessageChannel.MetaTemplateCatalog.Resolve("lumar_general_campaign", "ManualCampaign")!);
+        Assert.NotNull(headerComponent);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(headerComponent);
+        Assert.Contains("type\":\"header\"", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("type\":\"image\"", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("https://example.com/campaign.png", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task WhatsAppCloudMessageChannel_WhenDisabled_DoesNotFakeSuccess()
     {
         var channel = new WhatsAppCloudMessageChannel(
@@ -52,10 +95,35 @@ public sealed class WhatsAppCloudIntegrationTests
             }));
 
         var result = await channel.SendAsync(new CustomerMessageDto(
-            7, 17, 42, "OrderCreated", "OrderCreated", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "966500000000", "ORD-42", "Order", "key"), CancellationToken.None);
+            7, 17, 42, "OrderCreated", "OrderCreated", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "967700000001", "ORD-42", "Order", "key"), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
         Assert.Contains("disabled", result.FailureReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task WhatsAppCloudMessageChannel_WhenTemplateKeyMatchesApprovedMetaTemplate_SendsTemplatePayload()
+    {
+        var handler = new CaptureHandler();
+        var channel = new WhatsAppCloudMessageChannel(
+            new FixedHttpClientFactory(new HttpClient(handler)),
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+            {
+                Enabled = true,
+                BaseUrl = "https://graph.facebook.com",
+                ApiVersion = "v20.0",
+                PhoneNumberId = "123456",
+                AccessToken = "token-value"
+            }),
+            NullLogger<WhatsAppCloudMessageChannel>.Instance);
+
+        var result = await channel.SendAsync(new CustomerMessageDto(
+            8, 18, 44, "OrderCreated", "lumar_order_created", "WhatsApp", "العنوان", "تم إنشاء طلبك بنجاح", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+967700000002", "ORD-44", "Order", "key-2"), CancellationToken.None);
+
+        Assert.Equal(OutboundDispatchOutcome.Sent, result.Outcome);
+        Assert.Contains("\"type\":\"template\"", handler.LastRequestBody, StringComparison.Ordinal);
+        Assert.Contains("lumar_order_created", handler.LastRequestBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"code\":\"ar\"", handler.LastRequestBody, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -77,7 +145,7 @@ public sealed class WhatsAppCloudIntegrationTests
             NullLogger<WhatsAppCloudMessageChannel>.Instance);
 
         var result = await channel.SendAsync(new CustomerMessageDto(
-            8, 18, 44, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+966500000001", "ORD-44", "Order", "key-2"), CancellationToken.None);
+            8, 18, 44, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+967700000002", "ORD-44", "Order", "key-2"), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.Sent, result.Outcome);
         Assert.Equal(200, result.HttpStatusCode);
@@ -101,7 +169,7 @@ public sealed class WhatsAppCloudIntegrationTests
             NullLogger<WhatsAppCloudMessageChannel>.Instance);
 
         var result = await channel.SendAsync(new CustomerMessageDto(
-            9, 19, 45, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+966500000002", "ORD-45", "Order", "key-3"), CancellationToken.None);
+            9, 19, 45, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+967700000003", "ORD-45", "Order", "key-3"), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
         Assert.Equal(200, result.HttpStatusCode);
@@ -125,7 +193,7 @@ public sealed class WhatsAppCloudIntegrationTests
             NullLogger<WhatsAppCloudMessageChannel>.Instance);
 
         var result = await channel.SendAsync(new CustomerMessageDto(
-            10, 20, 46, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+966500000003", "ORD-46", "Order", "key-4"), CancellationToken.None);
+            10, 20, 46, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+967700000004", "ORD-46", "Order", "key-4"), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
         Assert.Equal(400, result.HttpStatusCode);
@@ -154,7 +222,7 @@ public sealed class WhatsAppCloudIntegrationTests
             NullLogger<WhatsAppCloudMessageChannel>.Instance);
 
         var result = await channel.SendAsync(new CustomerMessageDto(
-            11, 21, 47, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+966500000004", "ORD-47", "Order", "key-5"), CancellationToken.None);
+            11, 21, 47, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+967700000005", "ORD-47", "Order", "key-5"), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.TransientFailure, result.Outcome);
         Assert.Equal(429, result.HttpStatusCode);
@@ -179,7 +247,7 @@ public sealed class WhatsAppCloudIntegrationTests
             logger);
 
         var result = await channel.SendAsync(new CustomerMessageDto(
-            12, 22, 48, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+966500000005", "ORD-48", "Order", "key-6"), CancellationToken.None);
+            12, 22, 48, "OrderReady", "OrderReady", "WhatsApp", "Title", "Body", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, "+967700000006", "ORD-48", "Order", "key-6"), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
         Assert.Equal(400, result.HttpStatusCode);
@@ -516,6 +584,20 @@ public sealed class WhatsAppCloudIntegrationTests
     private sealed class FixedHttpClientFactory(HttpClient httpClient) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => httpClient;
+    }
+
+    private sealed class CaptureHandler : HttpMessageHandler
+    {
+        public string LastRequestBody { get; private set; } = string.Empty;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequestBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"messages\":[{\"id\":\"wamid.template\"}]}")
+            };
+        }
     }
 
     private sealed class CaptureLogger<T> : ILogger<T>

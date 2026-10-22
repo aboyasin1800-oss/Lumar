@@ -32,13 +32,7 @@ public sealed class WhatsAppCloudMessageChannel(
         if (string.IsNullOrWhiteSpace(destination))
             return new OutboundAdapterResult(OutboundDispatchOutcome.PermanentFailure, FailureReason: "Invalid WhatsApp destination.", Retryable: false);
 
-        var payload = new
-        {
-            messaging_product = "whatsapp",
-            to = destination,
-            type = "text",
-            text = new { body = message.Body ?? string.Empty }
-        };
+        var payload = CreateOutboundPayload(message, destination);
 
         var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "https://graph.facebook.com" : options.BaseUrl.TrimEnd('/');
         var endpoint = $"{baseUrl}/{options.ApiVersion.Trim('/')}/{options.PhoneNumberId}/messages";
@@ -160,8 +154,194 @@ public sealed class WhatsAppCloudMessageChannel(
         }
     }
 
+    private static object CreateOutboundPayload(CustomerMessageDto message, string destination)
+    {
+        var templateDefinition = MetaTemplateCatalog.Resolve(message.TemplateKey, message.EventType);
+        if (templateDefinition is not null)
+        {
+            var components = new List<object>();
+            if (templateDefinition.RequiresHeader)
+            {
+                var headerComponent = MetaTemplateCatalog.TryCreateHeaderComponent(message, templateDefinition);
+                if (headerComponent is not null)
+                {
+                    components.Add(headerComponent);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(message.Body))
+            {
+                components.Add(new
+                {
+                    type = "body",
+                    parameters = new[]
+                    {
+                        new { type = "text", text = message.Body }
+                    }
+                });
+            }
+
+            return new
+            {
+                messaging_product = "whatsapp",
+                to = destination,
+                type = "template",
+                template = new
+                {
+                    name = templateDefinition.MetaName,
+                    language = new { code = templateDefinition.LanguageCode },
+                    components = components.ToArray()
+                }
+            };
+        }
+
+        return new
+        {
+            messaging_product = "whatsapp",
+            to = destination,
+            type = "text",
+            text = new { body = message.Body ?? string.Empty }
+        };
+    }
+
     private static string? NormalizePhoneNumber(string? phoneNumber)
         => Normalizer.TryNormalizeMobileNumber(phoneNumber);
+
+    public sealed record MetaTemplateDefinition(string MetaName, string LanguageCode, bool RequiresHeader)
+    {
+        public static object? TryCreateHeaderComponent(CustomerMessageDto message, MetaTemplateDefinition definition)
+        {
+            if (!definition.RequiresHeader)
+                return null;
+
+            var imageUrl = TryResolveHeaderImage(message);
+            if (!string.IsNullOrWhiteSpace(imageUrl))
+            {
+                return new
+                {
+                    type = "header",
+                    parameters = new[]
+                    {
+                        new { type = "image", image = new { link = imageUrl } }
+                    }
+                };
+            }
+
+            if (!string.IsNullOrWhiteSpace(message.Title))
+            {
+                return new
+                {
+                    type = "header",
+                    parameters = new[]
+                    {
+                        new { type = "text", text = message.Title }
+                    }
+                };
+            }
+
+            return null;
+        }
+
+        private static string? TryResolveHeaderImage(CustomerMessageDto message)
+        {
+            if (string.IsNullOrWhiteSpace(message.ReferenceId))
+                return null;
+
+            if (!Uri.TryCreate(message.ReferenceId, UriKind.Absolute, out var uri))
+                return null;
+
+            return uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
+        }
+    }
+
+    public static class MetaTemplateCatalog
+    {
+        private static readonly IReadOnlyDictionary<string, MetaTemplateDefinition> Templates =
+            new Dictionary<string, MetaTemplateDefinition>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["lumar_order_created"] = new("lumar_order_created", "ar", false),
+                ["lumar_order_ready"] = new("lumar_order_ready", "ar", false),
+                ["lumar_order_delivered"] = new("lumar_order_delivered", "ar", false),
+                ["lumar_piece_cancelled"] = new("lumar_piece_cancelled", "ar", false),
+                ["lumar_order_cancelled"] = new("lumar_order_cancelled", "ar", false),
+                ["lumar_referrer_reward"] = new("lumar_referrer_reward", "ar", false),
+                ["lumar_referrer_reward_relation"] = new("lumar_referrer_reward_relation", "ar", false),
+                ["lumar_order_created_with_referrer"] = new("lumar_order_created_with_referrer", "ar", false),
+                ["lumar_order_created_with_referrer_relation"] = new("lumar_order_created_with_referrer_relation", "ar", false),
+                ["lumar_friday_greeting"] = new("lumar_friday_greeting", "ar", false),
+                ["lumar_general_campaign"] = new("lumar_general_campaign", "ar", true),
+
+                ["ordercreated"] = new("lumar_order_created", "ar", false),
+                ["order_created"] = new("lumar_order_created", "ar", false),
+                ["orderready"] = new("lumar_order_ready", "ar", false),
+                ["order_ready"] = new("lumar_order_ready", "ar", false),
+                ["orderdelivered"] = new("lumar_order_delivered", "ar", false),
+                ["order_delivered"] = new("lumar_order_delivered", "ar", false),
+                ["piececancelled"] = new("lumar_piece_cancelled", "ar", false),
+                ["piece_cancelled"] = new("lumar_piece_cancelled", "ar", false),
+                ["ordercancelled"] = new("lumar_order_cancelled", "ar", false),
+                ["order_cancelled"] = new("lumar_order_cancelled", "ar", false),
+                ["referrerreward"] = new("lumar_referrer_reward", "ar", false),
+                ["referrer_reward"] = new("lumar_referrer_reward", "ar", false),
+                ["referrerrewardrelation"] = new("lumar_referrer_reward_relation", "ar", false),
+                ["referrer_reward_relation"] = new("lumar_referrer_reward_relation", "ar", false),
+                ["ordercreatedwithreferrer"] = new("lumar_order_created_with_referrer", "ar", false),
+                ["order_created_with_referrer"] = new("lumar_order_created_with_referrer", "ar", false),
+                ["withreferrer"] = new("lumar_order_created_with_referrer", "ar", false),
+                ["ordercreatedwithreferrerrelation"] = new("lumar_order_created_with_referrer_relation", "ar", false),
+                ["order_created_with_referrer_relation"] = new("lumar_order_created_with_referrer_relation", "ar", false),
+                ["withreferrerrelation"] = new("lumar_order_created_with_referrer_relation", "ar", false),
+                ["fridaygreeting"] = new("lumar_friday_greeting", "ar", false),
+                ["friday_greeting"] = new("lumar_friday_greeting", "ar", false),
+                ["generalcampaign"] = new("lumar_general_campaign", "ar", true),
+                ["general_campaign"] = new("lumar_general_campaign", "ar", true),
+            };
+
+        public static MetaTemplateDefinition? Resolve(string? templateKey, string? eventType = null)
+        {
+            var candidates = new[]
+            {
+                templateKey,
+                eventType
+            };
+
+            foreach (var candidate in candidates)
+            {
+                if (string.IsNullOrWhiteSpace(candidate))
+                    continue;
+
+                if (Templates.TryGetValue(candidate, out var definition))
+                    return definition;
+
+                var normalized = candidate.Trim();
+                if (normalized.Contains("OrderCreated", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (normalized.Contains("WithReferrer", StringComparison.OrdinalIgnoreCase) || normalized.Contains("referrer", StringComparison.OrdinalIgnoreCase))
+                        return Templates["lumar_order_created_with_referrer"];
+                    return Templates["lumar_order_created"];
+                }
+                if (normalized.Contains("OrderReady", StringComparison.OrdinalIgnoreCase))
+                    return Templates["lumar_order_ready"];
+                if (normalized.Contains("OrderDelivered", StringComparison.OrdinalIgnoreCase))
+                    return Templates["lumar_order_delivered"];
+                if (normalized.Contains("PieceCancelled", StringComparison.OrdinalIgnoreCase) || normalized.Contains("PieceCanceled", StringComparison.OrdinalIgnoreCase))
+                    return Templates["lumar_piece_cancelled"];
+                if (normalized.Contains("OrderCancelled", StringComparison.OrdinalIgnoreCase) || normalized.Contains("OrderCanceled", StringComparison.OrdinalIgnoreCase))
+                    return Templates["lumar_order_cancelled"];
+                if (normalized.Contains("ReferrerReward", StringComparison.OrdinalIgnoreCase) || normalized.Contains("referrer", StringComparison.OrdinalIgnoreCase))
+                    return Templates["lumar_referrer_reward"];
+                if (normalized.Contains("Friday", StringComparison.OrdinalIgnoreCase))
+                    return Templates["lumar_friday_greeting"];
+                if (normalized.Contains("Campaign", StringComparison.OrdinalIgnoreCase))
+                    return Templates["lumar_general_campaign"];
+            }
+
+            return null;
+        }
+
+        public static object? TryCreateHeaderComponent(CustomerMessageDto message, MetaTemplateDefinition definition)
+            => MetaTemplateDefinition.TryCreateHeaderComponent(message, definition);
+    }
 
     private static OutboundAdapterResult BuildSafeMetaFailure(HttpStatusCode statusCode, string raw, bool retryable)
     {

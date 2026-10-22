@@ -61,7 +61,7 @@ public sealed class MessageWriteServiceTests
 
             Assert.Equal("ValidationCustomerProjection", row.TemplateKey);
             Assert.Equal(expectedProviderMessageId, row.ProviderMessageId);
-            Assert.Equal("0500000000", row.PhoneNumber);
+            Assert.Equal("770000000", row.PhoneNumber);
             Assert.Equal("validation-" + uniqueSuffix, row.ReferenceId);
             Assert.Equal("Validation", row.ReferenceType);
             Assert.Equal("validation-" + uniqueSuffix, row.IdempotencyKey);
@@ -109,7 +109,7 @@ public sealed class MessageWriteServiceTests
                     channel,
                     "Validation title",
                     "Validation body",
-                    "0500000000",
+                    "770000000",
                     "validation-duplicate", 
                     "Validation",
                     idempotencyKey,
@@ -122,7 +122,7 @@ public sealed class MessageWriteServiceTests
                     channel,
                     "Validation title",
                     "Validation body",
-                    "0500000000",
+                    "770000000",
                     "validation-duplicate",
                     "Validation",
                     idempotencyKey,
@@ -349,7 +349,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "OrderCreated",
             TemplateKey: "OrderCreated",
-            PhoneNumber: "0500000000",
+            PhoneNumber: "770000000",
             ReferenceId: "ORD-42",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -497,7 +497,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "OrderCreated",
             TemplateKey: "OrderCreated",
-            PhoneNumber: "0500000000",
+            PhoneNumber: "770000000",
             ReferenceId: "ORD-42",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -512,7 +512,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "OrderCreated",
             TemplateKey: "OrderCreated",
-            PhoneNumber: "0500000000",
+            PhoneNumber: "770000000",
             ReferenceId: "ORD-42",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -540,7 +540,7 @@ public sealed class MessageWriteServiceTests
             ["OutboundMessaging:StaleProcessingMinutes"] = "30",
         }).Build());
 
-        var messageId = await repo.CreateCustomerMessageAsync(7, 99, "OrderCreated", "OrderCreated", "InApp", "Title", "Body", "0500000000", "ORD-99", "Order", "idempotency-1", CancellationToken.None);
+        var messageId = await repo.CreateCustomerMessageAsync(7, 99, "OrderCreated", "OrderCreated", "InApp", "Title", "Body", "770000000", "ORD-99", "Order", "idempotency-1", CancellationToken.None);
         Assert.NotNull(messageId);
 
         var result = await dispatcher.DispatchNextAsync(CancellationToken.None);
@@ -563,7 +563,7 @@ public sealed class MessageWriteServiceTests
             ["OutboundMessaging:StaleProcessingMinutes"] = "30",
         }).Build());
 
-        var messageId = await repo.CreateCustomerMessageAsync(7, 99, "OrderCreated", "OrderCreated", "InApp", "Title", "Body", "0500000000", "ORD-99", "Order", "idempotency-2", CancellationToken.None);
+        var messageId = await repo.CreateCustomerMessageAsync(7, 99, "OrderCreated", "OrderCreated", "InApp", "Title", "Body", "770000000", "ORD-99", "Order", "idempotency-2", CancellationToken.None);
         Assert.NotNull(messageId);
 
         var first = await dispatcher.DispatchNextAsync(CancellationToken.None);
@@ -985,7 +985,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "OrderReady",
             TemplateKey: "OrderReady",
-            PhoneNumber: "0500000000",
+            PhoneNumber: "770000000",
             ReferenceId: "ORD-42",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -999,7 +999,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "OrderDelivered",
             TemplateKey: "OrderDelivered",
-            PhoneNumber: "0500000000",
+            PhoneNumber: "770000000",
             ReferenceId: "ORD-42",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -1025,7 +1025,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "ReferralPointsEarned",
             TemplateKey: "ReferralPointsEarned",
-            PhoneNumber: "0500000000",
+            PhoneNumber: "770000000",
             ReferenceId: "RewardGranted:9001",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -1041,7 +1041,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "ReferralPointsEarned",
             TemplateKey: "ReferralPointsEarned",
-            PhoneNumber: "0500000000",
+            PhoneNumber: "770000000",
             ReferenceId: "RewardGranted:9002",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -1057,7 +1057,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "ReferralPointsEarned",
             TemplateKey: "ReferralPointsEarned",
-            PhoneNumber: "0500000000",
+            PhoneNumber: "770000000",
             ReferenceId: "RewardGranted:9001",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -1086,7 +1086,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "OrderCreated",
             TemplateKey: "MissingTemplate",
-            PhoneNumber: "0500000000",
+            PhoneNumber: "770000000",
             ReferenceId: "ORD-42",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -1110,7 +1110,7 @@ public sealed class MessageWriteServiceTests
             "ORD-301",
             9,
             "أحمد",
-            "0500000301",
+            "770000301",
             DateTime.UtcNow,
             null,
             220m,
@@ -1150,7 +1150,7 @@ public sealed class MessageWriteServiceTests
             new FakeOrderLoyaltyIntegrationService(loyaltyResult),
             messageService,
             customerRepository: new FakeCustomerRepository(
-                new CustomerDetailsDto(9, "C-301", "أحمد", "0500000301", null, null, null, null, null, true, null, null, null, null)),
+                new CustomerDetailsDto(9, "C-301", "أحمد", "770000301", null, null, null, null, null, true, null, null, null, null)),
             settingsRepository: new FakeSettingsRepository(new MessageSettingsDto(true, true, false, true, true, true))
             {
                 StoreName = "LUMAR",
@@ -1223,7 +1223,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "OrderCreated",
             TemplateKey: "order-created-customer-smart",
-            PhoneNumber: "0500000001",
+            PhoneNumber: "770000001",
             ReferenceId: "ORD-42",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -1257,7 +1257,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "OrderCreated",
             TemplateKey: "order-created-customer-smart",
-            PhoneNumber: "0500000001",
+            PhoneNumber: "770000001",
             ReferenceId: "ORD-42",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -1275,8 +1275,8 @@ public sealed class MessageWriteServiceTests
                 ["ReferrerCustomerId"] = 52,
                 ["ReferrerName"] = "محمود",
                 ["ReferrerCode"] = "R-900",
-                ["ReferrerPhoneNumber"] = "0500009999",
-                ["CustomerPhoneNumber"] = "0500000001",
+                ["ReferrerPhoneNumber"] = "779999999",
+                ["CustomerPhoneNumber"] = "770000001",
                 ["ReferralIntroduction"] = "العميل الذي عرّفك على مؤسسة لومــــــVIPـــــار هو سالم.",
                 ["ReferralPointsEarned"] = 12m,
                 ["ReferrerPointsBalance"] = 620m,
@@ -1300,7 +1300,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "OrderCreated",
             TemplateKey: "OrderCreated",
-            PhoneNumber: "0500000000",
+            PhoneNumber: "770000000",
             ReferenceId: "ORD-42",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -1323,7 +1323,7 @@ public sealed class MessageWriteServiceTests
             "ORD-99",
             7,
             "سالم",
-            "0500000099",
+            "770000099",
             DateTime.UtcNow,
             null,
             150m,
@@ -1364,7 +1364,7 @@ public sealed class MessageWriteServiceTests
             "ORD-100",
             7,
             "سالم",
-            "0500000100",
+            "770000100",
             DateTime.UtcNow,
             null,
             150m,
@@ -1408,7 +1408,7 @@ public sealed class MessageWriteServiceTests
             "ORD-100",
             7,
             "سالم",
-            "0500000100",
+            "770000100",
             DateTime.UtcNow,
             null,
             150m,
@@ -1439,7 +1439,7 @@ public sealed class MessageWriteServiceTests
 
         var request = Assert.Single(messageService.Requests);
         Assert.Equal(150m, Assert.IsType<decimal>(request.Context!["Amount"]));
-        Assert.Equal("0500000100", request.PhoneNumber);
+        Assert.Equal("770000100", request.PhoneNumber);
         Assert.Equal("ORD-100", request.Context["OrderNumber"]);
     }
 
@@ -1452,7 +1452,7 @@ public sealed class MessageWriteServiceTests
             "ORD-101",
             7,
             "محمود",
-            "0500000101",
+            "770000101",
             DateTime.UtcNow,
             null,
             150m,
@@ -1493,7 +1493,7 @@ public sealed class MessageWriteServiceTests
             "ORD-102",
             7,
             "باسم",
-            "0500000102",
+            "770000102",
             DateTime.UtcNow,
             null,
             150m,
@@ -1546,7 +1546,7 @@ public sealed class MessageWriteServiceTests
                 "ORD-200",
                 8,
                 "أحمد",
-                "0500000200",
+                "770000200",
                 DateTime.UtcNow,
                 null,
                 200m,
@@ -1585,7 +1585,7 @@ public sealed class MessageWriteServiceTests
             "ORD-201",
             8,
             "أحمد",
-            "0500000201",
+            "770000201",
             DateTime.UtcNow,
             null,
             200m,
@@ -1612,7 +1612,7 @@ public sealed class MessageWriteServiceTests
             new FakeOrderLoyaltyIntegrationService(),
             messageService,
             customerRepository: new FakeCustomerRepository(
-                new CustomerDetailsDto(8, "C-201", "أحمد", "0500000201", null, null, null, null, null, true, null, null, null, null)),
+                new CustomerDetailsDto(8, "C-201", "أحمد", "770000201", null, null, null, null, null, true, null, null, null, null)),
             settingsRepository: new FakeSettingsRepository(new MessageSettingsDto(true, true, false, true, true, true))
             {
                 StoreName = "LUMAR",
@@ -1625,7 +1625,7 @@ public sealed class MessageWriteServiceTests
         var request = Assert.Single(messageService.Requests);
         Assert.Equal("OrderDelivered", request.EventType);
         Assert.Equal(200m, Assert.IsType<decimal>(request.Context!["Amount"]));
-        Assert.Equal("0500000201", request.PhoneNumber);
+        Assert.Equal("770000201", request.PhoneNumber);
         Assert.Equal("ORD-201", request.Context["OrderNumber"]);
         Assert.Equal("الريال اليمني", request.Context["CurrencyName"]);
         Assert.Equal("LUMAR", request.Context["StoreName"]);
@@ -1641,7 +1641,7 @@ public sealed class MessageWriteServiceTests
             "ORD-201",
             8,
             "أحمد",
-            "0500000201",
+            "770000201",
             DateTime.UtcNow,
             null,
             200m,
@@ -1685,7 +1685,7 @@ public sealed class MessageWriteServiceTests
             "ORD-202",
             8,
             "أحمد",
-            "0500000202",
+            "770000202",
             DateTime.UtcNow,
             null,
             200m,
@@ -1729,7 +1729,7 @@ public sealed class MessageWriteServiceTests
             "ORD-42",
             7,
             "سالم",
-            "0500000042",
+            "770000042",
             DateTime.UtcNow,
             null,
             300m,
@@ -1776,7 +1776,7 @@ public sealed class MessageWriteServiceTests
             42,
             "OrderReady",
             "OrderReady",
-            "0500000042",
+            "770000042",
             "ORD-42",
             "Order",
             new Dictionary<string, object?>
@@ -1791,7 +1791,7 @@ public sealed class MessageWriteServiceTests
             42,
             "OrderReady",
             "OrderReady",
-            "0500000042",
+            "770000042",
             "ORD-42",
             "Order",
             new Dictionary<string, object?>
@@ -1806,7 +1806,7 @@ public sealed class MessageWriteServiceTests
             42,
             "OrderDelivered",
             "OrderDelivered",
-            "0500000042",
+            "770000042",
             "ORD-42",
             "Order",
             new Dictionary<string, object?>
@@ -1821,7 +1821,7 @@ public sealed class MessageWriteServiceTests
             42,
             "OrderDelivered",
             "OrderDelivered",
-            "0500000042",
+            "770000042",
             "ORD-42",
             "Order",
             new Dictionary<string, object?>
@@ -2087,7 +2087,7 @@ public sealed class MessageWriteServiceTests
             OrderId: 42,
             EventType: "OrderCreated",
             TemplateKey: "OrderCreated",
-            PhoneNumber: "0500000000",
+            PhoneNumber: "770000000",
             ReferenceId: "ORD-42",
             ReferenceType: "Order",
             Context: new Dictionary<string, object?>
@@ -2159,7 +2159,7 @@ public sealed class MessageWriteServiceTests
                 "ORD-301",
                 order.CustomerId,
                 "أحمد",
-                "0500000301",
+                "770000301",
                 order.OrderDate ?? DateTime.UtcNow,
                 order.DeliveryDate ?? DateTime.UtcNow,
                 order.TotalAmount,
@@ -2363,7 +2363,7 @@ public sealed class MessageWriteServiceTests
         command.Parameters.AddWithValue("@processingAtUtc", effectiveProcessingAtUtc);
         command.Parameters.AddWithValue("@failureReason", (object?)failureReason ?? DBNull.Value);
         command.Parameters.AddWithValue("@providerMessageId", (object?)(providerMessageId ?? ("provider-live-" + uniqueSuffix)) ?? DBNull.Value);
-        command.Parameters.AddWithValue("@phoneNumber", "0500000000");
+        command.Parameters.AddWithValue("@phoneNumber", "770000000");
         command.Parameters.AddWithValue("@referenceId", "validation-" + uniqueSuffix);
         command.Parameters.AddWithValue("@referenceType", "Validation");
         command.Parameters.AddWithValue("@idempotencyKey", "validation-" + uniqueSuffix);
