@@ -67,10 +67,10 @@ public sealed class WhatsAppCloudIntegrationTests
         var campaignMessage = new CustomerMessageDto(
             91, 92, 93, "ManualCampaign", "lumar_general_campaign", "WhatsApp",
             "العنوان", "نص الحملة", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null,
-            "+967700000099", "campaign-099", "ManualCampaign", "key-99");
+            "+967700000099", "campaign-099", "ManualCampaign", "key-99", "https://example.com/campaign.png");
 
         var headerComponent = WhatsAppCloudMessageChannel.MetaTemplateCatalog.TryCreateHeaderComponent(
-            campaignMessage with { ReferenceId = "https://example.com/campaign.png" },
+            campaignMessage,
             WhatsAppCloudMessageChannel.MetaTemplateCatalog.Resolve("lumar_general_campaign", "ManualCampaign")!);
         Assert.NotNull(headerComponent);
 
@@ -78,6 +78,47 @@ public sealed class WhatsAppCloudIntegrationTests
         Assert.Contains("type\":\"header\"", json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("type\":\"image\"", json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("https://example.com/campaign.png", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void MetaTemplateCatalog_ImplementsExplicitParameterContracts_ForAllSupportedTemplates()
+    {
+        var expected = new[]
+        {
+            ("lumar_order_created", new[] { "customer_name", "order_number", "total_amount" }),
+            ("lumar_order_ready", new[] { "customer_name", "order_number", "delivery_date" }),
+            ("lumar_order_delivered", new[] { "customer_name", "order_number", "delivery_date" }),
+            ("lumar_piece_cancelled", new[] { "customer_name", "order_number", "order_details" }),
+            ("lumar_order_cancelled", new[] { "customer_name", "order_number", "order_details" }),
+            ("lumar_referrer_reward", new[] { "referrer_name", "referrer_code", "referral_points_earned" }),
+            ("lumar_referrer_reward_relation", new[] { "referrer_name", "relationship", "referral_points_earned" }),
+            ("lumar_order_created_with_referrer", new[] { "customer_name", "order_number", "referrer_name" }),
+            ("lumar_order_created_with_referrer_relation", new[] { "customer_name", "order_number", "relationship" }),
+            ("lumar_friday_greeting", new[] { "customer_name", "relation_welcome" }),
+            ("lumar_general_campaign", new[] { "campaign_text" })
+        };
+
+        foreach (var (templateKey, parameterNames) in expected)
+        {
+            var definition = WhatsAppCloudMessageChannel.MetaTemplateCatalog.Resolve(templateKey, templateKey);
+            Assert.NotNull(definition);
+            Assert.Equal(parameterNames, definition!.Parameters.Select(p => p.Name).ToArray());
+        }
+    }
+
+    [Fact]
+    public void MetaTemplateCatalog_WhenCampaignImageIsNotConfigured_DoesNotInventHeaderFallback()
+    {
+        var message = new CustomerMessageDto(
+            91, 92, 93, "ManualCampaign", "lumar_general_campaign", "WhatsApp",
+            "العنوان", "نص الحملة", "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null,
+            "+967700000099", "campaign-099", "ManualCampaign", "key-99");
+
+        var headerComponent = WhatsAppCloudMessageChannel.MetaTemplateCatalog.TryCreateHeaderComponent(
+            message,
+            WhatsAppCloudMessageChannel.MetaTemplateCatalog.Resolve("lumar_general_campaign", "ManualCampaign")!);
+
+        Assert.Null(headerComponent);
     }
 
     [Fact]

@@ -6,6 +6,7 @@ using System.Text.Json;
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.DTOs.Messages;
 using Microsoft.Extensions.Options;
+using System.Linq;
 
 namespace LUMAR_ERP_API_V2.Services;
 
@@ -169,15 +170,13 @@ public sealed class WhatsAppCloudMessageChannel(
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(message.Body))
+            var bodyParameters = BuildBodyParameters(message, templateDefinition);
+            if (bodyParameters.Count > 0)
             {
                 components.Add(new
                 {
                     type = "body",
-                    parameters = new[]
-                    {
-                        new { type = "text", text = message.Body }
-                    }
+                    parameters = bodyParameters.ToArray()
                 });
             }
 
@@ -204,10 +203,58 @@ public sealed class WhatsAppCloudMessageChannel(
         };
     }
 
+    private static List<object> BuildBodyParameters(CustomerMessageDto message, MetaTemplateDefinition definition)
+    {
+        var output = new List<object>();
+        foreach (var parameter in definition.Parameters)
+        {
+            var value = ResolveTemplateParameterValue(message, parameter.Name);
+            if (value is null)
+                continue;
+
+            output.Add(new { type = "text", text = value });
+        }
+
+        if (output.Count == 0 && !string.IsNullOrWhiteSpace(message.Body))
+        {
+            output.Add(new { type = "text", text = message.Body });
+        }
+
+        return output;
+    }
+
+    private static string? ResolveTemplateParameterValue(CustomerMessageDto message, string parameterName)
+    {
+        var key = parameterName.Trim();
+        return key switch
+        {
+            "customer_name" => message.Title,
+            "customer_code" => message.ReferenceId,
+            "order_number" => message.ReferenceId,
+            "order_details" => message.Body,
+            "total_amount" => message.Body,
+            "paid_amount" => message.Body,
+            "remaining_amount" => message.Body,
+            "delivery_date" => message.Title,
+            "customer_points_earned" => message.Body,
+            "customer_points_balance" => message.Body,
+            "referrer_name" => message.Title,
+            "referrer_code" => message.ReferenceId,
+            "referral_points_earned" => message.Body,
+            "referrer_points_balance" => message.Body,
+            "relationship" => message.Title,
+            "relation_welcome" => message.Title,
+            "campaign_text" => message.Body,
+            _ => message.Body
+        };
+    }
+
     private static string? NormalizePhoneNumber(string? phoneNumber)
         => Normalizer.TryNormalizeMobileNumber(phoneNumber);
 
-    public sealed record MetaTemplateDefinition(string MetaName, string LanguageCode, bool RequiresHeader)
+    public sealed record MetaTemplateParameter(string Name, string Source, string ValueType, string? NullPolicy = null);
+
+    public sealed record MetaTemplateDefinition(string MetaName, string LanguageCode, bool RequiresHeader, IReadOnlyList<MetaTemplateParameter> Parameters)
     {
         public static object? TryCreateHeaderComponent(CustomerMessageDto message, MetaTemplateDefinition definition)
         {
@@ -215,39 +262,25 @@ public sealed class WhatsAppCloudMessageChannel(
                 return null;
 
             var imageUrl = TryResolveHeaderImage(message);
-            if (!string.IsNullOrWhiteSpace(imageUrl))
-            {
-                return new
-                {
-                    type = "header",
-                    parameters = new[]
-                    {
-                        new { type = "image", image = new { link = imageUrl } }
-                    }
-                };
-            }
+            if (string.IsNullOrWhiteSpace(imageUrl))
+                return null;
 
-            if (!string.IsNullOrWhiteSpace(message.Title))
+            return new
             {
-                return new
+                type = "header",
+                parameters = new[]
                 {
-                    type = "header",
-                    parameters = new[]
-                    {
-                        new { type = "text", text = message.Title }
-                    }
-                };
-            }
-
-            return null;
+                    new { type = "image", image = new { link = imageUrl } }
+                }
+            };
         }
 
         private static string? TryResolveHeaderImage(CustomerMessageDto message)
         {
-            if (string.IsNullOrWhiteSpace(message.ReferenceId))
+            if (string.IsNullOrWhiteSpace(message.CampaignImageUrl))
                 return null;
 
-            if (!Uri.TryCreate(message.ReferenceId, UriKind.Absolute, out var uri))
+            if (!Uri.TryCreate(message.CampaignImageUrl, UriKind.Absolute, out var uri))
                 return null;
 
             return uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
@@ -256,45 +289,54 @@ public sealed class WhatsAppCloudMessageChannel(
 
     public static class MetaTemplateCatalog
     {
+        private static MetaTemplateDefinition CreateDefinition(string metaName, string languageCode, bool requiresHeader, params string[] parameterNames)
+        {
+            var parameters = parameterNames
+                .Select(name => new MetaTemplateParameter(name, name, "string", "required"))
+                .ToArray();
+
+            return new MetaTemplateDefinition(metaName, languageCode, requiresHeader, parameters);
+        }
+
         private static readonly IReadOnlyDictionary<string, MetaTemplateDefinition> Templates =
             new Dictionary<string, MetaTemplateDefinition>(StringComparer.OrdinalIgnoreCase)
             {
-                ["lumar_order_created"] = new("lumar_order_created", "ar", false),
-                ["lumar_order_ready"] = new("lumar_order_ready", "ar", false),
-                ["lumar_order_delivered"] = new("lumar_order_delivered", "ar", false),
-                ["lumar_piece_cancelled"] = new("lumar_piece_cancelled", "ar", false),
-                ["lumar_order_cancelled"] = new("lumar_order_cancelled", "ar", false),
-                ["lumar_referrer_reward"] = new("lumar_referrer_reward", "ar", false),
-                ["lumar_referrer_reward_relation"] = new("lumar_referrer_reward_relation", "ar", false),
-                ["lumar_order_created_with_referrer"] = new("lumar_order_created_with_referrer", "ar", false),
-                ["lumar_order_created_with_referrer_relation"] = new("lumar_order_created_with_referrer_relation", "ar", false),
-                ["lumar_friday_greeting"] = new("lumar_friday_greeting", "ar", false),
-                ["lumar_general_campaign"] = new("lumar_general_campaign", "ar", true),
+                ["lumar_order_created"] = CreateDefinition("lumar_order_created", "ar", false, "customer_name", "order_number", "total_amount"),
+                ["lumar_order_ready"] = CreateDefinition("lumar_order_ready", "ar", false, "customer_name", "order_number", "delivery_date"),
+                ["lumar_order_delivered"] = CreateDefinition("lumar_order_delivered", "ar", false, "customer_name", "order_number", "delivery_date"),
+                ["lumar_piece_cancelled"] = CreateDefinition("lumar_piece_cancelled", "ar", false, "customer_name", "order_number", "order_details"),
+                ["lumar_order_cancelled"] = CreateDefinition("lumar_order_cancelled", "ar", false, "customer_name", "order_number", "order_details"),
+                ["lumar_referrer_reward"] = CreateDefinition("lumar_referrer_reward", "ar", false, "referrer_name", "referrer_code", "referral_points_earned"),
+                ["lumar_referrer_reward_relation"] = CreateDefinition("lumar_referrer_reward_relation", "ar", false, "referrer_name", "relationship", "referral_points_earned"),
+                ["lumar_order_created_with_referrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false, "customer_name", "order_number", "referrer_name"),
+                ["lumar_order_created_with_referrer_relation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false, "customer_name", "order_number", "relationship"),
+                ["lumar_friday_greeting"] = CreateDefinition("lumar_friday_greeting", "ar", false, "customer_name", "relation_welcome"),
+                ["lumar_general_campaign"] = CreateDefinition("lumar_general_campaign", "ar", true, "campaign_text"),
 
-                ["ordercreated"] = new("lumar_order_created", "ar", false),
-                ["order_created"] = new("lumar_order_created", "ar", false),
-                ["orderready"] = new("lumar_order_ready", "ar", false),
-                ["order_ready"] = new("lumar_order_ready", "ar", false),
-                ["orderdelivered"] = new("lumar_order_delivered", "ar", false),
-                ["order_delivered"] = new("lumar_order_delivered", "ar", false),
-                ["piececancelled"] = new("lumar_piece_cancelled", "ar", false),
-                ["piece_cancelled"] = new("lumar_piece_cancelled", "ar", false),
-                ["ordercancelled"] = new("lumar_order_cancelled", "ar", false),
-                ["order_cancelled"] = new("lumar_order_cancelled", "ar", false),
-                ["referrerreward"] = new("lumar_referrer_reward", "ar", false),
-                ["referrer_reward"] = new("lumar_referrer_reward", "ar", false),
-                ["referrerrewardrelation"] = new("lumar_referrer_reward_relation", "ar", false),
-                ["referrer_reward_relation"] = new("lumar_referrer_reward_relation", "ar", false),
-                ["ordercreatedwithreferrer"] = new("lumar_order_created_with_referrer", "ar", false),
-                ["order_created_with_referrer"] = new("lumar_order_created_with_referrer", "ar", false),
-                ["withreferrer"] = new("lumar_order_created_with_referrer", "ar", false),
-                ["ordercreatedwithreferrerrelation"] = new("lumar_order_created_with_referrer_relation", "ar", false),
-                ["order_created_with_referrer_relation"] = new("lumar_order_created_with_referrer_relation", "ar", false),
-                ["withreferrerrelation"] = new("lumar_order_created_with_referrer_relation", "ar", false),
-                ["fridaygreeting"] = new("lumar_friday_greeting", "ar", false),
-                ["friday_greeting"] = new("lumar_friday_greeting", "ar", false),
-                ["generalcampaign"] = new("lumar_general_campaign", "ar", true),
-                ["general_campaign"] = new("lumar_general_campaign", "ar", true),
+                ["ordercreated"] = CreateDefinition("lumar_order_created", "ar", false, "customer_name", "order_number", "total_amount"),
+                ["order_created"] = CreateDefinition("lumar_order_created", "ar", false, "customer_name", "order_number", "total_amount"),
+                ["orderready"] = CreateDefinition("lumar_order_ready", "ar", false, "customer_name", "order_number", "delivery_date"),
+                ["order_ready"] = CreateDefinition("lumar_order_ready", "ar", false, "customer_name", "order_number", "delivery_date"),
+                ["orderdelivered"] = CreateDefinition("lumar_order_delivered", "ar", false, "customer_name", "order_number", "delivery_date"),
+                ["order_delivered"] = CreateDefinition("lumar_order_delivered", "ar", false, "customer_name", "order_number", "delivery_date"),
+                ["piececancelled"] = CreateDefinition("lumar_piece_cancelled", "ar", false, "customer_name", "order_number", "order_details"),
+                ["piece_cancelled"] = CreateDefinition("lumar_piece_cancelled", "ar", false, "customer_name", "order_number", "order_details"),
+                ["ordercancelled"] = CreateDefinition("lumar_order_cancelled", "ar", false, "customer_name", "order_number", "order_details"),
+                ["order_cancelled"] = CreateDefinition("lumar_order_cancelled", "ar", false, "customer_name", "order_number", "order_details"),
+                ["referrerreward"] = CreateDefinition("lumar_referrer_reward", "ar", false, "referrer_name", "referrer_code", "referral_points_earned"),
+                ["referrer_reward"] = CreateDefinition("lumar_referrer_reward", "ar", false, "referrer_name", "referrer_code", "referral_points_earned"),
+                ["referrerrewardrelation"] = CreateDefinition("lumar_referrer_reward_relation", "ar", false, "referrer_name", "relationship", "referral_points_earned"),
+                ["referrer_reward_relation"] = CreateDefinition("lumar_referrer_reward_relation", "ar", false, "referrer_name", "relationship", "referral_points_earned"),
+                ["ordercreatedwithreferrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false, "customer_name", "order_number", "referrer_name"),
+                ["order_created_with_referrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false, "customer_name", "order_number", "referrer_name"),
+                ["withreferrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false, "customer_name", "order_number", "referrer_name"),
+                ["ordercreatedwithreferrerrelation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false, "customer_name", "order_number", "relationship"),
+                ["order_created_with_referrer_relation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false, "customer_name", "order_number", "relationship"),
+                ["withreferrerrelation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false, "customer_name", "order_number", "relationship"),
+                ["fridaygreeting"] = CreateDefinition("lumar_friday_greeting", "ar", false, "customer_name", "relation_welcome"),
+                ["friday_greeting"] = CreateDefinition("lumar_friday_greeting", "ar", false, "customer_name", "relation_welcome"),
+                ["generalcampaign"] = CreateDefinition("lumar_general_campaign", "ar", true, "campaign_text"),
+                ["general_campaign"] = CreateDefinition("lumar_general_campaign", "ar", true, "campaign_text"),
             };
 
         public static MetaTemplateDefinition? Resolve(string? templateKey, string? eventType = null)
