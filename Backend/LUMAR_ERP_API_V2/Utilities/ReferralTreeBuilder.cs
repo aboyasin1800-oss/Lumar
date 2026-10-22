@@ -31,10 +31,21 @@ public sealed record ReferralTreeNodeData(
 
 public static class ReferralTreeBuilder
 {
+    public static IReadOnlyList<ReferralRegistrationEdge> CleanRegistrationEdges(IEnumerable<ReferralRegistrationEdge> registrations)
+    {
+        return registrations
+            .Where(edge => edge.ReferrerCustomerId > 0)
+            .Where(edge => edge.ReferredCustomerId > 0)
+            .Where(edge => edge.ReferrerCustomerId != edge.ReferredCustomerId)
+            .Distinct()
+            .ToList();
+    }
+
     public static IReadOnlyList<int> DiscoverRootCustomerIds(IEnumerable<ReferralRegistrationEdge> registrations)
     {
-        var referrers = registrations.Select(edge => edge.ReferrerCustomerId).ToHashSet();
-        var referred = registrations.Select(edge => edge.ReferredCustomerId).ToHashSet();
+        var validRegistrations = CleanRegistrationEdges(registrations);
+        var referrers = validRegistrations.Select(edge => edge.ReferrerCustomerId).ToHashSet();
+        var referred = validRegistrations.Select(edge => edge.ReferredCustomerId).ToHashSet();
 
         return referrers
             .Except(referred)
@@ -52,12 +63,13 @@ public static class ReferralTreeBuilder
             throw new InvalidOperationException($"Customer {rootCustomerId} not found.");
         }
 
-        var parentLookup = registrations
-            .Where(edge => edge.ReferredCustomerId != edge.ReferrerCustomerId)
+        var validRegistrations = CleanRegistrationEdges(registrations);
+
+        var parentLookup = validRegistrations
             .GroupBy(edge => edge.ReferredCustomerId)
             .ToDictionary(group => group.Key, group => group.Select(edge => edge.ReferrerCustomerId).First());
 
-        var childrenByParent = registrations
+        var childrenByParent = validRegistrations
             .GroupBy(edge => edge.ReferrerCustomerId)
             .ToDictionary(
                 group => group.Key,

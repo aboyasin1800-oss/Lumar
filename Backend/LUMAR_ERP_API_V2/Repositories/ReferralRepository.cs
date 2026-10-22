@@ -933,7 +933,16 @@ public sealed class ReferralRepository(ReadOnlySqlConnectionFactory connections,
 
     private async Task<IReadOnlyList<ReferralRegistrationEdge>> GetRegistrationEdgesAsync(CancellationToken cancellationToken)
     {
-        const string sql = "SELECT ReferrerCustomerId, ReferredCustomerId FROM dbo.ReferralTransactions WHERE TransactionType = 'Registration' ORDER BY CreatedAt, ReferralTransactionId";
+        const string sql = @"
+            SELECT ReferrerCustomerId, ReferredCustomerId
+            FROM dbo.ReferralTransactions
+            WHERE TransactionType = 'Registration'
+              AND ReferrerCustomerId IS NOT NULL
+              AND ReferredCustomerId IS NOT NULL
+              AND ReferrerCustomerId > 0
+              AND ReferredCustomerId > 0
+            ORDER BY CreatedAt, ReferralTransactionId";
+
         await using var connection = connections.Create();
         await connection.OpenAsync(cancellationToken);
         await using var command = new SqlCommand(sql, connection);
@@ -942,7 +951,15 @@ public sealed class ReferralRepository(ReadOnlySqlConnectionFactory connections,
         var results = new List<ReferralRegistrationEdge>();
         while (await reader.ReadAsync(cancellationToken))
         {
-            results.Add(new ReferralRegistrationEdge(reader.GetInt32(0), reader.GetInt32(1)));
+            var referrer = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+            var referred = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+
+            if (referrer <= 0 || referred <= 0 || referrer == referred)
+            {
+                continue;
+            }
+
+            results.Add(new ReferralRegistrationEdge(referrer, referred));
         }
 
         return results;
