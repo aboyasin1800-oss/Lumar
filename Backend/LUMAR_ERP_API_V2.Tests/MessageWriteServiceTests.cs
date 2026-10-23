@@ -238,11 +238,12 @@ public sealed class MessageWriteServiceTests
                     "Validation title",
                     "Validation body",
                     "770000000",
-                    "validation-duplicate", 
+                    "validation-duplicate",
                     "Validation",
                     idempotencyKey,
                     null,
-                    CancellationToken.None),
+                    rawCampaignText: null,
+                    c: CancellationToken.None),
                 repo2.CreateCustomerMessageAndNotificationAsync(
                     101,
                     9001,
@@ -256,7 +257,8 @@ public sealed class MessageWriteServiceTests
                     "Validation",
                     idempotencyKey,
                     null,
-                    CancellationToken.None)
+                    rawCampaignText: null,
+                    c: CancellationToken.None)
             };
 
             var results = await Task.WhenAll(tasks);
@@ -412,6 +414,64 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task ManualCampaign_RawCampaignText_IsPersistedAndHydratedSeparatelyFromRenderedBody()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Manual campaign raw-text validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var repo = new MessageRepository(
+            new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+            new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+        var unique = Guid.NewGuid().ToString("N")[..12];
+        var channel = $"WhatsApp-{unique}";
+        var rawCampaignText = "الاختبار المئة ولم ينجح";
+        var renderedBody = $"🎉 عرض خاص من مؤسسة لومــــــVIPـــــار\n\n{rawCampaignText}\n\nمؤسسة لومــــــVIPـــــار\n❤️ نتمنى لك يوماً مليئاً بالفرح والنجاح.";
+        var idempotencyKey = $"manual-raw-text-{unique}";
+
+        var selectedCustomer = await LoadDynamicCustomerAsync(connectionString) ?? throw new InvalidOperationException("No valid customer record available for validation.");
+        var created = await repo.CreateCustomerMessageAndNotificationAsync(
+            selectedCustomer.CustomerId,
+            null,
+            "ManualCampaign",
+            "lumar_general_campaign",
+            channel,
+            "حملة تجريبية",
+            renderedBody,
+            "967775106545",
+            $"campaign-{unique}",
+            "ManualCampaign",
+            idempotencyKey,
+            "https://example.com/campaign.png",
+            rawCampaignText: rawCampaignText,
+            c: CancellationToken.None);
+
+        Assert.NotNull(created.MessageId);
+
+        var persisted = await repo.GetCustomerMessageAsync(created.MessageId!.Value, CancellationToken.None);
+        Assert.NotNull(persisted);
+        Assert.Equal(renderedBody, persisted!.Body);
+        Assert.Equal(rawCampaignText, persisted.RawCampaignText);
+        Assert.NotEqual(persisted.Body, persisted.RawCampaignText);
+
+        var claimed = await repo.ClaimNextAsync(channel, 3, TimeSpan.FromMinutes(30), CancellationToken.None);
+        Assert.NotNull(claimed);
+        Assert.Equal(rawCampaignText, claimed!.RawCampaignText);
+        Assert.Equal(rawCampaignText, claimed.Context!["CampaignText"] as string);
+        Assert.NotEqual(claimed.Body, claimed.RawCampaignText);
+
+        await using var cleanup = new SqlConnection(connectionString);
+        await cleanup.OpenAsync();
+        await using var delete = new SqlCommand("DELETE FROM dbo.CustomerNotifications WHERE CustomerMessageID = @messageId; DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID = @messageId;", cleanup);
+        delete.Parameters.AddWithValue("@messageId", created.MessageId ?? 0);
+        await delete.ExecuteNonQueryAsync();
+    }
+
+    [Fact]
     public async Task MessageRepository_ClaimNextAsync_HydratesManualCampaignContextForWhatsApp()
     {
         var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
@@ -447,7 +507,8 @@ public sealed class MessageWriteServiceTests
             "ManualCampaign",
             idempotencyKey,
             imageUrl,
-            CancellationToken.None);
+            rawCampaignText: campaignText,
+            c: CancellationToken.None);
 
         Assert.NotNull(created.MessageId);
 
@@ -2787,7 +2848,7 @@ public sealed class MessageWriteServiceTests
         public Task UpdateDeliveryStatusByProviderIdAsync(string providerMessageId, string status, DateTime occurredAtUtc, string? failureReason, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task MarkSentAsync(int customerMessageId, string? providerMessageId, DateTime sentAtUtc, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task MarkFailedAsync(int customerMessageId, string failureReason, bool retryable, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, CancellationToken c)
+        public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, string? rawCampaignText = null, CancellationToken c = default)
             => Task.FromResult((MessageId: (int?)1, NotificationId: (int?)1));
         public Task<int?> CreateCustomerMessageAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c) => Task.FromResult<int?>(1);
         public Task<int> CreateCustomerNotificationAsync(int customerId, int? orderId, string eventType, string title, string body, int? customerMessageId, CancellationToken c) => Task.FromResult(1);
@@ -2888,7 +2949,7 @@ public sealed class MessageWriteServiceTests
             return Task.CompletedTask;
         }
 
-        public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, CancellationToken c)
+        public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, string? rawCampaignText = null, CancellationToken c = default)
         {
             if (FailNotificationCreation)
             {
@@ -2898,7 +2959,7 @@ public sealed class MessageWriteServiceTests
             var messageId = Messages.Count + 1;
             var notificationId = Notifications.Count + 1;
             ProcessedKeys.Add(idempotencyKey);
-            Messages.Add(new CustomerMessageDto(messageId, customerId, orderId, eventType, templateKey, channel, title, body, "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, phoneNumber, referenceId, referenceType, idempotencyKey));
+            Messages.Add(new CustomerMessageDto(messageId, customerId, orderId, eventType, templateKey, channel, title, body, "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, phoneNumber, referenceId, referenceType, idempotencyKey, campaignImageUrl, null, rawCampaignText));
             Notifications.Add(new CustomerNotificationDto(notificationId, customerId, orderId, eventType, title, body, "Unread", false, DateTime.UtcNow, null, messageId));
             return Task.FromResult((MessageId: (int?)messageId, NotificationId: (int?)notificationId));
         }

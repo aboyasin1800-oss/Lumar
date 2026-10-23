@@ -284,7 +284,7 @@ public sealed class WhatsAppCloudMessageChannel(
             "referrer_points_balance" => new[] { "ReferrerPointsBalance" },
             "relationship" => new[] { "Relationship", "Relation" },
             "relation_welcome" => new[] { "RelationWelcome" },
-            "campaign_text" => new[] { "CampaignText", "MessageText", "CampaignBody", "Body" },
+            "campaign_text" => new[] { "RawCampaignText", "CampaignText" },
             _ => Array.Empty<string>()
         };
 

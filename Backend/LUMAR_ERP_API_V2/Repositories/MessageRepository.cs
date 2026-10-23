@@ -13,13 +13,15 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
         var body = r.NullableString("Body");
         var title = r.NullableString("Title");
         var campaignImageUrl = r.NullableString("CampaignImageUrl");
+        var rawCampaignText = r.NullableString("RawCampaignText") ?? r.NullableString("CampaignText");
 
         var context = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
             ["Body"] = body,
             ["MessageText"] = body,
             ["CampaignBody"] = body,
-            ["CampaignText"] = body,
+            ["CampaignText"] = rawCampaignText ?? body,
+            ["RawCampaignText"] = rawCampaignText,
             ["Title"] = title,
             ["CampaignImageUrl"] = campaignImageUrl,
         };
@@ -28,16 +30,16 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
             r.GetInt32(0),
             r.GetInt32(1),
             r.NullableInt32("OrderID"),
-            r.GetString(3),
-            r.GetString(4),
-            r.GetString(5),
-            r.GetString(6),
-            r.GetString(7),
-            r.GetString(8),
-            r.GetDateTime(9),
+            r.GetString("EventType"),
+            r.GetString("TemplateKey"),
+            r.GetString("Channel"),
+            r.GetString("Title"),
+            r.GetString("Body"),
+            r.GetString("DeliveryStatus"),
+            r.GetDateTime("CreatedAtUtc"),
             r.NullableDateTime("SentAtUtc"),
             r.NullableDateTime("ReadAtUtc"),
-            r.GetInt32(12),
+            r.GetInt32("AttemptCount"),
             r.NullableDateTime("DeliveredAtUtc"),
             r.NullableDateTime("ProcessingAtUtc"),
             r.NullableString("FailureReason"),
@@ -47,7 +49,8 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
             r.NullableString("ReferenceType"),
             r.NullableString("IdempotencyKey"),
             campaignImageUrl,
-            context);
+            context,
+            rawCampaignText);
     }
 
     private static CustomerNotificationDto Notification(SqlDataReader r) => new(
@@ -99,16 +102,16 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
     }
 
     public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(CancellationToken c)
-        => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
+        => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,RawCampaignText,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
                 FROM dbo.CustomerMessages
                 ORDER BY CreatedAtUtc DESC,CustomerMessageID DESC", null, Message, c);
 
     public async Task<CustomerMessageDto?> GetCustomerMessageAsync(int id, CancellationToken c)
-        => (await Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
+        => (await Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,RawCampaignText,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
                 FROM dbo.CustomerMessages WHERE CustomerMessageID=@id", id, Message, c)).FirstOrDefault();
 
     public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(int customerId, CancellationToken c)
-        => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
+        => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,RawCampaignText,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
                 FROM dbo.CustomerMessages WHERE CustomerID=@id ORDER BY CreatedAtUtc DESC,CustomerMessageID DESC", customerId, Message, c);
 
     public Task<IReadOnlyList<CustomerNotificationDto>> GetNotificationsAsync(CancellationToken c)
@@ -264,6 +267,7 @@ WHERE MessageTemplateID = @id;";
                    INSERTED.Channel,
                    INSERTED.Title,
                    INSERTED.Body,
+                   INSERTED.RawCampaignText,
                    INSERTED.DeliveryStatus,
                    INSERTED.CreatedAtUtc,
                    INSERTED.SentAtUtc,
@@ -341,7 +345,7 @@ WHERE MessageTemplateID = @id;";
     public async Task<CustomerMessageDto?> GetByProviderMessageIdAsync(string providerMessageId, CancellationToken cancellationToken)
     {
         const string sql = @"
-            SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
+            SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,RawCampaignText,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
             FROM dbo.CustomerMessages WITH (NOLOCK)
             WHERE ProviderMessageId = @providerMessageId;";
 
@@ -425,9 +429,17 @@ WHERE MessageTemplateID = @id;";
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, CancellationToken c)
+    public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, string? rawCampaignText = null, CancellationToken c = default)
+        => CreateCustomerMessageAndNotificationAsyncInternal(customerId, orderId, eventType, templateKey, channel, title, body, phoneNumber, referenceId, referenceType, idempotencyKey, campaignImageUrl, string.IsNullOrWhiteSpace(rawCampaignText) ? GetRawCampaignText(eventType, body) : rawCampaignText, c);
+
+    private async Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsyncInternal(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, string? rawCampaignText, CancellationToken c)
     {
-        const string insertMessageSql = "INSERT INTO dbo.CustomerMessages (CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,AttemptCount,IdempotencyKey,PhoneNumber,ReferenceID,ReferenceType,IsRetryable,CampaignImageUrl) OUTPUT INSERTED.CustomerMessageID VALUES (@customerId,@orderId,@eventType,@templateKey,@channel,@title,@body,N'Pending',GETUTCDATE(),0,@idempotencyKey,@phoneNumber,@referenceId,@referenceType,1,@campaignImageUrl)";
+        if (string.IsNullOrWhiteSpace(rawCampaignText) && string.Equals(eventType, "ManualCampaign", StringComparison.OrdinalIgnoreCase))
+        {
+            rawCampaignText = body;
+        }
+
+        const string insertMessageSql = "INSERT INTO dbo.CustomerMessages (CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,RawCampaignText,DeliveryStatus,CreatedAtUtc,AttemptCount,IdempotencyKey,PhoneNumber,ReferenceID,ReferenceType,IsRetryable,CampaignImageUrl) OUTPUT INSERTED.CustomerMessageID VALUES (@customerId,@orderId,@eventType,@templateKey,@channel,@title,@body,@rawCampaignText,N'Pending',GETUTCDATE(),0,@idempotencyKey,@phoneNumber,@referenceId,@referenceType,1,@campaignImageUrl)";
         const string insertNotificationSql = "INSERT INTO dbo.CustomerNotifications (CustomerID,OrderID,EventType,Title,Body,Status,IsRead,CreatedAtUtc,CustomerMessageID) OUTPUT INSERTED.CustomerNotificationID VALUES (@customerId,@orderId,@eventType,@title,@body,N'Unread',0,GETUTCDATE(),@customerMessageId)";
 
         await using var connection = connections.Create();
@@ -446,6 +458,7 @@ WHERE MessageTemplateID = @id;";
                 messageCommand.Parameters.AddWithValue("@channel", channel);
                 messageCommand.Parameters.AddWithValue("@title", title);
                 messageCommand.Parameters.AddWithValue("@body", body);
+                messageCommand.Parameters.AddWithValue("@rawCampaignText", (object?)rawCampaignText ?? DBNull.Value);
                 messageCommand.Parameters.AddWithValue("@idempotencyKey", idempotencyKey);
                 messageCommand.Parameters.AddWithValue("@phoneNumber", phoneNumber ?? string.Empty);
                 messageCommand.Parameters.AddWithValue("@referenceId", referenceId ?? string.Empty);
@@ -493,6 +506,9 @@ WHERE MessageTemplateID = @id;";
     }
 
     private static bool IsDuplicateKeyException(SqlException ex) => ex.Number is 2601 or 2627;
+
+    private static string? GetRawCampaignText(string eventType, string body)
+        => string.Equals(eventType, "ManualCampaign", StringComparison.OrdinalIgnoreCase) ? body : null;
 
     private static string? GetContextStringValue(IReadOnlyDictionary<string, object?>? context, string key)
     {

@@ -64,6 +64,11 @@ public sealed class MessageWriteService(
 
             if (runtimeSettings.WhatsAppEnabled && !string.IsNullOrWhiteSpace(normalizedPhone))
             {
+                var rawCampaignText = GetContextStringValue(request.Context, "RawCampaignText")
+                    ?? GetContextStringValue(request.Context, "CampaignText")
+                    ?? GetContextStringValue(request.Context, "MessageText")
+                    ?? body;
+
                 var createdPair = await repository.CreateCustomerMessageAndNotificationAsync(
                     route.CustomerId,
                     request.OrderId,
@@ -77,6 +82,7 @@ public sealed class MessageWriteService(
                     request.ReferenceType,
                     idempotencyKey,
                     GetContextStringValue(request.Context, "CampaignImageUrl"),
+                    rawCampaignText,
                     cancellationToken);
 
                 messageId = createdPair.MessageId;
