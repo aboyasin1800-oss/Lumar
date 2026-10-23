@@ -273,9 +273,17 @@ public sealed class WhatsAppCloudIntegrationTests
         var bodyParameters = components[1].GetProperty("parameters");
 
         Assert.Equal(2, bodyParameters.GetArrayLength());
+        Assert.Equal("text", bodyParameters[0].GetProperty("type").GetString());
+        Assert.Equal("customer_name", bodyParameters[0].GetProperty("parameter_name").GetString());
         Assert.Equal("أحمد", bodyParameters[0].GetProperty("text").GetString());
+        Assert.Equal("text", bodyParameters[1].GetProperty("type").GetString());
+        Assert.Equal("campaign_text", bodyParameters[1].GetProperty("parameter_name").GetString());
         Assert.Equal("عرض خاص لفريقك", bodyParameters[1].GetProperty("text").GetString());
         Assert.Equal("https://cdn.example.com/campaign.png", components[0].GetProperty("parameters")[0].GetProperty("image").GetProperty("link").GetString());
+        Assert.False(bodyParameters[0].TryGetProperty("parameter_name", out var firstParameterName) && string.IsNullOrWhiteSpace(firstParameterName.GetString()));
+        Assert.False(bodyParameters[1].TryGetProperty("parameter_name", out var secondParameterName) && string.IsNullOrWhiteSpace(secondParameterName.GetString()));
+        Assert.Equal(2, bodyParameters.GetArrayLength());
+        Assert.False(components[0].GetProperty("parameters")[0].TryGetProperty("parameter_name", out var headerParameterName));
     }
 
     [Fact]

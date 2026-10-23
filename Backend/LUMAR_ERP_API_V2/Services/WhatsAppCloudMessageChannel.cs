@@ -247,7 +247,12 @@ public sealed class WhatsAppCloudMessageChannel(
             if (value is null)
                 continue;
 
-            output.Add(new { type = "text", text = value });
+            output.Add(new
+            {
+                type = "text",
+                parameter_name = parameter.Name,
+                text = value
+            });
         }
 
         return output;
