@@ -504,7 +504,7 @@ public sealed class WhatsAppCloudIntegrationTests
     [Fact]
     public async Task WhatsAppCloudMessageChannel_WhenMetaRejectsWithErrorDetails_RecordsSafeMetadata()
     {
-        var response = "{\"error\":{\"type\":\"OAuthException\",\"code\":100,\"error_subcode\":400010,\"message\":\"Auth error: AccessToken=SECRET_TOKEN_123 Authorization: Bearer SECRET_BEARER\"}}";
+        var response = "{\"error\":{\"type\":\"OAuthException\",\"code\":100,\"error_subcode\":400010,\"message\":\"Auth error: AccessToken=SECRET_TOKEN_123 Authorization: Bearer SECRET_BEARER\",\"error_data\":{\"details\":\"Template name does not exist in the translation. Template=general-campaign-smart Language=ar AccessToken=SECRET_TOKEN_123\"}}}";
         var channel = new WhatsAppCloudMessageChannel(
             new FixedHttpClientFactory(new HttpClient(new StubHandler(HttpStatusCode.BadRequest, response))),
             new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
@@ -531,6 +531,11 @@ public sealed class WhatsAppCloudIntegrationTests
         Assert.Equal(100, result.ProviderErrorCode);
         Assert.Equal(400010, result.ProviderErrorSubcode);
         Assert.Equal("OAuthException", result.SafeProviderErrorType);
+        Assert.Contains("Template name does not exist in the translation", result.ProviderErrorDetails, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SECRET_TOKEN_123", result.ProviderErrorDetails, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_BEARER", result.ProviderErrorDetails, StringComparison.Ordinal);
+        Assert.DoesNotContain("AccessToken", result.ProviderErrorDetails, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Authorization", result.ProviderErrorDetails, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("SECRET_TOKEN_123", result.FailureReason, StringComparison.Ordinal);
         Assert.DoesNotContain("SECRET_BEARER", result.FailureReason, StringComparison.Ordinal);
         Assert.DoesNotContain("AccessToken", result.FailureReason, StringComparison.OrdinalIgnoreCase);

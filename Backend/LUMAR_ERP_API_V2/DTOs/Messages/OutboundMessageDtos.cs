@@ -25,4 +25,5 @@ public sealed record OutboundAdapterResult(
     int? HttpStatusCode = null,
     int? ProviderErrorCode = null,
     int? ProviderErrorSubcode = null,
-    string? SafeProviderErrorType = null);
+    string? SafeProviderErrorType = null,
+    string? ProviderErrorDetails = null);

@@ -80,12 +80,13 @@ public sealed class WhatsAppCloudMessageChannel(
             {
                 var safeResult = BuildSafeMetaFailure(response.StatusCode, raw, isRetryable);
                 logger?.LogWarning(
-                    "OutboundWhatsAppResult Channel=WhatsApp CustomerMessageId={CustomerMessageId} HttpStatusCode={HttpStatusCode} Outcome={Outcome} ProviderErrorCode={ProviderErrorCode} ProviderErrorSubcode={ProviderErrorSubcode} Retryable={Retryable} ProviderMessageIdPresent={ProviderMessageIdPresent} RecipientPresent={RecipientPresent}",
+                    "OutboundWhatsAppResult Channel=WhatsApp CustomerMessageId={CustomerMessageId} HttpStatusCode={HttpStatusCode} Outcome={Outcome} ProviderErrorCode={ProviderErrorCode} ProviderErrorSubcode={ProviderErrorSubcode} ProviderErrorDetails={ProviderErrorDetails} Retryable={Retryable} ProviderMessageIdPresent={ProviderMessageIdPresent} RecipientPresent={RecipientPresent}",
                     message.CustomerMessageId,
                     (int)response.StatusCode,
                     safeResult.Outcome,
                     safeResult.ProviderErrorCode,
                     safeResult.ProviderErrorSubcode,
+                    safeResult.ProviderErrorDetails,
                     safeResult.Retryable,
                     false,
                     !string.IsNullOrWhiteSpace(message.PhoneNumber));
@@ -458,6 +459,7 @@ public sealed class WhatsAppCloudMessageChannel(
         var providerErrorCode = default(int?);
         var providerErrorSubcode = default(int?);
         var safeType = default(string?);
+        var providerErrorDetails = default(string?);
 
         if (!string.IsNullOrWhiteSpace(raw))
         {
@@ -479,6 +481,13 @@ public sealed class WhatsAppCloudMessageChannel(
                     if (error.TryGetProperty("error_subcode", out var subcodeElement) && subcodeElement.ValueKind == JsonValueKind.Number)
                     {
                         providerErrorSubcode = subcodeElement.TryGetInt32(out var subcode) ? subcode : null;
+                    }
+
+                    if (error.TryGetProperty("error_data", out var errorData)
+                        && errorData.ValueKind == JsonValueKind.Object
+                        && errorData.TryGetProperty("details", out var detailsElement))
+                    {
+                        providerErrorDetails = ExtractSafeDetails(detailsElement);
                     }
 
                     var message = string.Empty;
@@ -521,7 +530,8 @@ public sealed class WhatsAppCloudMessageChannel(
                         HttpStatusCode: (int)statusCode,
                         ProviderErrorCode: providerErrorCode,
                         ProviderErrorSubcode: providerErrorSubcode,
-                        SafeProviderErrorType: safeType);
+                        SafeProviderErrorType: safeType,
+                        ProviderErrorDetails: providerErrorDetails);
                 }
             }
             catch
@@ -545,7 +555,48 @@ public sealed class WhatsAppCloudMessageChannel(
             HttpStatusCode: (int)statusCode,
             ProviderErrorCode: providerErrorCode,
             ProviderErrorSubcode: providerErrorSubcode,
-            SafeProviderErrorType: safeType);
+            SafeProviderErrorType: safeType,
+            ProviderErrorDetails: providerErrorDetails);
+    }
+
+    private static string? ExtractSafeDetails(JsonElement detailsElement)
+    {
+        if (detailsElement.ValueKind == JsonValueKind.String)
+        {
+            return SanitizeSensitiveMessage(detailsElement.GetString() ?? string.Empty);
+        }
+
+        if (detailsElement.ValueKind == JsonValueKind.Array)
+        {
+            var fragments = new List<string>();
+            foreach (var item in detailsElement.EnumerateArray())
+            {
+                var text = item.ValueKind switch
+                {
+                    JsonValueKind.String => item.GetString(),
+                    JsonValueKind.Object => item.ToString(),
+                    _ => item.ToString()
+                };
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    var sanitized = SanitizeSensitiveMessage(text);
+                    if (!string.IsNullOrWhiteSpace(sanitized))
+                    {
+                        fragments.Add(sanitized);
+                    }
+                }
+            }
+
+            return fragments.Count == 0 ? null : string.Join("; ", fragments);
+        }
+
+        if (detailsElement.ValueKind == JsonValueKind.Object)
+        {
+            var serialized = detailsElement.ToString();
+            return string.IsNullOrWhiteSpace(serialized) ? null : SanitizeSensitiveMessage(serialized);
+        }
+
+        return null;
     }
 
     private static string SanitizeSensitiveMessage(string value)
