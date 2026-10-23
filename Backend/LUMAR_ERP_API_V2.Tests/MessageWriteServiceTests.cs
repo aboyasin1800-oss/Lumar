@@ -134,6 +134,25 @@ public sealed class MessageWriteServiceTests
         };
     }
 
+    private static async Task<(int CustomerId, string CustomerName)?> LoadDynamicCustomerAsync(string connectionString)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(
+            "SELECT TOP (1) CustomerID, CustomerName FROM dbo.Customers WITH (NOLOCK) WHERE CustomerName IS NOT NULL AND LTRIM(RTRIM(CustomerName)) <> '' ORDER BY CustomerID;",
+            connection);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return null;
+        }
+
+        var customerId = reader.GetInt32(reader.GetOrdinal("CustomerID"));
+        var customerName = reader.GetString(reader.GetOrdinal("CustomerName"));
+        return (customerId, customerName);
+    }
+
     private static async Task<string?> LoadCustomerNameAsync(string connectionString, int customerId)
     {
         await using var connection = new SqlConnection(connectionString);
@@ -407,28 +426,16 @@ public sealed class MessageWriteServiceTests
             new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
 
         var unique = Guid.NewGuid().ToString("N")[..12];
-        var customerId = 1;
         var channel = $"WhatsApp-{unique}";
         var campaignText = $"عرض تجريبي {unique}";
         var imageUrl = $"https://example.com/{unique}.png";
         var idempotencyKey = $"manual-context-{unique}";
 
-        await using (var customerProbe = new SqlConnection(connectionString))
-        {
-            await customerProbe.OpenAsync();
-            await using var customerCommand = new SqlCommand("SELECT CustomerName FROM dbo.Customers WITH (NOLOCK) WHERE CustomerID = @customerId;", customerProbe);
-            customerCommand.Parameters.AddWithValue("@customerId", customerId);
-            var customerValue = await customerCommand.ExecuteScalarAsync();
-            if (customerValue is string customerName && !string.IsNullOrWhiteSpace(customerName))
-            {
-                customerId = 1;
-                Assert.NotNull(customerName);
-                Assert.False(string.IsNullOrWhiteSpace(customerName));
-            }
-        }
+        var selectedCustomer = await LoadDynamicCustomerAsync(connectionString) ?? throw new InvalidOperationException("No valid customer record available for validation.");
+        Assert.False(string.IsNullOrWhiteSpace(selectedCustomer.CustomerName));
 
         var created = await repo.CreateCustomerMessageAndNotificationAsync(
-            customerId,
+            selectedCustomer.CustomerId,
             null,
             "ManualCampaign",
             "lumar_general_campaign",
@@ -451,7 +458,7 @@ public sealed class MessageWriteServiceTests
             Assert.Equal(created.MessageId, claimed!.CustomerMessageId);
             Assert.Equal(campaignText, claimed.Body);
             Assert.Equal(imageUrl, claimed.CampaignImageUrl);
-            var expectedCustomerName = await LoadCustomerNameAsync(connectionString, customerId);
+            var expectedCustomerName = await LoadCustomerNameAsync(connectionString, selectedCustomer.CustomerId);
             Assert.NotNull(claimed.Context);
             Assert.Equal(expectedCustomerName, claimed.Context!["CustomerName"] as string);
             Assert.Equal(campaignText, claimed.Context["CampaignText"] as string);
@@ -1046,7 +1053,17 @@ public sealed class MessageWriteServiceTests
             throw new InvalidOperationException("Outbound messaging validation must target LUMAR_ERP_ES_VALIDATION.");
 
         var channel = "ValidationInApp-" + Guid.NewGuid().ToString("N")[..16];
-        var messageId = await SeedQueuedMessageAsync(connectionString, channel, "ValidationConcurrentClaim-" + Guid.NewGuid().ToString("N")[..12]);
+        var providerMessageId = "provider-live-ValidationConcurrentClaim-seeded";
+        var messageId = await SeedQueuedMessageAsync(
+            connectionString,
+            channel,
+            "ValidationConcurrentClaim-" + Guid.NewGuid().ToString("N")[..12],
+            deliveryStatus: "Pending",
+            attemptCount: 0,
+            processingAtUtc: null,
+            failureReason: null,
+            providerMessageId: providerMessageId,
+            isRetryable: true);
         try
         {
             var repo1 = new MessageRepository(
@@ -1095,11 +1112,11 @@ public sealed class MessageWriteServiceTests
                 Assert.Equal(1, reader.GetInt32(1));
                 Assert.NotEqual(DBNull.Value, reader[2]);
                 Assert.Equal(DBNull.Value, reader[3]);
-                Assert.Equal(DBNull.Value, reader[4]);
+                Assert.Equal(providerMessageId, reader.GetString(4));
             }
 
-            var providerMessageId = "provider-live-" + Guid.NewGuid().ToString("N");
-            await repo1.MarkSentAsync(messageId, providerMessageId, DateTime.UtcNow, CancellationToken.None);
+            var sentProviderMessageId = "provider-live-" + Guid.NewGuid().ToString("N");
+            await repo1.MarkSentAsync(messageId, sentProviderMessageId, DateTime.UtcNow, CancellationToken.None);
 
             await using (var verify = new SqlConnection(connectionString))
             {
@@ -1111,7 +1128,7 @@ public sealed class MessageWriteServiceTests
                 await using var reader = await command.ExecuteReaderAsync();
                 Assert.True(await reader.ReadAsync());
                 Assert.Equal("Sent", reader.GetString(0));
-                Assert.Equal(providerMessageId, reader.GetString(1));
+                Assert.Equal(sentProviderMessageId, reader.GetString(1));
                 Assert.Equal(DBNull.Value, reader[2]);
                 Assert.NotEqual(DBNull.Value, reader[3]);
             }
