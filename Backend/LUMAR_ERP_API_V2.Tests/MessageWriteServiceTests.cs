@@ -2329,6 +2329,44 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task MessageWriteService_WhenManualCampaignHasNoRawText_OnlyCreatesAppNotificationWithoutWhatsAppMessage()
+    {
+        var repo = new FakeMessageRepository();
+        repo.TemplateExists = true;
+        var settingsRepo = new FakeSettingsRepository(new MessageSettingsDto(
+            MessageMasterEnabled: true,
+            DirectReferralDefaultOn: true,
+            OtherReferralDefaultOff: false,
+            FridayGreetingEnabled: true,
+            CampaignEnabled: true,
+            WhatsAppEnabled: true));
+        var service = new MessageWriteService(repo, new MessageTemplateRenderer(), settingsRepo, new YemenPhoneNumberNormalizer());
+
+        var result = await service.TryCreateAsync(new MessageWriteRequest(
+            CustomerId: 7,
+            OrderId: 42,
+            EventType: "ManualCampaign",
+            TemplateKey: "general-campaign-smart",
+            PhoneNumber: "967775106545",
+            ReferenceId: "manual-campaign-missing-raw",
+            ReferenceType: "ManualCampaign",
+            Context: new Dictionary<string, object?>
+            {
+                ["CustomerName"] = "سالم",
+                ["CampaignImageUrl"] = "https://example.com/campaign.png",
+                ["Title"] = "حملة تجريبية",
+            }), CancellationToken.None);
+
+        Assert.True(result.Created);
+        Assert.NotNull(result.CustomerNotificationId);
+        Assert.Null(result.CustomerMessageId);
+        Assert.Equal(1, repo.Notifications.Count);
+        Assert.Empty(repo.Messages);
+        Assert.Equal("ManualCampaign", repo.Notifications[0].EventType);
+        Assert.Contains("سالم", repo.Notifications[0].Body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task MessageWriteService_WhenPhoneIsMissingOrInvalid_OnlyCreatesNotificationWithoutChannelMessage()
     {
         var repo = new FakeMessageRepository();

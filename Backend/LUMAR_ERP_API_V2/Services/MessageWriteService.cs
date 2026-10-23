@@ -70,6 +70,21 @@ public sealed class MessageWriteService(
                 if (string.Equals(request.EventType, "ManualCampaign", StringComparison.OrdinalIgnoreCase)
                     && string.IsNullOrWhiteSpace(rawCampaignText))
                 {
+                    notificationId = await repository.CreateCustomerNotificationAsync(
+                        route.CustomerId,
+                        request.OrderId,
+                        request.EventType,
+                        title,
+                        body,
+                        null,
+                        cancellationToken);
+
+                    if (notificationId is null or <= 0)
+                    {
+                        continue;
+                    }
+
+                    createdResults.Add(new MessageWriteResult(true, null, notificationId, template.TemplateKey, title, body));
                     continue;
                 }
 
