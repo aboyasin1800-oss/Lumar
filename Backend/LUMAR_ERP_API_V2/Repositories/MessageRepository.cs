@@ -86,6 +86,18 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
         r.GetInt32(0),
         r.NullableInt32("MessageID"));
 
+    private static async Task<string?> LoadCustomerNameAsync(SqlConnection connection, SqlTransaction transaction, int customerId, CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT TOP (1) CustomerName FROM dbo.Customers WITH (NOLOCK) WHERE CustomerID = @customerId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@customerId", customerId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            return null;
+
+        return reader.IsDBNull(0) ? null : reader.GetString(0);
+    }
+
     public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(CancellationToken c)
         => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
                 FROM dbo.CustomerMessages
@@ -304,6 +316,17 @@ WHERE MessageTemplateID = @id;";
 
             var claimed = Message(reader);
             reader.Dispose();
+
+            var customerName = await LoadCustomerNameAsync(connection, transaction, claimed.CustomerId, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(customerName))
+            {
+                var hydratedContext = new Dictionary<string, object?>(claimed.Context ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase)
+                {
+                    ["CustomerName"] = customerName,
+                };
+                claimed = claimed with { Context = hydratedContext };
+            }
+
             await transaction.CommitAsync(cancellationToken);
             return claimed;
         }

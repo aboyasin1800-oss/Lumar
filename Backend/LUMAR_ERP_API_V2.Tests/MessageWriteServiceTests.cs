@@ -134,6 +134,16 @@ public sealed class MessageWriteServiceTests
         };
     }
 
+    private static async Task<string?> LoadCustomerNameAsync(string connectionString, int customerId)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("SELECT CustomerName FROM dbo.Customers WITH (NOLOCK) WHERE CustomerID = @customerId;", connection);
+        command.Parameters.AddWithValue("@customerId", customerId);
+        var value = await command.ExecuteScalarAsync();
+        return value is string name ? name : null;
+    }
+
     [Fact]
     public async Task MessageRepository_GetCustomerMessagesAsync_ProjectsAllRequiredMessageFields()
     {
@@ -403,6 +413,20 @@ public sealed class MessageWriteServiceTests
         var imageUrl = $"https://example.com/{unique}.png";
         var idempotencyKey = $"manual-context-{unique}";
 
+        await using (var customerProbe = new SqlConnection(connectionString))
+        {
+            await customerProbe.OpenAsync();
+            await using var customerCommand = new SqlCommand("SELECT CustomerName FROM dbo.Customers WITH (NOLOCK) WHERE CustomerID = @customerId;", customerProbe);
+            customerCommand.Parameters.AddWithValue("@customerId", customerId);
+            var customerValue = await customerCommand.ExecuteScalarAsync();
+            if (customerValue is string customerName && !string.IsNullOrWhiteSpace(customerName))
+            {
+                customerId = 1;
+                Assert.NotNull(customerName);
+                Assert.False(string.IsNullOrWhiteSpace(customerName));
+            }
+        }
+
         var created = await repo.CreateCustomerMessageAndNotificationAsync(
             customerId,
             null,
@@ -427,8 +451,10 @@ public sealed class MessageWriteServiceTests
             Assert.Equal(created.MessageId, claimed!.CustomerMessageId);
             Assert.Equal(campaignText, claimed.Body);
             Assert.Equal(imageUrl, claimed.CampaignImageUrl);
+            var expectedCustomerName = await LoadCustomerNameAsync(connectionString, customerId);
             Assert.NotNull(claimed.Context);
-            Assert.Equal(campaignText, claimed.Context!["CampaignText"] as string);
+            Assert.Equal(expectedCustomerName, claimed.Context!["CustomerName"] as string);
+            Assert.Equal(campaignText, claimed.Context["CampaignText"] as string);
             Assert.Equal(imageUrl, claimed.Context["CampaignImageUrl"] as string);
 
             var handler = new CaptureHandler();
@@ -450,10 +476,13 @@ public sealed class MessageWriteServiceTests
             using var payload = JsonDocument.Parse(handler.LastRequestBody);
             var template = payload.RootElement.GetProperty("template");
             var components = template.GetProperty("components");
-            var bodyText = components[1].GetProperty("parameters")[0].GetProperty("text").GetString();
+            var bodyParameters = components[1].GetProperty("parameters");
+            var customerName = bodyParameters[0].GetProperty("text").GetString();
+            var campaignBodyText = bodyParameters[1].GetProperty("text").GetString();
             var headerLink = components[0].GetProperty("parameters")[0].GetProperty("image").GetProperty("link").GetString();
 
-            Assert.Equal(campaignText, bodyText);
+            Assert.Equal(expectedCustomerName, customerName);
+            Assert.Equal(campaignText, campaignBodyText);
             Assert.Equal(imageUrl, headerLink);
         }
         finally

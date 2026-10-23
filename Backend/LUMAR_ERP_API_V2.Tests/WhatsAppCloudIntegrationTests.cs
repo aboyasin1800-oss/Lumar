@@ -257,6 +257,7 @@ public sealed class WhatsAppCloudIntegrationTests
             "+967700000099", "campaign-099", "ManualCampaign", "key-99", "https://cdn.example.com/campaign.png",
             new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
             {
+                ["CustomerName"] = "أحمد",
                 ["CampaignText"] = "عرض خاص لفريقك"
             });
 
@@ -266,6 +267,15 @@ public sealed class WhatsAppCloudIntegrationTests
         Assert.Contains("https://cdn.example.com/campaign.png", handler.LastRequestBody, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"type\":\"header\"", handler.LastRequestBody, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"type\":\"image\"", handler.LastRequestBody, StringComparison.OrdinalIgnoreCase);
+
+        using var payload = JsonDocument.Parse(handler.LastRequestBody);
+        var components = payload.RootElement.GetProperty("template").GetProperty("components");
+        var bodyParameters = components[1].GetProperty("parameters");
+
+        Assert.Equal(2, bodyParameters.GetArrayLength());
+        Assert.Equal("أحمد", bodyParameters[0].GetProperty("text").GetString());
+        Assert.Equal("عرض خاص لفريقك", bodyParameters[1].GetProperty("text").GetString());
+        Assert.Equal("https://cdn.example.com/campaign.png", components[0].GetProperty("parameters")[0].GetProperty("image").GetProperty("link").GetString());
     }
 
     [Fact]
