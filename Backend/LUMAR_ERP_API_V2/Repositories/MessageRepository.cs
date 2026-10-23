@@ -8,28 +8,47 @@ namespace LUMAR_ERP_API_V2.Repositories;
 
 public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections) : IMessageRepository
 {
-    private static CustomerMessageDto Message(SqlDataReader r) => new(
-        r.GetInt32(0),
-        r.GetInt32(1),
-        r.NullableInt32("OrderID"),
-        r.GetString(3),
-        r.GetString(4),
-        r.GetString(5),
-        r.GetString(6),
-        r.GetString(7),
-        r.GetString(8),
-        r.GetDateTime(9),
-        r.NullableDateTime("SentAtUtc"),
-        r.NullableDateTime("ReadAtUtc"),
-        r.GetInt32(12),
-        r.NullableDateTime("DeliveredAtUtc"),
-        r.NullableDateTime("ProcessingAtUtc"),
-        r.NullableString("FailureReason"),
-        r.NullableString("ProviderMessageId"),
-        r.NullableString("PhoneNumber"),
-        r.NullableString("ReferenceID"),
-        r.NullableString("ReferenceType"),
-        r.NullableString("IdempotencyKey"));
+    private static CustomerMessageDto Message(SqlDataReader r)
+    {
+        var body = r.NullableString("Body");
+        var title = r.NullableString("Title");
+        var campaignImageUrl = r.NullableString("CampaignImageUrl");
+
+        var context = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Body"] = body,
+            ["MessageText"] = body,
+            ["CampaignBody"] = body,
+            ["CampaignText"] = body,
+            ["Title"] = title,
+            ["CampaignImageUrl"] = campaignImageUrl,
+        };
+
+        return new CustomerMessageDto(
+            r.GetInt32(0),
+            r.GetInt32(1),
+            r.NullableInt32("OrderID"),
+            r.GetString(3),
+            r.GetString(4),
+            r.GetString(5),
+            r.GetString(6),
+            r.GetString(7),
+            r.GetString(8),
+            r.GetDateTime(9),
+            r.NullableDateTime("SentAtUtc"),
+            r.NullableDateTime("ReadAtUtc"),
+            r.GetInt32(12),
+            r.NullableDateTime("DeliveredAtUtc"),
+            r.NullableDateTime("ProcessingAtUtc"),
+            r.NullableString("FailureReason"),
+            r.NullableString("ProviderMessageId"),
+            r.NullableString("PhoneNumber"),
+            r.NullableString("ReferenceID"),
+            r.NullableString("ReferenceType"),
+            r.NullableString("IdempotencyKey"),
+            campaignImageUrl,
+            context);
+    }
 
     private static CustomerNotificationDto Notification(SqlDataReader r) => new(
         r.GetInt32(0),
@@ -68,16 +87,16 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
         r.NullableInt32("MessageID"));
 
     public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(CancellationToken c)
-        => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey
+        => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
                 FROM dbo.CustomerMessages
                 ORDER BY CreatedAtUtc DESC,CustomerMessageID DESC", null, Message, c);
 
     public async Task<CustomerMessageDto?> GetCustomerMessageAsync(int id, CancellationToken c)
-        => (await Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey
+        => (await Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
                 FROM dbo.CustomerMessages WHERE CustomerMessageID=@id", id, Message, c)).FirstOrDefault();
 
     public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(int customerId, CancellationToken c)
-        => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey
+        => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
                 FROM dbo.CustomerMessages WHERE CustomerID=@id ORDER BY CreatedAtUtc DESC,CustomerMessageID DESC", customerId, Message, c);
 
     public Task<IReadOnlyList<CustomerNotificationDto>> GetNotificationsAsync(CancellationToken c)
@@ -245,7 +264,8 @@ WHERE MessageTemplateID = @id;";
                    INSERTED.PhoneNumber,
                    INSERTED.ReferenceID,
                    INSERTED.ReferenceType,
-                   INSERTED.IdempotencyKey
+                   INSERTED.IdempotencyKey,
+                   INSERTED.CampaignImageUrl
             FROM dbo.CustomerMessages AS m
             INNER JOIN candidate AS c
                 ON c.CustomerMessageID = m.CustomerMessageID
@@ -298,7 +318,7 @@ WHERE MessageTemplateID = @id;";
     public async Task<CustomerMessageDto?> GetByProviderMessageIdAsync(string providerMessageId, CancellationToken cancellationToken)
     {
         const string sql = @"
-            SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey
+            SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
             FROM dbo.CustomerMessages WITH (NOLOCK)
             WHERE ProviderMessageId = @providerMessageId;";
 

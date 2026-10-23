@@ -1,4 +1,8 @@
 using System.Collections.Generic;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Customers;
@@ -374,6 +378,90 @@ public sealed class MessageWriteServiceTests
             await using var delete = new SqlCommand("DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID IN (@retryableId, @permanentId);", cleanup);
             delete.Parameters.AddWithValue("@retryableId", retryableId);
             delete.Parameters.AddWithValue("@permanentId", permanentId);
+            await delete.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
+    public async Task MessageRepository_ClaimNextAsync_HydratesManualCampaignContextForWhatsApp()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Manual campaign hydration validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var repo = new MessageRepository(
+            new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+            new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+        var unique = Guid.NewGuid().ToString("N")[..12];
+        var customerId = 1;
+        var channel = $"WhatsApp-{unique}";
+        var campaignText = $"عرض تجريبي {unique}";
+        var imageUrl = $"https://example.com/{unique}.png";
+        var idempotencyKey = $"manual-context-{unique}";
+
+        var created = await repo.CreateCustomerMessageAndNotificationAsync(
+            customerId,
+            null,
+            "ManualCampaign",
+            "lumar_general_campaign",
+            channel,
+            "حملة تجريبية",
+            campaignText,
+            "967775106545",
+            $"campaign-{unique}",
+            "ManualCampaign",
+            idempotencyKey,
+            imageUrl,
+            CancellationToken.None);
+
+        Assert.NotNull(created.MessageId);
+
+        try
+        {
+            var claimed = await repo.ClaimNextAsync(channel, 3, TimeSpan.FromMinutes(30), CancellationToken.None);
+            Assert.NotNull(claimed);
+            Assert.Equal(created.MessageId, claimed!.CustomerMessageId);
+            Assert.Equal(campaignText, claimed.Body);
+            Assert.Equal(imageUrl, claimed.CampaignImageUrl);
+            Assert.NotNull(claimed.Context);
+            Assert.Equal(campaignText, claimed.Context!["CampaignText"] as string);
+            Assert.Equal(imageUrl, claimed.Context["CampaignImageUrl"] as string);
+
+            var handler = new CaptureHandler();
+            var channelClient = new WhatsAppCloudMessageChannel(
+                new FixedHttpClientFactory(new HttpClient(handler)),
+                new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+                {
+                    Enabled = true,
+                    BaseUrl = "https://graph.facebook.com",
+                    ApiVersion = "v20.0",
+                    PhoneNumberId = "123456",
+                    AccessToken = "token-value"
+                }),
+                NullLogger<WhatsAppCloudMessageChannel>.Instance);
+
+            var sendResult = await channelClient.SendAsync(claimed, CancellationToken.None);
+            Assert.Equal(OutboundDispatchOutcome.Sent, sendResult.Outcome);
+
+            using var payload = JsonDocument.Parse(handler.LastRequestBody);
+            var template = payload.RootElement.GetProperty("template");
+            var components = template.GetProperty("components");
+            var bodyText = components[1].GetProperty("parameters")[0].GetProperty("text").GetString();
+            var headerLink = components[0].GetProperty("parameters")[0].GetProperty("image").GetProperty("link").GetString();
+
+            Assert.Equal(campaignText, bodyText);
+            Assert.Equal(imageUrl, headerLink);
+        }
+        finally
+        {
+            await using var cleanup = new SqlConnection(connectionString);
+            await cleanup.OpenAsync();
+            await using var delete = new SqlCommand("DELETE FROM dbo.CustomerNotifications WHERE CustomerMessageID = @messageId; DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID = @messageId;", cleanup);
+            delete.Parameters.AddWithValue("@messageId", created.MessageId ?? 0);
             await delete.ExecuteNonQueryAsync();
         }
     }
@@ -2784,6 +2872,62 @@ public sealed class MessageWriteServiceTests
             var id = Notifications.Count + 1;
             Notifications.Add(new CustomerNotificationDto(id, customerId, orderId, eventType, title, body, "Unread", false, DateTime.UtcNow, null, customerMessageId));
             return Task.FromResult(id);
+        }
+    }
+
+    private sealed class FakeWhatsAppConnectionSettingsStore(WhatsAppOptions options) : IWhatsAppConnectionSettingsStore
+    {
+        public Task<WhatsAppRuntimeSettings> GetRuntimeSettingsAsync(CancellationToken cancellationToken)
+            => Task.FromResult(new WhatsAppRuntimeSettings(
+                Enabled: options.Enabled,
+                BaseUrl: string.IsNullOrWhiteSpace(options.BaseUrl) ? "https://graph.facebook.com" : options.BaseUrl,
+                ApiVersion: string.IsNullOrWhiteSpace(options.ApiVersion) ? "v20.0" : options.ApiVersion,
+                PhoneNumberId: options.PhoneNumberId,
+                AccessToken: options.AccessToken,
+                VerifyToken: options.VerifyToken,
+                AppSecret: options.AppSecret,
+                TimeoutSeconds: options.TimeoutSeconds));
+
+        public Task<WhatsAppConnectionStatusDto> GetStatusAsync(CancellationToken cancellationToken)
+            => Task.FromResult(new WhatsAppConnectionStatusDto(
+                Enabled: options.Enabled,
+                PhoneNumberId: options.PhoneNumberId,
+                TokenConfigured: !string.IsNullOrWhiteSpace(options.AccessToken),
+                ConnectionConfigured: options.Enabled && !string.IsNullOrWhiteSpace(options.PhoneNumberId) && !string.IsNullOrWhiteSpace(options.AccessToken),
+                Message: "test"));
+
+        public Task<WhatsAppConnectionStatusDto> UpdateAsync(WhatsAppConnectionSettingsUpdateDto request, CancellationToken cancellationToken)
+        {
+            options.Enabled = request.Enabled;
+            if (!string.IsNullOrWhiteSpace(request.PhoneNumberId)) options.PhoneNumberId = request.PhoneNumberId;
+            if (!string.IsNullOrWhiteSpace(request.AccessToken)) options.AccessToken = request.AccessToken;
+            if (!string.IsNullOrWhiteSpace(request.VerifyToken)) options.VerifyToken = request.VerifyToken;
+            if (!string.IsNullOrWhiteSpace(request.AppSecret)) options.AppSecret = request.AppSecret;
+            if (!string.IsNullOrWhiteSpace(request.BaseUrl)) options.BaseUrl = request.BaseUrl;
+            if (!string.IsNullOrWhiteSpace(request.ApiVersion)) options.ApiVersion = request.ApiVersion;
+            if (request.TimeoutSeconds > 0) options.TimeoutSeconds = request.TimeoutSeconds;
+            return GetStatusAsync(cancellationToken);
+        }
+
+        public Task<bool> TestConnectionAsync(CancellationToken cancellationToken) => Task.FromResult(true);
+    }
+
+    private sealed class FixedHttpClientFactory(HttpClient httpClient) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => httpClient;
+    }
+
+    private sealed class CaptureHandler : HttpMessageHandler
+    {
+        public string LastRequestBody { get; private set; } = string.Empty;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequestBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"messages\":[{\"id\":\"wamid.template\"}]}", Encoding.UTF8, "application/json")
+            };
         }
     }
 }
