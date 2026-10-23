@@ -13,6 +13,8 @@ using LUMAR_ERP_API_V2.DTOs.Orders;
 using LUMAR_ERP_API_V2.DTOs.Production;
 using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace LUMAR_ERP_API_V2.Tests;
@@ -43,21 +45,67 @@ public sealed class MessageWriteServiceTests
 
         try
         {
-            var service = new CampaignMediaStorageService(tempRoot, new NullLogger<CampaignMediaStorageService>());
+            var service = new CampaignMediaStorageService(tempRoot, new NullLogger<CampaignMediaStorageService>(), "https://public-backend.example.com");
             await using var stream = new MemoryStream(CreatePngBytes());
             var formFile = new FormFile(stream, 0, stream.Length, "file", "campaign.png");
+            formFile.Headers = new HeaderDictionary
+            {
+                ["Content-Type"] = "image/png"
+            };
 
             var saved = await service.SaveAsync(formFile, CancellationToken.None);
 
             Assert.NotNull(saved);
-            Assert.EndsWith("campaign.png", saved.FileName, StringComparison.OrdinalIgnoreCase);
+            Assert.EndsWith(".png", saved.FileName, StringComparison.OrdinalIgnoreCase);
             Assert.True(File.Exists(Path.Combine(tempRoot, saved.FileName)));
             Assert.StartsWith("/campaign-media/", saved.RelativeUrl, StringComparison.OrdinalIgnoreCase);
+            Assert.StartsWith("https://public-backend.example.com/campaign-media/", saved.CampaignImageUrl, StringComparison.OrdinalIgnoreCase);
 
             await using var invalidStream = new MemoryStream(new byte[] { 1, 2, 3, 4 });
             var invalidFile = new FormFile(invalidStream, 0, invalidStream.Length, "file", "evil.exe");
+            invalidFile.Headers = new HeaderDictionary
+            {
+                ["Content-Type"] = "application/octet-stream"
+            };
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => service.SaveAsync(invalidFile, CancellationToken.None));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CampaignImageUploadService_RejectsMissingOrUnsafePublicBaseUrl()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "lumar-campaign-image-missing-base-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var serviceWithoutBase = new CampaignMediaStorageService(tempRoot, new NullLogger<CampaignMediaStorageService>(), null);
+            await using var validStream = new MemoryStream(CreatePngBytes());
+            var file = new FormFile(validStream, 0, validStream.Length, "file", "campaign.png");
+            file.Headers = new HeaderDictionary
+            {
+                ["Content-Type"] = "image/png"
+            };
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => serviceWithoutBase.SaveAsync(file, CancellationToken.None));
+            Assert.Contains("PublicBaseUrl", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+            var httpService = new CampaignMediaStorageService(tempRoot, new NullLogger<CampaignMediaStorageService>(), "http://public-backend.example.com");
+            await using var stream = new MemoryStream(CreatePngBytes());
+            var httpFile = new FormFile(stream, 0, stream.Length, "file", "campaign-2.png");
+            httpFile.Headers = new HeaderDictionary
+            {
+                ["Content-Type"] = "image/png"
+            };
+
+            var httpEx = await Assert.ThrowsAsync<InvalidOperationException>(() => httpService.SaveAsync(httpFile, CancellationToken.None));
+            Assert.Contains("https", httpEx.Message, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

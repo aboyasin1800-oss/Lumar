@@ -17,6 +17,7 @@ builder.Services.AddSwaggerGen(options => options.CustomSchemaIds(type => type.F
 builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection(DatabaseOptions.SectionName));
 builder.Services.Configure<Es7OperationalTestModeOptions>(builder.Configuration.GetSection(Es7OperationalTestModeOptions.SectionName));
 builder.Services.Configure<WhatsAppOptions>(builder.Configuration.GetSection(WhatsAppOptions.SectionName));
+builder.Services.Configure<CampaignMediaOptions>(builder.Configuration.GetSection(CampaignMediaOptions.SectionName));
 builder.Services.Configure<FirebasePushOptions>(options =>
 {
     var config = builder.Configuration.GetSection(FirebasePushOptions.SectionName);
@@ -49,7 +50,11 @@ builder.Services.AddSingleton<Es7OperationalTestMode>();
 builder.Services.AddSingleton<ReadOnlySqlConnectionFactory>();
 builder.Services.AddSingleton<OperationalSqlConnectionFactory>();
 builder.Services.AddSingleton<CampaignMediaStorageService>(_ => new CampaignMediaStorageService(
-    Path.Combine(Environment.CurrentDirectory, "wwwroot", "campaign-media"), null));
+    Path.Combine(Environment.CurrentDirectory, "wwwroot", "campaign-media"),
+    null,
+    builder.Configuration["CampaignMedia:PublicBaseUrl"] ??
+    Environment.GetEnvironmentVariable("LUMAR_CAMPAIGN_MEDIA_PUBLIC_BASE_URL") ??
+    Environment.GetEnvironmentVariable("LUMAR_PUBLIC_BACKEND_BASE_URL")));
 builder.Services.AddScoped<IProductionProductTypeIdentityResolver, ProductionProductTypeIdentityResolver>();
 builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 builder.Services.AddScoped<IReferralRepository, ReferralRepository>();

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Http;
 
@@ -6,6 +7,7 @@ namespace LUMAR_ERP_API_V2.Services;
 public sealed record CampaignMediaUploadResult(
     string FileName,
     string RelativeUrl,
+    string CampaignImageUrl,
     string ContentType,
     long Length,
     string StoragePath,
@@ -24,13 +26,18 @@ public sealed class CampaignMediaStorageService
 
     private readonly string _rootPath;
     private readonly ILogger<CampaignMediaStorageService>? _logger;
+    private readonly string _publicBaseUrl;
 
-    public CampaignMediaStorageService(string? rootPath = null, ILogger<CampaignMediaStorageService>? logger = null)
+    public CampaignMediaStorageService(string? rootPath = null, ILogger<CampaignMediaStorageService>? logger = null, string? publicBaseUrl = null)
     {
         _rootPath = string.IsNullOrWhiteSpace(rootPath)
             ? Path.Combine(Environment.CurrentDirectory, "wwwroot", "campaign-media")
             : rootPath;
         _logger = logger;
+        _publicBaseUrl = publicBaseUrl ??
+            Environment.GetEnvironmentVariable("LUMAR_CAMPAIGN_MEDIA_PUBLIC_BASE_URL") ??
+            Environment.GetEnvironmentVariable("LUMAR_PUBLIC_BACKEND_BASE_URL") ??
+            string.Empty;
 
         Directory.CreateDirectory(_rootPath);
     }
@@ -50,7 +57,8 @@ public sealed class CampaignMediaStorageService
         if (originalName.Contains("..", StringComparison.Ordinal) || originalName.Contains('/'))
             throw new InvalidOperationException("Campaign image file name is unsafe.");
 
-        var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType.Trim();
+        var contentTypeValue = file.ContentType ?? (file.Headers is not null && file.Headers.ContainsKey("Content-Type") ? file.Headers["Content-Type"].ToString() : null);
+        var contentType = string.IsNullOrWhiteSpace(contentTypeValue) ? "application/octet-stream" : contentTypeValue.Trim();
         if (!AllowedContentTypes.Contains(contentType))
             throw new InvalidOperationException("Campaign image file type is not allowed.");
 
@@ -80,13 +88,72 @@ public sealed class CampaignMediaStorageService
         }
 
         var relativeUrl = "/campaign-media/" + uniqueName;
+        var absoluteUrl = BuildPublicCampaignImageUrl(uniqueName);
+
         return new CampaignMediaUploadResult(
             uniqueName,
             relativeUrl,
+            absoluteUrl,
             contentType,
             bytes.LongLength,
             targetPath,
             originalName);
+    }
+
+    private string BuildPublicCampaignImageUrl(string uniqueFileName)
+    {
+        var baseUrl = string.IsNullOrWhiteSpace(_publicBaseUrl)
+            ? Environment.GetEnvironmentVariable("LUMAR_CAMPAIGN_MEDIA_PUBLIC_BASE_URL") ??
+              Environment.GetEnvironmentVariable("LUMAR_PUBLIC_BACKEND_BASE_URL") ??
+              string.Empty
+            : _publicBaseUrl;
+
+        if (!TryCreatePublicBaseUri(baseUrl, out var publicBaseUri))
+            throw new InvalidOperationException("Campaign image public base URL is not configured or is invalid. Set CampaignMedia:PublicBaseUrl to an HTTPS public backend URL.");
+
+        var path = publicBaseUri.AbsolutePath.TrimEnd('/') + "/campaign-media/" + uniqueFileName;
+        return new Uri(publicBaseUri, path).ToString();
+    }
+
+    private static bool TryCreatePublicBaseUri(string? rawBaseUrl, out Uri publicBaseUri)
+    {
+        publicBaseUri = null!;
+        if (string.IsNullOrWhiteSpace(rawBaseUrl))
+            return false;
+
+        var trimmed = rawBaseUrl.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var baseUri) || !string.Equals(baseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (baseUri.IsLoopback || string.Equals(baseUri.Host, "localhost", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (baseUri.Host.StartsWith("127.", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (IPAddress.TryParse(baseUri.Host, out var ipAddress) && (ipAddress.Equals(IPAddress.Loopback) || IsPrivateAddress(ipAddress)))
+            return false;
+
+        publicBaseUri = baseUri;
+        return true;
+    }
+
+    private static bool IsPrivateAddress(IPAddress ipAddress)
+    {
+        var bytes = ipAddress.GetAddressBytes();
+        if (bytes.Length == 4)
+        {
+            return bytes[0] switch
+            {
+                10 => true,
+                172 when bytes[1] is >= 16 and <= 31 => true,
+                192 when bytes[1] == 168 => true,
+                127 => true,
+                _ => false
+            };
+        }
+
+        return ipAddress.IsIPv6LinkLocal || ipAddress.IsIPv6SiteLocal || IPAddress.IsLoopback(ipAddress);
     }
 
     private static bool IsSupportedExtension(string extension) => extension switch
