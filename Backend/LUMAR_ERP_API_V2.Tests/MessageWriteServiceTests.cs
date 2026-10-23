@@ -472,6 +472,42 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task ManualCampaign_WithoutRawCampaignText_ThrowsSafeFailure()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Manual campaign raw-text validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var repo = new MessageRepository(
+            new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+            new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+        var selectedCustomer = await LoadDynamicCustomerAsync(connectionString) ?? throw new InvalidOperationException("No valid customer record available for validation.");
+        var invalidBody = "الاختبار المئة ولم ينجح";
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => repo.CreateCustomerMessageAndNotificationAsync(
+            selectedCustomer.CustomerId,
+            null,
+            "ManualCampaign",
+            "lumar_general_campaign",
+            $"WhatsApp-{Guid.NewGuid():N}",
+            "حملة تجريبية",
+            invalidBody,
+            "967775106545",
+            $"campaign-{Guid.NewGuid():N}",
+            "ManualCampaign",
+            $"manual-missing-raw-{Guid.NewGuid():N}",
+            "https://example.com/campaign.png",
+            rawCampaignText: null,
+            c: CancellationToken.None));
+
+        Assert.Contains("RawCampaignText", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task MessageRepository_ClaimNextAsync_HydratesManualCampaignContextForWhatsApp()
     {
         var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")

@@ -65,9 +65,13 @@ public sealed class MessageWriteService(
             if (runtimeSettings.WhatsAppEnabled && !string.IsNullOrWhiteSpace(normalizedPhone))
             {
                 var rawCampaignText = GetContextStringValue(request.Context, "RawCampaignText")
-                    ?? GetContextStringValue(request.Context, "CampaignText")
-                    ?? GetContextStringValue(request.Context, "MessageText")
-                    ?? body;
+                    ?? GetContextStringValue(request.Context, "CampaignText");
+
+                if (string.Equals(request.EventType, "ManualCampaign", StringComparison.OrdinalIgnoreCase)
+                    && string.IsNullOrWhiteSpace(rawCampaignText))
+                {
+                    continue;
+                }
 
                 var createdPair = await repository.CreateCustomerMessageAndNotificationAsync(
                     route.CustomerId,

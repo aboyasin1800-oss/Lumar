@@ -4,19 +4,7 @@ namespace LUMAR_ERP_API_V2.Data;
 
 public static class SqlDataReaderExtensions
 {
-    public static string? NullableString(this SqlDataReader reader, string name)
-    {
-        try
-        {
-            var value = reader[name];
-            return value is DBNull ? null : value as string;
-        }
-        catch (IndexOutOfRangeException)
-        {
-            return null;
-        }
-    }
-
+    public static string? NullableString(this SqlDataReader reader, string name) => reader[name] is DBNull ? null : (string)reader[name];
     public static int? NullableInt32(this SqlDataReader reader, string name) => reader[name] is DBNull ? null : (int)reader[name];
     public static long? NullableInt64(this SqlDataReader reader, string name) => reader[name] is DBNull ? null : (long)reader[name];
     public static decimal? NullableDecimal(this SqlDataReader reader, string name) => reader[name] is DBNull ? null : (decimal)reader[name];

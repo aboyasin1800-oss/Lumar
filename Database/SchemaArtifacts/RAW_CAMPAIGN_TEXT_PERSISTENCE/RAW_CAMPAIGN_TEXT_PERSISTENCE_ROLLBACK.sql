@@ -1,0 +1,13 @@
+SET NOCOUNT ON;
+
+IF DB_NAME() <> N'LUMAR_ERP_ES_VALIDATION'
+BEGIN
+    THROW 50001, 'Rollback artifact must run only on LUMAR_ERP_ES_VALIDATION.', 1;
+END
+
+IF COL_LENGTH(N'dbo.CustomerMessages', N'RawCampaignText') IS NOT NULL
+BEGIN
+    ALTER TABLE dbo.CustomerMessages DROP COLUMN RawCampaignText;
+END
+
+PRINT 'RAW_CAMPAIGN_TEXT_PERSISTENCE_ROLLBACK: OK';

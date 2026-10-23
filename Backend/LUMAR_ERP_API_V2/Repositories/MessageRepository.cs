@@ -13,16 +13,18 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
         var body = r.NullableString("Body");
         var title = r.NullableString("Title");
         var campaignImageUrl = r.NullableString("CampaignImageUrl");
+        var eventType = r.NullableString("EventType");
         var rawCampaignText = r.NullableString("RawCampaignText");
-        var legacyCampaignText = r.NullableString("CampaignText");
-        var normalizedRawCampaignText = !string.IsNullOrWhiteSpace(rawCampaignText) ? rawCampaignText : legacyCampaignText;
+        var legacyCampaignText = HasColumn(r, "CampaignText") ? r.NullableString("CampaignText") : null;
+        var isManualCampaign = string.Equals(eventType, "ManualCampaign", StringComparison.OrdinalIgnoreCase);
+        var normalizedRawCampaignText = !string.IsNullOrWhiteSpace(rawCampaignText) ? rawCampaignText : (isManualCampaign ? null : legacyCampaignText);
 
         var context = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
             ["Body"] = body,
             ["MessageText"] = body,
             ["CampaignBody"] = body,
-            ["CampaignText"] = normalizedRawCampaignText ?? body,
+            ["CampaignText"] = normalizedRawCampaignText,
             ["RawCampaignText"] = normalizedRawCampaignText,
             ["Title"] = title,
             ["CampaignImageUrl"] = campaignImageUrl,
@@ -53,6 +55,17 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
             campaignImageUrl,
             context,
             rawCampaignText);
+    }
+
+    private static bool HasColumn(SqlDataReader reader, string columnName)
+    {
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            if (string.Equals(reader.GetName(i), columnName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static CustomerNotificationDto Notification(SqlDataReader r) => new(
@@ -432,13 +445,13 @@ WHERE MessageTemplateID = @id;";
     }
 
     public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, string? rawCampaignText = null, CancellationToken c = default)
-        => CreateCustomerMessageAndNotificationAsyncInternal(customerId, orderId, eventType, templateKey, channel, title, body, phoneNumber, referenceId, referenceType, idempotencyKey, campaignImageUrl, string.IsNullOrWhiteSpace(rawCampaignText) ? GetRawCampaignText(eventType, body) : rawCampaignText, c);
+        => CreateCustomerMessageAndNotificationAsyncInternal(customerId, orderId, eventType, templateKey, channel, title, body, phoneNumber, referenceId, referenceType, idempotencyKey, campaignImageUrl, string.IsNullOrWhiteSpace(rawCampaignText) ? null : rawCampaignText, c);
 
     private async Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsyncInternal(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, string? rawCampaignText, CancellationToken c)
     {
-        if (string.IsNullOrWhiteSpace(rawCampaignText) && string.Equals(eventType, "ManualCampaign", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(eventType, "ManualCampaign", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(rawCampaignText))
         {
-            rawCampaignText = body;
+            throw new InvalidOperationException("ManualCampaign requires a non-empty RawCampaignText value. Body fallback is forbidden.");
         }
 
         const string insertMessageSql = "INSERT INTO dbo.CustomerMessages (CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,RawCampaignText,DeliveryStatus,CreatedAtUtc,AttemptCount,IdempotencyKey,PhoneNumber,ReferenceID,ReferenceType,IsRetryable,CampaignImageUrl) OUTPUT INSERTED.CustomerMessageID VALUES (@customerId,@orderId,@eventType,@templateKey,@channel,@title,@body,@rawCampaignText,N'Pending',GETUTCDATE(),0,@idempotencyKey,@phoneNumber,@referenceId,@referenceType,1,@campaignImageUrl)";
@@ -508,9 +521,6 @@ WHERE MessageTemplateID = @id;";
     }
 
     private static bool IsDuplicateKeyException(SqlException ex) => ex.Number is 2601 or 2627;
-
-    private static string? GetRawCampaignText(string eventType, string body)
-        => string.Equals(eventType, "ManualCampaign", StringComparison.OrdinalIgnoreCase) ? body : null;
 
     private static string? GetContextStringValue(IReadOnlyDictionary<string, object?>? context, string key)
     {
