@@ -209,7 +209,79 @@ class MessagesRepository {
     return items.map(CustomerMessageRecord.fromJson).toList();
   }
 
+  String? _mimeTypeForFile(File file) {
+    final ext = file.path.split(Platform.pathSeparator).last.toLowerCase();
+    final lower = ext.contains('.') ? ext.substring(ext.lastIndexOf('.') + 1) : '';
+
+    switch (lower) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      default:
+        return null;
+    }
+  }
+
+  String _safeUploadFailureMessage(int statusCode, String body) {
+    final candidate = body.trim();
+    if (candidate.isEmpty) {
+      return 'تعذرت رفع الصورة (HTTP $statusCode).';
+    }
+
+    final normalized = candidate.toLowerCase();
+    if (normalized.contains('publicbaseurl') ||
+        normalized.contains('public base url') ||
+        normalized.contains('base url') ||
+        normalized.contains('رابط الصور العام') ||
+        normalized.contains('public image url')) {
+      return 'رابط الصور العام غير مضبوط.';
+    }
+
+    if (normalized.contains('8 mb') ||
+        normalized.contains('exceeds') ||
+        normalized.contains('too large') ||
+        normalized.contains('حجم الصورة') ||
+        normalized.contains('max size')) {
+      return 'حجم الصورة يتجاوز 8 MB.';
+    }
+
+    if (normalized.contains('invalid image') ||
+        normalized.contains('image is invalid') ||
+        normalized.contains('not a valid image') ||
+        normalized.contains('corrupted') ||
+        normalized.contains('content is not valid') ||
+        normalized.contains('محتوى الصورة') ||
+        normalized.contains('non-image') ||
+        normalized.contains('not supported')) {
+      return 'محتوى الصورة غير صالح.';
+    }
+
+    if (normalized.contains('mime') ||
+        normalized.contains('content-type') ||
+        normalized.contains('unsupported image') ||
+        normalized.contains('نوع الصورة') ||
+        normalized.contains('image/png') ||
+        normalized.contains('image/jpeg') ||
+        normalized.contains('image/webp') ||
+        normalized.contains('image/gif')) {
+      return 'نوع الصورة غير مدعوم.';
+    }
+
+    return 'تعذرت رفع الصورة. الرجاء التحقق من الصورة وحجمها ونوعها.';
+  }
+
   Future<String> uploadCampaignImage(File file) async {
+    final mimeType = _mimeTypeForFile(file);
+    if (mimeType == null) {
+      throw Exception('نوع الصورة غير مدعوم. استخدم ملف PNG أو JPG أو JPEG أو WEBP أو GIF.');
+    }
+
     final request = http.MultipartRequest(
       'POST',
       Uri.parse('$_apiBaseUrl/messages/campaign-image-upload'),
@@ -217,14 +289,20 @@ class MessagesRepository {
 
     final fileName = file.path.split(Platform.pathSeparator).last;
     request.files.add(
-      await http.MultipartFile.fromPath('file', file.path, filename: fileName),
+      await http.MultipartFile.fromPath(
+        'file',
+        file.path,
+        filename: fileName,
+        contentType: http.MediaType.parse(mimeType),
+      ),
     );
 
     final streamed = await request.send();
     final response = await http.Response.fromStream(streamed);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('تعذرت رفع الصورة (${response.statusCode})');
+      final body = response.body.trim();
+      throw Exception(_safeUploadFailureMessage(response.statusCode, body));
     }
 
     final decoded = jsonDecode(response.body);
