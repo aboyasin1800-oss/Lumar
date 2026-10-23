@@ -492,7 +492,6 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
   bool _isSubmitting = false;
   bool _isSearchingCustomers = false;
   bool _isUploadingImage = false;
-  bool _hasPickedImage = false;
   List<_CustomerSearchResult> _customerResults = const [];
   _CustomerSearchResult? _selectedCustomer;
   File? _selectedImageFile;
@@ -587,7 +586,6 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
 
       setState(() {
         _selectedImageFile = file;
-        _hasPickedImage = true;
         _isUploadingImage = true;
       });
 
@@ -602,7 +600,6 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
       if (!mounted) return;
       setState(() {
         _selectedImageFile = null;
-        _hasPickedImage = false;
         _isUploadingImage = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -931,7 +928,6 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
                       setState(() {
                         _campaignImageUrlController.clear();
                         _selectedImageFile = null;
-                        _hasPickedImage = false;
                       });
                     },
                     icon: const Icon(Icons.delete_outline_rounded),
@@ -984,7 +980,6 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
                             setState(() {
                               _campaignImageUrlController.clear();
                               _selectedImageFile = null;
-                              _hasPickedImage = false;
                             });
                           },
                           icon: const Icon(Icons.close_rounded),
