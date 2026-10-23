@@ -378,7 +378,7 @@ public sealed class WhatsAppCloudMessageChannel(
                 ["lumar_order_created_with_referrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false, "customer_name", "order_number", "referrer_name"),
                 ["lumar_order_created_with_referrer_relation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false, "customer_name", "order_number", "relationship"),
                 ["lumar_friday_greeting"] = CreateDefinition("lumar_friday_greeting", "ar", false, "customer_name", "relation_welcome"),
-                ["lumar_general_campaign"] = CreateDefinition("lumar_general_campaign", "ar", true, "campaign_text"),
+                ["lumar_general_campaign"] = CreateDefinition("lumar_general_campaign", "ar", true, "customer_name", "campaign_text"),
 
                 ["ordercreated"] = CreateDefinition("lumar_order_created", "ar", false, "customer_name", "order_number", "total_amount"),
                 ["order_created"] = CreateDefinition("lumar_order_created", "ar", false, "customer_name", "order_number", "total_amount"),
@@ -402,8 +402,8 @@ public sealed class WhatsAppCloudMessageChannel(
                 ["withreferrerrelation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false, "customer_name", "order_number", "relationship"),
                 ["fridaygreeting"] = CreateDefinition("lumar_friday_greeting", "ar", false, "customer_name", "relation_welcome"),
                 ["friday_greeting"] = CreateDefinition("lumar_friday_greeting", "ar", false, "customer_name", "relation_welcome"),
-                ["generalcampaign"] = CreateDefinition("lumar_general_campaign", "ar", true, "campaign_text"),
-                ["general_campaign"] = CreateDefinition("lumar_general_campaign", "ar", true, "campaign_text"),
+                ["generalcampaign"] = CreateDefinition("lumar_general_campaign", "ar", true, "customer_name", "campaign_text"),
+                ["general_campaign"] = CreateDefinition("lumar_general_campaign", "ar", true, "customer_name", "campaign_text"),
             };
 
         public static MetaTemplateDefinition? Resolve(string? templateKey, string? eventType = null)

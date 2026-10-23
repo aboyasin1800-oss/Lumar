@@ -96,7 +96,7 @@ public sealed class WhatsAppCloudIntegrationTests
             ("lumar_order_created_with_referrer", new[] { "customer_name", "order_number", "referrer_name" }),
             ("lumar_order_created_with_referrer_relation", new[] { "customer_name", "order_number", "relationship" }),
             ("lumar_friday_greeting", new[] { "customer_name", "relation_welcome" }),
-            ("lumar_general_campaign", new[] { "campaign_text" })
+            ("lumar_general_campaign", new[] { "customer_name", "campaign_text" })
         };
 
         foreach (var (templateKey, parameterNames) in expected)
@@ -137,7 +137,7 @@ public sealed class WhatsAppCloudIntegrationTests
             (TemplateKey: "lumar_order_created_with_referrer", MetadataName: "lumar_order_created_with_referrer", Language: "ar", Parameters: new[] { "customer_name", "order_number", "referrer_name" }),
             (TemplateKey: "lumar_order_created_with_referrer_relation", MetadataName: "lumar_order_created_with_referrer_relation", Language: "ar", Parameters: new[] { "customer_name", "order_number", "relationship" }),
             (TemplateKey: "lumar_friday_greeting", MetadataName: "lumar_friday_greeting", Language: "ar", Parameters: new[] { "customer_name", "relation_welcome" }),
-            (TemplateKey: "lumar_general_campaign", MetadataName: "lumar_general_campaign", Language: "ar", Parameters: new[] { "campaign_text" })
+            (TemplateKey: "lumar_general_campaign", MetadataName: "lumar_general_campaign", Language: "ar", Parameters: new[] { "customer_name", "campaign_text" })
         };
 
         foreach (var expectation in expectations)
@@ -178,7 +178,7 @@ public sealed class WhatsAppCloudIntegrationTests
             (TemplateKey: "lumar_order_created_with_referrer", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["OrderNumber"] = "ORD-1006", ["ReferrerName"] = "سالم" }, ExpectedValues: new[] { "أحمد", "ORD-1006", "سالم" }, NeedsHeader: false),
             (TemplateKey: "lumar_order_created_with_referrer_relation", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["OrderNumber"] = "ORD-1007", ["Relationship"] = "أخ" }, ExpectedValues: new[] { "أحمد", "ORD-1007", "أخ" }, NeedsHeader: false),
             (TemplateKey: "lumar_friday_greeting", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["RelationWelcome"] = "أهلًا بك" }, ExpectedValues: new[] { "أحمد", "أهلًا بك" }, NeedsHeader: false),
-            (TemplateKey: "lumar_general_campaign", Context: new Dictionary<string, object?> { ["CampaignText"] = "عرض خاص لفريقك" }, ExpectedValues: new[] { "عرض خاص لفريقك" }, NeedsHeader: true)
+            (TemplateKey: "lumar_general_campaign", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["CampaignText"] = "عرض خاص لفريقك" }, ExpectedValues: new[] { "أحمد", "عرض خاص لفريقك" }, NeedsHeader: true)
         };
 
         foreach (var templateCase in templateCases)
