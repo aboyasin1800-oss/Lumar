@@ -13,15 +13,17 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
         var body = r.NullableString("Body");
         var title = r.NullableString("Title");
         var campaignImageUrl = r.NullableString("CampaignImageUrl");
-        var rawCampaignText = r.NullableString("RawCampaignText") ?? r.NullableString("CampaignText");
+        var rawCampaignText = r.NullableString("RawCampaignText");
+        var legacyCampaignText = r.NullableString("CampaignText");
+        var normalizedRawCampaignText = !string.IsNullOrWhiteSpace(rawCampaignText) ? rawCampaignText : legacyCampaignText;
 
         var context = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
             ["Body"] = body,
             ["MessageText"] = body,
             ["CampaignBody"] = body,
-            ["CampaignText"] = rawCampaignText ?? body,
-            ["RawCampaignText"] = rawCampaignText,
+            ["CampaignText"] = normalizedRawCampaignText ?? body,
+            ["RawCampaignText"] = normalizedRawCampaignText,
             ["Title"] = title,
             ["CampaignImageUrl"] = campaignImageUrl,
         };
