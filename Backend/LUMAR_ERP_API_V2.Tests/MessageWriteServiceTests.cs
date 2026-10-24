@@ -3,12 +3,16 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.Configuration;
+using LUMAR_ERP_API_V2.Controllers;
 using LUMAR_ERP_API_V2.Data;
+using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Customers;
 using LUMAR_ERP_API_V2.DTOs.Loyalty;
 using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.Settings;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -39,6 +43,41 @@ public sealed class MessageWriteServiceTests
         });
 
         Assert.Equal("مرحباً سالم، تم إنشاء الطلب رقم 42 بقيمة 149.99 ريال.", rendered);
+    }
+
+    [Fact]
+    public async Task CustomerMobileSession_CannotReadGlobalNotificationsList_OrOtherCustomerNotifications()
+    {
+        var currentUser = new CurrentUserDto(
+            UserId: 911,
+            Username: "customer-911",
+            FullName: "Customer 911",
+            Role: "Customer",
+            IsActive: true,
+            LastLoginUtc: DateTime.UtcNow,
+            AccountType: "Customer",
+            CustomerId: 1001,
+            EmployeeId: null,
+            SupplierId: null)
+        {
+            ManagedCustomerIds = new[] { 2002 }
+        };
+
+        var controller = new MessagesController(
+            new FakeMessageService(),
+            new FakeCustomerService(),
+            new FakeManualCampaignService(),
+            new TestUserContext(currentUser),
+            new CampaignMediaStorageService(Path.GetTempPath(), NullLogger<CampaignMediaStorageService>.Instance, "https://example.com"));
+
+        var globalResult = await controller.GetNotifications(CancellationToken.None);
+        Assert.True(globalResult.Result is ForbidResult, "Global notifications endpoint must be forbidden for customer mobile sessions.");
+
+        var customerResult = await controller.GetCustomerNotifications(2003, CancellationToken.None);
+        Assert.True(customerResult.Result is ForbidResult, "Customer A must not access Customer B notifications.");
+
+        var messageListResult = await controller.GetCustomerMessages(2003, CancellationToken.None);
+        Assert.True(messageListResult.Result is ForbidResult, "Customer A must not access Customer B messages.");
     }
 
     [Fact]
@@ -175,6 +214,53 @@ public sealed class MessageWriteServiceTests
         command.Parameters.AddWithValue("@totalAmount", totalAmount);
         var value = await command.ExecuteScalarAsync();
         return value is int orderId ? orderId : throw new InvalidOperationException("Failed to insert validation order.");
+    }
+
+    private sealed class FakeMessageService : IMessageService
+    {
+        public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<CustomerMessageDto>>(Array.Empty<CustomerMessageDto>());
+        public Task<CustomerMessageDto?> GetCustomerMessageAsync(int i, CancellationToken c) => Task.FromResult<CustomerMessageDto?>(null);
+        public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(int i, CancellationToken c) => Task.FromResult<IReadOnlyList<CustomerMessageDto>>(Array.Empty<CustomerMessageDto>());
+        public Task<IReadOnlyList<CustomerNotificationDto>> GetNotificationsAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<CustomerNotificationDto>>(Array.Empty<CustomerNotificationDto>());
+        public Task<IReadOnlyList<CustomerNotificationDto>> GetNotificationsAsync(int i, CancellationToken c) => Task.FromResult<IReadOnlyList<CustomerNotificationDto>>(Array.Empty<CustomerNotificationDto>());
+        public Task<IReadOnlyList<MessageTemplateDto>> GetTemplatesAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<MessageTemplateDto>>(Array.Empty<MessageTemplateDto>());
+        public Task<IReadOnlyList<MessageTemplateDto>> GetTemplatesByIdAsync(int i, CancellationToken c) => Task.FromResult<IReadOnlyList<MessageTemplateDto>>(Array.Empty<MessageTemplateDto>());
+        public Task<MessageTemplateDto?> CreateTemplateAsync(CreateMessageTemplateDto request, CancellationToken c) => Task.FromResult<MessageTemplateDto?>(null);
+        public Task<MessageTemplateDto?> UpdateTemplateAsync(int i, UpdateMessageTemplateDto request, CancellationToken c) => Task.FromResult<MessageTemplateDto?>(null);
+        public Task<MessageTemplateDto?> ActivateTemplateAsync(int i, CancellationToken c) => Task.FromResult<MessageTemplateDto?>(null);
+        public Task<MessageTemplateDto?> DeactivateTemplateAsync(int i, CancellationToken c) => Task.FromResult<MessageTemplateDto?>(null);
+        public Task<IReadOnlyList<SentMessageDto>> GetSentAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SentMessageDto>>(Array.Empty<SentMessageDto>());
+        public Task<IReadOnlyList<SentLogDto>> GetSentLogAsync(CancellationToken c) => Task.FromResult<IReadOnlyList<SentLogDto>>(Array.Empty<SentLogDto>());
+    }
+
+    private sealed class FakeCustomerService : ICustomerService
+    {
+        public Task<IReadOnlyList<CustomerListDto>> GetListAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerListDto>>(Array.Empty<CustomerListDto>());
+        public Task<CustomerDetailsDto?> GetByIdAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<CustomerDetailsDto?>(new CustomerDetailsDto(customerId, "C" + customerId, "Test Customer", "7750000000", null, null, null, null, null, true, null, null, null, null));
+        public Task<IReadOnlyList<CustomerMeasurementDto>> GetMeasurementsAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerMeasurementDto>>(Array.Empty<CustomerMeasurementDto>());
+        public Task<IReadOnlyList<CustomerMeasurementDto>?> UpsertMeasurementsAsync(int customerId, UpsertCustomerMeasurementsDto measurements, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerMeasurementDto>?>(Array.Empty<CustomerMeasurementDto>());
+        public Task<IReadOnlyList<CustomerLedgerEntryDto>> GetLedgerAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerLedgerEntryDto>>(Array.Empty<CustomerLedgerEntryDto>());
+        public Task<CustomerLoyaltyDto?> GetLoyaltyAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<CustomerLoyaltyDto?>(null);
+        public Task<CustomerReferralDto?> GetReferralsAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<CustomerReferralDto?>(null);
+        public Task<CustomerDetailsDto> CreateAsync(CreateCustomerDto customer, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<CustomerCreationResultDto> CreateWithReferralAsync(CreateCustomerWithReferralDto customer, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<CustomerDetailsDto?> UpdateAsync(int customerId, UpdateCustomerDto customer, CancellationToken cancellationToken) => Task.FromResult<CustomerDetailsDto?>(null);
+        public Task<IReadOnlyList<CustomerListDto>> SearchAsync(string term, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerListDto>>(Array.Empty<CustomerListDto>());
+        public Task<IReadOnlyList<CustomerReferralCandidateDto>> SearchReferralCandidatesAsync(string term, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerReferralCandidateDto>>(Array.Empty<CustomerReferralCandidateDto>());
+        public Task<IReadOnlyList<LinkedCustomerAccessDto>> GetLinkedCustomersAsync(string username, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<LinkedCustomerAccessDto>>(Array.Empty<LinkedCustomerAccessDto>());
+        public Task<LinkedCustomerAccessDto> CreateManagedCustomerAsync(string username, CreateManagedCustomerDto request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ReferrerLookupResultDto?> ResolveReferrerAsync(ReferrerLookupRequest request, CancellationToken cancellationToken) => Task.FromResult<ReferrerLookupResultDto?>(null);
+        public Task<ReferralHierarchyDto?> GetReferralHierarchyAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<ReferralHierarchyDto?>(null);
+    }
+
+    private sealed class FakeManualCampaignService : IManualCampaignService
+    {
+        public Task<ManualCampaignResult> ProcessAsync(ManualCampaignRequest request, CancellationToken cancellationToken) => Task.FromResult(new ManualCampaignResult(0, 0, 0, Array.Empty<int>()));
+    }
+
+    private sealed class TestUserContext(CurrentUserDto currentUser) : IAuthenticatedUserContext
+    {
+        public Task<CurrentUserDto?> GetCurrentUserAsync(CancellationToken cancellationToken = default) => Task.FromResult<CurrentUserDto?>(currentUser);
     }
 
     [Fact]

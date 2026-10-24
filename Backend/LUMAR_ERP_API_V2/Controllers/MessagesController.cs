@@ -1,4 +1,5 @@
 using LUMAR_ERP_API_V2.Authorization;
+using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -15,31 +16,63 @@ public sealed class MessagesController(
     CampaignMediaStorageService campaignMediaStorage) : ControllerBase
 {
 	[HttpGet("customer-messages")]
-	public async Task<ActionResult<IReadOnlyList<CustomerMessageDto>>> GetCustomerMessages(CancellationToken ct) => Ok(await service.GetCustomerMessagesAsync(ct));
+	public async Task<ActionResult<IReadOnlyList<CustomerMessageDto>>> GetCustomerMessages(CancellationToken ct)
+	{
+		var authError = await EnforceCustomerMobileIsolationAsync(ct);
+		return authError ?? Ok(await service.GetCustomerMessagesAsync(ct));
+	}
 
 	[HttpGet("customer-messages/{id:int}")]
 	public async Task<ActionResult<CustomerMessageDto>> GetCustomerMessage(int id, CancellationToken ct)
 	{
 		if (id <= 0) return BadRequest("Customer message id must be positive.");
+
+		var authError = await EnforceCustomerOwnershipAsync(null, ct);
+		if (authError is not null)
+			return authError;
+
 		var item = await service.GetCustomerMessageAsync(id, ct);
-		return item is null ? NotFound() : Ok(item);
+		if (item is null)
+			return NotFound();
+
+		var currentUser = await userContext.GetCurrentUserAsync(ct);
+		if (currentUser is not null && string.Equals(currentUser.AccountType, "Customer", StringComparison.OrdinalIgnoreCase))
+		{
+			var authorizedCustomerIds = ResolveAuthorizedCustomerIds(currentUser);
+			if (!authorizedCustomerIds.Contains(item.CustomerId))
+				return Forbid();
+		}
+
+		return Ok(item);
 	}
 
 	[HttpGet("customers/{customerId:int}/messages")]
 	public async Task<ActionResult<IReadOnlyList<CustomerMessageDto>>> GetCustomerMessages(int customerId, CancellationToken ct)
 	{
 		var error = await Customer(customerId, ct);
-		return error ?? Ok(await service.GetCustomerMessagesAsync(customerId, ct));
+		if (error is not null)
+			return error;
+
+		var authError = await EnforceCustomerOwnershipAsync(customerId, ct);
+		return authError ?? Ok(await service.GetCustomerMessagesAsync(customerId, ct));
 	}
 
 	[HttpGet("notifications")]
-	public async Task<ActionResult<IReadOnlyList<CustomerNotificationDto>>> GetNotifications(CancellationToken ct) => Ok(await service.GetNotificationsAsync(ct));
+	public async Task<ActionResult<IReadOnlyList<CustomerNotificationDto>>> GetNotifications(CancellationToken ct)
+	{
+		var authError = await EnforceCustomerMobileIsolationAsync(ct);
+		return authError ?? Ok(await service.GetNotificationsAsync(ct));
+	}
 
 	[HttpGet("customers/{customerId:int}/notifications")]
 	public async Task<ActionResult<IReadOnlyList<CustomerNotificationDto>>> GetCustomerNotifications(int customerId, CancellationToken ct)
 	{
 		var error = await Customer(customerId, ct);
-		return error ?? Ok(await service.GetNotificationsAsync(customerId, ct));
+		if (error is not null)
+			return error;
+
+		var authError = await EnforceCustomerOwnershipAsync(customerId, ct);
+		return authError ?? Ok(await service.GetNotificationsAsync(customerId, ct));
 	}
 
 	[HttpGet("templates")]
@@ -150,5 +183,46 @@ public sealed class MessagesController(
 	{
 		if (id <= 0) return BadRequest("Customer id must be positive.");
 		return await customers.GetByIdAsync(id, ct) is null ? NotFound() : null;
+	}
+
+	private async Task<ActionResult?> EnforceCustomerMobileIsolationAsync(CancellationToken ct)
+	{
+		var currentUser = await userContext.GetCurrentUserAsync(ct);
+		if (currentUser is null)
+			return Unauthorized();
+
+		if (!string.Equals(currentUser.AccountType, "Customer", StringComparison.OrdinalIgnoreCase))
+			return null;
+
+		return Forbid();
+	}
+
+	private async Task<ActionResult?> EnforceCustomerOwnershipAsync(int? customerId, CancellationToken ct)
+	{
+		var currentUser = await userContext.GetCurrentUserAsync(ct);
+		if (currentUser is null)
+			return Unauthorized();
+
+		if (!string.Equals(currentUser.AccountType, "Customer", StringComparison.OrdinalIgnoreCase))
+			return null;
+
+		if (customerId is null || customerId <= 0)
+			return Forbid();
+
+		var authorizedCustomerIds = ResolveAuthorizedCustomerIds(currentUser);
+		return authorizedCustomerIds.Contains(customerId.Value) ? null : Forbid();
+	}
+
+	private static HashSet<int> ResolveAuthorizedCustomerIds(CurrentUserDto currentUser)
+	{
+		var authorized = new HashSet<int>();
+		if (currentUser.CustomerId is > 0)
+			authorized.Add(currentUser.CustomerId.Value);
+		foreach (var managedCustomerId in currentUser.ManagedCustomerIds)
+		{
+			if (managedCustomerId > 0)
+				authorized.Add(managedCustomerId);
+		}
+		return authorized;
 	}
 }
