@@ -116,6 +116,23 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
         return reader.IsDBNull(0) ? null : reader.GetString(0);
     }
 
+    private static async Task<(string? OrderNumber, decimal? TotalAmount)?> LoadOrderLifecycleValuesAsync(SqlConnection connection, SqlTransaction transaction, int? orderId, CancellationToken cancellationToken)
+    {
+        if (orderId is null or <= 0)
+            return null;
+
+        const string sql = "SELECT TOP (1) OrderNumber, TotalAmount FROM dbo.Orders WITH (NOLOCK) WHERE OrderID = @orderId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@orderId", orderId.Value);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            return null;
+
+        var orderNumber = reader.IsDBNull(0) ? null : reader.GetString(0);
+        decimal? totalAmount = reader.IsDBNull(1) ? null : reader.GetDecimal(1);
+        return (orderNumber, totalAmount);
+    }
+
     public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(CancellationToken c)
         => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,RawCampaignText,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
                 FROM dbo.CustomerMessages
@@ -336,15 +353,31 @@ WHERE MessageTemplateID = @id;";
             var claimed = Message(reader);
             reader.Dispose();
 
+            var hydratedContext = new Dictionary<string, object?>(claimed.Context ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+
             var customerName = await LoadCustomerNameAsync(connection, transaction, claimed.CustomerId, cancellationToken);
             if (!string.IsNullOrWhiteSpace(customerName))
             {
-                var hydratedContext = new Dictionary<string, object?>(claimed.Context ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase)
-                {
-                    ["CustomerName"] = customerName,
-                };
-                claimed = claimed with { Context = hydratedContext };
+                hydratedContext["CustomerName"] = customerName;
             }
+
+            if (claimed.OrderId is not null && claimed.OrderId > 0)
+            {
+                var orderValues = await LoadOrderLifecycleValuesAsync(connection, transaction, claimed.OrderId, cancellationToken);
+                if (orderValues is not null)
+                {
+                    if (!string.IsNullOrWhiteSpace(orderValues.Value.OrderNumber))
+                        hydratedContext["OrderNumber"] = orderValues.Value.OrderNumber;
+
+                    if (orderValues.Value.TotalAmount is not null)
+                        hydratedContext["TotalAmount"] = orderValues.Value.TotalAmount.Value;
+
+                    if (orderValues.Value.TotalAmount is not null)
+                        hydratedContext["Amount"] = orderValues.Value.TotalAmount.Value;
+                }
+            }
+
+            claimed = claimed with { Context = hydratedContext };
 
             await transaction.CommitAsync(cancellationToken);
             return claimed;

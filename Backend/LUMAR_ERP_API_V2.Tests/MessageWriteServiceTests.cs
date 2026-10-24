@@ -163,6 +163,109 @@ public sealed class MessageWriteServiceTests
         return value is string name ? name : null;
     }
 
+    private static async Task<int> InsertValidationOrderAsync(string connectionString, int customerId, string orderNumber, decimal totalAmount)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(
+            "INSERT INTO dbo.Orders (OrderNumber, CustomerID, OrderDate, DeliveryDate, TotalAmount, DiscountAmount, PaidAmount, RemainingAmount, UrgencyStatus, OrderStatus, CreatedDate, SaleCategory, RevenueRecognized, RevenueRecognizedAt, RevenueReversalCreated) OUTPUT INSERTED.OrderID VALUES (@orderNumber, @customerId, SYSUTCDATETIME(), NULL, @totalAmount, 0, 0, @totalAmount, N'Normal', N'New', SYSUTCDATETIME(), N'TailoringOrder', 0, NULL, 0);",
+            connection);
+        command.Parameters.AddWithValue("@orderNumber", orderNumber);
+        command.Parameters.AddWithValue("@customerId", customerId);
+        command.Parameters.AddWithValue("@totalAmount", totalAmount);
+        var value = await command.ExecuteScalarAsync();
+        return value is int orderId ? orderId : throw new InvalidOperationException("Failed to insert validation order.");
+    }
+
+    [Fact]
+    public async Task MessageRepository_ClaimNextAsync_HydratesOrderNumberAndTotalAmountFromOfficialOrderRecord()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Order hydration validation must target LUMAR_ERP_ES_VALIDATION.");
+
+        var repo = new MessageRepository(
+            new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+            new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+        var selectedCustomer = await LoadDynamicCustomerAsync(connectionString) ?? throw new InvalidOperationException("No valid customer record available for validation.");
+        var orderNumber = $"ORD-CLAIM-{Guid.NewGuid():N}";
+        var totalAmount = 2489.50m;
+        var orderId = await InsertValidationOrderAsync(connectionString, selectedCustomer.CustomerId, orderNumber, totalAmount);
+        var channel = $"ClaimHydration-{Guid.NewGuid():N}";
+        var eventType = "OrderCreated";
+        var idempotencyKey = $"claim-hydration-{Guid.NewGuid():N}";
+
+        var messageId = await repo.CreateCustomerMessageAsync(
+            selectedCustomer.CustomerId,
+            orderId,
+            eventType,
+            "lumar_order_created",
+            channel,
+            "Order created",
+            "body fallback should not be used",
+            "967775106545",
+            $"ref-{Guid.NewGuid():N}",
+            "Order",
+            idempotencyKey,
+            CancellationToken.None);
+
+        Assert.NotNull(messageId);
+
+        try
+        {
+            var claimed = await repo.ClaimNextAsync(channel, 3, TimeSpan.FromMinutes(30), CancellationToken.None);
+            Assert.NotNull(claimed);
+            Assert.Equal(orderNumber, claimed!.Context!["OrderNumber"] as string);
+            Assert.Equal(totalAmount, Convert.ToDecimal(claimed.Context["TotalAmount"]));
+            Assert.Equal(selectedCustomer.CustomerName, claimed.Context["CustomerName"] as string);
+
+            var handler = new CaptureHandler();
+            var channelClient = new WhatsAppCloudMessageChannel(
+                new FixedHttpClientFactory(new HttpClient(handler)),
+                new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+                {
+                    Enabled = true,
+                    BaseUrl = "https://graph.facebook.com",
+                    ApiVersion = "v20.0",
+                    PhoneNumberId = "123456",
+                    AccessToken = "token-value"
+                }),
+                NullLogger<WhatsAppCloudMessageChannel>.Instance);
+
+            var result = await channelClient.SendAsync(claimed, CancellationToken.None);
+            Assert.Equal(OutboundDispatchOutcome.Sent, result.Outcome);
+
+            using var payload = JsonDocument.Parse(handler.LastRequestBody);
+            var components = payload.RootElement
+                .GetProperty("template")
+                .GetProperty("components");
+
+            var bodyComponent = components.EnumerateArray()
+                .Single(element => element.TryGetProperty("type", out var typeElement) && typeElement.GetString() == "body");
+            var bodyParameters = bodyComponent.GetProperty("parameters");
+
+            Assert.Equal("customer_name", bodyParameters[0].GetProperty("parameter_name").GetString());
+            Assert.Equal(selectedCustomer.CustomerName, bodyParameters[0].GetProperty("text").GetString());
+            Assert.Equal("order_number", bodyParameters[1].GetProperty("parameter_name").GetString());
+            Assert.Equal(orderNumber, bodyParameters[1].GetProperty("text").GetString());
+            Assert.Equal("total_amount", bodyParameters[2].GetProperty("parameter_name").GetString());
+            Assert.Equal("2489.50", bodyParameters[2].GetProperty("text").GetString());
+        }
+        finally
+        {
+            await using var cleanup = new SqlConnection(connectionString);
+            await cleanup.OpenAsync();
+            await using var delete = new SqlCommand("DELETE FROM dbo.CustomerNotifications WHERE CustomerMessageID = @messageId; DELETE FROM dbo.CustomerMessages WHERE CustomerMessageID = @messageId; DELETE FROM dbo.Orders WHERE OrderID = @orderId;", cleanup);
+            delete.Parameters.AddWithValue("@messageId", messageId ?? 0);
+            delete.Parameters.AddWithValue("@orderId", orderId);
+            await delete.ExecuteNonQueryAsync();
+        }
+    }
+
     [Fact]
     public async Task MessageRepository_GetCustomerMessagesAsync_ProjectsAllRequiredMessageFields()
     {
