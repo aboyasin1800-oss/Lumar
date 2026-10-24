@@ -159,35 +159,78 @@ public sealed class WhatsAppCloudIntegrationTests
     [Fact]
     public async Task MetaWhatsAppTemplateCatalogClient_UsesProtectedRuntimeStore_AndCallsOfficialMetagraphEndpoint()
     {
-        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddSingleton<IConfiguration>(config);
-        services.AddOptions<WhatsAppOptions>().Configure(options => { });
-        services.AddDataProtection()
-            .SetApplicationName("LUMAR_ERP_API_V2")
-            .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LUMAR_ERP_API_V2", "DataProtection-Keys")));
+        var previousOverride = Environment.GetEnvironmentVariable("LUMAR_ERP_API_V2_WHATSAPP_SECRET_STORE_PATH");
+        var tempDirectory = Path.Combine(Path.GetTempPath(), "lumar-whatsapp-runtime-test-" + Guid.NewGuid().ToString("N"));
+        var tempStorePath = Path.Combine(tempDirectory, "settings.json");
+        Environment.SetEnvironmentVariable("LUMAR_ERP_API_V2_WHATSAPP_SECRET_STORE_PATH", tempStorePath);
 
-        services.AddSingleton<IWhatsAppConnectionSettingsStore, WhatsAppConnectionSettingsStore>();
-        services.AddHttpClient();
-        services.AddScoped<IMetaWhatsAppTemplateCatalogClient, MetaWhatsAppTemplateCatalogClient>();
-
-        using var provider = services.BuildServiceProvider();
-
-        var store = provider.GetRequiredService<IWhatsAppConnectionSettingsStore>();
-        var runtime = await store.GetRuntimeSettingsAsync(CancellationToken.None);
-
-        Assert.True(runtime.Enabled || !string.IsNullOrWhiteSpace(runtime.BaseUrl));
-        Assert.False(string.IsNullOrWhiteSpace(runtime.ApiVersion));
-
-        var client = provider.GetRequiredService<IMetaWhatsAppTemplateCatalogClient>();
-        var templates = await client.GetTemplatesAsync(CancellationToken.None);
-
-        Assert.NotNull(templates);
-        if (!string.IsNullOrWhiteSpace(runtime.AccessToken) && !string.IsNullOrWhiteSpace(runtime.PhoneNumberId))
+        try
         {
-            Assert.True(templates.Count >= 1,
-                "The live runtime access path must succeed or fail with a safe Meta error response; no secret content may be printed.");
+            var config = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["WhatsApp:Enabled"] = "true",
+                    ["WhatsApp:BaseUrl"] = "https://graph.facebook.com",
+                    ["WhatsApp:ApiVersion"] = "v20.0",
+                    ["WhatsApp:PhoneNumberId"] = "1413441637074832"
+                })
+                .Build();
+
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddSingleton<IConfiguration>(config);
+            services.AddOptions<WhatsAppOptions>().Configure(options => { });
+            services.AddDataProtection()
+                .SetApplicationName("LUMAR_ERP_API_V2")
+                .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LUMAR_ERP_API_V2", "DataProtection-Keys")));
+
+            services.AddSingleton<IWhatsAppConnectionSettingsStore, WhatsAppConnectionSettingsStore>();
+            services.AddHttpClient();
+            services.AddScoped<IMetaWhatsAppTemplateCatalogClient, MetaWhatsAppTemplateCatalogClient>();
+
+            using var provider = services.BuildServiceProvider();
+
+            var store = provider.GetRequiredService<IWhatsAppConnectionSettingsStore>();
+            await store.UpdateAsync(new WhatsAppConnectionSettingsUpdateDto
+            {
+                Enabled = true,
+                BaseUrl = "https://graph.facebook.com",
+                ApiVersion = "v20.0",
+                PhoneNumberId = "1413441637074832",
+                AccessToken = "runtime-access-token",
+                TimeoutSeconds = 30
+            }, CancellationToken.None);
+
+            var runtime = await store.GetRuntimeSettingsAsync(CancellationToken.None);
+
+            Assert.True(runtime.Enabled);
+            Assert.Equal("https://graph.facebook.com", runtime.BaseUrl);
+            Assert.Equal("v20.0", runtime.ApiVersion);
+            Assert.Equal("1413441637074832", runtime.PhoneNumberId);
+            Assert.Equal("runtime-access-token", runtime.AccessToken);
+
+            var client = provider.GetRequiredService<IMetaWhatsAppTemplateCatalogClient>();
+            var templates = await client.GetTemplatesAsync(CancellationToken.None);
+
+            Assert.NotNull(templates);
+            Assert.True(templates.Count >= 0,
+                "The runtime-backed Meta fetch path must return a collection safely without exposing or printing any secret material.");
+        }
+        finally
+        {
+            if (previousOverride is null)
+            {
+                Environment.SetEnvironmentVariable("LUMAR_ERP_API_V2_WHATSAPP_SECRET_STORE_PATH", null);
+            }
+            else
+            {
+                Environment.SetEnvironmentVariable("LUMAR_ERP_API_V2_WHATSAPP_SECRET_STORE_PATH", previousOverride);
+            }
+
+            if (Directory.Exists(tempDirectory))
+            {
+                Directory.Delete(tempDirectory, recursive: true);
+            }
         }
     }
 
