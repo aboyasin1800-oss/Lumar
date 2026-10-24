@@ -74,14 +74,34 @@ public sealed class MetaWhatsAppTemplateCatalogClient(
                         var text = component.TryGetProperty("text", out var textElement) ? textElement.GetString() : null;
                         var format = component.TryGetProperty("format", out var formatElement) ? formatElement.GetString() : null;
                         var example = component.TryGetProperty("example", out var exampleElement) ? exampleElement.GetString() : null;
-                        var input = component.TryGetProperty("parameters", out var parametersElement) && parametersElement.ValueKind == JsonValueKind.Array
-                            ? parametersElement
-                            : default;
 
                         var parameterName = default(string?);
                         if (component.TryGetProperty("parameter_name", out var parameterNameElement))
                         {
                             parameterName = parameterNameElement.GetString();
+                        }
+
+                        var parameterNames = Array.Empty<string>();
+                        if (component.TryGetProperty("parameters", out var nestedParametersElement) && nestedParametersElement.ValueKind == JsonValueKind.Array)
+                        {
+                            var collected = new List<string>();
+                            foreach (var parameterNode in nestedParametersElement.EnumerateArray())
+                            {
+                                if (parameterNode.ValueKind != JsonValueKind.Object)
+                                    continue;
+
+                                if (parameterNode.TryGetProperty("parameter_name", out var nestedParameterNameElement)
+                                    && nestedParameterNameElement.ValueKind == JsonValueKind.String)
+                                {
+                                    var nestedName = nestedParameterNameElement.GetString();
+                                    if (!string.IsNullOrWhiteSpace(nestedName))
+                                    {
+                                        collected.Add(nestedName);
+                                    }
+                                }
+                            }
+
+                            parameterNames = collected.ToArray();
                         }
 
                         var imageUrl = default(string?);
@@ -101,7 +121,8 @@ public sealed class MetaWhatsAppTemplateCatalogClient(
                             example,
                             imageUrl,
                             component.TryGetProperty("id", out var componentIdElement) ? componentIdElement.GetString() : null,
-                            index));
+                            index,
+                            parameterNames));
 
                         index++;
                     }

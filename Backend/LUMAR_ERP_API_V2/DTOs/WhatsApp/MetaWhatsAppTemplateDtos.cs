@@ -16,4 +16,5 @@ public sealed record MetaWhatsAppTemplateComponentDto(
     string? Example,
     string? ImageUrl,
     string? Id,
-    int? Index);
+    int? Index,
+    IReadOnlyList<string> ParameterNames);

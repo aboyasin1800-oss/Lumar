@@ -157,6 +157,29 @@ public sealed class WhatsAppCloudIntegrationTests
     }
 
     [Fact]
+    public async Task MetaWhatsAppTemplateCatalogClient_ParsesOfficialBodyParameterNames_FromMetaComponents()
+    {
+        var client = new MetaWhatsAppTemplateCatalogClient(
+            new FixedHttpClientFactory(new HttpClient(new OfficialMetaTemplateHandler())),
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+            {
+                Enabled = true,
+                BaseUrl = "https://graph.facebook.com",
+                ApiVersion = "v20.0",
+                PhoneNumberId = "1413441637074832",
+                AccessToken = "runtime-access-token"
+            }),
+            NullLogger<MetaWhatsAppTemplateCatalogClient>.Instance);
+
+        var templates = await client.GetTemplatesAsync(CancellationToken.None);
+        var orderCreated = Assert.Single(templates.Where(x => x.Name == "lumar_order_created"));
+
+        Assert.Contains("customer_name", orderCreated.Components.SelectMany(x => x.ParameterNames));
+        Assert.Contains("order_number", orderCreated.Components.SelectMany(x => x.ParameterNames));
+        Assert.Contains("total_amount", orderCreated.Components.SelectMany(x => x.ParameterNames));
+    }
+
+    [Fact]
     public async Task MetaWhatsAppTemplateCatalogClient_UsesProtectedRuntimeStore_AndCallsOfficialMetagraphEndpoint()
     {
         var previousOverride = Environment.GetEnvironmentVariable("LUMAR_ERP_API_V2_WHATSAPP_SECRET_STORE_PATH");
@@ -1086,16 +1109,215 @@ public sealed class WhatsAppCloudIntegrationTests
             {
                 data = new[]
                 {
-                    new { id = "1", name = "lumar_order_created", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
-                    new { id = "2", name = "lumar_order_ready", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
-                    new { id = "3", name = "lumar_order_delivered", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
-                    new { id = "4", name = "lumar_piece_cancelled", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
-                    new { id = "5", name = "lumar_order_cancelled", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
-                    new { id = "6", name = "lumar_referrer_reward", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
-                    new { id = "7", name = "lumar_referrer_reward_relation", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
-                    new { id = "8", name = "lumar_order_created_with_referrer", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
-                    new { id = "9", name = "lumar_order_created_with_referrer_relation", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
-                    new { id = "10", name = "lumar_friday_greeting", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } }
+                    new
+                    {
+                        id = "1",
+                        name = "lumar_order_created",
+                        status = "APPROVED",
+                        language = "ar",
+                        category = "UTILITY",
+                        components = new[]
+                        {
+                            new
+                            {
+                                type = "body",
+                                parameters = new[]
+                                {
+                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
+                                    new { type = "text", text = "ORD-1001", parameter_name = "order_number" },
+                                    new { type = "text", text = "1250", parameter_name = "total_amount" }
+                                }
+                            }
+                        }
+                    },
+                    new
+                    {
+                        id = "2",
+                        name = "lumar_order_ready",
+                        status = "APPROVED",
+                        language = "ar",
+                        category = "UTILITY",
+                        components = new[]
+                        {
+                            new
+                            {
+                                type = "body",
+                                parameters = new[]
+                                {
+                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
+                                    new { type = "text", text = "ORD-1002", parameter_name = "order_number" },
+                                    new { type = "text", text = "2026-10-25", parameter_name = "delivery_date" }
+                                }
+                            }
+                        }
+                    },
+                    new
+                    {
+                        id = "3",
+                        name = "lumar_order_delivered",
+                        status = "APPROVED",
+                        language = "ar",
+                        category = "UTILITY",
+                        components = new[]
+                        {
+                            new
+                            {
+                                type = "body",
+                                parameters = new[]
+                                {
+                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
+                                    new { type = "text", text = "ORD-1003", parameter_name = "order_number" },
+                                    new { type = "text", text = "2026-10-26", parameter_name = "delivery_date" }
+                                }
+                            }
+                        }
+                    },
+                    new
+                    {
+                        id = "4",
+                        name = "lumar_piece_cancelled",
+                        status = "APPROVED",
+                        language = "ar",
+                        category = "UTILITY",
+                        components = new[]
+                        {
+                            new
+                            {
+                                type = "body",
+                                parameters = new[]
+                                {
+                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
+                                    new { type = "text", text = "ORD-1004", parameter_name = "order_number" },
+                                    new { type = "text", text = "قميص + بنطال", parameter_name = "order_details" }
+                                }
+                            }
+                        }
+                    },
+                    new
+                    {
+                        id = "5",
+                        name = "lumar_order_cancelled",
+                        status = "APPROVED",
+                        language = "ar",
+                        category = "UTILITY",
+                        components = new[]
+                        {
+                            new
+                            {
+                                type = "body",
+                                parameters = new[]
+                                {
+                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
+                                    new { type = "text", text = "ORD-1005", parameter_name = "order_number" },
+                                    new { type = "text", text = "إلغاء جزئي", parameter_name = "order_details" }
+                                }
+                            }
+                        }
+                    },
+                    new
+                    {
+                        id = "6",
+                        name = "lumar_referrer_reward",
+                        status = "APPROVED",
+                        language = "ar",
+                        category = "UTILITY",
+                        components = new[]
+                        {
+                            new
+                            {
+                                type = "body",
+                                parameters = new[]
+                                {
+                                    new { type = "text", text = "سالم", parameter_name = "referrer_name" },
+                                    new { type = "text", text = "REF-77", parameter_name = "referrer_code" },
+                                    new { type = "text", text = "42", parameter_name = "referral_points_earned" }
+                                }
+                            }
+                        }
+                    },
+                    new
+                    {
+                        id = "7",
+                        name = "lumar_referrer_reward_relation",
+                        status = "APPROVED",
+                        language = "ar",
+                        category = "UTILITY",
+                        components = new[]
+                        {
+                            new
+                            {
+                                type = "body",
+                                parameters = new[]
+                                {
+                                    new { type = "text", text = "سالم", parameter_name = "referrer_name" },
+                                    new { type = "text", text = "أخ", parameter_name = "relationship" },
+                                    new { type = "text", text = "42", parameter_name = "referral_points_earned" }
+                                }
+                            }
+                        }
+                    },
+                    new
+                    {
+                        id = "8",
+                        name = "lumar_order_created_with_referrer",
+                        status = "APPROVED",
+                        language = "ar",
+                        category = "UTILITY",
+                        components = new[]
+                        {
+                            new
+                            {
+                                type = "body",
+                                parameters = new[]
+                                {
+                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
+                                    new { type = "text", text = "ORD-1006", parameter_name = "order_number" },
+                                    new { type = "text", text = "سالم", parameter_name = "referrer_name" }
+                                }
+                            }
+                        }
+                    },
+                    new
+                    {
+                        id = "9",
+                        name = "lumar_order_created_with_referrer_relation",
+                        status = "APPROVED",
+                        language = "ar",
+                        category = "UTILITY",
+                        components = new[]
+                        {
+                            new
+                            {
+                                type = "body",
+                                parameters = new[]
+                                {
+                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
+                                    new { type = "text", text = "ORD-1007", parameter_name = "order_number" },
+                                    new { type = "text", text = "أخ", parameter_name = "relationship" }
+                                }
+                            }
+                        }
+                    },
+                    new
+                    {
+                        id = "10",
+                        name = "lumar_friday_greeting",
+                        status = "APPROVED",
+                        language = "ar",
+                        category = "UTILITY",
+                        components = new[]
+                        {
+                            new
+                            {
+                                type = "body",
+                                parameters = new[]
+                                {
+                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
+                                    new { type = "text", text = "أهلًا بك", parameter_name = "relation_welcome" }
+                                }
+                            }
+                        }
+                    }
                 }
             };
 
