@@ -276,6 +276,41 @@ public sealed class MobilePushDeviceServiceTests
     }
 
     [Fact]
+    public async Task DispatchForOfficialNotification_UsesExplicitTargetSupplierAccount_AndExcludesOtherSupplierReceivers()
+    {
+        var fakeRepo = new FakePushRepository(new[]
+        {
+            new PushDeviceTokenRecord(20, 1001, "FCM", "Android", "supplier-a-device", "cipher-a", "hash-a", "token-a", true, false, DateTime.UtcNow, null, null),
+            new PushDeviceTokenRecord(21, 2002, "FCM", "Android", "supplier-b-device", "cipher-b", "hash-b", "token-b", true, false, DateTime.UtcNow, null, null),
+            new PushDeviceTokenRecord(22, 2002, "FCM", "Android", "supplier-b-disabled-device", "cipher-b-disabled", "hash-b-disabled", "token-b-disabled", false, true, DateTime.UtcNow, DateTime.UtcNow, "Disabled by admin")
+        });
+
+        var service = new PushDeviceService(
+            fakeRepo,
+            new TestAuthenticatedUserContext(new CurrentUserDto(14, "current-supplier-user", "Current Supplier User", "Supplier", true, DateTime.UtcNow, "Supplier", null, null, 777)),
+            new TestPushSender(new[] { new PushSendOutcome(true, "supplier-a-msg", null, false, "Success") }),
+            null!,
+            NullLogger<PushDeviceService>.Instance);
+
+        var result = await service.DispatchForOfficialNotificationAsync(
+            customerId: null,
+            employeeId: null,
+            supplierId: 1001,
+            title: "Supplier private title",
+            body: "Supplier private body",
+            referenceType: "SupplierNotification",
+            referenceId: "SUP-1001-INV-42",
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.Success, $"Expected private supplier notification for supplier 1001 but got status '{result.Status}'.");
+        Assert.Equal(1, result.SentCount);
+        Assert.Contains("supplier-a-device", result.DeviceKeys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("supplier-b-device", result.DeviceKeys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("supplier-b-disabled-device", result.DeviceKeys, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(1001, fakeRepo.AccountIdSeenForDispatch);
+    }
+
+    [Fact]
     public async Task RuntimeRepository_RejectsMissingSchema_WithoutCreatingOne()
     {
         var masterConnectionString = GetMasterConnectionString();
