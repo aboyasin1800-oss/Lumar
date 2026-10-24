@@ -597,7 +597,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
             var orderNumber = reader.GetString(0);
             var customerId = reader.GetInt32(1);
             _ = reader.GetDecimal(2);
-            _ = reader.GetDecimal(3);
+            var currentDiscount = reader.GetDecimal(3);
             var currentPaid = reader.GetDecimal(4);
             var currentRemaining = reader.GetDecimal(5);
             var orderStatus = reader.GetString(6);
@@ -710,11 +710,13 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                 await InsertCustomerLedgerCreditAsync(connection, transaction, customerId, discountReference, settlementDiscount, paymentDate, cancellationToken);
             }
 
+            var updatedDiscount = currentDiscount + settlementDiscount;
             var updatedPaid = currentPaid + amount;
             var updatedRemaining = currentRemaining - amount - settlementDiscount;
-            const string orderUpdateSql = "UPDATE dbo.Orders SET PaidAmount = @paidAmount, RemainingAmount = @remainingAmount, UpdatedDate = @updatedAt WHERE OrderID = @orderId";
+            const string orderUpdateSql = "UPDATE dbo.Orders SET DiscountAmount = @discountAmount, PaidAmount = @paidAmount, RemainingAmount = @remainingAmount, UpdatedDate = @updatedAt WHERE OrderID = @orderId";
             await using (var update = new SqlCommand(orderUpdateSql, connection, transaction))
             {
+                update.Parameters.AddWithValue("@discountAmount", updatedDiscount);
                 update.Parameters.AddWithValue("@paidAmount", updatedPaid);
                 update.Parameters.AddWithValue("@remainingAmount", updatedRemaining);
                 update.Parameters.AddWithValue("@updatedAt", paymentDate);

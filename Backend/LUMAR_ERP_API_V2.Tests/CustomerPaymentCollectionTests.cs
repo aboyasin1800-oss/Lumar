@@ -73,6 +73,29 @@ public class CustomerPaymentCollectionTests
     }
 
     [Fact]
+    public async Task SettleCustomerBalanceAsync_Should_Persist_DiscountAmount_And_Contractual_Order_Snapshot()
+    {
+        var connectionString = GetConnectionString();
+        var repository = CreateOrderRepository(connectionString);
+
+        var orderNumber = $"ORD-SETTLE-DISCOUNT-SNAPSHOT-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        var orderId = await InsertOrderAsync(connectionString, orderNumber, 14687.50m, 0m, 10000.00m, "Delivered", DateTime.UtcNow, true);
+
+        var result = await repository.SettleCustomerBalanceAsync(orderId, 4000.00m, 687.50m, "Cash", 1, $"{orderNumber}:Settlement", "تحصيل مع خصم", CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(687.50m, result!.DiscountAmount);
+        Assert.Equal(14000.00m, result.PaidAmount);
+        Assert.Equal(0m, result.RemainingAmount);
+
+        var orderSnapshot = await QueryOrderSnapshotAsync(connectionString, orderId);
+        Assert.NotNull(orderSnapshot);
+        Assert.Equal(687.50m, orderSnapshot!.DiscountAmount);
+        Assert.Equal(14000.00m, orderSnapshot.PaidAmount);
+        Assert.Equal(0m, orderSnapshot.RemainingAmount);
+    }
+
+    [Fact]
     public async Task SettleCustomerBalanceAsync_Should_HandleFullAndPartialCollections_AndBlockUnapprovedDiscountAndDonation()
     {
         var connectionString = GetConnectionString();
@@ -254,7 +277,28 @@ public class CustomerPaymentCollectionTests
             reader.GetDateTime(5));
     }
 
+    private static async Task<OrderSnapshotRow?> QueryOrderSnapshotAsync(string connectionString, int orderId)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(
+            "SELECT OrderID, TotalAmount, DiscountAmount, PaidAmount, RemainingAmount FROM dbo.Orders WHERE OrderID = @orderId",
+            connection);
+        command.Parameters.AddWithValue("@orderId", orderId);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) return null;
+
+        return new OrderSnapshotRow(
+            reader.GetInt32(0),
+            reader.GetDecimal(1),
+            reader.GetDecimal(2),
+            reader.GetDecimal(3),
+            reader.GetDecimal(4));
+    }
+
     private sealed record PaymentRow(int PaymentId, int OrderId, decimal Amount, string? PaymentMethod, string ReferenceNumber, string PaymentKind, DateTime CreatedDate);
     private sealed record CustomerLedgerRow(int CustomerLedgerEntryId, int CustomerId, string ReferenceNumber, decimal DebitAmount, decimal CreditAmount, decimal BalanceAfterTransaction, DateTime CreatedAt);
     private sealed record FinancialTransactionRow(int FinancialTransactionId, string ReferenceNumber, string TransactionType, decimal Amount, string? Description, DateTime CreatedAt);
+    private sealed record OrderSnapshotRow(int OrderId, decimal TotalAmount, decimal DiscountAmount, decimal PaidAmount, decimal RemainingAmount);
 }
