@@ -218,36 +218,69 @@ public sealed class MetaTemplateContractTests
     [InlineData("أب", "والدك")]
     [InlineData("أم", "والدتك")]
     [InlineData("أخ", "أخاك")]
+    [InlineData("اخ", "أخاك")]
     [InlineData("Brother", "أخاك")]
+    [InlineData(" brother ", "أخاك")]
     [InlineData("أخت", "أختك")]
     [InlineData("ابن", "ابنك")]
     [InlineData("ابنة", "ابنتك")]
+    [InlineData("ابن أخ", "ابن أخيك")]
+    [InlineData("ابن أخت", "ابن أختك")]
     [InlineData("ابن عم", "ابن عمك")]
+    [InlineData("ابن خال", "ابن خالك")]
     [InlineData("صديق", "صديقك")]
     [InlineData("Friend", "صديقك")]
-    public void RelationshipWelcomeMapper_MapsOnlyApprovedValues(string relationshipType, string expected)
+    public void RelationshipWelcomeMapper_MapsApprovedValues(string relationshipType, string expected)
     {
         Assert.Equal(expected, RelationshipWelcomeMapper.TryMap(relationshipType));
     }
 
     [Theory]
-    [InlineData("عم")]
-    [InlineData("حفيد")]
-    [InlineData("أبو عم")]
-    [InlineData("صهر")]
-    public void RelationshipWelcomeMapper_RejectsUnapprovedRelationshipNames(string relationshipType)
+    [InlineData("عم", "عم")]
+    [InlineData("خال", "خال")]
+    [InlineData("خالة", "خالة")]
+    [InlineData("عمة", "عمة")]
+    [InlineData("جدة", "جدة")]
+    [InlineData("جد", "جد")]
+    [InlineData("حفيد", "حفيد")]
+    [InlineData("ابن خالة", "ابن خالة")]
+    [InlineData("أبو عم", "أبو عم")]
+    [InlineData("صهر", "صهر")]
+    [InlineData("علاقة صحيحة جديدة", "علاقة صحيحة جديدة")]
+    [InlineData("  ابن خالة  ", "ابن خالة")]
+    [InlineData("  ابن  خالة  ", "ابن  خالة")]
+    public async Task RelationshipWelcomeMapper_ValidUnmappedValue_IsPreservedAndDoesNotBlockMessage(string relationshipType, string expected)
     {
-        Assert.Null(RelationshipWelcomeMapper.TryMap(relationshipType));
+        Assert.Equal(expected, RelationshipWelcomeMapper.TryMap(relationshipType));
+        using var outbound = new PayloadCaptureHandler();
+        var channel = new WhatsAppCloudMessageChannel(
+            new RecordedMetaTemplateHttpClientFactory(new HttpClient(outbound)), new ContractSettingsStore());
+        var context = CreateContext();
+        context.Remove("RelationWelcome");
+        context.Remove("Relationship");
+        context["RelationshipType"] = relationshipType;
+
+        var result = await channel.SendAsync(
+            CreateMessage("lumar_order_created_with_referrer_relation", context), CancellationToken.None);
+
+        Assert.Equal(OutboundDispatchOutcome.Sent, result.Outcome);
+        using var payload = JsonDocument.Parse(Assert.Single(outbound.Payloads));
+        var parameters = payload.RootElement.GetProperty("template").GetProperty("components")[0].GetProperty("parameters");
+        var welcome = Assert.Single(parameters.EnumerateArray(), parameter => parameter.GetProperty("parameter_name").GetString() == "relation_welcome");
+        Assert.Equal(expected, welcome.GetProperty("text").GetString());
+        Assert.NotEqual("قريبك", welcome.GetProperty("text").GetString());
     }
 
     [Theory]
     [InlineData("Primary")]
+    [InlineData(" primary ")]
     [InlineData("???")]
     [InlineData("أخرى")]
     [InlineData("فارغ")]
     [InlineData("NULL")]
     [InlineData("لا توجد صلة")]
     [InlineData("")]
+    [InlineData(" \t\r\n ")]
     [InlineData(null)]
     public void RelationshipWelcomeMapper_IgnoresInvalidValues(string? relationshipType)
     {

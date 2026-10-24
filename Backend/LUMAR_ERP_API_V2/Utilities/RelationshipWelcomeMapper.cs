@@ -40,6 +40,6 @@ public static class RelationshipWelcomeMapper
         if (InvalidValues.Contains(normalized))
             return null;
 
-        return StandardMap.TryGetValue(normalized, out var mapped) ? mapped : null;
+        return StandardMap.TryGetValue(normalized, out var mapped) ? mapped : normalized;
     }
 }

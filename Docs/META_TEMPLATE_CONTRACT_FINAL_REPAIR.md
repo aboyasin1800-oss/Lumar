@@ -25,7 +25,7 @@ The sender resolves the ten parameter lists from the official client; it does no
 | lumar_referrer_reward | 4 | PASS | Recipient, buyer and referral ledger/account |
 | lumar_referrer_reward_relation | 5 | PASS | Same sources plus recorded RelationshipType |
 | lumar_order_created_with_referrer | 14 | PASS | Order, direct referral and loyalty accounts |
-| lumar_order_created_with_referrer_relation | 16 | PASS | BLOCKED: relation_welcome source |
+| lumar_order_created_with_referrer_relation | 16 | PASS | Owner-approved RelationshipType mapping and literal fallback |
 | lumar_friday_greeting | 1 | PASS | Official recipient name |
 
 Source readiness requires the relevant records to exist. A missing required source is reported by its exact Meta parameter name and prevents POST. Passing a contract test does not certify source completeness for every existing message.
@@ -57,7 +57,7 @@ Source readiness requires the relevant records to exist. A missing required sour
 | cancelled_amount (whole order) | CancelledAmount | Orders.TotalAmount with OrderStatus=Cancelled |
 | refund_amount | RefundAmount | Absolute refund payment amounts; a recorded PaidAmount of zero supports zero refund |
 | cancelled_amount (piece) | CancelledAmount | GAP: no approved piece cancellation financial amount source in the inspected workflow |
-| relation_welcome | RelationWelcome | GAP: no persisted field, configured mapping or official producer found |
+| relation_welcome | RelationWelcome / RelationshipType | Customers.RelationshipType through RelationshipWelcomeMapper: approved phrase, otherwise the original valid value after Trim; invalid values return NULL |
 
 ## Implemented Boundaries
 
@@ -69,7 +69,7 @@ Source readiness requires the relevant records to exist. A missing required sour
 - The old synthetic `OfficialMetaTemplateHandler` was removed. Runtime-store tests use isolated ephemeral protection and recorded HTTP responses.
 - No template content, account identifier, AccessToken, protected campaign contract, renderer, or VS Code task configuration was changed.
 
-## Verification
+## Prior Verification
 
 - Independent contracts plus WhatsApp regression: 69 passed, 0 failed.
 - Above tests plus real read-only repository hydration after the last source changes: 70 passed, 0 failed. [TRX](../_validation_output/meta-template-contract-final-repair/verified-contracts-and-hydration.trx).
@@ -79,17 +79,27 @@ Source readiness requires the relevant records to exist. A missing required sour
 - Database writes, migrations, message claims and live message sends during this repair: none.
 - Database-writing integration tests, including claim-concurrency fixtures, were not executed. The read-only test and local message-760 check are not a claim-concurrency or live-delivery certification.
 
+## Relation Welcome Closure
+
+- Owner decision: preserve every existing approved mapping; valid unmapped relationships use the stored RelationshipType after Trim only. No inferred suffixes or generic relationship fallback.
+- NULL, empty/whitespace and the existing InvalidValues remain NULL.
+- Focused Mapper tests: 38 passed, 0 failed. [TRX](../_validation_output/relation-welcome-safe-fallback/relation-welcome-focused.trx).
+- Meta contract tests and WhatsApp regression: 107 passed, 0 failed. [TRX](../_validation_output/relation-welcome-safe-fallback/relation-welcome-regression.trx).
+- Approved Mapping, Original Value For Valid Unmapped Relationships, Invalid Returns NULL, No Generic Fallback, and No Failure For Valid Unmapped Relationships: PASS. Payload tests remove precomputed RelationWelcome and exercise RelationshipType through the production channel with recorded HTTP responses.
+- Production change: one fallback expression in RelationshipWelcomeMapper; the approved map and InvalidValues are unchanged. No live send, database operation, migration, or protected code was changed in this closure.
+- Verdict: **A- RELATION WELCOME SAFE FALLBACK FINALIZED AND VERIFIED**.
+
 ## Remaining Approval Gates
 
-1. `lumar_order_created_with_referrer_relation`: `relation_welcome` has no official producer. The current model contains RelationshipType, not an approved recipient-relative welcome phrase. Do not translate or append a suffix implicitly. The owner must designate an existing source or approve a maintained mapping and its persistence.
+1. `lumar_order_created_with_referrer_relation`: the relation_welcome mapping/fallback gap is CLOSED by the owner-approved contract and focused verification above.
 2. `lumar_piece_cancelled`: `cancelled_amount` has no approved financial event source in the inspected piece-disposition workflow. Neither Pieces nor CancelledPieceDisposition records that amount, and no corresponding SQL module was found. Do not substitute current price, production cost, order total or zero. The owner must designate the authoritative cancellation effect or approve a separate financial/persistence change.
 
 The context loader reads current official records. It is not an immutable event snapshot. Guaranteeing original event-time values across later order/account changes requires an explicitly approved persistence design; no such migration was performed here.
 
-Recommended continuation: approve the two missing source contracts first, then implement only their producer/storage mapping, add negative and positive source tests, and repeat the local matrix. Any schema or financial behavior change needs a scoped implementation and rollback plan. Existing safe code changes can be rolled back individually without a database rollback; do not revert unrelated working-tree changes.
+Continuation returns to the existing cancelled_amount task and its approval gates. It was not modified or re-diagnosed during the relation_welcome closure. Any schema or financial behavior change still needs a scoped implementation and rollback plan. Existing safe code changes can be rolled back individually without a database rollback; do not revert unrelated working-tree changes.
 
 ## Verdict
 
-OrderCreated's 3-versus-10 defect is repaired and verified locally. All ten Meta parameter contracts are retrieved and covered. Eight templates have identified complete source mappings; two remain blocked by the specific source gaps above. The unconditional verdict `A- ALL REMAINING META TEMPLATE CONTRACTS REPAIRED AND READY FOR FINAL LIVE MATRIX` is withheld. No owner live test is requested before these source gates are resolved.
+OrderCreated's 3-versus-10 defect is repaired and verified locally. All ten Meta parameter contracts are retrieved and covered. Nine templates have identified source mappings after the relation_welcome closure; cancelled_amount remains the outstanding source gate. The unconditional verdict `A- ALL REMAINING META TEMPLATE CONTRACTS REPAIRED AND READY FOR FINAL LIVE MATRIX` remains withheld. No live tests begin before cancelled_amount is closed and the overall local verdict is issued.
 
 كتب هذا التقرير المطور سعد
