@@ -2858,7 +2858,7 @@ public sealed class MessageWriteServiceTests
         public Task<ProductionTrackingAdvanceResultDto?> AdvancePieceStageAsync(ProductionTrackingAdvanceRequestDto request, CancellationToken cancellationToken) => Task.FromResult<ProductionTrackingAdvanceResultDto?>(result);
         public Task<StageAttributionCorrectionPreviewDto?> PreviewStageAttributionCorrectionAsync(StageAttributionCorrectionPreviewRequestDto request, CancellationToken cancellationToken)
             => Task.FromResult<StageAttributionCorrectionPreviewDto?>(null);
-        public Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionRequestDto request, CancellationToken cancellationToken)
+        public Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionExecutionCommand request, CancellationToken cancellationToken)
             => Task.FromResult(new StageAttributionCorrectionResultDto(
                 request.PieceId ?? 0,
                 "TRACK-001",
@@ -2905,7 +2905,7 @@ public sealed class MessageWriteServiceTests
             => Task.FromResult<ProductionTrackingAdvanceResultDto?>(results.Count > 0 ? results.Dequeue() : results.Peek());
         public Task<StageAttributionCorrectionPreviewDto?> PreviewStageAttributionCorrectionAsync(StageAttributionCorrectionPreviewRequestDto request, CancellationToken cancellationToken)
             => Task.FromResult<StageAttributionCorrectionPreviewDto?>(null);
-        public Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionRequestDto request, CancellationToken cancellationToken)
+        public Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionExecutionCommand request, CancellationToken cancellationToken)
             => Task.FromResult(new StageAttributionCorrectionResultDto(
                 request.PieceId ?? 0,
                 "TRACK-001",

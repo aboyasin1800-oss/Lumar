@@ -90,11 +90,28 @@ public sealed class ProductionController(IProductionService service, IProduction
             return StatusCode(StatusCodes.Status403Forbidden, "تعديلات تسوية نسبة المرحلة للمشرف تتطلب صلاحية مسؤول النظام الفعلية في الخادم.");
         }
 
-        var resolvedRequest = request with { AuthorizedByUserId = currentUser!.UserId };
+        var resolvedRequest = new StageAttributionCorrectionExecutionCommand(
+            request.OriginalTrackingEventId,
+            request.CorrectEmployeeId,
+            request.Reason,
+            request.IdempotencyKey,
+            currentUser!.UserId,
+            request.PieceId,
+            request.TrackingCode);
+
         var result = await service.ExecuteStageAttributionCorrectionAsync(resolvedRequest, ct);
         if (!result.Success)
         {
-            return BadRequest(result);
+            return result.Status switch
+            {
+                "NotFound" => NotFound(result),
+                "Forbidden" => StatusCode(StatusCodes.Status403Forbidden, result),
+                "PayrollLocked" => Conflict(result),
+                "NoChange" => Conflict(result),
+                "IdempotentDuplicate" => Ok(result),
+                "ConcurrencyConflict" => Conflict(result),
+                _ => BadRequest(result)
+            };
         }
 
         return Ok(result);

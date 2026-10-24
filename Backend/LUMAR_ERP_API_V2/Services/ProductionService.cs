@@ -36,7 +36,7 @@ public sealed class ProductionService(
     public Task<StageAttributionCorrectionPreviewDto?> PreviewStageAttributionCorrectionAsync(StageAttributionCorrectionPreviewRequestDto request, CancellationToken ct)
         => repository.PreviewStageAttributionCorrectionAsync(request, ct);
 
-    public Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionRequestDto request, CancellationToken ct)
+    public Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionExecutionCommand request, CancellationToken ct)
         => repository.ExecuteStageAttributionCorrectionAsync(request, ct);
 
     public async Task<ProductionTrackingAdvanceResultDto?> AdvancePieceStageAsync(ProductionTrackingAdvanceRequestDto request, CancellationToken ct)

@@ -57,8 +57,15 @@ public sealed record StageAttributionCorrectionRequestDto(
     string Reason,
     string IdempotencyKey,
     int? PieceId = null,
-    string? TrackingCode = null,
-    int AuthorizedByUserId = 0);
+    string? TrackingCode = null);
+public sealed record StageAttributionCorrectionExecutionCommand(
+    int OriginalTrackingEventId,
+    int CorrectEmployeeId,
+    string Reason,
+    string IdempotencyKey,
+    int AuthorizedByUserId,
+    int? PieceId = null,
+    string? TrackingCode = null);
 public sealed record StageAttributionCorrectionResultDto(
     int PieceId,
     string TrackingCode,

@@ -1522,7 +1522,7 @@ public sealed class ProductionRepository(
             eligibleEmployees);
     }
 
-    public async Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionRequestDto request, CancellationToken ct)
+    public async Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionExecutionCommand request, CancellationToken ct)
     {
         if (request is null)
         {
