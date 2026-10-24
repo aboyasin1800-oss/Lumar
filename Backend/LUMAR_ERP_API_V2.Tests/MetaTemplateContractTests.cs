@@ -225,11 +225,19 @@ public sealed class MetaTemplateContractTests
     [InlineData("ابن عم", "ابن عمك")]
     [InlineData("صديق", "صديقك")]
     [InlineData("Friend", "صديقك")]
-    [InlineData("عم", "قريبك")]
-    [InlineData("حفيد", "قريبك")]
-    public void RelationshipWelcomeMapper_MapsApprovedValues_AndUnknownRelations_ToSafeFallback(string relationshipType, string expected)
+    public void RelationshipWelcomeMapper_MapsOnlyApprovedValues(string relationshipType, string expected)
     {
         Assert.Equal(expected, RelationshipWelcomeMapper.TryMap(relationshipType));
+    }
+
+    [Theory]
+    [InlineData("عم")]
+    [InlineData("حفيد")]
+    [InlineData("أبو عم")]
+    [InlineData("صهر")]
+    public void RelationshipWelcomeMapper_RejectsUnapprovedRelationshipNames(string relationshipType)
+    {
+        Assert.Null(RelationshipWelcomeMapper.TryMap(relationshipType));
     }
 
     [Theory]

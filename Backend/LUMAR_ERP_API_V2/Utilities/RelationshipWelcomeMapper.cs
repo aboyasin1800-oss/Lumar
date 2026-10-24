@@ -40,21 +40,6 @@ public static class RelationshipWelcomeMapper
         if (InvalidValues.Contains(normalized))
             return null;
 
-        if (StandardMap.TryGetValue(normalized, out var mapped))
-            return mapped;
-
-        return IsLikelyRealRelationship(normalized) ? "قريبك" : null;
-    }
-
-    private static bool IsLikelyRealRelationship(string normalized)
-    {
-        if (normalized.Length < 2)
-            return false;
-
-        var text = normalized.Trim();
-        if (text.Contains(" ", StringComparison.Ordinal) || text.Contains("-", StringComparison.Ordinal))
-            return true;
-
-        return char.IsLetter(text[0]) || char.IsLetter(text[^1]);
+        return StandardMap.TryGetValue(normalized, out var mapped) ? mapped : null;
     }
 }
