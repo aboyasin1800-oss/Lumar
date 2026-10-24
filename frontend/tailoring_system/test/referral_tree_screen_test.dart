@@ -80,6 +80,26 @@ class _BranchingReferralRepository extends ReferralRepository {
   }
 
   @override
+  Future<List<ReferralCustomerIdentity>> searchCustomers(String term) async {
+    final normalized = term.trim();
+    if (normalized.isEmpty) return const [];
+
+    final matches = <ReferralCustomerIdentity>[
+      const ReferralCustomerIdentity(
+        customerId: 111111,
+        customerCode: 'C-111111',
+        customerName: 'فرع 1-1-1-1-1',
+        phoneNumber: '0500000000',
+      ),
+    ];
+
+    return matches.where((customer) {
+      final haystack = '${customer.customerName ?? ''} ${customer.customerCode ?? ''}'.toLowerCase();
+      return haystack.contains(normalized.toLowerCase());
+    }).toList();
+  }
+
+  @override
   Future<ReferralTree> getTree(int customerId) async {
     return const ReferralTree(
       rootCustomerId: 1,

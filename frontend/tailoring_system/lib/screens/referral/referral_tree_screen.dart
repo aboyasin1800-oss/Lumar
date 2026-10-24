@@ -25,7 +25,6 @@ class ReferralTreeScreen extends StatefulWidget {
 }
 
 class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
-  static const bool _ownerAuthorizationRequired = true;
   static const _treeZoomLevels = <double>[
     0.05,
     0.10,
@@ -71,28 +70,6 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
   @override
   void initState() {
     super.initState();
-    if (_ownerAuthorizationRequired) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        showDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('شجرة الإحالة مغلقة رسميًا'),
-            content: const Text(
-              'شجرة الإحالة لا يجوز فتحها إلا بعد طلب رسمي وموافقة صريحة من المالك.\n\nتم إغلاقها في المشروع وفق هذا القرار.'
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('موافق'),
-              ),
-            ],
-          ),
-        );
-      });
-      return;
-    }
 
     _repository = widget.repository ?? ReferralRepository();
     _rootsFuture = _repository.getRoots();
@@ -138,16 +115,6 @@ class _ReferralTreeScreenState extends State<ReferralTreeScreen> {
       _selectedCustomerId = customerId;
       _treeFuture = Future<ReferralTree?>.value(tree);
     });
-  }
-
-  Future<void> _selectNode(ReferralTreeNode node) async {
-    final tree = await _loadCustomerTree(node.customerId);
-    _expandedNodes[node.customerId] = true;
-    setState(() {
-      _selectedCustomerId = node.customerId;
-      _treeFuture = Future<ReferralTree?>.value(tree);
-    });
-    _showNodeDetails(node);
   }
 
   Future<void> _selectCustomer(ReferralCustomerIdentity customer) async {

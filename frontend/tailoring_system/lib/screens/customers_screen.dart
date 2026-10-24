@@ -152,29 +152,6 @@ class _CustomerPageState extends State<CustomerPage> {
   }
 
   Future<void> _hierarchy(int id) async {
-    const bool referralTreeOpenAllowed = false;
-    // Formal policy: referral tree is closed unless the owner explicitly approves it.
-    if (!referralTreeOpenAllowed) {
-      if (!mounted) return;
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('إغلاق رسمي لشجرة الإحالة'),
-          content: const Text(
-            'شجرة الإحالة لا يجوز فتحها إلا بعد طلب رسمي وموافقة صريحة من المالك.\n\nلا يمكن فتحها الآن.'
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('موافق'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
     await AppNavigation.push(
       context,
       (_) => ReferralTreeScreen(customerId: id),
