@@ -19,7 +19,8 @@ public enum AccountingEventType : byte
     ImportedReadyMadeInventoryReceived = 12,
     ImportedReadyMadeSaleCost = 13,
     ToolOperationalIssue = 14,
-    ToolOperationalReversal = 15
+    ToolOperationalReversal = 15,
+    CustomerSettlementDiscount = 34
 }
 
 public sealed record AccountingEventPostingResult(long AccountingEventId, int FinancialTransactionId, int JournalEntryId, bool IsExisting);

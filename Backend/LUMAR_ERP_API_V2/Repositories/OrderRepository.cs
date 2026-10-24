@@ -570,9 +570,6 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
 
     private async Task<OrderDetailsDto?> SettleCustomerBalanceCoreAsync(int orderId, decimal amount, decimal settlementDiscount, string? paymentMethod, int? cashAccountId, string? referenceNumber, string? notes, bool requireDelivered, CancellationToken cancellationToken)
     {
-        if (settlementDiscount > 0m)
-            throw new InvalidOperationException("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.");
-
         if (amount < 0m || settlementDiscount < 0m || amount + settlementDiscount <= 0m)
         {
             return null;
@@ -695,6 +692,20 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                     discount.Parameters.AddWithValue("@createdAt", paymentDate);
                     await discount.ExecuteNonQueryAsync(cancellationToken);
                 }
+
+                var discountJournalResult = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+                    connection,
+                    transaction,
+                    discountReference,
+                    "CustomerSettlementDiscount",
+                    settlementDiscount,
+                    $"Settlement discount for {orderNumber}",
+                    cancellationToken,
+                    "OrderSettlement",
+                    orderId,
+                    Guid.NewGuid());
+                if (!discountJournalResult.IsSuccess)
+                    discountJournalResult.ThrowIfFailure();
 
                 await InsertCustomerLedgerCreditAsync(connection, transaction, customerId, discountReference, settlementDiscount, paymentDate, cancellationToken);
             }

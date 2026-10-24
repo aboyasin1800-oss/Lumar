@@ -90,8 +90,11 @@ public class CustomerPaymentCollectionTests
         var fullDiscountOrderNumber = $"ORD-SETTLE-FULL-DISCOUNT-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         var fullDiscountOrderId = await InsertOrderAsync(connectionString, fullDiscountOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
         var fullDiscountReference = $"{fullDiscountOrderNumber}:Receipt";
-        var fullDiscountException = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.SettleCustomerBalanceAsync(fullDiscountOrderId, 700.00m, 300.00m, "Cash", 1, fullDiscountReference, "تحصيل كامل مع خصم", CancellationToken.None));
-        Assert.Equal("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.", fullDiscountException.Message);
+        var fullDiscountResult = await repository.SettleCustomerBalanceAsync(fullDiscountOrderId, 700.00m, 300.00m, "Cash", 1, fullDiscountReference, "تحصيل كامل مع خصم", CancellationToken.None);
+        Assert.NotNull(fullDiscountResult);
+        Assert.Equal(700.00m, fullDiscountResult!.PaidAmount);
+        Assert.Equal(0m, fullDiscountResult.RemainingAmount);
+        Assert.Equal(300.00m, (await QueryFinancialTransactionAsync(connectionString, $"{fullDiscountReference}:Discount"))!.Amount);
 
         var partialOrderNumber = $"ORD-SETTLE-PARTIAL-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         var partialOrderId = await InsertOrderAsync(connectionString, partialOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
@@ -105,8 +108,11 @@ public class CustomerPaymentCollectionTests
         var partialDiscountOrderNumber = $"ORD-SETTLE-PARTIAL-DISCOUNT-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         var partialDiscountOrderId = await InsertOrderAsync(connectionString, partialDiscountOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
         var partialDiscountReference = $"{partialDiscountOrderNumber}:Receipt";
-        var partialDiscountException = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.SettleCustomerBalanceAsync(partialDiscountOrderId, 400.00m, 100.00m, "Cash", 1, partialDiscountReference, "تحصيل جزئي مع خصم", CancellationToken.None));
-        Assert.Equal("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.", partialDiscountException.Message);
+        var partialDiscountResult = await repository.SettleCustomerBalanceAsync(partialDiscountOrderId, 400.00m, 100.00m, "Cash", 1, partialDiscountReference, "تحصيل جزئي مع خصم", CancellationToken.None);
+        Assert.NotNull(partialDiscountResult);
+        Assert.Equal(400.00m, partialDiscountResult!.PaidAmount);
+        Assert.Equal(500.00m, partialDiscountResult.RemainingAmount);
+        Assert.Equal(100.00m, (await QueryFinancialTransactionAsync(connectionString, $"{partialDiscountReference}:Discount"))!.Amount);
 
         var donationOrderNumber = $"ORD-SETTLE-DONATION-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         var donationOrderId = await InsertOrderAsync(connectionString, donationOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);

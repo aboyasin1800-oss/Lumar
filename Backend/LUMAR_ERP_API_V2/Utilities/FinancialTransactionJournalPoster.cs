@@ -51,6 +51,7 @@ public static class FinancialTransactionJournalPoster
         "CustomerPayment",
         "CustomerAdvanceRefund",
         "CustomerPaymentRefund",
+        "CustomerSettlementDiscount",
         "RevenueRecognized",
         "RevenueReversal",
         "WipToFinishedGoods",
@@ -202,6 +203,7 @@ public static class FinancialTransactionJournalPoster
             "CustomerPayment" => new[] { "1000", "1200" },
             "CustomerAdvanceRefund" => new[] { "1160", "1000" },
             "CustomerPaymentRefund" => new[] { "1200", "1000" },
+            "CustomerSettlementDiscount" => new[] { "4210", "1200" },
             "RevenueRecognized" => new[] { "1200", "4200" },
             "RevenueReversal" => new[] { "4200", "1200" },
             "WipToFinishedGoods" => new[] { "1110", "1130" },
@@ -305,6 +307,11 @@ public static class FinancialTransactionJournalPoster
             {
                 new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1200", cancellationToken), amount, 0m, "Customer payment refunded"),
                 new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1000", cancellationToken), 0m, amount, "Cash refund issued")
+            },
+            "CustomerSettlementDiscount" => new[]
+            {
+                new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "4210", cancellationToken), amount, 0m, "Settlement discount recognized"),
+                new JournalLine(await GetLedgerAccountIdAsync(connection, transaction, "1200", cancellationToken), 0m, amount, "Accounts receivable reduced by settlement discount")
             },
             "CustomerBalanceWaiver" => new[]
             {
