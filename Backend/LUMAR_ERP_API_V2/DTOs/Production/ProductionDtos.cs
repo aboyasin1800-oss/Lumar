@@ -105,13 +105,14 @@ public sealed record PieceTrackingDto(int TrackingCode, int? InvoiceId, int? Cus
 public sealed record ProductionStageDto(string Stage, string Status);
 public sealed record ScannerPermissionDto(int ScannerPermissionId, int ScannerId, int ProductTypeId, string Stage, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
 public sealed record ScannerPermissionWriteDto(int ProductTypeId, string Stage, bool IsActive = true);
-public sealed record ScannerDto(int ScannerId, string ScannerCode, string ScannerName, string? Description, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+public sealed record ScannerDto(int ScannerId, string ScannerCode, string ScannerName, string? Description, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt, int? EmployeeId = null, string? EmployeeCode = null, string? EmployeeName = null);
 public sealed record CreateScannerDto
 {
     [Required, StringLength(50)] public string? ScannerCode { get; init; }
     [Required, StringLength(200)] public string? ScannerName { get; init; }
     [StringLength(500)] public string? Description { get; init; }
     public bool IsActive { get; init; } = true;
+    public int? EmployeeId { get; init; }
     public IReadOnlyList<ScannerPermissionWriteDto>? Permissions { get; init; }
 }
 public sealed record UpdateScannerDto
@@ -120,6 +121,7 @@ public sealed record UpdateScannerDto
     [Required, StringLength(200)] public string? ScannerName { get; init; }
     [StringLength(500)] public string? Description { get; init; }
     public bool IsActive { get; init; } = true;
+    public int? EmployeeId { get; init; }
     public IReadOnlyList<ScannerPermissionWriteDto>? Permissions { get; init; }
 }
 public sealed record LiveScanDto(int Id, int? TrackingCode, DateTime? ScanTime);

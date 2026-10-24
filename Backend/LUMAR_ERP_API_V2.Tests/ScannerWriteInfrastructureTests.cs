@@ -23,6 +23,24 @@ public sealed class ScannerWriteInfrastructureTests
     }
 
     [Fact]
+    public void CreateScanner_Allows_Optional_Employee_Link()
+    {
+        var request = new CreateScannerDto
+        {
+            ScannerCode = "SC-1009",
+            ScannerName = "ماسح مع موظف اختياري",
+            Description = "رابط اختياري",
+            IsActive = true,
+            EmployeeId = 42
+        };
+
+        var exception = Record.Exception(() => ScannerWriteValidator.ValidateForCreate(request));
+
+        Assert.Null(exception);
+        Assert.Equal(42, request.EmployeeId);
+    }
+
+    [Fact]
     public void CreateScanner_Rejects_Missing_Data()
     {
         var request = new CreateScannerDto
@@ -45,6 +63,23 @@ public sealed class ScannerWriteInfrastructureTests
             ScannerWriteValidator.EnsureUniqueCode("SC-1001", new[] { "SC-1001" }, null));
 
         Assert.Contains("ScannerCode", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void UpdateScanner_Allows_Optional_Employee_Link()
+    {
+        var request = new UpdateScannerDto
+        {
+            ScannerCode = "SC-1002",
+            ScannerName = "ورشة الخياطة",
+            Description = "ماسح احتياطي",
+            IsActive = true,
+            EmployeeId = null
+        };
+
+        var exception = Record.Exception(() => ScannerWriteValidator.ValidateForUpdate(request));
+
+        Assert.Null(exception);
     }
 
     [Fact]

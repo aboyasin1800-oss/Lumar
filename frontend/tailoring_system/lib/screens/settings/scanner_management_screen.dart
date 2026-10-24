@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 
 import '../../core/app_navigation.dart';
 import '../../core/ui_palette.dart';
+import '../../models/employee_models.dart';
+import '../../repositories/employee_repository.dart';
 
 const List<String> _scannerPermissionStages = [
   'Printing',
@@ -26,6 +28,9 @@ class ScannerRecord {
     required this.isActive,
     required this.createdAt,
     required this.updatedAt,
+    this.employeeId,
+    this.employeeCode,
+    this.employeeName,
   });
 
   factory ScannerRecord.fromJson(Map<String, dynamic> json) => ScannerRecord(
@@ -43,6 +48,11 @@ class ScannerRecord {
         updatedAt: DateTime.tryParse(
           (json['updatedAt'] ?? json['UpdatedAt'] ?? '').toString(),
         ),
+        employeeId: int.tryParse(
+          (json['employeeId'] ?? json['EmployeeId'] ?? '').toString(),
+        ),
+        employeeCode: (json['employeeCode'] ?? json['EmployeeCode'])?.toString(),
+        employeeName: (json['employeeName'] ?? json['EmployeeName'])?.toString(),
       );
 
   final int id;
@@ -52,6 +62,9 @@ class ScannerRecord {
   final bool isActive;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  final int? employeeId;
+  final String? employeeCode;
+  final String? employeeName;
 }
 
 class ScannerPermissionWritePayload {
@@ -148,6 +161,7 @@ class ScannerWritePayload {
     required this.scannerName,
     required this.description,
     required this.isActive,
+    this.employeeId,
     this.permissions,
   });
 
@@ -155,6 +169,7 @@ class ScannerWritePayload {
   final String scannerName;
   final String? description;
   final bool isActive;
+  final int? employeeId;
   final List<ScannerPermissionWritePayload>? permissions;
 
   Map<String, dynamic> toJson() => {
@@ -163,6 +178,7 @@ class ScannerWritePayload {
         'description':
             description?.trim().isNotEmpty == true ? description!.trim() : null,
         'isActive': isActive,
+        'employeeId': employeeId,
         'permissions': (permissions ?? const <ScannerPermissionWritePayload>[])
             .map((permission) => permission.toJson())
             .toList(),
@@ -662,11 +678,14 @@ class ScannerFormScreen extends StatefulWidget {
 
 class _ScannerFormScreenState extends State<ScannerFormScreen> {
   final repository = ScannerRepository();
+  final _employeeRepository = EmployeeRepository();
   final _formKey = GlobalKey<FormState>();
   final _scannerCodeController = TextEditingController();
   final _scannerNameController = TextEditingController();
   final _descriptionController = TextEditingController();
   bool _isActive = true;
+  int? _selectedEmployeeId;
+  List<EmployeeSummary> _employees = const <EmployeeSummary>[];
   bool _saving = false;
   bool _loadingPermissions = true;
   List<ProductTypeOption> _productTypes = const <ProductTypeOption>[];
@@ -682,9 +701,31 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
       _scannerNameController.text = scanner.scannerName;
       _descriptionController.text = scanner.description ?? '';
       _isActive = scanner.isActive;
+      _selectedEmployeeId = scanner.employeeId;
     }
 
+    _loadEmployees();
     _loadProductTypeCatalog();
+  }
+
+  Future<void> _loadEmployees() async {
+    try {
+      final employees = await _employeeRepository.getEmployees();
+      if (!mounted) return;
+      setState(() {
+        _employees = employees
+            .where((employee) => employee.isActive != false)
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
+        if (_selectedEmployeeId != null &&
+            !_employees.any((employee) => employee.id == _selectedEmployeeId)) {
+          _selectedEmployeeId = null;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _employees = const <EmployeeSummary>[]);
+    }
   }
 
   Future<void> _loadProductTypeCatalog() async {
@@ -764,6 +805,7 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
       scannerName: _scannerNameController.text,
       description: _descriptionController.text,
       isActive: _isActive,
+      employeeId: _selectedEmployeeId,
       permissions: _buildPermissions(),
     );
 
@@ -855,6 +897,32 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
                           ),
                         ),
                         const SizedBox(height: 18),
+                        if (_employees.isNotEmpty)
+                          DropdownButtonFormField<int?>(
+                            value: _selectedEmployeeId,
+                            decoration: const InputDecoration(
+                              labelText: 'الموظف المرتبط بالماسح',
+                              hintText: 'بدون موظف',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: [
+                              const DropdownMenuItem<int?>(
+                                value: null,
+                                child: Text('بدون موظف'),
+                              ),
+                              ..._employees.map(
+                                (employee) => DropdownMenuItem<int?>(
+                                  value: employee.id,
+                                  child: Text(
+                                    '${employee.name} (${employee.code})',
+                                  ),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) =>
+                                setState(() => _selectedEmployeeId = value),
+                          ),
+                        if (_employees.isNotEmpty) const SizedBox(height: 18),
                         SwitchListTile.adaptive(
                           value: _isActive,
                           title: const Text('نشط في النظام'),

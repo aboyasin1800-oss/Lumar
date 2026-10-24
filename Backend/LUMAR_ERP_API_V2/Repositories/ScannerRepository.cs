@@ -7,11 +7,19 @@ namespace LUMAR_ERP_API_V2.Repositories;
 
 public sealed class ScannerRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections) : IScannerRepository
 {
-    public Task<IReadOnlyList<ScannerDto>> GetScannersAsync(CancellationToken ct) => QueryAsync("SELECT ScannerId, ScannerCode, ScannerName, Description, IsActive, CreatedAt, UpdatedAt FROM dbo.Scanners ORDER BY ScannerName, ScannerId", reader => new ScannerDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.NullableString("Description"), reader.GetBoolean(4), reader.GetDateTime(5), reader.NullableDateTime("UpdatedAt")), ct);
+    public Task<IReadOnlyList<ScannerDto>> GetScannersAsync(CancellationToken ct) => QueryAsync(@"SELECT s.ScannerId, s.ScannerCode, s.ScannerName, s.Description, s.IsActive, s.CreatedAt, s.UpdatedAt,
+       e.EmployeeID, e.EmployeeCode, e.EmployeeName
+FROM dbo.Scanners AS s
+LEFT JOIN dbo.Employees AS e ON e.ScannerCode = s.ScannerCode
+ORDER BY s.ScannerName, s.ScannerId;", reader => new ScannerDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.NullableString("Description"), reader.GetBoolean(4), reader.GetDateTime(5), reader.NullableDateTime("UpdatedAt"), reader.NullableInt32("EmployeeID"), reader.NullableString("EmployeeCode"), reader.NullableString("EmployeeName")), ct);
 
     public async Task<ScannerDto?> GetByIdAsync(int scannerId, CancellationToken ct)
     {
-        var results = await QueryAsync("SELECT ScannerId, ScannerCode, ScannerName, Description, IsActive, CreatedAt, UpdatedAt FROM dbo.Scanners WHERE ScannerId = @id", scannerId, "@id", reader => new ScannerDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.NullableString("Description"), reader.GetBoolean(4), reader.GetDateTime(5), reader.NullableDateTime("UpdatedAt")), ct);
+        var results = await QueryAsync(@"SELECT s.ScannerId, s.ScannerCode, s.ScannerName, s.Description, s.IsActive, s.CreatedAt, s.UpdatedAt,
+       e.EmployeeID, e.EmployeeCode, e.EmployeeName
+FROM dbo.Scanners AS s
+LEFT JOIN dbo.Employees AS e ON e.ScannerCode = s.ScannerCode
+WHERE s.ScannerId = @id;", scannerId, "@id", reader => new ScannerDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.NullableString("Description"), reader.GetBoolean(4), reader.GetDateTime(5), reader.NullableDateTime("UpdatedAt"), reader.NullableInt32("EmployeeID"), reader.NullableString("EmployeeCode"), reader.NullableString("EmployeeName")), ct);
         return results.SingleOrDefault();
     }
 
@@ -64,6 +72,7 @@ VALUES (@scannerCode, @scannerName, @description, @isActive, SYSDATETIME(), SYSD
 
             var scannerId = (int)(await command.ExecuteScalarAsync(ct))!;
             await UpsertPermissionsInTransactionAsync(connection, (SqlTransaction)transaction, scannerId, normalized.Permissions ?? Array.Empty<ScannerPermissionWriteDto>(), ct);
+            await ApplyEmployeeScannerLinkAsync(connection, (SqlTransaction)transaction, normalized.ScannerCode!, normalized.EmployeeId, ct);
             await transaction.CommitAsync(ct);
             return await GetByIdAsync(scannerId, ct);
         }
@@ -109,6 +118,7 @@ WHERE ScannerId = @id;";
             await command.ExecuteNonQueryAsync(ct);
 
             await UpsertPermissionsInTransactionAsync(connection, (SqlTransaction)transaction, scannerId, normalized.Permissions ?? Array.Empty<ScannerPermissionWriteDto>(), ct);
+            await ApplyEmployeeScannerLinkAsync(connection, (SqlTransaction)transaction, normalized.ScannerCode!, normalized.EmployeeId, ct);
             await transaction.CommitAsync(ct);
             return await GetByIdAsync(scannerId, ct);
         }
@@ -168,6 +178,72 @@ WHERE ScannerId = @id;";
     }
 
     public Task<IReadOnlyList<LiveScanDto>> GetLiveScansAsync(CancellationToken ct) => QueryAsync("SELECT ID, TrackingCode, ScanTime FROM dbo.Live_Scan ORDER BY ScanTime DESC, ID DESC", reader => new LiveScanDto(reader.GetInt32(0), reader.NullableInt32("TrackingCode"), reader.NullableDateTime("ScanTime")), ct);
+
+    private static async Task ApplyEmployeeScannerLinkAsync(SqlConnection connection, SqlTransaction transaction, string scannerCode, int? employeeId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(scannerCode))
+        {
+            return;
+        }
+
+        var normalizedScannerCode = scannerCode.Trim();
+        if (employeeId is null || employeeId <= 0)
+        {
+            const string unlinkSql = @"UPDATE dbo.Employees WITH (UPDLOCK, HOLDLOCK)
+SET ScannerCode = NULL,
+    UpdatedAt = SYSDATETIME()
+WHERE ScannerCode = @scannerCode;";
+
+            await using var unlinkCommand = new SqlCommand(unlinkSql, connection, transaction);
+            unlinkCommand.Parameters.AddWithValue("@scannerCode", normalizedScannerCode);
+            await unlinkCommand.ExecuteNonQueryAsync(ct);
+            return;
+        }
+
+        const string employeeSql = @"SELECT EmployeeID, EmployeeCode, EmployeeName, ScannerCode, IsActive
+FROM dbo.Employees WITH (UPDLOCK, HOLDLOCK)
+WHERE EmployeeID = @employeeId;";
+
+        await using (var employeeCommand = new SqlCommand(employeeSql, connection, transaction))
+        {
+            employeeCommand.Parameters.AddWithValue("@employeeId", employeeId.Value);
+            await using var employeeReader = await employeeCommand.ExecuteReaderAsync(ct);
+            if (!await employeeReader.ReadAsync(ct))
+            {
+                throw new ArgumentException("EmployeeId was not found.");
+            }
+
+            var isActive = employeeReader.GetBoolean(4);
+            if (!isActive)
+            {
+                throw new ArgumentException("Employee is inactive and cannot be linked to a scanner.");
+            }
+        }
+
+        const string detachSql = @"UPDATE dbo.Employees WITH (UPDLOCK, HOLDLOCK)
+SET ScannerCode = NULL,
+    UpdatedAt = SYSDATETIME()
+WHERE ScannerCode = @scannerCode AND EmployeeID <> @employeeId;";
+
+        await using (var detachCommand = new SqlCommand(detachSql, connection, transaction))
+        {
+            detachCommand.Parameters.AddWithValue("@scannerCode", normalizedScannerCode);
+            detachCommand.Parameters.AddWithValue("@employeeId", employeeId.Value);
+            await detachCommand.ExecuteNonQueryAsync(ct);
+        }
+
+        const string assignSql = @"UPDATE dbo.Employees WITH (UPDLOCK, HOLDLOCK)
+SET ScannerCode = @scannerCode,
+    UpdatedAt = SYSDATETIME()
+WHERE EmployeeID = @employeeId;";
+
+        await using (var assignCommand = new SqlCommand(assignSql, connection, transaction))
+        {
+            assignCommand.Parameters.AddWithValue("@scannerCode", normalizedScannerCode);
+            assignCommand.Parameters.AddWithValue("@employeeId", employeeId.Value);
+            await assignCommand.ExecuteNonQueryAsync(ct);
+        }
+    }
 
     private static async Task UpsertPermissionsInTransactionAsync(SqlConnection connection, SqlTransaction transaction, int scannerId, IReadOnlyList<ScannerPermissionWriteDto> permissions, CancellationToken ct)
     {

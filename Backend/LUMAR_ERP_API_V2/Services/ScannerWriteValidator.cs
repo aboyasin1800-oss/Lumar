@@ -17,6 +17,7 @@ public static class ScannerWriteValidator
             ScannerName = request.ScannerName.Trim(),
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
             IsActive = NormalizeIsActive(request.IsActive),
+            EmployeeId = NormalizeEmployeeId(request.EmployeeId),
             Permissions = NormalizePermissions(request.Permissions)
         };
     }
@@ -34,6 +35,7 @@ public static class ScannerWriteValidator
             ScannerName = request.ScannerName.Trim(),
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
             IsActive = NormalizeIsActive(request.IsActive),
+            EmployeeId = NormalizeEmployeeId(request.EmployeeId),
             Permissions = NormalizePermissions(request.Permissions)
         };
     }
@@ -78,6 +80,12 @@ public static class ScannerWriteValidator
     {
         if (isActive is null) return true;
         return isActive.Value;
+    }
+
+    public static int? NormalizeEmployeeId(int? employeeId)
+    {
+        if (employeeId is null) return null;
+        return employeeId.Value > 0 ? employeeId.Value : null;
     }
 
     public static void EnsureUniqueCode(string? scannerCode, IEnumerable<string>? existingCodes, string? currentScannerCode = null)
