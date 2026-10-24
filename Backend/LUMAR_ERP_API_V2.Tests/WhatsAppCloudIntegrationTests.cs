@@ -9,8 +9,11 @@ using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.Settings;
 using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -120,6 +123,72 @@ public sealed class WhatsAppCloudIntegrationTests
             WhatsAppCloudMessageChannel.MetaTemplateCatalog.Resolve("lumar_general_campaign", "ManualCampaign")!);
 
         Assert.Null(headerComponent);
+    }
+
+    [Fact]
+    public async Task MetaWhatsAppTemplateCatalogClient_UsesRuntimeSettingsAndFetchesOfficialTemplateList()
+    {
+        var client = new MetaWhatsAppTemplateCatalogClient(
+            new FixedHttpClientFactory(new HttpClient(new OfficialMetaTemplateHandler())),
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+            {
+                Enabled = true,
+                BaseUrl = "https://graph.facebook.com",
+                ApiVersion = "v20.0",
+                PhoneNumberId = "1413441637074832",
+                AccessToken = "runtime-access-token"
+            }),
+            NullLogger<MetaWhatsAppTemplateCatalogClient>.Instance);
+
+        var templates = await client.GetTemplatesAsync(CancellationToken.None);
+
+        Assert.NotEmpty(templates);
+        Assert.Contains(templates, x => x.Name == "lumar_order_created");
+        Assert.Contains(templates, x => x.Name == "lumar_order_ready");
+        Assert.Contains(templates, x => x.Name == "lumar_order_delivered");
+        Assert.Contains(templates, x => x.Name == "lumar_piece_cancelled");
+        Assert.Contains(templates, x => x.Name == "lumar_order_cancelled");
+        Assert.Contains(templates, x => x.Name == "lumar_referrer_reward");
+        Assert.Contains(templates, x => x.Name == "lumar_referrer_reward_relation");
+        Assert.Contains(templates, x => x.Name == "lumar_order_created_with_referrer");
+        Assert.Contains(templates, x => x.Name == "lumar_order_created_with_referrer_relation");
+        Assert.Contains(templates, x => x.Name == "lumar_friday_greeting");
+        Assert.DoesNotContain(templates, x => string.Equals(x.Name, "lumar_general_campaign", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task MetaWhatsAppTemplateCatalogClient_UsesProtectedRuntimeStore_AndCallsOfficialMetagraphEndpoint()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IConfiguration>(config);
+        services.AddOptions<WhatsAppOptions>().Configure(options => { });
+        services.AddDataProtection()
+            .SetApplicationName("LUMAR_ERP_API_V2")
+            .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LUMAR_ERP_API_V2", "DataProtection-Keys")));
+
+        services.AddSingleton<IWhatsAppConnectionSettingsStore, WhatsAppConnectionSettingsStore>();
+        services.AddHttpClient();
+        services.AddScoped<IMetaWhatsAppTemplateCatalogClient, MetaWhatsAppTemplateCatalogClient>();
+
+        using var provider = services.BuildServiceProvider();
+
+        var store = provider.GetRequiredService<IWhatsAppConnectionSettingsStore>();
+        var runtime = await store.GetRuntimeSettingsAsync(CancellationToken.None);
+
+        Assert.True(runtime.Enabled || !string.IsNullOrWhiteSpace(runtime.BaseUrl));
+        Assert.False(string.IsNullOrWhiteSpace(runtime.ApiVersion));
+
+        var client = provider.GetRequiredService<IMetaWhatsAppTemplateCatalogClient>();
+        var templates = await client.GetTemplatesAsync(CancellationToken.None);
+
+        Assert.NotNull(templates);
+        if (!string.IsNullOrWhiteSpace(runtime.AccessToken) && !string.IsNullOrWhiteSpace(runtime.PhoneNumberId))
+        {
+            Assert.True(templates.Count >= 1,
+                "The live runtime access path must succeed or fail with a safe Meta error response; no secret content may be printed.");
+        }
     }
 
     [Fact]
@@ -957,6 +1026,40 @@ public sealed class WhatsAppCloudIntegrationTests
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent("{\"messages\":[{\"id\":\"wamid.template\"}]}")
+            };
+        }
+    }
+
+    private sealed class OfficialMetaTemplateHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+            Assert.Equal("runtime-access-token", request.Headers.Authorization?.Parameter);
+            Assert.Contains("1413441637074832/message_templates", request.RequestUri!.ToString(), StringComparison.OrdinalIgnoreCase);
+
+            var payload = new
+            {
+                data = new[]
+                {
+                    new { id = "1", name = "lumar_order_created", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
+                    new { id = "2", name = "lumar_order_ready", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
+                    new { id = "3", name = "lumar_order_delivered", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
+                    new { id = "4", name = "lumar_piece_cancelled", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
+                    new { id = "5", name = "lumar_order_cancelled", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
+                    new { id = "6", name = "lumar_referrer_reward", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
+                    new { id = "7", name = "lumar_referrer_reward_relation", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
+                    new { id = "8", name = "lumar_order_created_with_referrer", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
+                    new { id = "9", name = "lumar_order_created_with_referrer_relation", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } },
+                    new { id = "10", name = "lumar_friday_greeting", status = "APPROVED", language = "ar", category = "UTILITY", components = new[] { new { type = "body" } } }
+                }
+            };
+
+            var json = System.Text.Json.JsonSerializer.Serialize(payload);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
             };
         }
     }

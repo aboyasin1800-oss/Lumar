@@ -83,6 +83,7 @@ builder.Services.AddScoped<IMessageWriteService, MessageWriteService>();
 builder.Services.AddScoped<IYemenPhoneNumberNormalizer, YemenPhoneNumberNormalizer>();
 builder.Services.AddScoped<IManualCampaignService, ManualCampaignService>();
 builder.Services.AddScoped<IMessageTemplateRenderer, MessageTemplateRenderer>();
+builder.Services.AddScoped<IMetaWhatsAppTemplateCatalogClient, MetaWhatsAppTemplateCatalogClient>();
 builder.Services.AddScoped<ISettingsRepository, SettingsRepository>();
 builder.Services.AddScoped<IPrintingRepository, PrintingRepository>();
 builder.Services.AddScoped<ICodePrefixSettingsRepository, CodePrefixSettingsRepository>();
