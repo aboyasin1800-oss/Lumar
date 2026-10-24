@@ -6,6 +6,7 @@ using System.Text.Json;
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.WhatsApp;
+using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Extensions.Options;
 using System.Linq;
 
@@ -328,16 +329,33 @@ public sealed class WhatsAppCloudMessageChannel(
             "referral_points" or "referral_points_earned" => new[] { "ReferralPointsEarned" },
             "referral_balance" => new[] { "ReferralBalance" },
             "referrer_points_balance" => new[] { "ReferrerPointsBalance" },
-            "relationship" => new[] { "Relationship", "Relation" },
-            "relation_welcome" => new[] { "RelationWelcome" },
+            "relationship" => new[] { "Relationship", "Relation", "RelationshipType" },
+            "relation_welcome" => new[] { "RelationWelcome", "RelationshipType" },
             "campaign_text" => new[] { "RawCampaignText", "CampaignText" },
             _ => Array.Empty<string>()
         };
 
         foreach (var alias in aliasMap)
         {
-            if (context.TryGetValue(alias, out var value) && value is not null)
-                return FormatMetaValue(value);
+            if (!context.TryGetValue(alias, out var value) || value is null)
+                continue;
+
+            if (string.Equals(parameterName, "relation_welcome", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.Equals(alias, "RelationWelcome", StringComparison.OrdinalIgnoreCase))
+                    return FormatMetaValue(value);
+
+                if (string.Equals(alias, "RelationshipType", StringComparison.OrdinalIgnoreCase))
+                {
+                    var mapped = RelationshipWelcomeMapper.TryMap(Convert.ToString(value, CultureInfo.InvariantCulture));
+                    if (!string.IsNullOrWhiteSpace(mapped))
+                        return mapped;
+                }
+
+                return null;
+            }
+
+            return FormatMetaValue(value);
         }
 
         return null;

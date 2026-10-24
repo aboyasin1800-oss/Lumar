@@ -10,6 +10,7 @@ using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.Settings;
 using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
+using LUMAR_ERP_API_V2.Utilities;
 using Xunit;
 
 namespace LUMAR_ERP_API_V2.Tests;
@@ -211,6 +212,38 @@ public sealed class MetaTemplateContractTests
         Assert.Equal(new DateTime(2026, 10, 25), Assert.IsType<DateTime>(context["DeliveryDate"]));
         Assert.False(context.ContainsKey("RelationWelcome"));
         Assert.False(context.ContainsKey("CancelledAmount"));
+    }
+
+    [Theory]
+    [InlineData("أب", "والدك")]
+    [InlineData("أم", "والدتك")]
+    [InlineData("أخ", "أخاك")]
+    [InlineData("Brother", "أخاك")]
+    [InlineData("أخت", "أختك")]
+    [InlineData("ابن", "ابنك")]
+    [InlineData("ابنة", "ابنتك")]
+    [InlineData("ابن عم", "ابن عمك")]
+    [InlineData("صديق", "صديقك")]
+    [InlineData("Friend", "صديقك")]
+    [InlineData("عم", "قريبك")]
+    [InlineData("حفيد", "قريبك")]
+    public void RelationshipWelcomeMapper_MapsApprovedValues_AndUnknownRelations_ToSafeFallback(string relationshipType, string expected)
+    {
+        Assert.Equal(expected, RelationshipWelcomeMapper.TryMap(relationshipType));
+    }
+
+    [Theory]
+    [InlineData("Primary")]
+    [InlineData("???")]
+    [InlineData("أخرى")]
+    [InlineData("فارغ")]
+    [InlineData("NULL")]
+    [InlineData("لا توجد صلة")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void RelationshipWelcomeMapper_IgnoresInvalidValues(string? relationshipType)
+    {
+        Assert.Null(RelationshipWelcomeMapper.TryMap(relationshipType));
     }
 
     [Theory]
