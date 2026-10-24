@@ -237,28 +237,16 @@ class _OrdersScreenState extends State<OrdersScreen>
             ),
           ),
           if (_suggestions != null)
-            _CustomerSuggestions(
-              future: _suggestions!,
-              onSelected: _selectCustomer,
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 260),
+              child: _CustomerSuggestions(
+                future: _suggestions!,
+                onSelected: _selectCustomer,
+              ),
             ),
         ],
       );
 
-  static String _dateText(String? value) {
-    final date = DateTime.tryParse(value ?? '');
-    return date == null
-        ? 'لم يحدد تاريخ التسليم'
-        : '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
-  }
-
-  static String _statusLabel(String status) => switch (status) {
-        'New' => 'طلب جديد',
-        'InProduction' => 'قيد الإنتاج',
-        'ReadyForDelivery' => 'جاهز للتسليم',
-        'Delivered' => 'تم التسليم',
-        'Cancelled' => 'ملغاة',
-        _ => status,
-      };
 }
 
 class OrderSummary {
@@ -345,6 +333,7 @@ class _CustomerSuggestions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
+        clipBehavior: Clip.antiAlias,
         child: FutureBuilder<List<_CustomerSuggestion>>(
           future: future,
           builder: (context, snapshot) {
@@ -356,21 +345,34 @@ class _CustomerSuggestions extends StatelessWidget {
             }
             final customers = snapshot.data ?? const <_CustomerSuggestion>[];
             if (customers.isEmpty) {
-              return const ListTile(title: Text('لا توجد اقتراحات مطابقة.'));
+              return const SizedBox(
+                height: 48,
+                child: Center(child: Text('لا توجد اقتراحات مطابقة.')),
+              );
             }
-            return Column(
-              children: customers
-                  .map((customer) => ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.person_search_outlined),
-                        title: Text(customer.customerName ?? 'عميل ${customer.customerId}'),
-                        subtitle: Text([
-                          customer.customerCode,
-                          customer.phoneNumber,
-                        ].where((value) => value?.trim().isNotEmpty == true).join(' • ')),
-                        onTap: () => onSelected(customer),
-                      ))
-                  .toList(),
+
+            return Scrollbar(
+              thumbVisibility: true,
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: customers.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final customer = customers[index];
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.person_search_outlined),
+                    title: Text(
+                        customer.customerName ?? 'عميل ${customer.customerId}'),
+                    subtitle: Text([
+                      customer.customerCode,
+                      customer.phoneNumber,
+                    ].where((value) => value?.trim().isNotEmpty == true).join(' • ')),
+                    onTap: () => onSelected(customer),
+                  );
+                },
+              ),
             );
           },
         ),

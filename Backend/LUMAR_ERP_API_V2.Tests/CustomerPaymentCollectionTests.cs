@@ -14,39 +14,52 @@ public class CustomerPaymentCollectionTests
     {
         var connectionString = GetConnectionString();
         var repository = CreateOrderRepository(connectionString);
+        var createdOrders = new List<(int OrderId, string OrderNumber)>();
 
-        var advanceOrderNumber = $"ORD-COLL-ADV-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
-        var advanceOrderId = await InsertOrderAsync(connectionString, advanceOrderNumber, 850.00m, 0m, 120.00m, "New", null, false);
+        try
+        {
+            var advanceOrderNumber = $"ORD-COLL-ADV-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+            var advanceOrderId = await InsertOrderAsync(connectionString, advanceOrderNumber, 850.00m, 0m, 120.00m, "New", null, false);
+            createdOrders.Add((advanceOrderId, advanceOrderNumber));
 
-        var advanceResult = await repository.CollectCustomerPaymentAsync(advanceOrderId, 330.00m, "Cash", 1, "RCPT-ADV-1", "دفعة مقدمة", CancellationToken.None);
-        Assert.NotNull(advanceResult);
-        Assert.Equal(400.00m, advanceResult!.RemainingAmount);
+            var advanceResult = await repository.CollectCustomerPaymentAsync(advanceOrderId, 330.00m, "Cash", 1, "RCPT-ADV-1", "دفعة مقدمة", CancellationToken.None);
+            Assert.NotNull(advanceResult);
+            Assert.Equal(400.00m, advanceResult!.RemainingAmount);
 
-        var advancePayment = await QueryPaymentAsync(connectionString, advanceOrderId, "RCPT-ADV-1");
-        Assert.NotNull(advancePayment);
-        Assert.Equal("Advance", advancePayment!.PaymentKind);
+            var advancePayment = await QueryPaymentAsync(connectionString, advanceOrderId, "RCPT-ADV-1");
+            Assert.NotNull(advancePayment);
+            Assert.Equal("Advance", advancePayment!.PaymentKind);
 
-        var advanceTransaction = await QueryFinancialTransactionAsync(connectionString, "RCPT-ADV-1");
-        Assert.NotNull(advanceTransaction);
-        Assert.Equal("CustomerAdvance", advanceTransaction!.TransactionType);
-        Assert.Equal(330.00m, advanceTransaction.Amount);
+            var advanceTransaction = await QueryFinancialTransactionAsync(connectionString, "RCPT-ADV-1");
+            Assert.NotNull(advanceTransaction);
+            Assert.Equal("CustomerAdvance", advanceTransaction!.TransactionType);
+            Assert.Equal(330.00m, advanceTransaction.Amount);
 
-        var debtOrderNumber = $"ORD-COLL-DEBT-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
-        var debtOrderId = await InsertOrderAsync(connectionString, debtOrderNumber, 850.00m, 0m, 120.00m, "Delivered", DateTime.UtcNow, true);
+            var debtOrderNumber = $"ORD-COLL-DEBT-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+            var debtOrderId = await InsertOrderAsync(connectionString, debtOrderNumber, 850.00m, 0m, 120.00m, "Delivered", DateTime.UtcNow, true);
+            createdOrders.Add((debtOrderId, debtOrderNumber));
 
-        var debtResult = await repository.CollectCustomerPaymentAsync(debtOrderId, 730.00m, "Cash", 1, "RCPT-DEBT-1", "تحصيل ذمة", CancellationToken.None);
-        Assert.NotNull(debtResult);
-        Assert.Equal(0m, debtResult!.RemainingAmount);
+            var debtResult = await repository.CollectCustomerPaymentAsync(debtOrderId, 730.00m, "Cash", 1, "RCPT-DEBT-1", "تحصيل ذمة", CancellationToken.None);
+            Assert.NotNull(debtResult);
+            Assert.Equal(0m, debtResult!.RemainingAmount);
 
-        var debtPayment = await QueryPaymentAsync(connectionString, debtOrderId, "RCPT-DEBT-1");
-        Assert.NotNull(debtPayment);
-        Assert.Equal("DebtCollection", debtPayment!.PaymentKind);
-        Assert.Equal(730.00m, debtPayment.Amount);
+            var debtPayment = await QueryPaymentAsync(connectionString, debtOrderId, "RCPT-DEBT-1");
+            Assert.NotNull(debtPayment);
+            Assert.Equal("DebtCollection", debtPayment!.PaymentKind);
+            Assert.Equal(730.00m, debtPayment.Amount);
 
-        var debtTransaction = await QueryFinancialTransactionAsync(connectionString, "RCPT-DEBT-1");
-        Assert.NotNull(debtTransaction);
-        Assert.Equal("CustomerPayment", debtTransaction!.TransactionType);
-        Assert.Equal(730.00m, debtTransaction.Amount);
+            var debtTransaction = await QueryFinancialTransactionAsync(connectionString, "RCPT-DEBT-1");
+            Assert.NotNull(debtTransaction);
+            Assert.Equal("CustomerPayment", debtTransaction!.TransactionType);
+            Assert.Equal(730.00m, debtTransaction.Amount);
+        }
+        finally
+        {
+            foreach (var createdOrder in createdOrders)
+            {
+                await DeleteOrderGraphAsync(connectionString, createdOrder.OrderId, createdOrder.OrderNumber);
+            }
+        }
     }
 
     [Fact]
@@ -54,22 +67,28 @@ public class CustomerPaymentCollectionTests
     {
         var connectionString = GetConnectionString();
         var repository = CreateOrderRepository(connectionString);
-
         var orderNumber = $"ORD-COLL-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         var orderId = await InsertOrderAsync(connectionString, orderNumber, 1200.00m, 0m, 0.00m, "New", null, false);
 
-        var first = await repository.CollectCustomerPaymentAsync(orderId, 350.00m, "Cash", 1, "RCPT-TEST-2", "تحصيل أول", CancellationToken.None);
-        Assert.NotNull(first);
+        try
+        {
+            var first = await repository.CollectCustomerPaymentAsync(orderId, 350.00m, "Cash", 1, "RCPT-TEST-2", "تحصيل أول", CancellationToken.None);
+            Assert.NotNull(first);
 
-        var aboveLimit = await repository.CollectCustomerPaymentAsync(orderId, 900.00m, "Cash", 1, "RCPT-TEST-3", "تحصيل زائد", CancellationToken.None);
-        Assert.Null(aboveLimit);
+            var aboveLimit = await repository.CollectCustomerPaymentAsync(orderId, 900.00m, "Cash", 1, "RCPT-TEST-3", "تحصيل زائد", CancellationToken.None);
+            Assert.Null(aboveLimit);
 
-        var duplicate = await repository.CollectCustomerPaymentAsync(orderId, 350.00m, "Cash", 1, "RCPT-TEST-2", "إعادة إرسال نفس المرجع", CancellationToken.None);
-        Assert.Null(duplicate);
+            var duplicate = await repository.CollectCustomerPaymentAsync(orderId, 350.00m, "Cash", 1, "RCPT-TEST-2", "إعادة إرسال نفس المرجع", CancellationToken.None);
+            Assert.Null(duplicate);
 
-        var sameAmountDifferentReference = await repository.CollectCustomerPaymentAsync(orderId, 350.00m, "Cash", 1, "RCPT-TEST-2B", "دفعة جديدة مشروعة بنفس المبلغ", CancellationToken.None);
-        Assert.NotNull(sameAmountDifferentReference);
-        Assert.Equal(700.00m, sameAmountDifferentReference!.PaidAmount);
+            var sameAmountDifferentReference = await repository.CollectCustomerPaymentAsync(orderId, 350.00m, "Cash", 1, "RCPT-TEST-2B", "دفعة جديدة مشروعة بنفس المبلغ", CancellationToken.None);
+            Assert.NotNull(sameAmountDifferentReference);
+            Assert.Equal(700.00m, sameAmountDifferentReference!.PaidAmount);
+        }
+        finally
+        {
+            await DeleteOrderGraphAsync(connectionString, orderId, orderNumber);
+        }
     }
 
     [Fact]
@@ -81,18 +100,25 @@ public class CustomerPaymentCollectionTests
         var orderNumber = $"ORD-SETTLE-DISCOUNT-SNAPSHOT-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         var orderId = await InsertOrderAsync(connectionString, orderNumber, 14687.50m, 0m, 10000.00m, "Delivered", DateTime.UtcNow, true);
 
-        var result = await repository.SettleCustomerBalanceAsync(orderId, 4000.00m, 687.50m, "Cash", 1, $"{orderNumber}:Settlement", "تحصيل مع خصم", CancellationToken.None);
+        try
+        {
+            var result = await repository.SettleCustomerBalanceAsync(orderId, 4000.00m, 687.50m, "Cash", 1, $"{orderNumber}:Settlement", "تحصيل مع خصم", CancellationToken.None);
 
-        Assert.NotNull(result);
-        Assert.Equal(687.50m, result!.DiscountAmount);
-        Assert.Equal(14000.00m, result.PaidAmount);
-        Assert.Equal(0m, result.RemainingAmount);
+            Assert.NotNull(result);
+            Assert.Equal(687.50m, result!.DiscountAmount);
+            Assert.Equal(14000.00m, result.PaidAmount);
+            Assert.Equal(0m, result.RemainingAmount);
 
-        var orderSnapshot = await QueryOrderSnapshotAsync(connectionString, orderId);
-        Assert.NotNull(orderSnapshot);
-        Assert.Equal(687.50m, orderSnapshot!.DiscountAmount);
-        Assert.Equal(14000.00m, orderSnapshot.PaidAmount);
-        Assert.Equal(0m, orderSnapshot.RemainingAmount);
+            var orderSnapshot = await QueryOrderSnapshotAsync(connectionString, orderId);
+            Assert.NotNull(orderSnapshot);
+            Assert.Equal(687.50m, orderSnapshot!.DiscountAmount);
+            Assert.Equal(14000.00m, orderSnapshot.PaidAmount);
+            Assert.Equal(0m, orderSnapshot.RemainingAmount);
+        }
+        finally
+        {
+            await DeleteOrderGraphAsync(connectionString, orderId, orderNumber);
+        }
     }
 
     [Fact]
@@ -100,47 +126,93 @@ public class CustomerPaymentCollectionTests
     {
         var connectionString = GetConnectionString();
         var repository = CreateOrderRepository(connectionString);
+        var createdOrders = new List<(int OrderId, string OrderNumber)>();
 
-        var fullOrderNumber = $"ORD-SETTLE-FULL-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
-        var fullOrderId = await InsertOrderAsync(connectionString, fullOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
-        var fullResult = await repository.SettleCustomerBalanceAsync(fullOrderId, 1000.00m, 0m, "Cash", 1, $"{fullOrderNumber}:Receipt", "تحصيل كامل", CancellationToken.None);
-        Assert.NotNull(fullResult);
-        Assert.Equal(1000.00m, fullResult!.PaidAmount);
-        Assert.Equal(0m, fullResult.RemainingAmount);
-        Assert.Equal(1000.00m, (await QueryPaymentAsync(connectionString, fullOrderId, $"{fullOrderNumber}:Receipt"))!.Amount);
-        Assert.Equal(1000.00m, (await QueryCustomerLedgerAsync(connectionString, fullOrderId, $"{fullOrderNumber}:Receipt"))!.CreditAmount);
+        try
+        {
+            var fullOrderNumber = $"ORD-SETTLE-FULL-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+            var fullOrderId = await InsertOrderAsync(connectionString, fullOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
+            createdOrders.Add((fullOrderId, fullOrderNumber));
+            var fullResult = await repository.SettleCustomerBalanceAsync(fullOrderId, 1000.00m, 0m, "Cash", 1, $"{fullOrderNumber}:Receipt", "تحصيل كامل", CancellationToken.None);
+            Assert.NotNull(fullResult);
+            Assert.Equal(1000.00m, fullResult!.PaidAmount);
+            Assert.Equal(0m, fullResult.RemainingAmount);
+            Assert.Equal(1000.00m, (await QueryPaymentAsync(connectionString, fullOrderId, $"{fullOrderNumber}:Receipt"))!.Amount);
+            Assert.Equal(1000.00m, (await QueryCustomerLedgerAsync(connectionString, fullOrderId, $"{fullOrderNumber}:Receipt"))!.CreditAmount);
 
-        var fullDiscountOrderNumber = $"ORD-SETTLE-FULL-DISCOUNT-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
-        var fullDiscountOrderId = await InsertOrderAsync(connectionString, fullDiscountOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
-        var fullDiscountReference = $"{fullDiscountOrderNumber}:Receipt";
-        var fullDiscountResult = await repository.SettleCustomerBalanceAsync(fullDiscountOrderId, 700.00m, 300.00m, "Cash", 1, fullDiscountReference, "تحصيل كامل مع خصم", CancellationToken.None);
-        Assert.NotNull(fullDiscountResult);
-        Assert.Equal(700.00m, fullDiscountResult!.PaidAmount);
-        Assert.Equal(0m, fullDiscountResult.RemainingAmount);
-        Assert.Equal(300.00m, (await QueryFinancialTransactionAsync(connectionString, $"{fullDiscountReference}:Discount"))!.Amount);
+            var fullDiscountOrderNumber = $"ORD-SETTLE-FULL-DISCOUNT-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+            var fullDiscountOrderId = await InsertOrderAsync(connectionString, fullDiscountOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
+            createdOrders.Add((fullDiscountOrderId, fullDiscountOrderNumber));
+            var fullDiscountReference = $"{fullDiscountOrderNumber}:Receipt";
+            var fullDiscountResult = await repository.SettleCustomerBalanceAsync(fullDiscountOrderId, 700.00m, 300.00m, "Cash", 1, fullDiscountReference, "تحصيل كامل مع خصم", CancellationToken.None);
+            Assert.NotNull(fullDiscountResult);
+            Assert.Equal(700.00m, fullDiscountResult!.PaidAmount);
+            Assert.Equal(0m, fullDiscountResult.RemainingAmount);
+            Assert.Equal(300.00m, (await QueryFinancialTransactionAsync(connectionString, $"{fullDiscountReference}:Discount"))!.Amount);
 
-        var partialOrderNumber = $"ORD-SETTLE-PARTIAL-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
-        var partialOrderId = await InsertOrderAsync(connectionString, partialOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
-        var partialReference = $"{partialOrderNumber}:Receipt";
-        var partialResult = await repository.SettleCustomerBalanceAsync(partialOrderId, 400.00m, 0m, "Cash", 1, partialReference, "تحصيل جزئي", CancellationToken.None);
-        Assert.NotNull(partialResult);
-        Assert.Equal(400.00m, partialResult!.PaidAmount);
-        Assert.Equal(600.00m, partialResult.RemainingAmount);
-        Assert.Equal(400.00m, (await QueryCustomerLedgerAsync(connectionString, partialOrderId, partialReference))!.CreditAmount);
+            var partialOrderNumber = $"ORD-SETTLE-PARTIAL-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+            var partialOrderId = await InsertOrderAsync(connectionString, partialOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
+            createdOrders.Add((partialOrderId, partialOrderNumber));
+            var partialReference = $"{partialOrderNumber}:Receipt";
+            var partialResult = await repository.SettleCustomerBalanceAsync(partialOrderId, 400.00m, 0m, "Cash", 1, partialReference, "تحصيل جزئي", CancellationToken.None);
+            Assert.NotNull(partialResult);
+            Assert.Equal(400.00m, partialResult!.PaidAmount);
+            Assert.Equal(600.00m, partialResult.RemainingAmount);
+            Assert.Equal(400.00m, (await QueryCustomerLedgerAsync(connectionString, partialOrderId, partialReference))!.CreditAmount);
 
-        var partialDiscountOrderNumber = $"ORD-SETTLE-PARTIAL-DISCOUNT-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
-        var partialDiscountOrderId = await InsertOrderAsync(connectionString, partialDiscountOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
-        var partialDiscountReference = $"{partialDiscountOrderNumber}:Receipt";
-        var partialDiscountResult = await repository.SettleCustomerBalanceAsync(partialDiscountOrderId, 400.00m, 100.00m, "Cash", 1, partialDiscountReference, "تحصيل جزئي مع خصم", CancellationToken.None);
-        Assert.NotNull(partialDiscountResult);
-        Assert.Equal(400.00m, partialDiscountResult!.PaidAmount);
-        Assert.Equal(500.00m, partialDiscountResult.RemainingAmount);
-        Assert.Equal(100.00m, (await QueryFinancialTransactionAsync(connectionString, $"{partialDiscountReference}:Discount"))!.Amount);
+            var partialDiscountOrderNumber = $"ORD-SETTLE-PARTIAL-DISCOUNT-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+            var partialDiscountOrderId = await InsertOrderAsync(connectionString, partialDiscountOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
+            createdOrders.Add((partialDiscountOrderId, partialDiscountOrderNumber));
+            var partialDiscountReference = $"{partialDiscountOrderNumber}:Receipt";
+            var partialDiscountResult = await repository.SettleCustomerBalanceAsync(partialDiscountOrderId, 400.00m, 100.00m, "Cash", 1, partialDiscountReference, "تحصيل جزئي مع خصم", CancellationToken.None);
+            Assert.NotNull(partialDiscountResult);
+            Assert.Equal(400.00m, partialDiscountResult!.PaidAmount);
+            Assert.Equal(500.00m, partialDiscountResult.RemainingAmount);
+            Assert.Equal(100.00m, (await QueryFinancialTransactionAsync(connectionString, $"{partialDiscountReference}:Discount"))!.Amount);
 
-        var donationOrderNumber = $"ORD-SETTLE-DONATION-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
-        var donationOrderId = await InsertOrderAsync(connectionString, donationOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
-        var donationException = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.WaiveRemainingBalanceAsync(donationOrderId, CancellationToken.None));
-        Assert.Equal("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.", donationException.Message);
+            var donationOrderNumber = $"ORD-SETTLE-DONATION-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+            var donationOrderId = await InsertOrderAsync(connectionString, donationOrderNumber, 1000.00m, 0m, 0m, "Delivered", DateTime.UtcNow, true);
+            createdOrders.Add((donationOrderId, donationOrderNumber));
+            var donationException = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.WaiveRemainingBalanceAsync(donationOrderId, CancellationToken.None));
+            Assert.Equal("هذه العملية غير متاحة حتى اعتماد عقدها المحاسبي.", donationException.Message);
+        }
+        finally
+        {
+            foreach (var createdOrder in createdOrders)
+            {
+                await DeleteOrderGraphAsync(connectionString, createdOrder.OrderId, createdOrder.OrderNumber);
+            }
+        }
+    }
+
+    private static async Task DeleteOrderGraphAsync(string connectionString, int orderId, string orderNumber)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(@"
+            DECLARE @events TABLE (AccountingEventId bigint NOT NULL PRIMARY KEY);
+            INSERT INTO @events (AccountingEventId)
+            SELECT ae.AccountingEventId
+            FROM dbo.AccountingEvents ae
+            WHERE ae.OrderId = @orderId
+               OR ae.PaymentId IN (SELECT PaymentID FROM dbo.Payments WHERE OrderID = @orderId);
+
+            DELETE cm FROM dbo.CashMovements cm INNER JOIN @events e ON e.AccountingEventId = cm.AccountingEventId;
+            DELETE jel FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId = jel.JournalEntryId INNER JOIN @events e ON e.AccountingEventId = je.AccountingEventId;
+            DELETE je FROM dbo.JournalEntries je INNER JOIN @events e ON e.AccountingEventId = je.AccountingEventId;
+            DELETE ft FROM dbo.FinancialTransactions ft INNER JOIN @events e ON e.AccountingEventId = ft.AccountingEventId;
+            DELETE ae FROM dbo.AccountingEvents ae INNER JOIN @events e ON e.AccountingEventId = ae.AccountingEventId;
+            DELETE jel FROM dbo.JournalEntryLines jel INNER JOIN dbo.JournalEntries je ON je.JournalEntryId = jel.JournalEntryId WHERE je.ReferenceNumber LIKE @orderReference;
+            DELETE FROM dbo.JournalEntries WHERE ReferenceNumber LIKE @orderReference;
+            DELETE FROM dbo.FinancialTransactions WHERE ReferenceNumber LIKE @orderReference;
+            DELETE FROM dbo.CustomerLedgerEntries WHERE ReferenceNumber LIKE @orderReference;
+            DELETE FROM dbo.Payments WHERE OrderID = @orderId;
+            DELETE FROM dbo.Orders WHERE OrderID = @orderId;
+        ", connection);
+
+        command.Parameters.AddWithValue("@orderId", orderId);
+        command.Parameters.AddWithValue("@orderReference", $"{orderNumber}%");
+        await command.ExecuteNonQueryAsync();
     }
 
     private static string GetConnectionString()
