@@ -283,7 +283,41 @@ public sealed class ProductionRepository(
                     true);
             }
 
-            var validation = ProductionTrackingEngine.ValidateTransition(identity.ProductTypeId, pieceContext.PieceStatus, request.RequestedStage);
+            var routeContainsRequestedStage = route.Contains(finalStage, StringComparer.OrdinalIgnoreCase);
+            if (!routeContainsRequestedStage)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                return new ProductionTrackingAdvanceResultDto(pieceContext.PieceId, pieceContext.TrackingCode, pieceContext.PieceStatus, pieceContext.PieceStatus, null, "Requested stage is not present in the official production route for this piece type.", false);
+            }
+
+            var supervisorDecision = EvaluateSupervisorReexecutionDecision(
+                pieceContext.PieceStatus,
+                request.RequestedStage,
+                request.IsSupervisorReexecution,
+                request is not null && request.IsSupervisorReexecution,
+                route.Count > 0,
+                routeContainsRequestedStage);
+            if (!supervisorDecision.IsAllowed && sameStageAlreadyApplied)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                return new ProductionTrackingAdvanceResultDto(pieceContext.PieceId, pieceContext.TrackingCode, pieceContext.PieceStatus, pieceContext.PieceStatus, ProductionTrackingEngine.GetNextStage(identity.ProductTypeId, pieceContext.PieceStatus), "This stage has already been applied to the piece and cannot be repeated without an authorized supervisor re-execution.", false);
+            }
+
+            ProductionTrackingTransitionValidation validation;
+            if (sameStageAlreadyApplied && supervisorDecision.IsAllowed)
+            {
+                validation = new ProductionTrackingTransitionValidation(
+                    true,
+                    pieceContext.PieceStatus,
+                    request.RequestedStage,
+                    ProductionTrackingEngine.GetNextStage(identity.ProductTypeId, pieceContext.PieceStatus),
+                    "Supervisor re-execution allowed for the already-applied stage.");
+            }
+            else
+            {
+                validation = ProductionTrackingEngine.ValidateTransition(identity.ProductTypeId, pieceContext.PieceStatus, request.RequestedStage);
+            }
+
             if (!validation.IsAllowed)
             {
                 await transaction.RollbackAsync(CancellationToken.None);
@@ -538,7 +572,12 @@ public sealed class ProductionRepository(
         }
 
         var employeeCodeResult = await ResolveEmployeeCodeAsync(connection, transaction, scannerCode, employeeCode, ct);
-        if (string.IsNullOrWhiteSpace(employeeCodeResult)) return ScannerValidationResult.Invalid("No active employee is linked to the supplied scanner code.");
+        var requiresPieceWageEmployee = RequiresPieceWage(stage.Trim());
+        if (string.IsNullOrWhiteSpace(employeeCodeResult) && requiresPieceWageEmployee)
+        {
+            return ScannerValidationResult.Invalid("Piece-wage employee is required for Cutting/Sewing execution.");
+        }
+
         return ScannerValidationResult.Valid(employeeCodeResult);
     }
 
@@ -1214,6 +1253,94 @@ public sealed class ProductionRepository(
         parameter.Value = value;
     }
 
+    internal static (bool IsAllowed, string Mode, string? EmployeeCode, bool AllowsExecutionWithoutEmployee) EvaluateGeneralScannerDecision(
+        bool isScannerActive,
+        bool hasPermission,
+        bool routeExists,
+        bool routeContainsRequestedStage,
+        bool isEmployeeLinked,
+        bool requiresPieceWageEmployee,
+        bool isAdministrativeSupervisor)
+    {
+        var allowsWithoutEmployee = isScannerActive && hasPermission && routeExists && routeContainsRequestedStage && !isEmployeeLinked && !requiresPieceWageEmployee && !isAdministrativeSupervisor;
+        var isAllowed = isScannerActive && hasPermission && routeExists && routeContainsRequestedStage && (!requiresPieceWageEmployee || isEmployeeLinked);
+        return (isAllowed, isAllowed ? "GeneralScanner" : "Rejected", isEmployeeLinked ? "LinkedEmployee" : null, allowsWithoutEmployee);
+    }
+
+    internal static (bool IsAllowed, string Mode, bool AllowsExecutionWithoutEmployee) EvaluateSupervisorReexecutionDecision(
+        string? currentStage,
+        string? requestedStage,
+        bool isSupervisorReexecution,
+        bool isAdministrativeUser,
+        bool routeExists,
+        bool routeContainsRequestedStage)
+    {
+        if (!isSupervisorReexecution || !isAdministrativeUser)
+        {
+            return (false, "DuplicateGuard", false);
+        }
+
+        if (!routeExists || !routeContainsRequestedStage)
+        {
+            return (false, "Rejected", false);
+        }
+
+        var sameStage = string.Equals(currentStage?.Trim(), requestedStage?.Trim(), StringComparison.OrdinalIgnoreCase);
+        return sameStage
+            ? (true, "SupervisorReexecution", true)
+            : (true, "SupervisorReexecution", false);
+    }
+
+    internal static (bool IsAllowed, string Mode, bool RequiresWageCorrection, bool AllowsExecutionWithoutEmployee) EvaluateStageAttributionCorrectionDecision(
+        string? currentEmployeeCode,
+        string? targetEmployeeCode,
+        bool isAdministrativeUser,
+        bool currentEmployeeEligible,
+        bool targetEmployeeEligible,
+        bool sameEmployee,
+        bool hasPendingPayrollWage,
+        bool hasPaidPayrollWage,
+        bool isIdempotentDuplicate,
+        bool isDamageLostReprint)
+    {
+        if (isDamageLostReprint)
+        {
+            return (false, "SeparateReprintFlow", false, false);
+        }
+
+        if (!isAdministrativeUser)
+        {
+            return (false, "Forbidden", false, false);
+        }
+
+        if (sameEmployee)
+        {
+            return (false, "NoChange", false, false);
+        }
+
+        if (isIdempotentDuplicate)
+        {
+            return (false, "IdempotentDuplicate", false, false);
+        }
+
+        if (!currentEmployeeEligible || !targetEmployeeEligible)
+        {
+            return (false, "IneligibleEmployee", false, false);
+        }
+
+        if (hasPaidPayrollWage)
+        {
+            return (false, "PayrollLocked", false, false);
+        }
+
+        if (string.IsNullOrWhiteSpace(currentEmployeeCode) || string.IsNullOrWhiteSpace(targetEmployeeCode))
+        {
+            return (false, "MissingEmployeeIdentity", false, false);
+        }
+
+        return (true, "SupervisorStageAttributionCorrection", hasPendingPayrollWage, false);
+    }
+
     private static bool NeedsScanner(string? requestedStage)
     {
         if (string.IsNullOrWhiteSpace(requestedStage)) return false;
@@ -1273,9 +1400,9 @@ public sealed class ProductionRepository(
     }
     private sealed record CancelledPieceDispositionRow(int PieceId, string Decision, string? TransferStatus);
     private sealed record PieceWageInsertOutcome(bool IsCreated, string Message);
-    private sealed record ScannerValidationResult(bool IsValid, string Message)
+    private sealed record ScannerValidationResult(bool IsValid, string? Message)
     {
-        public static ScannerValidationResult Valid(string employeeCode) => new(true, employeeCode);
+        public static ScannerValidationResult Valid(string? employeeCode) => new(true, employeeCode);
         public static ScannerValidationResult Invalid(string message) => new(false, message);
     }
     public async Task<WorkCardDto?> GetReadyMadeWorkCardAsync(int id, CancellationToken ct)

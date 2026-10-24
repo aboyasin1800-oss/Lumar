@@ -176,6 +176,38 @@ public class ProductionTrackingEngineTests : IDisposable
     }
 
     [Fact]
+    public void ShouldAllowAdministrativeSupervisorReExecutionBeforeDuplicateGuard()
+    {
+        var decision = ProductionRepository.EvaluateSupervisorReexecutionDecision(
+            currentStage: "Cutting",
+            requestedStage: "Cutting",
+            isSupervisorReexecution: true,
+            isAdministrativeUser: true,
+            routeExists: true,
+            routeContainsRequestedStage: true);
+
+        Assert.True(decision.IsAllowed);
+        Assert.Equal("SupervisorReexecution", decision.Mode);
+    }
+
+    [Fact]
+    public void ShouldRejectGeneralScannerWithoutEmployeeWhenPermissionExistsAndRouteIsAuthorized()
+    {
+        var decision = ProductionRepository.EvaluateGeneralScannerDecision(
+            isScannerActive: true,
+            hasPermission: true,
+            routeExists: true,
+            routeContainsRequestedStage: true,
+            isEmployeeLinked: false,
+            requiresPieceWageEmployee: false,
+            isAdministrativeSupervisor: false);
+
+        Assert.True(decision.IsAllowed);
+        Assert.True(decision.AllowsExecutionWithoutEmployee);
+        Assert.Null(decision.EmployeeCode);
+    }
+
+    [Fact]
     public void ShouldRejectSupervisorReExecutionWhenRoleIsNotAdministrative()
     {
         Assert.False(AuthRepository.IsAdministrativeRole("Employee"));
@@ -183,6 +215,64 @@ public class ProductionTrackingEngineTests : IDisposable
         Assert.False(AuthRepository.IsAdministrativeRole(null));
         Assert.True(AuthRepository.IsAdministrativeRole("Admin"));
         Assert.True(AuthRepository.IsAdministrativeRole("System Administrator"));
+    }
+
+    [Fact]
+    public void ShouldAllowEligibleSupervisorStageAttributionCorrection()
+    {
+        var decision = ProductionRepository.EvaluateStageAttributionCorrectionDecision(
+            currentEmployeeCode: "A",
+            targetEmployeeCode: "B",
+            isAdministrativeUser: true,
+            currentEmployeeEligible: true,
+            targetEmployeeEligible: true,
+            sameEmployee: false,
+            hasPendingPayrollWage: true,
+            hasPaidPayrollWage: false,
+            isIdempotentDuplicate: false,
+            isDamageLostReprint: false);
+
+        Assert.True(decision.IsAllowed);
+        Assert.True(decision.RequiresWageCorrection);
+        Assert.Equal("SupervisorStageAttributionCorrection", decision.Mode);
+    }
+
+    [Fact]
+    public void ShouldRejectNonAdministrativeStageAttributionCorrection()
+    {
+        var decision = ProductionRepository.EvaluateStageAttributionCorrectionDecision(
+            currentEmployeeCode: "A",
+            targetEmployeeCode: "B",
+            isAdministrativeUser: false,
+            currentEmployeeEligible: true,
+            targetEmployeeEligible: true,
+            sameEmployee: false,
+            hasPendingPayrollWage: true,
+            hasPaidPayrollWage: false,
+            isIdempotentDuplicate: false,
+            isDamageLostReprint: false);
+
+        Assert.False(decision.IsAllowed);
+        Assert.Equal("Forbidden", decision.Mode);
+    }
+
+    [Fact]
+    public void ShouldKeepDamageLostReprintSeparatelyFromStageAttributionCorrection()
+    {
+        var decision = ProductionRepository.EvaluateStageAttributionCorrectionDecision(
+            currentEmployeeCode: "A",
+            targetEmployeeCode: "B",
+            isAdministrativeUser: true,
+            currentEmployeeEligible: true,
+            targetEmployeeEligible: true,
+            sameEmployee: false,
+            hasPendingPayrollWage: true,
+            hasPaidPayrollWage: false,
+            isIdempotentDuplicate: false,
+            isDamageLostReprint: true);
+
+        Assert.False(decision.IsAllowed);
+        Assert.Equal("SeparateReprintFlow", decision.Mode);
     }
 
     [Fact]
