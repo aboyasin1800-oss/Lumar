@@ -15,6 +15,28 @@ public sealed class ScannerRepository(ReadOnlySqlConnectionFactory connections, 
         return results.SingleOrDefault();
     }
 
+    public async Task<IReadOnlyList<ScannerPermissionDto>> GetPermissionsAsync(int scannerId, CancellationToken ct)
+    {
+        if (scannerId <= 0)
+        {
+            return Array.Empty<ScannerPermissionDto>();
+        }
+
+        var sql = @"SELECT ScannerStageProductPermissionId, ScannerId, ProductTypeId, Stage, IsActive, CreatedAt, UpdatedAt
+                    FROM dbo.ScannerStageProductPermissions WITH (NOLOCK)
+                    WHERE ScannerId = @scannerId
+                    ORDER BY ProductTypeId, Stage;";
+
+        return await QueryAsync(sql, scannerId, "@scannerId", reader => new ScannerPermissionDto(
+            reader.GetInt32(0),
+            reader.GetInt32(1),
+            reader.GetInt32(2),
+            reader.GetString(3),
+            reader.GetBoolean(4),
+            reader.GetDateTime(5),
+            reader.NullableDateTime("UpdatedAt")), ct);
+    }
+
     public async Task<ScannerDto?> CreateAsync(CreateScannerDto request, CancellationToken ct)
     {
         var normalized = ScannerWriteValidator.ValidateForCreate(request);
@@ -41,6 +63,7 @@ VALUES (@scannerCode, @scannerName, @description, @isActive, SYSDATETIME(), SYSD
             command.Parameters.AddWithValue("@isActive", normalized.IsActive);
 
             var scannerId = (int)(await command.ExecuteScalarAsync(ct))!;
+            await UpsertPermissionsInTransactionAsync(connection, (SqlTransaction)transaction, scannerId, normalized.Permissions ?? Array.Empty<ScannerPermissionWriteDto>(), ct);
             await transaction.CommitAsync(ct);
             return await GetByIdAsync(scannerId, ct);
         }
@@ -85,6 +108,7 @@ WHERE ScannerId = @id;";
             command.Parameters.AddWithValue("@isActive", normalized.IsActive);
             await command.ExecuteNonQueryAsync(ct);
 
+            await UpsertPermissionsInTransactionAsync(connection, (SqlTransaction)transaction, scannerId, normalized.Permissions ?? Array.Empty<ScannerPermissionWriteDto>(), ct);
             await transaction.CommitAsync(ct);
             return await GetByIdAsync(scannerId, ct);
         }
@@ -119,7 +143,69 @@ WHERE ScannerId = @id;";
         return await GetByIdAsync(scannerId, ct);
     }
 
+    public async Task<IReadOnlyList<ScannerPermissionDto>> UpsertPermissionsAsync(int scannerId, IReadOnlyList<ScannerPermissionWriteDto>? permissions, CancellationToken ct)
+    {
+        if (scannerId <= 0)
+        {
+            return Array.Empty<ScannerPermissionDto>();
+        }
+
+        var normalized = ScannerWriteValidator.NormalizePermissions(permissions);
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = await connection.BeginTransactionAsync(ct);
+        try
+        {
+            await UpsertPermissionsInTransactionAsync(connection, (SqlTransaction)transaction, scannerId, normalized, ct);
+            await transaction.CommitAsync(ct);
+            return await GetPermissionsAsync(scannerId, ct);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
     public Task<IReadOnlyList<LiveScanDto>> GetLiveScansAsync(CancellationToken ct) => QueryAsync("SELECT ID, TrackingCode, ScanTime FROM dbo.Live_Scan ORDER BY ScanTime DESC, ID DESC", reader => new LiveScanDto(reader.GetInt32(0), reader.NullableInt32("TrackingCode"), reader.NullableDateTime("ScanTime")), ct);
+
+    private static async Task UpsertPermissionsInTransactionAsync(SqlConnection connection, SqlTransaction transaction, int scannerId, IReadOnlyList<ScannerPermissionWriteDto> permissions, CancellationToken ct)
+    {
+        const string validateSql = "SELECT TOP (1) ScannerId FROM dbo.Scanners WITH (UPDLOCK, HOLDLOCK) WHERE ScannerId = @scannerId;";
+        await using (var validateCommand = new SqlCommand(validateSql, connection, transaction))
+        {
+            validateCommand.Parameters.AddWithValue("@scannerId", scannerId);
+            if (await validateCommand.ExecuteScalarAsync(ct) is null)
+            {
+                throw new ArgumentException("Scanner was not found.");
+            }
+        }
+
+        const string deleteSql = "DELETE FROM dbo.ScannerStageProductPermissions WHERE ScannerId = @scannerId;";
+        await using (var deleteCommand = new SqlCommand(deleteSql, connection, transaction))
+        {
+            deleteCommand.Parameters.AddWithValue("@scannerId", scannerId);
+            await deleteCommand.ExecuteNonQueryAsync(ct);
+        }
+
+        if (permissions.Count == 0)
+        {
+            return;
+        }
+
+        const string insertSql = @"INSERT INTO dbo.ScannerStageProductPermissions (ScannerId, ProductTypeId, Stage, IsActive, CreatedAt, UpdatedAt)
+VALUES (@scannerId, @productTypeId, @stage, @isActive, SYSDATETIME(), SYSDATETIME());";
+
+        foreach (var permission in permissions)
+        {
+            await using var insertCommand = new SqlCommand(insertSql, connection, transaction);
+            insertCommand.Parameters.AddWithValue("@scannerId", scannerId);
+            insertCommand.Parameters.AddWithValue("@productTypeId", permission.ProductTypeId);
+            insertCommand.Parameters.AddWithValue("@stage", permission.Stage.Trim());
+            insertCommand.Parameters.AddWithValue("@isActive", permission.IsActive);
+            await insertCommand.ExecuteNonQueryAsync(ct);
+        }
+    }
 
     private async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, Func<SqlDataReader, T> map, CancellationToken ct)
     {

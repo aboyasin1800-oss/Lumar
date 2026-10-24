@@ -6,6 +6,17 @@ import 'package:http/http.dart' as http;
 import '../../core/app_navigation.dart';
 import '../../core/ui_palette.dart';
 
+const List<String> _scannerPermissionStages = [
+  'Printing',
+  'FabricPrep',
+  'Cutting',
+  'Sewing',
+  'Buttons',
+  'Ironing',
+  'Quality',
+  'Assembly',
+];
+
 class ScannerRecord {
   const ScannerRecord({
     required this.id,
@@ -19,8 +30,10 @@ class ScannerRecord {
 
   factory ScannerRecord.fromJson(Map<String, dynamic> json) => ScannerRecord(
         id: (json['scannerId'] ?? json['ScannerId'] ?? 0) as int,
-        scannerCode: (json['scannerCode'] ?? json['ScannerCode'] ?? '').toString(),
-        scannerName: (json['scannerName'] ?? json['ScannerName'] ?? '').toString(),
+        scannerCode:
+            (json['scannerCode'] ?? json['ScannerCode'] ?? '').toString(),
+        scannerName:
+            (json['scannerName'] ?? json['ScannerName'] ?? '').toString(),
         description: (json['description'] ?? json['Description'])?.toString(),
         isActive: (json['isActive'] ?? json['IsActive'] ?? false) as bool,
         createdAt: DateTime.tryParse(
@@ -28,8 +41,8 @@ class ScannerRecord {
             ) ??
             DateTime.now(),
         updatedAt: DateTime.tryParse(
-              (json['updatedAt'] ?? json['UpdatedAt'] ?? '').toString(),
-            ),
+          (json['updatedAt'] ?? json['UpdatedAt'] ?? '').toString(),
+        ),
       );
 
   final int id;
@@ -41,26 +54,118 @@ class ScannerRecord {
   final DateTime? updatedAt;
 }
 
+class ScannerPermissionWritePayload {
+  const ScannerPermissionWritePayload({
+    required this.productTypeId,
+    required this.stage,
+    this.isActive = true,
+  });
+
+  final int productTypeId;
+  final String stage;
+  final bool isActive;
+
+  Map<String, dynamic> toJson() => {
+        'productTypeId': productTypeId,
+        'stage': stage,
+        'isActive': isActive,
+      };
+}
+
+class ScannerPermissionRecord {
+  const ScannerPermissionRecord({
+    required this.scannerPermissionId,
+    required this.scannerId,
+    required this.productTypeId,
+    required this.stage,
+    required this.isActive,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory ScannerPermissionRecord.fromJson(Map<String, dynamic> json) =>
+      ScannerPermissionRecord(
+        scannerPermissionId: (json['scannerPermissionId'] ??
+            json['ScannerPermissionId'] ??
+            0) as int,
+        scannerId: (json['scannerId'] ?? json['ScannerId'] ?? 0) as int,
+        productTypeId:
+            (json['productTypeId'] ?? json['ProductTypeId'] ?? 0) as int,
+        stage: (json['stage'] ?? json['Stage'] ?? '').toString(),
+        isActive: (json['isActive'] ?? json['IsActive'] ?? true) as bool,
+        createdAt: DateTime.tryParse(
+              (json['createdAt'] ?? json['CreatedAt'] ?? '').toString(),
+            ) ??
+            DateTime.now(),
+        updatedAt: DateTime.tryParse(
+          (json['updatedAt'] ?? json['UpdatedAt'] ?? '').toString(),
+        ),
+      );
+
+  final int scannerPermissionId;
+  final int scannerId;
+  final int productTypeId;
+  final String stage;
+  final bool isActive;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
+}
+
+class ProductTypeOption {
+  const ProductTypeOption({
+    required this.productTypeId,
+    required this.nameAr,
+  });
+
+  factory ProductTypeOption.fromJson(Map<String, dynamic> json) {
+    final productTypeId = int.tryParse(
+          (json['productTypeId'] ??
+                  json['ProductTypeId'] ??
+                  json['id'] ??
+                  json['Id'] ??
+                  0)
+              .toString(),
+        ) ??
+        0;
+    final nameAr =
+        (json['nameAr'] ?? json['NameAr'] ?? json['name'] ?? json['Name'] ?? '')
+            .toString()
+            .trim();
+
+    return ProductTypeOption(
+      productTypeId: productTypeId,
+      nameAr: nameAr,
+    );
+  }
+
+  final int productTypeId;
+  final String nameAr;
+}
+
 class ScannerWritePayload {
   const ScannerWritePayload({
     required this.scannerCode,
     required this.scannerName,
     required this.description,
     required this.isActive,
+    this.permissions,
   });
 
   final String scannerCode;
   final String scannerName;
   final String? description;
   final bool isActive;
+  final List<ScannerPermissionWritePayload>? permissions;
 
   Map<String, dynamic> toJson() => {
         'scannerCode': scannerCode.trim(),
         'scannerName': scannerName.trim(),
-        'description': description?.trim().isNotEmpty == true
-            ? description!.trim()
-            : null,
+        'description':
+            description?.trim().isNotEmpty == true ? description!.trim() : null,
         'isActive': isActive,
+        'permissions': (permissions ?? const <ScannerPermissionWritePayload>[])
+            .map((permission) => permission.toJson())
+            .toList(),
       };
 }
 
@@ -75,7 +180,8 @@ class ScannerRepository {
   final http.Client _client;
 
   Future<List<ScannerRecord>> getScanners() async {
-    final response = await _client.get(Uri.parse('$_baseUrl/production/scanners'));
+    final response =
+        await _client.get(Uri.parse('$_baseUrl/production/scanners'));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ScannerApiException(
         '/production/scanners',
@@ -107,10 +213,12 @@ class ScannerRepository {
         _extractMessage(response),
       );
     }
-    return ScannerRecord.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return ScannerRecord.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
   }
 
-  Future<ScannerRecord> updateScanner(int scannerId, ScannerWritePayload payload) async {
+  Future<ScannerRecord> updateScanner(
+      int scannerId, ScannerWritePayload payload) async {
     final response = await _client.put(
       Uri.parse('$_baseUrl/production/scanners/$scannerId'),
       headers: {'Content-Type': 'application/json; charset=utf-8'},
@@ -123,7 +231,8 @@ class ScannerRepository {
         _extractMessage(response),
       );
     }
-    return ScannerRecord.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return ScannerRecord.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<ScannerRecord> activateScanner(int scannerId) async {
@@ -138,7 +247,8 @@ class ScannerRepository {
         _extractMessage(response),
       );
     }
-    return ScannerRecord.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return ScannerRecord.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<ScannerRecord> deactivateScanner(int scannerId) async {
@@ -153,7 +263,87 @@ class ScannerRepository {
         _extractMessage(response),
       );
     }
-    return ScannerRecord.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return ScannerRecord.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<List<ScannerPermissionRecord>> getPermissions(int scannerId) async {
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/production/scanners/$scannerId/permissions'),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ScannerApiException(
+        '/production/scanners/$scannerId/permissions',
+        response.statusCode,
+        _extractMessage(response),
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) {
+      return const <ScannerPermissionRecord>[];
+    }
+
+    return decoded
+        .map((item) =>
+            ScannerPermissionRecord.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<ScannerPermissionRecord>> upsertPermissions(
+    int scannerId,
+    List<ScannerPermissionWritePayload> permissions,
+  ) async {
+    final response = await _client.put(
+      Uri.parse('$_baseUrl/production/scanners/$scannerId/permissions'),
+      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      body: jsonEncode(
+          permissions.map((permission) => permission.toJson()).toList()),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ScannerApiException(
+        '/production/scanners/$scannerId/permissions',
+        response.statusCode,
+        _extractMessage(response),
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) {
+      return const <ScannerPermissionRecord>[];
+    }
+
+    return decoded
+        .map((item) =>
+            ScannerPermissionRecord.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<ProductTypeOption>> getProductTypes() async {
+    final response =
+        await _client.get(Uri.parse('$_baseUrl/consumption-rules'));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ScannerApiException(
+        '/consumption-rules',
+        response.statusCode,
+        _extractMessage(response),
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      return const <ProductTypeOption>[];
+    }
+
+    final productTypes = (decoded['productTypes'] as List<dynamic>? ??
+            const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(ProductTypeOption.fromJson)
+        .where((option) => option.productTypeId > 0 && option.nameAr.isNotEmpty)
+        .toList()
+      ..sort((a, b) => a.nameAr.compareTo(b.nameAr));
+
+    return productTypes;
   }
 }
 
@@ -183,14 +373,16 @@ class ScannerApiException implements Exception {
   final String message;
 
   @override
-  String toString() => 'ScannerApiException(path: $path, statusCode: $statusCode, message: $message)';
+  String toString() =>
+      'ScannerApiException(path: $path, statusCode: $statusCode, message: $message)';
 }
 
 class ScannerManagementScreen extends StatefulWidget {
   const ScannerManagementScreen({super.key});
 
   @override
-  State<ScannerManagementScreen> createState() => _ScannerManagementScreenState();
+  State<ScannerManagementScreen> createState() =>
+      _ScannerManagementScreenState();
 }
 
 class _ScannerManagementScreenState extends State<ScannerManagementScreen> {
@@ -364,7 +556,8 @@ class _ScannerManagementScreenState extends State<ScannerManagementScreen> {
                                   scanner.isActive ? 'نشط' : 'غير نشط',
                                 ),
                                 backgroundColor: scanner.isActive
-                                    ? UiPalette.primaryBlue.withValues(alpha: 0.18)
+                                    ? UiPalette.primaryBlue
+                                        .withValues(alpha: 0.18)
                                     : Colors.orange.withValues(alpha: 0.18),
                               ),
                             ],
@@ -379,7 +572,9 @@ class _ScannerManagementScreenState extends State<ScannerManagementScreen> {
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          if ((scanner.description ?? '').trim().isNotEmpty) ...[
+                          if ((scanner.description ?? '')
+                              .trim()
+                              .isNotEmpty) ...[
                             const SizedBox(height: 6),
                             Text(
                               scanner.description ?? '',
@@ -424,13 +619,12 @@ class _ScannerManagementScreenState extends State<ScannerManagementScreen> {
                               _refresh();
                             } on ScannerApiException catch (error) {
                               if (!mounted || !context.mounted) return;
-                              ScaffoldMessenger.maybeOf(context)
-                                  ?.showSnackBar(
-                                    SnackBar(
-                                      backgroundColor: Colors.red.shade700,
-                                      content: Text(error.message),
-                                    ),
-                                  );
+                              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                                SnackBar(
+                                  backgroundColor: Colors.red.shade700,
+                                  content: Text(error.message),
+                                ),
+                              );
                             }
                           },
                           icon: Icon(
@@ -474,6 +668,10 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
   final _descriptionController = TextEditingController();
   bool _isActive = true;
   bool _saving = false;
+  bool _loadingPermissions = true;
+  List<ProductTypeOption> _productTypes = const <ProductTypeOption>[];
+  final Map<int, Set<String>> _selectedStagesByProductType =
+      <int, Set<String>>{};
 
   @override
   void initState() {
@@ -485,6 +683,67 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
       _descriptionController.text = scanner.description ?? '';
       _isActive = scanner.isActive;
     }
+
+    _loadProductTypeCatalog();
+  }
+
+  Future<void> _loadProductTypeCatalog() async {
+    try {
+      final productTypes = await repository.getProductTypes();
+      final selectedStagesByProductType = <int, Set<String>>{};
+
+      if (widget.scanner != null) {
+        final permissions = await repository.getPermissions(widget.scanner!.id);
+        for (final permission in permissions) {
+          final typeId = permission.productTypeId;
+          selectedStagesByProductType.putIfAbsent(typeId, () => <String>{});
+          if (permission.isActive && permission.stage.trim().isNotEmpty) {
+            selectedStagesByProductType[typeId]!.add(permission.stage.trim());
+          }
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _productTypes = productTypes;
+        _selectedStagesByProductType
+          ..clear()
+          ..addAll(selectedStagesByProductType);
+        _loadingPermissions = false;
+      });
+    } on ScannerApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _loadingPermissions = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.red.shade700,
+          content: Text(error.message),
+        ),
+      );
+    }
+  }
+
+  List<ScannerPermissionWritePayload> _buildPermissions() {
+    final entries = <ScannerPermissionWritePayload>[];
+    for (final entry in _selectedStagesByProductType.entries) {
+      final productTypeId = entry.key;
+      final stages = entry.value;
+      for (final stage in stages) {
+        entries.add(
+          ScannerPermissionWritePayload(
+            productTypeId: productTypeId,
+            stage: stage,
+            isActive: true,
+          ),
+        );
+      }
+    }
+    entries.sort((a, b) {
+      final byProduct = a.productTypeId.compareTo(b.productTypeId);
+      if (byProduct != 0) return byProduct;
+      return a.stage.compareTo(b.stage);
+    });
+    return entries;
   }
 
   @override
@@ -505,13 +764,21 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
       scannerName: _scannerNameController.text,
       description: _descriptionController.text,
       isActive: _isActive,
+      permissions: _buildPermissions(),
     );
 
     try {
       if (widget.scanner == null) {
-        await repository.createScanner(payload);
+        final created = await repository.createScanner(payload);
+        if (created.id > 0 &&
+            payload.permissions != null &&
+            payload.permissions!.isNotEmpty) {
+          await repository.upsertPermissions(created.id, payload.permissions!);
+        }
       } else {
         await repository.updateScanner(widget.scanner!.id, payload);
+        await repository.upsertPermissions(widget.scanner!.id,
+            payload.permissions ?? const <ScannerPermissionWritePayload>[]);
       }
 
       if (!mounted) return;
@@ -561,9 +828,10 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
                             labelText: 'رمز الماسح',
                             border: OutlineInputBorder(),
                           ),
-                          validator: (value) => (value == null || value.trim().isEmpty)
-                              ? 'رمز الماسح مطلوب.'
-                              : null,
+                          validator: (value) =>
+                              (value == null || value.trim().isEmpty)
+                                  ? 'رمز الماسح مطلوب.'
+                                  : null,
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
@@ -572,9 +840,10 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
                             labelText: 'اسم الماسح',
                             border: OutlineInputBorder(),
                           ),
-                          validator: (value) => (value == null || value.trim().isEmpty)
-                              ? 'اسم الماسح مطلوب.'
-                              : null,
+                          validator: (value) =>
+                              (value == null || value.trim().isEmpty)
+                                  ? 'اسم الماسح مطلوب.'
+                                  : null,
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
@@ -589,9 +858,125 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
                         SwitchListTile.adaptive(
                           value: _isActive,
                           title: const Text('نشط في النظام'),
-                          subtitle: const Text('يمكن استخدام هذا الماسح في التنفيذ.'),
-                          onChanged: (value) => setState(() => _isActive = value),
+                          subtitle:
+                              const Text('يمكن استخدام هذا الماسح في التنفيذ.'),
+                          onChanged: (value) =>
+                              setState(() => _isActive = value),
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Card(
+                  color: UiPalette.surfaceCard,
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.rule_rounded),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'صلاحيات المسح حسب النوع والمرحلة',
+                                style: UiPalette.adaptiveTextStyle(
+                                  context,
+                                  backgroundColor: UiPalette.surfaceCard,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        if (_loadingPermissions)
+                          const Center(child: CircularProgressIndicator())
+                        else if (_productTypes.isEmpty)
+                          const Text('لا توجد أنواع قطع متاحة في النظام.')
+                        else
+                          ..._productTypes.map((productType) {
+                            final selectedStages = _selectedStagesByProductType[
+                                    productType.productTypeId] ??
+                                <String>{};
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: UiPalette.screenBackground,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: UiPalette.borderSoft),
+                              ),
+                              child: Theme(
+                                data: Theme.of(context)
+                                    .copyWith(dividerColor: Colors.transparent),
+                                child: ExpansionTile(
+                                  tilePadding: EdgeInsets.zero,
+                                  childrenPadding:
+                                      const EdgeInsets.only(top: 8),
+                                  title: Text(
+                                    productType.nameAr,
+                                    style: UiPalette.adaptiveTextStyle(
+                                      context,
+                                      backgroundColor:
+                                          UiPalette.screenBackground,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    selectedStages.isEmpty
+                                        ? 'لا توجد مراحل محددة'
+                                        : '${selectedStages.length} مرحلة محددة',
+                                    style: UiPalette.adaptiveTextStyle(
+                                      context,
+                                      backgroundColor:
+                                          UiPalette.screenBackground,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  children: [
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children:
+                                          _scannerPermissionStages.map((stage) {
+                                        final isSelected =
+                                            selectedStages.contains(stage);
+                                        return FilterChip(
+                                          label: Text(stage),
+                                          selected: isSelected,
+                                          onSelected: (value) {
+                                            setState(() {
+                                              final productStages =
+                                                  _selectedStagesByProductType
+                                                      .putIfAbsent(
+                                                productType.productTypeId,
+                                                () => <String>{},
+                                              );
+                                              if (value) {
+                                                productStages.add(stage);
+                                              } else {
+                                                productStages.remove(stage);
+                                              }
+                                              if (productStages.isEmpty) {
+                                                _selectedStagesByProductType
+                                                    .remove(productType
+                                                        .productTypeId);
+                                              }
+                                            });
+                                          },
+                                        );
+                                      }).toList(),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
                       ],
                     ),
                   ),
@@ -617,4 +1002,5 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
   }
 }
 
-String _formatDate(DateTime date) => '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
+String _formatDate(DateTime date) =>
+    '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';

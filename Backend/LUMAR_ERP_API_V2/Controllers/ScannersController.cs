@@ -20,6 +20,29 @@ public sealed class ScannersController(IScannerService service) : ControllerBase
         return scanner is null ? NotFound() : Ok(scanner);
     }
 
+    [HttpGet("scanners/{id:int}/permissions")]
+    public async Task<ActionResult<IReadOnlyList<ScannerPermissionDto>>> GetScannerPermissions(int id, CancellationToken ct)
+    {
+        if (id <= 0) return BadRequest("Scanner id must be positive.");
+        var permissions = await service.GetPermissionsAsync(id, ct);
+        return Ok(permissions);
+    }
+
+    [HttpPut("scanners/{id:int}/permissions")]
+    public async Task<ActionResult<IReadOnlyList<ScannerPermissionDto>>> UpsertScannerPermissions(int id, IReadOnlyList<ScannerPermissionWriteDto>? permissions, CancellationToken ct)
+    {
+        if (id <= 0) return BadRequest("Scanner id must be positive.");
+        try
+        {
+            var result = await service.UpsertPermissionsAsync(id, permissions, ct);
+            return Ok(result);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(exception.Message);
+        }
+    }
+
     [HttpGet("live-scan")]
     public Task<IReadOnlyList<LiveScanDto>> GetLiveScans(CancellationToken ct) => service.GetLiveScansAsync(ct);
 

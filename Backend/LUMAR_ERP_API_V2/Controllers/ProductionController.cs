@@ -147,6 +147,13 @@ public sealed class ProductionController(IProductionService service, IProduction
         if (string.IsNullOrWhiteSpace(request.RequestedStage)) return BadRequest("Requested stage is required.");
         if (request.ProductTypeId <= 0) return BadRequest("ProductTypeId is required.");
 
+        var currentUser = await userContext.GetCurrentUserAsync(ct);
+        var isAdministrativeUser = IsAdministrativeRole(currentUser?.Role);
+        if (request.IsSupervisorReexecution && !isAdministrativeUser)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "إعادة تنفيذ المرحلة للمشرف تتطلب صلاحية مسؤول النظام الفعلية في الخادم.");
+        }
+
         ProductionTrackingRouteDto? route = null;
         if (!string.IsNullOrWhiteSpace(request.TrackingCode))
         {
@@ -160,6 +167,7 @@ public sealed class ProductionController(IProductionService service, IProduction
         var resolvedRequest = request with
         {
             PieceType = string.IsNullOrWhiteSpace(request.PieceType) ? route?.PieceType ?? string.Empty : request.PieceType.Trim(),
+            IsSupervisorReexecution = request.IsSupervisorReexecution && isAdministrativeUser,
         };
 
         if (route is not null && route.ProductTypeId != request.ProductTypeId)
@@ -181,7 +189,19 @@ public sealed class ProductionController(IProductionService service, IProduction
         if (request.PieceId is null && string.IsNullOrWhiteSpace(request.TrackingCode)) return BadRequest("Either PieceId or TrackingCode is required.");
         if (string.IsNullOrWhiteSpace(request.RequestedStage)) return BadRequest("Requested stage is required.");
         if (request.ProductTypeId <= 0) return BadRequest("ProductTypeId is required.");
-        var result = await service.AdvancePieceStageAsync(request with { IsReadyMade = true }, ct);
+
+        var currentUser = await userContext.GetCurrentUserAsync(ct);
+        var isAdministrativeUser = IsAdministrativeRole(currentUser?.Role);
+        if (request.IsSupervisorReexecution && !isAdministrativeUser)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "إعادة تنفيذ المرحلة للمشرف تتطلب صلاحية مسؤول النظام الفعلية في الخادم.");
+        }
+
+        var result = await service.AdvancePieceStageAsync(request with
+        {
+            IsReadyMade = true,
+            IsSupervisorReexecution = request.IsSupervisorReexecution && isAdministrativeUser,
+        }, ct);
         if (result is null) return NotFound();
         if (!result.Updated) return BadRequest(result);
         return Ok(result);
@@ -243,5 +263,17 @@ public sealed class ProductionController(IProductionService service, IProduction
     {
         var piece = await service.GetPieceByIdAsync(id, ct);
         return piece is null ? NotFound() : Ok(piece);
+    }
+
+    private static bool IsAdministrativeRole(string? role)
+    {
+        if (string.IsNullOrWhiteSpace(role))
+        {
+            return false;
+        }
+
+        var normalized = role.Trim();
+        return string.Equals(normalized, "Admin", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "System Administrator", StringComparison.OrdinalIgnoreCase);
     }
 }

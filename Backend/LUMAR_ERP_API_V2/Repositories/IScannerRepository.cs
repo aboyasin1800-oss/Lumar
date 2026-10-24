@@ -6,9 +6,11 @@ public interface IScannerRepository
 {
     Task<IReadOnlyList<ScannerDto>> GetScannersAsync(CancellationToken cancellationToken);
     Task<ScannerDto?> GetByIdAsync(int scannerId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ScannerPermissionDto>> GetPermissionsAsync(int scannerId, CancellationToken cancellationToken);
     Task<ScannerDto?> CreateAsync(CreateScannerDto request, CancellationToken cancellationToken);
     Task<ScannerDto?> UpdateAsync(int scannerId, UpdateScannerDto request, CancellationToken cancellationToken);
     Task<ScannerDto?> ActivateAsync(int scannerId, CancellationToken cancellationToken);
     Task<ScannerDto?> DeactivateAsync(int scannerId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ScannerPermissionDto>> UpsertPermissionsAsync(int scannerId, IReadOnlyList<ScannerPermissionWriteDto>? permissions, CancellationToken cancellationToken);
     Task<IReadOnlyList<LiveScanDto>> GetLiveScansAsync(CancellationToken cancellationToken);
 }

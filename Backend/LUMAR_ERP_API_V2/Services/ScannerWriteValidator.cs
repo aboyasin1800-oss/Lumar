@@ -16,7 +16,8 @@ public static class ScannerWriteValidator
             ScannerCode = request.ScannerCode.Trim(),
             ScannerName = request.ScannerName.Trim(),
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
-            IsActive = NormalizeIsActive(request.IsActive)
+            IsActive = NormalizeIsActive(request.IsActive),
+            Permissions = NormalizePermissions(request.Permissions)
         };
     }
 
@@ -32,8 +33,45 @@ public static class ScannerWriteValidator
             ScannerCode = request.ScannerCode.Trim(),
             ScannerName = request.ScannerName.Trim(),
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
-            IsActive = NormalizeIsActive(request.IsActive)
+            IsActive = NormalizeIsActive(request.IsActive),
+            Permissions = NormalizePermissions(request.Permissions)
         };
+    }
+
+    public static IReadOnlyList<ScannerPermissionWriteDto> NormalizePermissions(IReadOnlyList<ScannerPermissionWriteDto>? permissions)
+    {
+        var list = permissions ?? Array.Empty<ScannerPermissionWriteDto>();
+        var normalized = list
+            .Where(permission => permission is not null)
+            .Select(permission => new ScannerPermissionWriteDto(
+                permission.ProductTypeId,
+                string.IsNullOrWhiteSpace(permission.Stage) ? string.Empty : permission.Stage.Trim(),
+                permission.IsActive))
+            .Where(permission => permission.ProductTypeId > 0 && !string.IsNullOrWhiteSpace(permission.Stage))
+            .GroupBy(permission => new PermissionKey(permission.ProductTypeId, permission.Stage.Trim()), new PermissionKeyComparer())
+            .Select(group => group.First())
+            .OrderBy(permission => permission.ProductTypeId)
+            .ThenBy(permission => permission.Stage, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (!normalized.Any())
+        {
+            return Array.Empty<ScannerPermissionWriteDto>();
+        }
+
+        return normalized;
+    }
+
+    private readonly record struct PermissionKey(int ProductTypeId, string Stage);
+
+    private sealed class PermissionKeyComparer : IEqualityComparer<PermissionKey>
+    {
+        public bool Equals(PermissionKey x, PermissionKey y) =>
+            x.ProductTypeId == y.ProductTypeId &&
+            string.Equals(x.Stage, y.Stage, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode(PermissionKey obj) =>
+            HashCode.Combine(obj.ProductTypeId, StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Stage));
     }
 
     public static bool NormalizeIsActive(bool? isActive)

@@ -272,6 +272,24 @@ public static class ProductionTrackingEngine
         return Math.Clamp(average, 0m, 100m);
     }
 
+    public static bool IsSupervisorReexecutionAllowed(bool isSupervisorReexecution, bool isAdministrativeUser)
+        => isSupervisorReexecution && isAdministrativeUser;
+
+    public static bool IsSupervisorReexecutionAllowed(
+        bool isSupervisorReexecution,
+        string? employeeCode,
+        string? jobTitle,
+        string? operationReference,
+        string? scannerCode)
+    {
+        if (!isSupervisorReexecution)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
     public static ProductionTrackingAdvanceResultDto AdvancePiece(string? pieceType, string? currentStatus, string? requestedStage, int? pieceId = null, string? trackingCode = null)
     {
         var previousStatus = NormalizeStage(currentStatus) ?? "New";

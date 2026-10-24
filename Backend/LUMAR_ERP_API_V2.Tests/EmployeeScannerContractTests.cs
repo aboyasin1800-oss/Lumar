@@ -59,4 +59,32 @@ public sealed class EmployeeScannerContractTests
 
         Assert.Null(result);
     }
+
+    [Fact]
+    public void Scanner_permission_rejects_unapproved_stage_for_product_type()
+    {
+        var permissions = new[]
+        {
+            new ScannerStagePermission(3, "Cutting", 12),
+            new ScannerStagePermission(3, "Sewing", 12)
+        };
+
+        var isAllowed = ScannerPermissionValidator.IsAllowed(12, "Ironing", permissions);
+
+        Assert.False(isAllowed);
+    }
+
+    [Fact]
+    public void Scanner_permission_accepts_approved_stage_for_product_type()
+    {
+        var permissions = new[]
+        {
+            new ScannerStagePermission(3, "Cutting", 12),
+            new ScannerStagePermission(3, "Sewing", 12)
+        };
+
+        var isAllowed = ScannerPermissionValidator.IsAllowed(12, "Sewing", permissions);
+
+        Assert.True(isAllowed);
+    }
 }

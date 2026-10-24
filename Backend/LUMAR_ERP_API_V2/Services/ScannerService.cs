@@ -5,9 +5,11 @@ public sealed class ScannerService(IScannerRepository repository) : IScannerServ
 {
     public Task<IReadOnlyList<ScannerDto>> GetScannersAsync(CancellationToken ct) => repository.GetScannersAsync(ct);
     public Task<ScannerDto?> GetByIdAsync(int scannerId, CancellationToken ct) => repository.GetByIdAsync(scannerId, ct);
+    public Task<IReadOnlyList<ScannerPermissionDto>> GetPermissionsAsync(int scannerId, CancellationToken ct) => repository.GetPermissionsAsync(scannerId, ct);
     public Task<ScannerDto?> CreateAsync(CreateScannerDto request, CancellationToken ct) => repository.CreateAsync(request, ct);
     public Task<ScannerDto?> UpdateAsync(int scannerId, UpdateScannerDto request, CancellationToken ct) => repository.UpdateAsync(scannerId, request, ct);
     public Task<ScannerDto?> ActivateAsync(int scannerId, CancellationToken ct) => repository.ActivateAsync(scannerId, ct);
     public Task<ScannerDto?> DeactivateAsync(int scannerId, CancellationToken ct) => repository.DeactivateAsync(scannerId, ct);
+    public Task<IReadOnlyList<ScannerPermissionDto>> UpsertPermissionsAsync(int scannerId, IReadOnlyList<ScannerPermissionWriteDto>? permissions, CancellationToken ct) => repository.UpsertPermissionsAsync(scannerId, permissions, ct);
     public Task<IReadOnlyList<LiveScanDto>> GetLiveScansAsync(CancellationToken ct) => repository.GetLiveScansAsync(ct);
 }

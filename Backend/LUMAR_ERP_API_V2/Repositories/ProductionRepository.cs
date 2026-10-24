@@ -228,6 +228,7 @@ public sealed class ProductionRepository(
                 && string.Equals(finalStage, route[^1], StringComparison.OrdinalIgnoreCase);
             var sameStageAlreadyApplied = string.Equals(pieceContext.PieceStatus, finalStage, StringComparison.OrdinalIgnoreCase);
             var executionSource = ResolveExecutionSource(request);
+            var supervisorAuthorized = request.IsSupervisorReexecution;
 
             if (executionSource == "Scanner" && RequiresPieceStageAssignment(finalStage))
             {
@@ -306,7 +307,7 @@ public sealed class ProductionRepository(
 
             if (executionSource == "Scanner" && NeedsScanner(request.RequestedStage) && !string.IsNullOrWhiteSpace(request.ScannerCode))
             {
-                var scannerValidation = await ValidateScannerAsync(connection, transaction, request.ScannerCode, request.EmployeeCode, ct);
+                var scannerValidation = await ValidateScannerAsync(connection, transaction, request.ScannerCode, request.EmployeeCode, request.ProductTypeId, finalStage, ct);
                 if (!scannerValidation.IsValid)
                 {
                     await transaction.RollbackAsync(CancellationToken.None);
@@ -320,10 +321,10 @@ public sealed class ProductionRepository(
             }
 
             var nextStage = validation.NextStage;
-            if (sameStageAlreadyApplied)
+            if (sameStageAlreadyApplied && !supervisorAuthorized)
             {
                 await transaction.RollbackAsync(CancellationToken.None);
-                return new ProductionTrackingAdvanceResultDto(pieceContext.PieceId, pieceContext.TrackingCode, pieceContext.PieceStatus, pieceContext.PieceStatus, nextStage, "This stage has already been applied to the piece.", false);
+                return new ProductionTrackingAdvanceResultDto(pieceContext.PieceId, pieceContext.TrackingCode, pieceContext.PieceStatus, pieceContext.PieceStatus, nextStage, "This stage has already been applied to the piece and cannot be repeated without an authorized supervisor re-execution.", false);
             }
 
             var employeeCode = executionSource == "ManualTest" ? null : await ResolveEmployeeCodeAsync(connection, transaction, request.ScannerCode, request.EmployeeCode, ct);
@@ -493,11 +494,21 @@ public sealed class ProductionRepository(
         return new CancelledPieceDispositionRow(reader.GetInt32(0), reader.GetString(1), reader.NullableString("TransferStatus"));
     }
 
-    private static async Task<ScannerValidationResult> ValidateScannerAsync(SqlConnection connection, SqlTransaction transaction, string? scannerCode, string? employeeCode, CancellationToken ct)
+    private static async Task<ScannerValidationResult> ValidateScannerAsync(SqlConnection connection, SqlTransaction transaction, string? scannerCode, string? employeeCode, int productTypeId, string? stage, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(scannerCode))
         {
             return ScannerValidationResult.Invalid("ScannerCode is required for this production stage.");
+        }
+
+        if (productTypeId <= 0)
+        {
+            return ScannerValidationResult.Invalid("ProductTypeId is required for scanner validation.");
+        }
+
+        if (string.IsNullOrWhiteSpace(stage))
+        {
+            return ScannerValidationResult.Invalid("Requested production stage is required for scanner validation.");
         }
 
         const string scannerSql = "SELECT ScannerId, ScannerCode, IsActive FROM dbo.Scanners WITH (NOLOCK) WHERE ScannerCode = @scannerCode";
@@ -505,8 +516,26 @@ public sealed class ProductionRepository(
         scannerCommand.Parameters.AddWithValue("@scannerCode", scannerCode.Trim());
         await using var scannerReader = await scannerCommand.ExecuteReaderAsync(ct);
         if (!await scannerReader.ReadAsync(ct)) return ScannerValidationResult.Invalid("Scanner does not exist.");
+        var scannerId = scannerReader.GetInt32(0);
         var isActive = scannerReader.GetBoolean(2);
         if (!isActive) return ScannerValidationResult.Invalid("Scanner is inactive.");
+
+        const string permissionSql = @"
+            SELECT TOP (1) 1
+            FROM dbo.ScannerStageProductPermissions WITH (NOLOCK)
+            WHERE ScannerId = @scannerId
+              AND ProductTypeId = @productTypeId
+              AND Stage = @stage
+              AND IsActive = 1;";
+        await using var permissionCommand = new SqlCommand(permissionSql, connection, transaction);
+        permissionCommand.Parameters.AddWithValue("@scannerId", scannerId);
+        permissionCommand.Parameters.AddWithValue("@productTypeId", productTypeId);
+        permissionCommand.Parameters.AddWithValue("@stage", stage.Trim());
+        await using var permissionReader = await permissionCommand.ExecuteReaderAsync(ct);
+        if (!await permissionReader.ReadAsync(ct))
+        {
+            return ScannerValidationResult.Invalid("Scanner is not authorized for this product type and stage.");
+        }
 
         var employeeCodeResult = await ResolveEmployeeCodeAsync(connection, transaction, scannerCode, employeeCode, ct);
         if (string.IsNullOrWhiteSpace(employeeCodeResult)) return ScannerValidationResult.Invalid("No active employee is linked to the supplied scanner code.");
@@ -679,6 +708,18 @@ public sealed class ProductionRepository(
         await using var reader = await command.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct)) return null;
         return reader.GetInt32(0);
+    }
+
+    private static async Task<string?> ResolveEmployeeJobTitleAsync(SqlConnection connection, SqlTransaction transaction, string? employeeCode, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(employeeCode)) return null;
+
+        const string sql = "SELECT JobTitle FROM dbo.Employees WITH (NOLOCK) WHERE EmployeeCode = @employeeCode AND IsActive = 1 ORDER BY EmployeeID";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@employeeCode", employeeCode.Trim());
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        return reader.IsDBNull(0) ? null : reader.GetString(0);
     }
 
     private static async Task<int> InsertTrackingEventAsync(SqlConnection connection, SqlTransaction transaction, PieceContext pieceContext, string stage, string requestedStage, string? employeeCode, string? operationReference, string? trackingCode, CancellationToken ct)

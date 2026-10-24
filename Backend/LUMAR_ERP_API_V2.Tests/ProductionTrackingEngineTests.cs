@@ -168,6 +168,24 @@ public class ProductionTrackingEngineTests : IDisposable
     }
 
     [Fact]
+    public void ShouldAllowSupervisorReExecutionOnlyForAdministrativeRole()
+    {
+        Assert.False(ProductionTrackingEngine.IsSupervisorReexecutionAllowed(false, false));
+        Assert.False(ProductionTrackingEngine.IsSupervisorReexecutionAllowed(true, false));
+        Assert.True(ProductionTrackingEngine.IsSupervisorReexecutionAllowed(true, true));
+    }
+
+    [Fact]
+    public void ShouldRejectSupervisorReExecutionWhenRoleIsNotAdministrative()
+    {
+        Assert.False(AuthRepository.IsAdministrativeRole("Employee"));
+        Assert.False(AuthRepository.IsAdministrativeRole("Supervisor"));
+        Assert.False(AuthRepository.IsAdministrativeRole(null));
+        Assert.True(AuthRepository.IsAdministrativeRole("Admin"));
+        Assert.True(AuthRepository.IsAdministrativeRole("System Administrator"));
+    }
+
+    [Fact]
     public void ShouldNotSetReadyForDelivery_WhenZeroActivePiecesRemain()
     {
         var result = ProductionTrackingEngine.DetermineOrderStatus(

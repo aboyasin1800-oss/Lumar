@@ -9,7 +9,18 @@ public sealed record FactoryMonitoringDashboardDto(int TotalAtRisk, int TotalSta
 public sealed record FactoryMonitoringOrderDto(int OrderId, string OrderNumber, string CustomerCode, string CustomerName, DateTime? OrderDate, DateTime? DeliveryDate, int DaysRemaining, int TotalPieces, int CompletedPieces, int IncompletePieces, int ProgressPercent, string Classification, string Reason, string? DelayedPieceCode, string? DelayedPieceType, string? DelayedCurrentStage, string? DelayedNextStage, string? LastEmployeeCode, DateTime? LastUpdatedAt, string? LastStage);
 public sealed record FactoryMonitoringClassificationResult(string Classification, string Reason);
 public sealed record FactoryMonitoringPieceSnapshot(int PieceId, string PieceType, string TrackingCode, string CurrentStage, string? NextStage, DateTime? LastTrackingEventAt, string? LastEmployeeCode, decimal ProgressPercent, bool IsCompleted);
-public sealed record ProductionTrackingAdvanceRequestDto(int? PieceId, string? TrackingCode, string PieceType, string RequestedStage, string? ScannerCode, string? EmployeeCode, string? OperationReference, int ProductTypeId, bool IsReadyMade = false);
+public sealed record ProductionTrackingAdvanceRequestDto(
+    int? PieceId,
+    string? TrackingCode,
+    string PieceType,
+    string RequestedStage,
+    string? ScannerCode,
+    string? EmployeeCode,
+    string? OperationReference,
+    int ProductTypeId,
+    bool IsReadyMade = false,
+    bool IsSupervisorReexecution = false,
+    string? SupervisorApprovalReference = null);
 public sealed record ProductionTrackingAdvanceResultDto(
     int? PieceId,
     string? TrackingCode,
@@ -40,6 +51,8 @@ public sealed record ReadyMadeProductionOrderCreateResultDto(int ReadyMadeProduc
 public sealed record ProductionDeliveryDto(int OrderId, string OrderNumber, int CustomerId, string? CustomerCode, string? CustomerName, string? PhoneNumber, string OrderStatus, DateTime? DeliveryDate);
 public sealed record PieceTrackingDto(int TrackingCode, int? InvoiceId, int? CustomerId, string? ItemType, string? Status, string? CuttingEmployee, string? SewingEmployee, string? IroningEmployee, DateTime? CreatedDate, DateTime? CuttingDate, DateTime? SewingDate, DateTime? IroningDate, bool? IsCompleted, bool? IsDelivered, DateTime? DeliveryDate, bool? IsOnHold, string? HoldReason);
 public sealed record ProductionStageDto(string Stage, string Status);
+public sealed record ScannerPermissionDto(int ScannerPermissionId, int ScannerId, int ProductTypeId, string Stage, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+public sealed record ScannerPermissionWriteDto(int ProductTypeId, string Stage, bool IsActive = true);
 public sealed record ScannerDto(int ScannerId, string ScannerCode, string ScannerName, string? Description, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
 public sealed record CreateScannerDto
 {
@@ -47,6 +60,7 @@ public sealed record CreateScannerDto
     [Required, StringLength(200)] public string? ScannerName { get; init; }
     [StringLength(500)] public string? Description { get; init; }
     public bool IsActive { get; init; } = true;
+    public IReadOnlyList<ScannerPermissionWriteDto>? Permissions { get; init; }
 }
 public sealed record UpdateScannerDto
 {
@@ -54,6 +68,7 @@ public sealed record UpdateScannerDto
     [Required, StringLength(200)] public string? ScannerName { get; init; }
     [StringLength(500)] public string? Description { get; init; }
     public bool IsActive { get; init; } = true;
+    public IReadOnlyList<ScannerPermissionWriteDto>? Permissions { get; init; }
 }
 public sealed record LiveScanDto(int Id, int? TrackingCode, DateTime? ScanTime);
 public sealed record TrackingEventDto(int TrackingEventId, int? OrderItemId, int? OrderId, string? TrackingCode, string Stage, string Status, DateTime EventTime, string? EmployeeCode, string? Notes, bool IsReverted, DateTime? RevertedAt, int? PieceId, int? ReadyMadeProductionOrderPieceInstanceId);
