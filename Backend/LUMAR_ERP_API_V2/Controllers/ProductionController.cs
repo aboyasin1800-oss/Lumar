@@ -52,6 +52,54 @@ public sealed class ProductionController(IProductionService service, IProduction
         return Ok(await service.GetPieceTrackingAsync(id, ct));
     }
 
+    [HttpPost("pieces/stage-attribution-correction/preview")]
+    [ProducesResponseType<StageAttributionCorrectionPreviewDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<StageAttributionCorrectionPreviewDto>> PreviewStageAttributionCorrection([FromBody] StageAttributionCorrectionPreviewRequestDto request, CancellationToken ct)
+    {
+        if (request is null) return BadRequest("Request body is required.");
+        if (request.PieceId is null && string.IsNullOrWhiteSpace(request.TrackingCode)) return BadRequest("Either PieceId or TrackingCode is required.");
+
+        var currentUser = await userContext.GetCurrentUserAsync(ct);
+        if (!IsAdministrativeRole(currentUser?.Role))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "تعديلات تسوية نسبة المرحلة للمشرف تتطلب صلاحية مسؤول النظام الفعلية في الخادم.");
+        }
+
+        var preview = await service.PreviewStageAttributionCorrectionAsync(request, ct);
+        return preview is null ? NotFound() : Ok(preview);
+    }
+
+    [HttpPost("pieces/stage-attribution-correction/execute")]
+    [ProducesResponseType<StageAttributionCorrectionResultDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<StageAttributionCorrectionResultDto>> ExecuteStageAttributionCorrection([FromBody] StageAttributionCorrectionRequestDto request, CancellationToken ct)
+    {
+        if (request is null) return BadRequest("Request body is required.");
+        if (request.PieceId is null && string.IsNullOrWhiteSpace(request.TrackingCode)) return BadRequest("Either PieceId or TrackingCode is required.");
+        if (request.OriginalTrackingEventId <= 0) return BadRequest("OriginalTrackingEventId is required.");
+        if (request.CorrectEmployeeId <= 0) return BadRequest("CorrectEmployeeId is required.");
+        if (string.IsNullOrWhiteSpace(request.Reason)) return BadRequest("Reason is required.");
+        if (string.IsNullOrWhiteSpace(request.IdempotencyKey)) return BadRequest("IdempotencyKey is required.");
+
+        var currentUser = await userContext.GetCurrentUserAsync(ct);
+        if (!IsAdministrativeRole(currentUser?.Role))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "تعديلات تسوية نسبة المرحلة للمشرف تتطلب صلاحية مسؤول النظام الفعلية في الخادم.");
+        }
+
+        var resolvedRequest = request with { AuthorizedByUserId = currentUser!.UserId };
+        var result = await service.ExecuteStageAttributionCorrectionAsync(resolvedRequest, ct);
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
     [HttpGet("stages")]
     public Task<IReadOnlyList<ProductionStageDto>> GetStages(CancellationToken ct) => service.GetStagesAsync(ct);
 

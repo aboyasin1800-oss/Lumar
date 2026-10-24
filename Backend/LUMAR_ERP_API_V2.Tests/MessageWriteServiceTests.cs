@@ -2856,6 +2856,26 @@ public sealed class MessageWriteServiceTests
         public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteAsync(int pieceId, CancellationToken cancellationToken) => Task.FromResult<ProductionTrackingRouteDto?>(null);
         public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken cancellationToken) => Task.FromResult<ProductionTrackingRouteDto?>(null);
         public Task<ProductionTrackingAdvanceResultDto?> AdvancePieceStageAsync(ProductionTrackingAdvanceRequestDto request, CancellationToken cancellationToken) => Task.FromResult<ProductionTrackingAdvanceResultDto?>(result);
+        public Task<StageAttributionCorrectionPreviewDto?> PreviewStageAttributionCorrectionAsync(StageAttributionCorrectionPreviewRequestDto request, CancellationToken cancellationToken)
+            => Task.FromResult<StageAttributionCorrectionPreviewDto?>(null);
+        public Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionRequestDto request, CancellationToken cancellationToken)
+            => Task.FromResult(new StageAttributionCorrectionResultDto(
+                request.PieceId ?? 0,
+                "TRACK-001",
+                request.OriginalTrackingEventId,
+                "Cutting",
+                "PreviousEmployee",
+                "CorrectEmployee",
+                request.AuthorizedByUserId,
+                request.Reason,
+                request.IdempotencyKey,
+                null,
+                null,
+                "Applied",
+                DateTime.UtcNow,
+                DateTime.UtcNow,
+                true,
+                "Correction applied"));
     }
 
     private sealed class SequenceProductionRepository(PieceDto piece, Queue<ProductionTrackingAdvanceResultDto> results) : IProductionRepository
@@ -2883,6 +2903,26 @@ public sealed class MessageWriteServiceTests
         public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken cancellationToken) => Task.FromResult<ProductionTrackingRouteDto?>(null);
         public Task<ProductionTrackingAdvanceResultDto?> AdvancePieceStageAsync(ProductionTrackingAdvanceRequestDto request, CancellationToken cancellationToken)
             => Task.FromResult<ProductionTrackingAdvanceResultDto?>(results.Count > 0 ? results.Dequeue() : results.Peek());
+        public Task<StageAttributionCorrectionPreviewDto?> PreviewStageAttributionCorrectionAsync(StageAttributionCorrectionPreviewRequestDto request, CancellationToken cancellationToken)
+            => Task.FromResult<StageAttributionCorrectionPreviewDto?>(null);
+        public Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionRequestDto request, CancellationToken cancellationToken)
+            => Task.FromResult(new StageAttributionCorrectionResultDto(
+                request.PieceId ?? 0,
+                "TRACK-001",
+                request.OriginalTrackingEventId,
+                "Cutting",
+                "PreviousEmployee",
+                "CorrectEmployee",
+                request.AuthorizedByUserId,
+                request.Reason,
+                request.IdempotencyKey,
+                null,
+                null,
+                "Applied",
+                DateTime.UtcNow,
+                DateTime.UtcNow,
+                true,
+                "Correction applied"));
     }
 
     private sealed class FakeReadyMadeSalesRepository : IReadyMadeSalesRepository

@@ -26,4 +26,6 @@ public interface IProductionRepository
     Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteAsync(int pieceId, CancellationToken cancellationToken);
     Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken cancellationToken);
     Task<ProductionTrackingAdvanceResultDto?> AdvancePieceStageAsync(ProductionTrackingAdvanceRequestDto request, CancellationToken cancellationToken);
+    Task<StageAttributionCorrectionPreviewDto?> PreviewStageAttributionCorrectionAsync(StageAttributionCorrectionPreviewRequestDto request, CancellationToken cancellationToken);
+    Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionRequestDto request, CancellationToken cancellationToken);
 }

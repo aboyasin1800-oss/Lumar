@@ -1465,6 +1465,240 @@ public sealed class ProductionRepository(
             history);
     }
 
+    public async Task<StageAttributionCorrectionPreviewDto?> PreviewStageAttributionCorrectionAsync(StageAttributionCorrectionPreviewRequestDto request, CancellationToken ct)
+    {
+        if (request is null) return null;
+        if (request.PieceId is null && string.IsNullOrWhiteSpace(request.TrackingCode)) return null;
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+
+        var piece = await ResolvePieceForStageAttributionCorrectionAsync(connection, null, request.PieceId, request.TrackingCode, ct);
+        if (piece is null) return null;
+
+        var eventId = request.OriginalTrackingEventId ?? await ResolveLatestTrackingEventIdAsync(connection, null, piece.PieceId, ct);
+        if (eventId <= 0) return null;
+
+        var trackingEvent = await LoadTrackingEventForStageAttributionCorrectionAsync(connection, null, piece.PieceId, eventId, ct);
+        if (trackingEvent is null) return null;
+
+        var currentEmployeeId = await ResolveEmployeeIdAsync(connection, null, trackingEvent.EmployeeCode, ct);
+        var currentEmployeeEligible = !string.IsNullOrWhiteSpace(trackingEvent.EmployeeCode) && await IsEmployeeEligibleForStageAsync(connection, null, trackingEvent.EmployeeCode, piece.PieceType, trackingEvent.Stage, ct);
+        var eligibleEmployees = await LoadEligibleEmployeesForStageAsync(connection, null, piece.PieceType, trackingEvent.Stage, ct);
+        var wageRecord = await LoadLatestPieceWageRecordForTrackingAsync(connection, null, piece.PieceId, eventId, ct);
+        var hasPendingPayrollWage = wageRecord is not null && (wageRecord.Status == "PendingPayroll" || wageRecord.Status == "Generated" || wageRecord.Status == "Approved");
+        var hasPaidPayrollWage = wageRecord is not null && (wageRecord.Status == "Paid" || wageRecord.PayrollRecordId is not null);
+        var isDamageLostReprint = await IsDamageLostReprintForPieceAsync(connection, null, piece.PieceId, ct);
+        var targetCandidate = eligibleEmployees.FirstOrDefault();
+        var decision = EvaluateStageAttributionCorrectionDecision(
+            currentEmployeeCode: trackingEvent.EmployeeCode,
+            targetEmployeeCode: targetCandidate?.EmployeeCode,
+            isAdministrativeUser: true,
+            currentEmployeeEligible: currentEmployeeEligible,
+            targetEmployeeEligible: targetCandidate is not null,
+            sameEmployee: string.Equals(trackingEvent.EmployeeCode, targetCandidate?.EmployeeCode, StringComparison.OrdinalIgnoreCase),
+            hasPendingPayrollWage: hasPendingPayrollWage,
+            hasPaidPayrollWage: hasPaidPayrollWage,
+            isIdempotentDuplicate: false,
+            isDamageLostReprint: isDamageLostReprint);
+
+        return new StageAttributionCorrectionPreviewDto(
+            piece.PieceId,
+            piece.TrackingCode,
+            piece.ProductTypeId,
+            piece.PieceType,
+            piece.PieceStatus,
+            eventId,
+            trackingEvent.Stage,
+            currentEmployeeId,
+            trackingEvent.EmployeeCode,
+            trackingEvent.EventTime,
+            wageRecord?.PieceWageRecordId,
+            wageRecord?.Status,
+            wageRecord?.PayrollPeriodId,
+            wageRecord?.PayrollRecordId,
+            decision.IsAllowed,
+            decision.IsAllowed ? null : decision.Mode,
+            eligibleEmployees);
+    }
+
+    public async Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionRequestDto request, CancellationToken ct)
+    {
+        if (request is null)
+        {
+            return new StageAttributionCorrectionResultDto(0, string.Empty, 0, string.Empty, string.Empty, string.Empty, 0, string.Empty, string.Empty, null, null, "Rejected", DateTime.UtcNow, null, false, "Request body is required.");
+        }
+
+        if (request.PieceId is null && string.IsNullOrWhiteSpace(request.TrackingCode))
+        {
+            return new StageAttributionCorrectionResultDto(0, request.TrackingCode ?? string.Empty, request.OriginalTrackingEventId, string.Empty, string.Empty, string.Empty, request.AuthorizedByUserId, request.Reason, request.IdempotencyKey, null, null, "Rejected", DateTime.UtcNow, null, false, "Either PieceId or TrackingCode is required.");
+        }
+
+        if (request.OriginalTrackingEventId <= 0)
+        {
+            return new StageAttributionCorrectionResultDto(request.PieceId ?? 0, request.TrackingCode ?? string.Empty, request.OriginalTrackingEventId, string.Empty, string.Empty, string.Empty, request.AuthorizedByUserId, request.Reason, request.IdempotencyKey, null, null, "Rejected", DateTime.UtcNow, null, false, "OriginalTrackingEventId is required.");
+        }
+
+        if (request.CorrectEmployeeId <= 0)
+        {
+            return new StageAttributionCorrectionResultDto(request.PieceId ?? 0, request.TrackingCode ?? string.Empty, request.OriginalTrackingEventId, string.Empty, string.Empty, string.Empty, request.AuthorizedByUserId, request.Reason, request.IdempotencyKey, null, null, "Rejected", DateTime.UtcNow, null, false, "CorrectEmployeeId is required.");
+        }
+
+        if (request.AuthorizedByUserId <= 0)
+        {
+            return new StageAttributionCorrectionResultDto(request.PieceId ?? 0, request.TrackingCode ?? string.Empty, request.OriginalTrackingEventId, string.Empty, string.Empty, string.Empty, request.AuthorizedByUserId, request.Reason, request.IdempotencyKey, null, null, "Rejected", DateTime.UtcNow, null, false, "Server-side AuthorizedByUserId is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Reason))
+        {
+            return new StageAttributionCorrectionResultDto(request.PieceId ?? 0, request.TrackingCode ?? string.Empty, request.OriginalTrackingEventId, string.Empty, string.Empty, string.Empty, request.AuthorizedByUserId, string.Empty, request.IdempotencyKey, null, null, "Rejected", DateTime.UtcNow, null, false, "Reason is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
+        {
+            return new StageAttributionCorrectionResultDto(request.PieceId ?? 0, request.TrackingCode ?? string.Empty, request.OriginalTrackingEventId, string.Empty, string.Empty, string.Empty, request.AuthorizedByUserId, request.Reason, string.Empty, null, null, "Rejected", DateTime.UtcNow, null, false, "IdempotencyKey is required.");
+        }
+
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+
+        try
+        {
+            var piece = await ResolvePieceForStageAttributionCorrectionAsync(connection, transaction, request.PieceId, request.TrackingCode, ct);
+            if (piece is null)
+            {
+                await transaction.RollbackAsync(ct);
+                return new StageAttributionCorrectionResultDto(request.PieceId ?? 0, request.TrackingCode ?? string.Empty, request.OriginalTrackingEventId, string.Empty, string.Empty, string.Empty, request.AuthorizedByUserId, request.Reason, request.IdempotencyKey, null, null, "Rejected", DateTime.UtcNow, null, false, "Piece not found.");
+            }
+
+            var trackingEvent = await LoadTrackingEventForStageAttributionCorrectionAsync(connection, transaction, piece.PieceId, request.OriginalTrackingEventId, ct);
+            if (trackingEvent is null)
+            {
+                await transaction.RollbackAsync(ct);
+                return new StageAttributionCorrectionResultDto(piece.PieceId, piece.TrackingCode, request.OriginalTrackingEventId, string.Empty, string.Empty, string.Empty, request.AuthorizedByUserId, request.Reason, request.IdempotencyKey, null, null, "Rejected", DateTime.UtcNow, null, false, "Original tracking event not found.");
+            }
+
+            var targetEmployee = await LoadEmployeeByIdAsync(connection, transaction, request.CorrectEmployeeId, ct);
+            if (targetEmployee is null)
+            {
+                await transaction.RollbackAsync(ct);
+                return new StageAttributionCorrectionResultDto(piece.PieceId, piece.TrackingCode, request.OriginalTrackingEventId, trackingEvent.Stage, trackingEvent.EmployeeCode ?? string.Empty, string.Empty, request.AuthorizedByUserId, request.Reason, request.IdempotencyKey, null, null, "Rejected", DateTime.UtcNow, null, false, "Target employee not found.");
+            }
+
+            var currentEmployeeEligible = !string.IsNullOrWhiteSpace(trackingEvent.EmployeeCode) && await IsEmployeeEligibleForStageAsync(connection, transaction, trackingEvent.EmployeeCode, piece.PieceType, trackingEvent.Stage, ct);
+            var targetEmployeeEligible = await IsEmployeeEligibleForStageAsync(connection, transaction, targetEmployee.EmployeeCode, piece.PieceType, trackingEvent.Stage, ct);
+            var hasPendingPayrollWage = await HasPendingPayrollWageForPieceAsync(connection, transaction, piece.PieceId, request.OriginalTrackingEventId, ct);
+            var hasPaidPayrollWage = await HasPaidPayrollWageForPieceAsync(connection, transaction, piece.PieceId, request.OriginalTrackingEventId, ct);
+            var isIdempotentDuplicate = await IsStageAttributionCorrectionDuplicateAsync(connection, transaction, request.IdempotencyKey, ct);
+            var isDamageLostReprint = await IsDamageLostReprintForPieceAsync(connection, transaction, piece.PieceId, ct);
+            var decision = EvaluateStageAttributionCorrectionDecision(
+                currentEmployeeCode: trackingEvent.EmployeeCode,
+                targetEmployeeCode: targetEmployee.EmployeeCode,
+                isAdministrativeUser: true,
+                currentEmployeeEligible: currentEmployeeEligible,
+                targetEmployeeEligible: targetEmployeeEligible,
+                sameEmployee: string.Equals(trackingEvent.EmployeeCode, targetEmployee.EmployeeCode, StringComparison.OrdinalIgnoreCase),
+                hasPendingPayrollWage: hasPendingPayrollWage,
+                hasPaidPayrollWage: hasPaidPayrollWage,
+                isIdempotentDuplicate: isIdempotentDuplicate,
+                isDamageLostReprint: isDamageLostReprint);
+
+            if (!decision.IsAllowed)
+            {
+                await transaction.RollbackAsync(ct);
+                return new StageAttributionCorrectionResultDto(piece.PieceId, piece.TrackingCode, request.OriginalTrackingEventId, trackingEvent.Stage, trackingEvent.EmployeeCode ?? string.Empty, targetEmployee.EmployeeCode, request.AuthorizedByUserId, request.Reason, request.IdempotencyKey, null, null, decision.Mode, DateTime.UtcNow, null, false, decision.Mode == "PayrollLocked" ? "تم رفض التصحيح لأن الأجر معلّق أو تم تسوية الرواتب." : "تم رفض التصحيح لأن القاعدة التشغيلية لا تسمح به.");
+            }
+
+            var existingIdempotent = await IsStageAttributionCorrectionDuplicateAsync(connection, transaction, request.IdempotencyKey, ct);
+            if (existingIdempotent)
+            {
+                await transaction.RollbackAsync(ct);
+                return new StageAttributionCorrectionResultDto(piece.PieceId, piece.TrackingCode, request.OriginalTrackingEventId, trackingEvent.Stage, trackingEvent.EmployeeCode ?? string.Empty, targetEmployee.EmployeeCode, request.AuthorizedByUserId, request.Reason, request.IdempotencyKey, null, null, "IdempotentDuplicate", DateTime.UtcNow, null, false, "تم تنفيذ هذا التصحيح مسبقًا لنفس IdempotencyKey.");
+            }
+
+            var noteText = $"[StageAttributionCorrection:{request.IdempotencyKey}] reason={request.Reason}; correctedByUserId={request.AuthorizedByUserId}; fromEmployee={trackingEvent.EmployeeCode}; toEmployee={targetEmployee.EmployeeCode};";
+            const string updateTrackingSql = @"
+                UPDATE dbo.TrackingEvents
+                SET EmployeeCode = @correctEmployeeCode,
+                    Notes = CASE WHEN Notes IS NULL OR Notes = N'' THEN @note ELSE Notes + N' | ' + @note END
+                WHERE TrackingEventID = @trackingEventId AND PieceID = @pieceId;";
+            await using (var updateTracking = new SqlCommand(updateTrackingSql, connection, transaction))
+            {
+                updateTracking.Parameters.AddWithValue("@correctEmployeeCode", targetEmployee.EmployeeCode);
+                updateTracking.Parameters.AddWithValue("@note", noteText);
+                updateTracking.Parameters.AddWithValue("@trackingEventId", request.OriginalTrackingEventId);
+                updateTracking.Parameters.AddWithValue("@pieceId", piece.PieceId);
+                if (await updateTracking.ExecuteNonQueryAsync(ct) != 1)
+                {
+                    throw new InvalidOperationException("تعذر تحديث سجل المرحلة الحالي مع الموظف الصحيح.");
+                }
+            }
+
+            const string updateWageSql = @"
+                UPDATE dbo.PieceWageRecords
+                SET EmployeeId = @correctEmployeeId,
+                    EmployeeCode = @correctEmployeeCode,
+                    Notes = CASE WHEN Notes IS NULL OR Notes = N'' THEN @note ELSE Notes + N' | ' + @note END
+                WHERE PieceID = @pieceId AND TrackingEventID = @trackingEventId AND (PayrollRecordId IS NULL OR PayrollRecordId = 0);";
+            await using (var updateWage = new SqlCommand(updateWageSql, connection, transaction))
+            {
+                updateWage.Parameters.AddWithValue("@correctEmployeeId", request.CorrectEmployeeId);
+                updateWage.Parameters.AddWithValue("@correctEmployeeCode", targetEmployee.EmployeeCode);
+                updateWage.Parameters.AddWithValue("@note", noteText);
+                updateWage.Parameters.AddWithValue("@pieceId", piece.PieceId);
+                updateWage.Parameters.AddWithValue("@trackingEventId", request.OriginalTrackingEventId);
+                await updateWage.ExecuteNonQueryAsync(ct);
+            }
+
+            const string auditSql = @"
+                INSERT INTO dbo.StageAttributionCorrections
+                    (PieceID, TrackingEventID, PreviousEmployeeId, PreviousEmployeeCode, CorrectEmployeeId, CorrectEmployeeCode, Stage, Reason, IdempotencyKey, AuthorizedByUserId, Status, CreatedAt, CompletedAt)
+                VALUES (@pieceId, @trackingEventId, @previousEmployeeId, @previousEmployeeCode, @correctEmployeeId, @correctEmployeeCode, @stage, @reason, @idempotencyKey, @authorizedByUserId, @status, @createdAt, @completedAt);";
+            await using (var auditCommand = new SqlCommand(auditSql, connection, transaction))
+            {
+                auditCommand.Parameters.AddWithValue("@pieceId", piece.PieceId);
+                auditCommand.Parameters.AddWithValue("@trackingEventId", request.OriginalTrackingEventId);
+                auditCommand.Parameters.AddWithValue("@previousEmployeeId", await ResolveEmployeeIdAsync(connection, transaction, trackingEvent.EmployeeCode, ct));
+                auditCommand.Parameters.AddWithValue("@previousEmployeeCode", trackingEvent.EmployeeCode ?? (object)DBNull.Value);
+                auditCommand.Parameters.AddWithValue("@correctEmployeeId", request.CorrectEmployeeId);
+                auditCommand.Parameters.AddWithValue("@correctEmployeeCode", targetEmployee.EmployeeCode);
+                auditCommand.Parameters.AddWithValue("@stage", trackingEvent.Stage);
+                auditCommand.Parameters.AddWithValue("@reason", request.Reason);
+                auditCommand.Parameters.AddWithValue("@idempotencyKey", request.IdempotencyKey);
+                auditCommand.Parameters.AddWithValue("@authorizedByUserId", request.AuthorizedByUserId);
+                auditCommand.Parameters.AddWithValue("@status", "Applied");
+                auditCommand.Parameters.AddWithValue("@createdAt", DateTime.UtcNow);
+                auditCommand.Parameters.AddWithValue("@completedAt", DateTime.UtcNow);
+                await auditCommand.ExecuteNonQueryAsync(ct);
+            }
+
+            await transaction.CommitAsync(ct);
+            return new StageAttributionCorrectionResultDto(
+                piece.PieceId,
+                piece.TrackingCode,
+                request.OriginalTrackingEventId,
+                trackingEvent.Stage,
+                trackingEvent.EmployeeCode ?? string.Empty,
+                targetEmployee.EmployeeCode,
+                request.AuthorizedByUserId,
+                request.Reason,
+                request.IdempotencyKey,
+                await LoadLatestPieceWageRecordForTrackingAsync(connection, null, piece.PieceId, request.OriginalTrackingEventId, ct) is { } latestWage ? latestWage.PieceWageRecordId : null,
+                null,
+                "Applied",
+                DateTime.UtcNow,
+                DateTime.UtcNow,
+                true,
+                "تمت تسوية نسبة المرحلة بنجاح وقد تم ربطها بمعرّف التكرار.");
+        }
+        catch
+        {
+            await transaction.RollbackAsync(ct);
+            throw;
+        }
+    }
+
     public async Task<WorkCardDto?> GetWorkCardAsync(int id, CancellationToken ct)
     {
         const string sql = """
@@ -1501,6 +1735,192 @@ public sealed class ProductionRepository(
     }
     public Task<IReadOnlyList<TrackingEventDto>> GetPieceTrackingAsync(int id, CancellationToken ct) => QueryAsync("SELECT TrackingEventID, OrderItemID, OrderID, TrackingCode, Stage, Status, EventTime, EmployeeCode, Notes, IsReverted, RevertedAt, PieceID, ReadyMadeProductionOrderPieceInstanceId FROM dbo.TrackingEvents WHERE PieceID = @id ORDER BY EventTime DESC, TrackingEventID DESC", reader => new TrackingEventDto(reader.GetInt32(0), reader.NullableInt32("OrderItemID"), reader.NullableInt32("OrderID"), reader.NullableString("TrackingCode"), reader.GetString(4), reader.GetString(5), reader.GetDateTime(6), reader.NullableString("EmployeeCode"), reader.NullableString("Notes"), reader.GetBoolean(9), reader.NullableDateTime("RevertedAt"), reader.NullableInt32("PieceID"), reader.NullableInt32("ReadyMadeProductionOrderPieceInstanceId")), id, ct);
     public Task<IReadOnlyList<ProductionStageDto>> GetStagesAsync(CancellationToken ct) => QueryAsync("SELECT DISTINCT Stage, Status FROM dbo.TrackingEvents ORDER BY Stage, Status", reader => new ProductionStageDto(reader.GetString(0), reader.GetString(1)), null, ct);
+
+    private static async Task<PieceCorrectionContext?> ResolvePieceForStageAttributionCorrectionAsync(SqlConnection connection, SqlTransaction? transaction, int? pieceId, string? trackingCode, CancellationToken ct)
+    {
+        var sql = @"
+            SELECT p.PieceID, p.TrackingCode, p.PieceStatus, oi.PieceType,
+                   COALESCE((
+                       SELECT TOP 1 pt.ProductTypeId
+                       FROM dbo.PricingProductTypes pt WITH (NOLOCK)
+                       WHERE pt.IsActive = 1 AND (pt.Code = oi.PieceType OR pt.NameAr = oi.PieceType)
+                       ORDER BY CASE WHEN pt.Code = oi.PieceType THEN 0 ELSE 1 END, pt.ProductTypeId
+                   ), 0) AS ProductTypeId
+            FROM dbo.Pieces p WITH (NOLOCK)
+            INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = p.OrderItemID
+            WHERE (@pieceId IS NOT NULL AND p.PieceID = @pieceId)
+               OR (@trackingCode IS NOT NULL AND p.TrackingCode = @trackingCode);";
+
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pieceId", pieceId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@trackingCode", string.IsNullOrWhiteSpace(trackingCode) ? (object)DBNull.Value : trackingCode.Trim());
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+
+        return new PieceCorrectionContext(
+            reader.GetInt32(0),
+            reader.GetString(1),
+            reader.GetString(3),
+            reader.GetString(2),
+            reader.IsDBNull(4) ? 0 : reader.GetInt32(4));
+    }
+
+    private static async Task<int> ResolveLatestTrackingEventIdAsync(SqlConnection connection, SqlTransaction? transaction, int pieceId, CancellationToken ct)
+    {
+        const string sql = "SELECT TOP 1 TrackingEventID FROM dbo.TrackingEvents WITH (NOLOCK) WHERE PieceID = @pieceId ORDER BY EventTime DESC, TrackingEventID DESC;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        var result = await command.ExecuteScalarAsync(ct);
+        return result is int value ? value : 0;
+    }
+
+    private static async Task<TrackingEventCorrectionContext?> LoadTrackingEventForStageAttributionCorrectionAsync(SqlConnection connection, SqlTransaction? transaction, int pieceId, int trackingEventId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT TOP 1 TrackingEventID, Stage, EmployeeCode, EventTime, Notes
+            FROM dbo.TrackingEvents WITH (NOLOCK)
+            WHERE PieceID = @pieceId AND TrackingEventID = @trackingEventId
+            ORDER BY EventTime DESC, TrackingEventID DESC;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        command.Parameters.AddWithValue("@trackingEventId", trackingEventId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        return new TrackingEventCorrectionContext(
+            reader.GetInt32(0),
+            reader.GetString(1),
+            reader.NullableString("EmployeeCode"),
+            reader.GetDateTime(3),
+            reader.NullableString("Notes"));
+    }
+
+    private static async Task<PieceWageCorrectionContext?> LoadLatestPieceWageRecordForTrackingAsync(SqlConnection connection, SqlTransaction? transaction, int pieceId, int trackingEventId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT TOP 1 PieceWageRecordID, Status, PayrollPeriodId, PayrollRecordId
+            FROM dbo.PieceWageRecords WITH (NOLOCK)
+            WHERE PieceID = @pieceId AND TrackingEventID = @trackingEventId
+            ORDER BY PieceWageRecordID DESC;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        command.Parameters.AddWithValue("@trackingEventId", trackingEventId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        return new PieceWageCorrectionContext(
+            reader.GetInt32(0),
+            reader.GetString(1),
+            reader.IsDBNull(2) ? null : reader.GetInt32(2),
+            reader.IsDBNull(3) ? null : reader.GetInt32(3));
+    }
+
+    private static async Task<IReadOnlyList<EligibleStageEmployeeDto>> LoadEligibleEmployeesForStageAsync(SqlConnection connection, SqlTransaction? transaction, string pieceType, string stage, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT e.EmployeeID, e.EmployeeCode, e.FullName, e.JobTitle, a.Rate
+            FROM dbo.EmployeePieceRateAssignments a WITH (NOLOCK)
+            INNER JOIN dbo.Employees e WITH (NOLOCK) ON e.EmployeeID = a.EmployeeId
+            WHERE a.PieceType = @pieceType
+              AND a.Stage = @stage
+              AND a.IsActive = 1
+              AND e.IsActive = 1
+              AND (a.EffectiveFrom IS NULL OR a.EffectiveFrom <= @now)
+              AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= @now)
+            ORDER BY e.FullName, e.EmployeeCode;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pieceType", pieceType.Trim());
+        command.Parameters.AddWithValue("@stage", stage.Trim());
+        command.Parameters.AddWithValue("@now", DateTime.UtcNow);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        var employees = new List<EligibleStageEmployeeDto>();
+        while (await reader.ReadAsync(ct))
+        {
+            employees.Add(new EligibleStageEmployeeDto(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.NullableString("FullName"),
+                reader.NullableString("JobTitle"),
+                reader.GetDecimal(4),
+                true));
+        }
+        return employees;
+    }
+
+    private static async Task<EmployeeCorrectionContext?> LoadEmployeeByIdAsync(SqlConnection connection, SqlTransaction? transaction, int employeeId, CancellationToken ct)
+    {
+        const string sql = @"SELECT EmployeeID, EmployeeCode, FullName, JobTitle, IsActive FROM dbo.Employees WITH (NOLOCK) WHERE EmployeeID = @employeeId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@employeeId", employeeId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        return new EmployeeCorrectionContext(
+            reader.GetInt32(0),
+            reader.GetString(1),
+            reader.NullableString("FullName"),
+            reader.NullableString("JobTitle"),
+            reader.GetBoolean(4));
+    }
+
+    private static async Task<bool> IsEmployeeEligibleForStageAsync(SqlConnection connection, SqlTransaction? transaction, string? employeeCode, string pieceType, string stage, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(employeeCode)) return false;
+        const string sql = @"
+            SELECT TOP 1 1
+            FROM dbo.EmployeePieceRateAssignments a WITH (NOLOCK)
+            INNER JOIN dbo.Employees e WITH (NOLOCK) ON e.EmployeeID = a.EmployeeId
+            WHERE e.EmployeeCode = @employeeCode
+              AND a.PieceType = @pieceType
+              AND a.Stage = @stage
+              AND a.IsActive = 1
+              AND e.IsActive = 1
+              AND (a.EffectiveFrom IS NULL OR a.EffectiveFrom <= @now)
+              AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= @now);";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@employeeCode", employeeCode.Trim());
+        command.Parameters.AddWithValue("@pieceType", pieceType.Trim());
+        command.Parameters.AddWithValue("@stage", stage.Trim());
+        command.Parameters.AddWithValue("@now", DateTime.UtcNow);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        return await reader.ReadAsync(ct);
+    }
+
+    private static async Task<bool> HasPendingPayrollWageForPieceAsync(SqlConnection connection, SqlTransaction? transaction, int pieceId, int trackingEventId, CancellationToken ct)
+    {
+        const string sql = @"SELECT TOP 1 1 FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND TrackingEventID = @trackingEventId AND Status IN ('PendingPayroll','Generated','Approved');";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        command.Parameters.AddWithValue("@trackingEventId", trackingEventId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        return await reader.ReadAsync(ct);
+    }
+
+    private static async Task<bool> HasPaidPayrollWageForPieceAsync(SqlConnection connection, SqlTransaction? transaction, int pieceId, int trackingEventId, CancellationToken ct)
+    {
+        const string sql = @"SELECT TOP 1 1 FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND TrackingEventID = @trackingEventId AND (Status = 'Paid' OR PayrollRecordId IS NOT NULL);";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        command.Parameters.AddWithValue("@trackingEventId", trackingEventId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        return await reader.ReadAsync(ct);
+    }
+
+    private static async Task<bool> IsStageAttributionCorrectionDuplicateAsync(SqlConnection connection, SqlTransaction? transaction, string idempotencyKey, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(idempotencyKey)) return false;
+        const string sql = @"SELECT TOP 1 1 FROM dbo.StageAttributionCorrections WITH (NOLOCK) WHERE IdempotencyKey = @idempotencyKey;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@idempotencyKey", idempotencyKey.Trim());
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        return await reader.ReadAsync(ct);
+    }
+
+    private static async Task<bool> IsDamageLostReprintForPieceAsync(SqlConnection connection, SqlTransaction? transaction, int pieceId, CancellationToken ct)
+    {
+        const string sql = @"SELECT TOP 1 1 FROM dbo.TrackingEvents WITH (NOLOCK) WHERE PieceID = @pieceId AND (LOWER(Notes) LIKE '%damage%' OR LOWER(Notes) LIKE '%lost%' OR LOWER(Notes) LIKE '%reprint%' OR LOWER(Notes) LIKE '%damaged%');";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        return await reader.ReadAsync(ct);
+    }
 
     private static string? TryExtractSnapshotValue(string? measurementSnapshot, params string[] keys)
     {
@@ -2307,6 +2727,10 @@ public sealed class ProductionRepository(
     private static TrackingEventDto MapTracking(SqlDataReader reader) => new(reader.GetInt32(0), reader.NullableInt32("OrderItemID"), reader.NullableInt32("OrderID"), reader.NullableString("TrackingCode"), reader.GetString(4), reader.GetString(5), reader.GetDateTime(6), reader.NullableString("EmployeeCode"), reader.NullableString("Notes"), reader.GetBoolean(9), reader.NullableDateTime("RevertedAt"), reader.NullableInt32("PieceID"), reader.NullableInt32("ReadyMadeProductionOrderPieceInstanceId"));
     private async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, Func<SqlDataReader, T> map, int? id, CancellationToken ct) { await using var connection = connections.Create(); await connection.OpenAsync(ct); await using var command = new SqlCommand(sql, connection); if (id is not null) command.Parameters.AddWithValue("@id", id.Value); await using var reader = await command.ExecuteReaderAsync(ct); var items = new List<T>(); while (await reader.ReadAsync(ct)) items.Add(map(reader)); return items; }
 
+    private sealed record PieceCorrectionContext(int PieceId, string TrackingCode, string PieceType, string PieceStatus, int ProductTypeId);
+    private sealed record TrackingEventCorrectionContext(int TrackingEventId, string Stage, string? EmployeeCode, DateTime EventTime, string? Notes);
+    private sealed record PieceWageCorrectionContext(int PieceWageRecordId, string Status, int? PayrollPeriodId, int? PayrollRecordId);
+    private sealed record EmployeeCorrectionContext(int EmployeeId, string EmployeeCode, string? FullName, string? JobTitle, bool IsActive);
     private sealed record ReadyMadeFabricRequirement(string FabricCode, decimal RequiredInches);
     private sealed record ReadyMadePricingLine(
         ReadyMadeProductionOrderCreateItemDto Item,

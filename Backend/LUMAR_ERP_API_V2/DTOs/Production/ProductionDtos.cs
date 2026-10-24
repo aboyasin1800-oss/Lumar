@@ -31,6 +31,51 @@ public sealed record ProductionTrackingAdvanceResultDto(
     bool Updated,
     bool IsReadyMade = false,
     bool BecameReadyForDelivery = false);
+public sealed record StageAttributionCorrectionPreviewRequestDto(int? PieceId = null, string? TrackingCode = null, int? OriginalTrackingEventId = null);
+public sealed record EligibleStageEmployeeDto(int EmployeeId, string EmployeeCode, string? FullName, string? JobTitle, decimal Rate, bool IsActive);
+public sealed record StageAttributionCorrectionPreviewDto(
+    int PieceId,
+    string TrackingCode,
+    int ProductTypeId,
+    string PieceType,
+    string CurrentPieceStatus,
+    int OriginalTrackingEventId,
+    string Stage,
+    int? OriginalEmployeeId,
+    string? OriginalEmployeeCode,
+    DateTime EventTime,
+    int? PieceWageRecordId,
+    string? WageStatus,
+    int? PayrollPeriodId,
+    int? PayrollRecordId,
+    bool IsSafeToCorrect,
+    string? BlockReason,
+    IReadOnlyList<EligibleStageEmployeeDto> EligibleEmployees);
+public sealed record StageAttributionCorrectionRequestDto(
+    int OriginalTrackingEventId,
+    int CorrectEmployeeId,
+    string Reason,
+    string IdempotencyKey,
+    int? PieceId = null,
+    string? TrackingCode = null,
+    int AuthorizedByUserId = 0);
+public sealed record StageAttributionCorrectionResultDto(
+    int PieceId,
+    string TrackingCode,
+    int OriginalTrackingEventId,
+    string Stage,
+    string PreviousEmployeeCode,
+    string CorrectEmployeeCode,
+    int AuthorizedByUserId,
+    string Reason,
+    string IdempotencyKey,
+    int? OriginalPieceWageRecordId,
+    int? CorrectedPieceWageRecordId,
+    string Status,
+    DateTime CreatedAt,
+    DateTime? CompletedAt,
+    bool Success,
+    string? Message = null);
 public sealed record EmployeeScannerAdvanceRequestDto(string TrackingCode, string RequestedStage, string? ScannerCode = null, string? OperationReference = null);
 public sealed record EmployeeScannerAdvanceResponseDto(int? PieceId, string TrackingCode, string PreviousStatus, string NewStatus, string? NextStage, string Message, bool Updated, bool IsReadyMade = false, int? ProductTypeId = null, string? PieceType = null);
 public sealed record ProductionTrackingRouteDto(int ProductTypeId, string ProductTypeCode, string ProductTypeNameAr, string PieceType, IReadOnlyList<string> Route, string CurrentStage, string? NextStage, bool IsReadyMade = false);

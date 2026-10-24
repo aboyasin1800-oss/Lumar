@@ -33,6 +33,12 @@ public sealed class ProductionService(
     public Task<ProductionTrackingRouteDto?> GetPieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken ct) => repository.GetPieceRouteByTrackingCodeAsync(trackingCode, ct);
     public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteAsync(int pieceId, CancellationToken ct) => repository.GetReadyMadePieceRouteAsync(pieceId, ct);
     public Task<ProductionTrackingRouteDto?> GetReadyMadePieceRouteByTrackingCodeAsync(string trackingCode, CancellationToken ct) => repository.GetReadyMadePieceRouteByTrackingCodeAsync(trackingCode, ct);
+    public Task<StageAttributionCorrectionPreviewDto?> PreviewStageAttributionCorrectionAsync(StageAttributionCorrectionPreviewRequestDto request, CancellationToken ct)
+        => repository.PreviewStageAttributionCorrectionAsync(request, ct);
+
+    public Task<StageAttributionCorrectionResultDto> ExecuteStageAttributionCorrectionAsync(StageAttributionCorrectionRequestDto request, CancellationToken ct)
+        => repository.ExecuteStageAttributionCorrectionAsync(request, ct);
+
     public async Task<ProductionTrackingAdvanceResultDto?> AdvancePieceStageAsync(ProductionTrackingAdvanceRequestDto request, CancellationToken ct)
     {
         var result = await repository.AdvancePieceStageAsync(request, ct);
