@@ -130,21 +130,21 @@ public sealed class OrderService(
     {
         var context = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
-            ["CustomerName"] = order.CustomerName ?? "Customer",
+            ["CustomerName"] = order.CustomerName,
             ["OrderNumber"] = order.OrderNumber,
             ["OrderId"] = order.OrderId,
             ["Amount"] = order.TotalAmount,
             ["TotalAmount"] = order.TotalAmount,
             ["PaidAmount"] = order.PaidAmount,
             ["RemainingAmount"] = order.RemainingAmount,
-            ["DeliveryDate"] = order.DeliveryDate ?? DateTime.UtcNow,
+            ["DeliveryDate"] = order.DeliveryDate,
             ["PhoneNumber"] = order.PhoneNumber,
             ["CustomerPhoneNumber"] = order.PhoneNumber,
             ["CurrencyName"] = await GetRequiredSettingValueAsync("Currency", cancellationToken),
             ["StoreName"] = await GetRequiredSettingValueAsync("StoreName", cancellationToken),
             ["CustomerCode"] = await GetCustomerCodeAsync(order.CustomerId, cancellationToken),
-            ["PointsEarned"] = loyaltyResult?.BuyerDelta ?? 0m,
-            ["PointsBalance"] = loyaltyResult?.BuyerAccount.CurrentPoints ?? 0m,
+            ["PointsEarned"] = loyaltyResult?.BuyerDelta,
+            ["PointsBalance"] = loyaltyResult?.BuyerAccount.CurrentPoints,
         };
 
         var items = await repository.GetItemsAsync(order.OrderId, cancellationToken);

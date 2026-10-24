@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="Fixtures\meta-template-catalog-2026-10-24.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\LUMAR_ERP_API_V2\Repositories\ReadyMadeSalesRepository.cs"
           Link="ReadyMadeSalesRepository.cs"
           CopyToOutputDirectory="PreserveNewest" />

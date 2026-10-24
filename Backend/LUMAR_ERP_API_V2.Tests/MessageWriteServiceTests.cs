@@ -225,7 +225,7 @@ public sealed class MessageWriteServiceTests
 
             var handler = new CaptureHandler();
             var channelClient = new WhatsAppCloudMessageChannel(
-                new FixedHttpClientFactory(new HttpClient(handler)),
+                new RecordedMetaTemplateHttpClientFactory(new HttpClient(handler)),
                 new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
                 {
                     Enabled = true,
@@ -237,23 +237,9 @@ public sealed class MessageWriteServiceTests
                 NullLogger<WhatsAppCloudMessageChannel>.Instance);
 
             var result = await channelClient.SendAsync(claimed, CancellationToken.None);
-            Assert.Equal(OutboundDispatchOutcome.Sent, result.Outcome);
-
-            using var payload = JsonDocument.Parse(handler.LastRequestBody);
-            var components = payload.RootElement
-                .GetProperty("template")
-                .GetProperty("components");
-
-            var bodyComponent = components.EnumerateArray()
-                .Single(element => element.TryGetProperty("type", out var typeElement) && typeElement.GetString() == "body");
-            var bodyParameters = bodyComponent.GetProperty("parameters");
-
-            Assert.Equal("customer_name", bodyParameters[0].GetProperty("parameter_name").GetString());
-            Assert.Equal(selectedCustomer.CustomerName, bodyParameters[0].GetProperty("text").GetString());
-            Assert.Equal("order_number", bodyParameters[1].GetProperty("parameter_name").GetString());
-            Assert.Equal(orderNumber, bodyParameters[1].GetProperty("text").GetString());
-            Assert.Equal("total_amount", bodyParameters[2].GetProperty("parameter_name").GetString());
-            Assert.Equal("2489.50", bodyParameters[2].GetProperty("text").GetString());
+            Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
+            Assert.Equal("Missing Required Meta Parameter: order_details", result.FailureReason);
+            Assert.True(string.IsNullOrEmpty(handler.LastRequestBody));
         }
         finally
         {
@@ -264,6 +250,68 @@ public sealed class MessageWriteServiceTests
             delete.Parameters.AddWithValue("@orderId", orderId);
             await delete.ExecuteNonQueryAsync();
         }
+    }
+
+    [Fact]
+    [Trait("Category", "ReadOnlyDatabase")]
+    public async Task MessageRepository_ReadOnly_HydratesCompleteMetaOrderCreatedContract()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString is required.");
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        Assert.Equal("LUMAR_ERP_ES_VALIDATION", builder.InitialCatalog);
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        const string sql = @"
+            SELECT TOP (1) message.CustomerMessageID, customer.CustomerName, customer.CustomerCode,
+                   orders.OrderNumber, orders.TotalAmount, orders.PaidAmount, orders.RemainingAmount,
+                   orders.DeliveryDate, account.CurrentPoints,
+                   (SELECT SUM(Points) FROM dbo.LoyaltyTransactions
+                    WHERE OrderId = orders.OrderID AND CustomerId = orders.CustomerID
+                      AND Source = N'PiecePurchase' AND TransactionType = N'Earn') AS PointsEarned
+            FROM dbo.CustomerMessages message
+            JOIN dbo.Orders orders ON orders.OrderID = message.OrderID
+            JOIN dbo.Customers customer ON customer.CustomerID = message.CustomerID
+            JOIN dbo.LoyaltyAccounts account ON account.CustomerId = orders.CustomerID
+            WHERE message.EventType = N'OrderCreated' AND message.CustomerID = orders.CustomerID
+              AND orders.DeliveryDate IS NOT NULL AND customer.CustomerCode IS NOT NULL
+              AND EXISTS (SELECT 1 FROM dbo.OrderItems WHERE OrderID = orders.OrderID)
+              AND EXISTS (SELECT 1 FROM dbo.LoyaltyTransactions WHERE OrderId = orders.OrderID
+                          AND CustomerId = orders.CustomerID AND Source = N'PiecePurchase' AND TransactionType = N'Earn')
+            ORDER BY message.CustomerMessageID DESC;";
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync(), "A complete official order is required for this read-only verification.");
+        var messageId = reader.GetInt32(0);
+        var expected = new Dictionary<string, object?>
+        {
+            ["CustomerName"] = reader.GetString(1), ["CustomerCode"] = reader.GetString(2),
+            ["OrderNumber"] = reader.GetString(3), ["TotalAmount"] = reader.GetDecimal(4),
+            ["PaidAmount"] = reader.GetDecimal(5), ["RemainingAmount"] = reader.GetDecimal(6),
+            ["DeliveryDate"] = reader.GetDateTime(7), ["PointsBalance"] = reader.GetDecimal(8),
+            ["PointsEarned"] = reader.GetDecimal(9)
+        };
+        await reader.DisposeAsync();
+        var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+        var repository = new MessageRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options));
+        var message = await repository.GetCustomerMessageAsync(messageId, CancellationToken.None);
+        Assert.NotNull(message);
+        Assert.NotNull(message.Context);
+        foreach (var field in expected)
+            Assert.Equal(field.Value, message.Context[field.Key]);
+        Assert.False(string.IsNullOrWhiteSpace(message.Context["OrderDetails"] as string));
+
+        var capture = new CaptureHandler();
+        var channel = new WhatsAppCloudMessageChannel(
+            new RecordedMetaTemplateHttpClientFactory(new HttpClient(capture)),
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions { Enabled = true, PhoneNumberId = "test", AccessToken = "test" }));
+        var result = await channel.SendAsync(message, CancellationToken.None);
+        Assert.Equal(OutboundDispatchOutcome.Sent, result.Outcome);
+        using var payload = JsonDocument.Parse(capture.LastRequestBody);
+        var body = payload.RootElement.GetProperty("template").GetProperty("components")[0].GetProperty("parameters");
+        Assert.Equal(10, body.GetArrayLength());
+        Assert.Equal(MetaTemplateContractTests.ReadRecordedNames("lumar_order_created"),
+            body.EnumerateArray().Select(parameter => parameter.GetProperty("parameter_name").GetString()));
     }
 
     [Fact]

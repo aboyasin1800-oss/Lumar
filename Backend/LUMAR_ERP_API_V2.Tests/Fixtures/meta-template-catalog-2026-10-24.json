@@ -1,0 +1,145 @@
+{
+  "source": "Live Meta Graph API GET /1413441637074832/message_templates?fields=id,name,status,language,category,components",
+  "capturedOn": "2026-10-24",
+  "httpStatus": 200,
+  "projection": "Template identity and component parameter metadata only. Example values, text and media URLs omitted.",
+  "data": [
+    {
+      "id": "980487701779929",
+      "name": "lumar_order_created",
+      "status": "APPROVED",
+      "language": "ar",
+      "category": "UTILITY",
+      "components": [{ "type": "BODY", "example": { "body_text_named_params": [
+        { "param_name": "customer_name" }, { "param_name": "order_number" },
+        { "param_name": "order_details" }, { "param_name": "total_amount" },
+        { "param_name": "paid_amount" }, { "param_name": "remaining_amount" },
+        { "param_name": "delivery_date" }, { "param_name": "points_earned" },
+        { "param_name": "points_balance" }, { "param_name": "customer_code" }
+      ] } }]
+    },
+    {
+      "id": "2431739510920102",
+      "name": "lumar_order_ready",
+      "status": "APPROVED",
+      "language": "ar",
+      "category": "UTILITY",
+      "components": [{ "type": "BODY", "example": { "body_text_named_params": [
+        { "param_name": "customer_name" }, { "param_name": "order_number" },
+        { "param_name": "store_name" }, { "param_name": "remaining_amount" }
+      ] } }]
+    },
+    {
+      "id": "1711857607220786",
+      "name": "lumar_order_delivered",
+      "status": "APPROVED",
+      "language": "ar",
+      "category": "UTILITY",
+      "components": [{ "type": "BODY", "example": { "body_text_named_params": [
+        { "param_name": "customer_name" }, { "param_name": "order_number" }
+      ] } }]
+    },
+    {
+      "id": "4525280791120016",
+      "name": "lumar_piece_cancelled",
+      "status": "APPROVED",
+      "language": "ar",
+      "category": "UTILITY",
+      "components": [{ "type": "BODY", "example": { "body_text_named_params": [
+        { "param_name": "customer_name" }, { "param_name": "piece_name" },
+        { "param_name": "order_number" }, { "param_name": "cancelled_amount" },
+        { "param_name": "order_total" }, { "param_name": "remaining_amount" }
+      ] } }]
+    },
+    {
+      "id": "1068643315994646",
+      "name": "lumar_order_cancelled",
+      "status": "APPROVED",
+      "language": "ar",
+      "category": "UTILITY",
+      "components": [{ "type": "BODY", "example": { "body_text_named_params": [
+        { "param_name": "customer_name" }, { "param_name": "order_number" },
+        { "param_name": "cancelled_amount" }, { "param_name": "refund_amount" }
+      ] } }]
+    },
+    {
+      "id": "1667155398445918",
+      "name": "lumar_referrer_reward",
+      "status": "APPROVED",
+      "language": "ar",
+      "category": "UTILITY",
+      "components": [{ "type": "BODY", "example": { "body_text_named_params": [
+        { "param_name": "customer_name" }, { "param_name": "referred_customer_name" },
+        { "param_name": "referral_points" }, { "param_name": "referral_balance" }
+      ] } }]
+    },
+    {
+      "id": "2227868167791221",
+      "name": "lumar_referrer_reward_relation",
+      "status": "APPROVED",
+      "language": "ar",
+      "category": "UTILITY",
+      "components": [{ "type": "BODY", "example": { "body_text_named_params": [
+        { "param_name": "customer_name" }, { "param_name": "referred_customer_name" },
+        { "param_name": "relationship" }, { "param_name": "referral_points" },
+        { "param_name": "referral_balance" }
+      ] } }]
+    },
+    {
+      "id": "1068458232679607",
+      "name": "lumar_order_created_with_referrer",
+      "status": "APPROVED",
+      "language": "ar",
+      "category": "UTILITY",
+      "components": [{ "type": "BODY", "example": { "body_text_named_params": [
+        { "param_name": "order_number" }, { "param_name": "customer_name" },
+        { "param_name": "customer_code" }, { "param_name": "order_details" },
+        { "param_name": "total_amount" }, { "param_name": "paid_amount" },
+        { "param_name": "remaining_amount" }, { "param_name": "delivery_date" },
+        { "param_name": "customer_points_earned" }, { "param_name": "customer_points_balance" },
+        { "param_name": "referrer_name" }, { "param_name": "referrer_code" },
+        { "param_name": "referral_points_earned" }, { "param_name": "referrer_points_balance" }
+      ] } }]
+    },
+    {
+      "id": "1834383604365879",
+      "name": "lumar_order_created_with_referrer_relation",
+      "status": "APPROVED",
+      "language": "ar",
+      "category": "UTILITY",
+      "components": [{ "type": "BODY", "example": { "body_text_named_params": [
+        { "param_name": "relation_welcome" }, { "param_name": "order_number" },
+        { "param_name": "customer_name" }, { "param_name": "customer_code" },
+        { "param_name": "relationship" }, { "param_name": "order_details" },
+        { "param_name": "total_amount" }, { "param_name": "paid_amount" },
+        { "param_name": "remaining_amount" }, { "param_name": "delivery_date" },
+        { "param_name": "customer_points_earned" }, { "param_name": "customer_points_balance" },
+        { "param_name": "referrer_name" }, { "param_name": "referrer_code" },
+        { "param_name": "referral_points_earned" }, { "param_name": "referrer_points_balance" }
+      ] } }]
+    },
+    {
+      "id": "2202610603942384",
+      "name": "lumar_friday_greeting",
+      "status": "APPROVED",
+      "language": "ar",
+      "category": "MARKETING",
+      "components": [{ "type": "BODY", "example": { "body_text_named_params": [
+        { "param_name": "customer_name" }
+      ] } }]
+    },
+    {
+      "id": "1125461506839877",
+      "name": "lumar_general_campaign",
+      "status": "APPROVED",
+      "language": "ar",
+      "category": "MARKETING",
+      "components": [
+        { "type": "HEADER", "format": "IMAGE" },
+        { "type": "BODY", "example": { "body_text_named_params": [
+          { "param_name": "customer_name" }, { "param_name": "campaign_text" }
+        ] } }
+      ]
+    }
+  ]
+}

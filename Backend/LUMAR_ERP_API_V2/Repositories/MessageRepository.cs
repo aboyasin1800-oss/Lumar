@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Data.Common;
 using System.Globalization;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Messages;
@@ -104,33 +105,141 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
         r.GetInt32(0),
         r.NullableInt32("MessageID"));
 
-    private static async Task<string?> LoadCustomerNameAsync(SqlConnection connection, SqlTransaction transaction, int customerId, CancellationToken cancellationToken)
+    private static async Task<Dictionary<string, object?>> LoadTemplateContextAsync(
+        SqlConnection connection, SqlTransaction? transaction, CustomerMessageDto message, CancellationToken cancellationToken)
     {
-        const string sql = "SELECT TOP (1) CustomerName FROM dbo.Customers WITH (NOLOCK) WHERE CustomerID = @customerId;";
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("@customerId", customerId);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
-            return null;
+        var context = new Dictionary<string, object?>(
+            message.Context ?? new Dictionary<string, object?>(), StringComparer.OrdinalIgnoreCase);
+        const string customerSql = "SELECT CustomerName, CustomerCode FROM dbo.Customers WHERE CustomerID = @customerId;";
+        await using (var command = new SqlCommand(customerSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("@customerId", message.CustomerId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+                CopyContextFields(reader, context);
+        }
 
-        return reader.IsDBNull(0) ? null : reader.GetString(0);
+        if (message.OrderId is not > 0)
+            return context;
+
+        const string orderSql = @"
+            SELECT orders.OrderNumber, orders.CustomerID AS OrderCustomerId,
+                   orders.TotalAmount, orders.TotalAmount AS OrderTotal,
+                   orders.PaidAmount, orders.RemainingAmount, orders.DeliveryDate,
+                   buyer.CustomerName AS ReferredCustomerName,
+                   buyer.RelationshipType AS Relationship,
+                   account.CurrentPoints AS PointsBalance,
+                   (SELECT SUM(earned.Points)
+                    FROM dbo.LoyaltyTransactions earned
+                    WHERE earned.OrderId = orders.OrderID
+                      AND earned.CustomerId = orders.CustomerID
+                      AND earned.Source = N'PiecePurchase'
+                      AND earned.TransactionType = N'Earn') AS PointsEarned,
+                   (SELECT STRING_AGG(CONVERT(nvarchar(max), items.PieceType), N', ')
+                        WITHIN GROUP (ORDER BY items.FirstItemId)
+                    FROM (SELECT PieceType, MIN(OrderItemID) AS FirstItemId
+                          FROM dbo.OrderItems WHERE OrderID = @orderId
+                            AND NULLIF(LTRIM(RTRIM(PieceType)), N'') IS NOT NULL
+                          GROUP BY PieceType) items) AS OrderDetails,
+                   (SELECT TOP (1) SettingValue FROM dbo.System_Settings
+                    WHERE SettingName = N'StoreName' ORDER BY SettingID) AS StoreName
+            FROM dbo.Orders orders
+            LEFT JOIN dbo.Customers buyer ON buyer.CustomerID = orders.CustomerID
+            LEFT JOIN dbo.LoyaltyAccounts account ON account.CustomerId = orders.CustomerID
+            WHERE orders.OrderID = @orderId;";
+        await using (var command = new SqlCommand(orderSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("@orderId", message.OrderId.Value);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+                CopyContextFields(reader, context);
+        }
+
+        const string referralSql = @"
+            SELECT referrer.CustomerID AS ReferrerCustomerId,
+                   referrer.CustomerName AS ReferrerName, referrer.CustomerCode AS ReferrerCode,
+                                     account.TotalRewardPoints AS ReferralBalance,
+                                     loyalty.CurrentPoints AS ReferrerPointsBalance,
+                   (SELECT SUM(reward.LoyaltyPoints) FROM dbo.ReferralTransactions reward
+                    WHERE reward.OrderId = orders.OrderID
+                      AND reward.ReferredCustomerId = orders.CustomerID
+                      AND reward.ReferrerCustomerId = referrer.CustomerID
+                                            AND reward.TransactionType = N'RewardGranted'
+                                            AND (@referenceId NOT LIKE N'RewardGranted:%'
+                                                     OR N'RewardGranted:' + CONVERT(nvarchar(30), reward.ReferralTransactionId) = @referenceId)) AS ReferralPointsEarned
+            FROM dbo.Orders orders
+            OUTER APPLY (SELECT TOP (1) registration.ReferrerCustomerId
+                         FROM dbo.ReferralTransactions registration
+                         WHERE registration.ReferredCustomerId = orders.CustomerID
+                           AND registration.TransactionType = N'Registration'
+                         ORDER BY registration.CreatedAt DESC, registration.ReferralTransactionId DESC) directReferral
+            JOIN dbo.Customers referrer ON referrer.CustomerID =
+                CASE WHEN @customerId <> orders.CustomerID THEN @customerId ELSE directReferral.ReferrerCustomerId END
+            LEFT JOIN dbo.ReferralAccounts account ON account.CustomerId = referrer.CustomerID
+            LEFT JOIN dbo.LoyaltyAccounts loyalty ON loyalty.CustomerId = referrer.CustomerID
+            WHERE orders.OrderID = @orderId;";
+        await using (var command = new SqlCommand(referralSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("@orderId", message.OrderId.Value);
+            command.Parameters.AddWithValue("@customerId", message.CustomerId);
+            command.Parameters.AddWithValue("@referenceId", message.ReferenceId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+                CopyContextFields(reader, context);
+        }
+
+        if (string.Equals(message.ReferenceType, "Piece", StringComparison.OrdinalIgnoreCase))
+        {
+            const string pieceSql = @"
+                SELECT pieces.PieceID AS PieceId, items.PieceType AS PieceName
+                FROM dbo.Pieces pieces JOIN dbo.OrderItems items ON items.OrderItemID = pieces.OrderItemID
+                JOIN dbo.Orders orders ON orders.OrderID = items.OrderID
+                WHERE orders.OrderID = @orderId
+                  AND orders.OrderNumber + N':' + CONVERT(nvarchar(20), pieces.PieceNumber) = @referenceId;";
+            await using var command = new SqlCommand(pieceSql, connection, transaction);
+            command.Parameters.AddWithValue("@orderId", message.OrderId.Value);
+            command.Parameters.AddWithValue("@referenceId", message.ReferenceId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                var pieceContext = new Dictionary<string, object?>();
+                CopyContextFields(reader, pieceContext);
+                if (!await reader.ReadAsync(cancellationToken))
+                {
+                    foreach (var field in pieceContext)
+                        context[field.Key] = field.Value;
+                }
+            }
+        }
+        else if (string.Equals(message.EventType, "OrderCancelled", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(message.TemplateKey, "lumar_order_cancelled", StringComparison.OrdinalIgnoreCase))
+        {
+            const string cancellationSql = @"
+                SELECT orders.TotalAmount AS CancelledAmount,
+                       CASE WHEN orders.PaidAmount = 0 THEN orders.PaidAmount
+                            ELSE (SELECT SUM(ABS(payment.Amount)) FROM dbo.Payments payment
+                                  WHERE payment.OrderID = orders.OrderID AND payment.PaymentKind = N'Refund') END AS RefundAmount
+                FROM dbo.Orders orders WHERE orders.OrderID = @orderId AND orders.OrderStatus = N'Cancelled';";
+            await using var command = new SqlCommand(cancellationSql, connection, transaction);
+            command.Parameters.AddWithValue("@orderId", message.OrderId.Value);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+                CopyContextFields(reader, context);
+        }
+
+        return context;
     }
 
-    private static async Task<(string? OrderNumber, decimal? TotalAmount)?> LoadOrderLifecycleValuesAsync(SqlConnection connection, SqlTransaction transaction, int? orderId, CancellationToken cancellationToken)
+    private static void CopyContextFields(DbDataReader reader, IDictionary<string, object?> context)
     {
-        if (orderId is null or <= 0)
-            return null;
-
-        const string sql = "SELECT TOP (1) OrderNumber, TotalAmount FROM dbo.Orders WITH (NOLOCK) WHERE OrderID = @orderId;";
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("@orderId", orderId.Value);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
-            return null;
-
-        var orderNumber = reader.IsDBNull(0) ? null : reader.GetString(0);
-        decimal? totalAmount = reader.IsDBNull(1) ? null : reader.GetDecimal(1);
-        return (orderNumber, totalAmount);
+        for (var ordinal = 0; ordinal < reader.FieldCount; ordinal++)
+        {
+            var name = reader.GetName(ordinal);
+            if (reader.IsDBNull(ordinal))
+                context.Remove(name);
+            else
+                context[name] = reader.GetValue(ordinal);
+        }
     }
 
     public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(CancellationToken c)
@@ -139,8 +248,16 @@ public sealed class MessageRepository(ReadOnlySqlConnectionFactory connections, 
                 ORDER BY CreatedAtUtc DESC,CustomerMessageID DESC", null, Message, c);
 
     public async Task<CustomerMessageDto?> GetCustomerMessageAsync(int id, CancellationToken c)
-        => (await Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,RawCampaignText,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
+    {
+        var message = (await Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,RawCampaignText,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
                 FROM dbo.CustomerMessages WHERE CustomerMessageID=@id", id, Message, c)).FirstOrDefault();
+        if (message is null)
+            return null;
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(c);
+        return message with { Context = await LoadTemplateContextAsync(connection, null, message, c) };
+    }
 
     public Task<IReadOnlyList<CustomerMessageDto>> GetCustomerMessagesAsync(int customerId, CancellationToken c)
         => Q(@"SELECT CustomerMessageID,CustomerID,OrderID,EventType,TemplateKey,Channel,Title,Body,RawCampaignText,DeliveryStatus,CreatedAtUtc,SentAtUtc,ReadAtUtc,AttemptCount,DeliveredAtUtc,ProcessingAtUtc,FailureReason,ProviderMessageId,PhoneNumber,ReferenceID,ReferenceType,IdempotencyKey,CampaignImageUrl
@@ -353,30 +470,7 @@ WHERE MessageTemplateID = @id;";
             var claimed = Message(reader);
             reader.Dispose();
 
-            var hydratedContext = new Dictionary<string, object?>(claimed.Context ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
-
-            var customerName = await LoadCustomerNameAsync(connection, transaction, claimed.CustomerId, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(customerName))
-            {
-                hydratedContext["CustomerName"] = customerName;
-            }
-
-            if (claimed.OrderId is not null && claimed.OrderId > 0)
-            {
-                var orderValues = await LoadOrderLifecycleValuesAsync(connection, transaction, claimed.OrderId, cancellationToken);
-                if (orderValues is not null)
-                {
-                    if (!string.IsNullOrWhiteSpace(orderValues.Value.OrderNumber))
-                        hydratedContext["OrderNumber"] = orderValues.Value.OrderNumber;
-
-                    if (orderValues.Value.TotalAmount is not null)
-                        hydratedContext["TotalAmount"] = orderValues.Value.TotalAmount.Value;
-
-                    if (orderValues.Value.TotalAmount is not null)
-                        hydratedContext["Amount"] = orderValues.Value.TotalAmount.Value;
-                }
-            }
-
+            var hydratedContext = await LoadTemplateContextAsync(connection, transaction, claimed, cancellationToken);
             claimed = claimed with { Context = hydratedContext };
 
             await transaction.CommitAsync(cancellationToken);

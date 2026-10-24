@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.DTOs.Messages;
+using LUMAR_ERP_API_V2.DTOs.WhatsApp;
 using Microsoft.Extensions.Options;
 using System.Linq;
 
@@ -13,7 +14,8 @@ namespace LUMAR_ERP_API_V2.Services;
 public sealed class WhatsAppCloudMessageChannel(
     IHttpClientFactory httpClientFactory,
     IWhatsAppConnectionSettingsStore settingsStore,
-    ILogger<WhatsAppCloudMessageChannel>? logger = null) : IOutboundMessageChannel
+    ILogger<WhatsAppCloudMessageChannel>? logger = null,
+    IMetaWhatsAppTemplateCatalogClient? templateCatalogClient = null) : IOutboundMessageChannel
 {
     private static readonly YemenPhoneNumberNormalizer Normalizer = new();
 
@@ -33,7 +35,39 @@ public sealed class WhatsAppCloudMessageChannel(
         if (string.IsNullOrWhiteSpace(destination))
             return new OutboundAdapterResult(OutboundDispatchOutcome.PermanentFailure, FailureReason: "Invalid WhatsApp destination.", Retryable: false);
 
-        var payloadResult = CreateOutboundPayload(message, destination);
+        var definition = MetaTemplateCatalog.Resolve(message.TemplateKey, message.EventType);
+        if (definition is not null && definition.MetaName != "lumar_general_campaign")
+        {
+            var catalog = templateCatalogClient ?? new MetaWhatsAppTemplateCatalogClient(httpClientFactory, settingsStore);
+            try
+            {
+                var official = await catalog.GetTemplateAsync(definition.MetaName, cancellationToken);
+                if (official is null
+                    || !string.Equals(official.Language, definition.LanguageCode, StringComparison.Ordinal)
+                    || MetaTemplateCatalog.FromOfficial(official) is not { } officialDefinition)
+                {
+                    return new OutboundAdapterResult(OutboundDispatchOutcome.PermanentFailure,
+                        FailureReason: $"Official Meta template contract unavailable: {definition.MetaName}", Retryable: false);
+                }
+
+                definition = officialDefinition;
+            }
+            catch (HttpRequestException exception)
+            {
+                var retryable = exception.StatusCode is null or HttpStatusCode.TooManyRequests or HttpStatusCode.RequestTimeout
+                    || (int)exception.StatusCode.Value >= 500;
+                return new OutboundAdapterResult(retryable ? OutboundDispatchOutcome.TransientFailure : OutboundDispatchOutcome.PermanentFailure,
+                    FailureReason: "Official Meta template catalog request failed.", Retryable: retryable,
+                    HttpStatusCode: exception.StatusCode is null ? null : (int)exception.StatusCode.Value);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return new OutboundAdapterResult(OutboundDispatchOutcome.TransientFailure,
+                    FailureReason: "Official Meta template catalog request timed out.", Retryable: true);
+            }
+        }
+
+        var payloadResult = CreateOutboundPayload(message, destination, definition);
         if (payloadResult is null)
         {
             return new OutboundAdapterResult(OutboundDispatchOutcome.PermanentFailure, FailureReason: "Missing required WhatsApp template payload data.", Retryable: false);
@@ -181,9 +215,9 @@ public sealed class WhatsAppCloudMessageChannel(
         }
     }
 
-    private static (object Payload, string? MissingRequiredParameter)? CreateOutboundPayload(CustomerMessageDto message, string destination)
+    private static (object? Payload, string? MissingRequiredParameter)? CreateOutboundPayload(
+        CustomerMessageDto message, string destination, MetaTemplateDefinition? templateDefinition)
     {
-        var templateDefinition = MetaTemplateCatalog.Resolve(message.TemplateKey, message.EventType);
         if (templateDefinition is not null)
         {
             var missingRequired = templateDefinition.Parameters
@@ -277,15 +311,22 @@ public sealed class WhatsAppCloudMessageChannel(
             "customer_code" => new[] { "CustomerCode", "CustomerIdentifier" },
             "order_number" => new[] { "OrderNumber", "OrderCode", "OrderReference" },
             "order_details" => new[] { "OrderDetails", "OrderItemSummary", "ItemSummary" },
-            "total_amount" => new[] { "TotalAmount", "Amount", "OrderTotal" },
+            "total_amount" => new[] { "TotalAmount" },
+            "order_total" => new[] { "OrderTotal" },
             "paid_amount" => new[] { "PaidAmount" },
             "remaining_amount" => new[] { "RemainingAmount" },
             "delivery_date" => new[] { "DeliveryDate" },
-            "customer_points_earned" => new[] { "PointsEarned", "CustomerPointsEarned" },
-            "customer_points_balance" => new[] { "PointsBalance", "CustomerPointsBalance" },
+            "points_earned" or "customer_points_earned" => new[] { "PointsEarned", "CustomerPointsEarned" },
+            "points_balance" or "customer_points_balance" => new[] { "PointsBalance", "CustomerPointsBalance" },
+            "store_name" => new[] { "StoreName" },
+            "piece_name" => new[] { "PieceName" },
+            "cancelled_amount" => new[] { "CancelledAmount" },
+            "refund_amount" => new[] { "RefundAmount" },
             "referrer_name" => new[] { "ReferrerName" },
             "referrer_code" => new[] { "ReferrerCode" },
-            "referral_points_earned" => new[] { "ReferralPointsEarned" },
+            "referred_customer_name" => new[] { "ReferredCustomerName" },
+            "referral_points" or "referral_points_earned" => new[] { "ReferralPointsEarned" },
+            "referral_balance" => new[] { "ReferralBalance" },
             "referrer_points_balance" => new[] { "ReferrerPointsBalance" },
             "relationship" => new[] { "Relationship", "Relation" },
             "relation_welcome" => new[] { "RelationWelcome" },
@@ -362,6 +403,32 @@ public sealed class WhatsAppCloudMessageChannel(
 
     public static class MetaTemplateCatalog
     {
+        public static MetaTemplateDefinition? FromOfficial(MetaWhatsAppTemplateDto template)
+        {
+            if (!string.Equals(template.Status, "APPROVED", StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(template.Name)
+                || string.IsNullOrWhiteSpace(template.Language))
+                return null;
+
+            var bodies = template.Components
+                .Where(component => string.Equals(component.Type, "BODY", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (bodies.Length != 1 || bodies[0].ParameterNames.Count == 0
+                || bodies[0].ParameterNames.Any(string.IsNullOrWhiteSpace)
+                || bodies[0].ParameterNames.Distinct(StringComparer.Ordinal).Count() != bodies[0].ParameterNames.Count)
+                return null;
+
+            if (template.Components.Any(component =>
+                !string.Equals(component.Type, "BODY", StringComparison.OrdinalIgnoreCase)
+                && component.ParameterNames.Count != 0))
+                return null;
+
+            var requiresHeader = template.Components.Any(component =>
+                string.Equals(component.Type, "HEADER", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(component.Format, "IMAGE", StringComparison.OrdinalIgnoreCase));
+            return CreateDefinition(template.Name, template.Language, requiresHeader, bodies[0].ParameterNames.ToArray());
+        }
+
         private static MetaTemplateDefinition CreateDefinition(string metaName, string languageCode, bool requiresHeader, params string[] parameterNames)
         {
             var parameters = parameterNames
@@ -374,40 +441,44 @@ public sealed class WhatsAppCloudMessageChannel(
         private static readonly IReadOnlyDictionary<string, MetaTemplateDefinition> Templates =
             new Dictionary<string, MetaTemplateDefinition>(StringComparer.OrdinalIgnoreCase)
             {
-                ["lumar_order_created"] = CreateDefinition("lumar_order_created", "ar", false, "customer_name", "order_number", "total_amount"),
-                ["lumar_order_ready"] = CreateDefinition("lumar_order_ready", "ar", false, "customer_name", "order_number", "delivery_date"),
-                ["lumar_order_delivered"] = CreateDefinition("lumar_order_delivered", "ar", false, "customer_name", "order_number", "delivery_date"),
-                ["lumar_piece_cancelled"] = CreateDefinition("lumar_piece_cancelled", "ar", false, "customer_name", "order_number", "order_details"),
-                ["lumar_order_cancelled"] = CreateDefinition("lumar_order_cancelled", "ar", false, "customer_name", "order_number", "order_details"),
-                ["lumar_referrer_reward"] = CreateDefinition("lumar_referrer_reward", "ar", false, "referrer_name", "referrer_code", "referral_points_earned"),
-                ["lumar_referrer_reward_relation"] = CreateDefinition("lumar_referrer_reward_relation", "ar", false, "referrer_name", "relationship", "referral_points_earned"),
-                ["lumar_order_created_with_referrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false, "customer_name", "order_number", "referrer_name"),
-                ["lumar_order_created_with_referrer_relation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false, "customer_name", "order_number", "relationship"),
-                ["lumar_friday_greeting"] = CreateDefinition("lumar_friday_greeting", "ar", false, "customer_name", "relation_welcome"),
+                ["lumar_order_created"] = CreateDefinition("lumar_order_created", "ar", false),
+                ["lumar_order_ready"] = CreateDefinition("lumar_order_ready", "ar", false),
+                ["lumar_order_delivered"] = CreateDefinition("lumar_order_delivered", "ar", false),
+                ["lumar_piece_cancelled"] = CreateDefinition("lumar_piece_cancelled", "ar", false),
+                ["lumar_order_cancelled"] = CreateDefinition("lumar_order_cancelled", "ar", false),
+                ["lumar_referrer_reward"] = CreateDefinition("lumar_referrer_reward", "ar", false),
+                ["lumar_referrer_reward_relation"] = CreateDefinition("lumar_referrer_reward_relation", "ar", false),
+                ["lumar_order_created_with_referrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false),
+                ["lumar_order_created_with_referrer_relation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false),
+                ["lumar_friday_greeting"] = CreateDefinition("lumar_friday_greeting", "ar", false),
                 ["lumar_general_campaign"] = CreateDefinition("lumar_general_campaign", "ar", true, "customer_name", "campaign_text"),
 
-                ["ordercreated"] = CreateDefinition("lumar_order_created", "ar", false, "customer_name", "order_number", "total_amount"),
-                ["order_created"] = CreateDefinition("lumar_order_created", "ar", false, "customer_name", "order_number", "total_amount"),
-                ["orderready"] = CreateDefinition("lumar_order_ready", "ar", false, "customer_name", "order_number", "delivery_date"),
-                ["order_ready"] = CreateDefinition("lumar_order_ready", "ar", false, "customer_name", "order_number", "delivery_date"),
-                ["orderdelivered"] = CreateDefinition("lumar_order_delivered", "ar", false, "customer_name", "order_number", "delivery_date"),
-                ["order_delivered"] = CreateDefinition("lumar_order_delivered", "ar", false, "customer_name", "order_number", "delivery_date"),
-                ["piececancelled"] = CreateDefinition("lumar_piece_cancelled", "ar", false, "customer_name", "order_number", "order_details"),
-                ["piece_cancelled"] = CreateDefinition("lumar_piece_cancelled", "ar", false, "customer_name", "order_number", "order_details"),
-                ["ordercancelled"] = CreateDefinition("lumar_order_cancelled", "ar", false, "customer_name", "order_number", "order_details"),
-                ["order_cancelled"] = CreateDefinition("lumar_order_cancelled", "ar", false, "customer_name", "order_number", "order_details"),
-                ["referrerreward"] = CreateDefinition("lumar_referrer_reward", "ar", false, "referrer_name", "referrer_code", "referral_points_earned"),
-                ["referrer_reward"] = CreateDefinition("lumar_referrer_reward", "ar", false, "referrer_name", "referrer_code", "referral_points_earned"),
-                ["referrerrewardrelation"] = CreateDefinition("lumar_referrer_reward_relation", "ar", false, "referrer_name", "relationship", "referral_points_earned"),
-                ["referrer_reward_relation"] = CreateDefinition("lumar_referrer_reward_relation", "ar", false, "referrer_name", "relationship", "referral_points_earned"),
-                ["ordercreatedwithreferrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false, "customer_name", "order_number", "referrer_name"),
-                ["order_created_with_referrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false, "customer_name", "order_number", "referrer_name"),
-                ["withreferrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false, "customer_name", "order_number", "referrer_name"),
-                ["ordercreatedwithreferrerrelation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false, "customer_name", "order_number", "relationship"),
-                ["order_created_with_referrer_relation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false, "customer_name", "order_number", "relationship"),
-                ["withreferrerrelation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false, "customer_name", "order_number", "relationship"),
-                ["fridaygreeting"] = CreateDefinition("lumar_friday_greeting", "ar", false, "customer_name", "relation_welcome"),
-                ["friday_greeting"] = CreateDefinition("lumar_friday_greeting", "ar", false, "customer_name", "relation_welcome"),
+                ["order-created-customer-smart"] = CreateDefinition("lumar_order_created", "ar", false),
+                ["order-referrer-combined-smart"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false),
+                ["referrer-points-earned-smart"] = CreateDefinition("lumar_referrer_reward", "ar", false),
+                ["ReferralPointsEarned"] = CreateDefinition("lumar_referrer_reward", "ar", false),
+                ["ordercreated"] = CreateDefinition("lumar_order_created", "ar", false),
+                ["order_created"] = CreateDefinition("lumar_order_created", "ar", false),
+                ["orderready"] = CreateDefinition("lumar_order_ready", "ar", false),
+                ["order_ready"] = CreateDefinition("lumar_order_ready", "ar", false),
+                ["orderdelivered"] = CreateDefinition("lumar_order_delivered", "ar", false),
+                ["order_delivered"] = CreateDefinition("lumar_order_delivered", "ar", false),
+                ["piececancelled"] = CreateDefinition("lumar_piece_cancelled", "ar", false),
+                ["piece_cancelled"] = CreateDefinition("lumar_piece_cancelled", "ar", false),
+                ["ordercancelled"] = CreateDefinition("lumar_order_cancelled", "ar", false),
+                ["order_cancelled"] = CreateDefinition("lumar_order_cancelled", "ar", false),
+                ["referrerreward"] = CreateDefinition("lumar_referrer_reward", "ar", false),
+                ["referrer_reward"] = CreateDefinition("lumar_referrer_reward", "ar", false),
+                ["referrerrewardrelation"] = CreateDefinition("lumar_referrer_reward_relation", "ar", false),
+                ["referrer_reward_relation"] = CreateDefinition("lumar_referrer_reward_relation", "ar", false),
+                ["ordercreatedwithreferrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false),
+                ["order_created_with_referrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false),
+                ["withreferrer"] = CreateDefinition("lumar_order_created_with_referrer", "ar", false),
+                ["ordercreatedwithreferrerrelation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false),
+                ["order_created_with_referrer_relation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false),
+                ["withreferrerrelation"] = CreateDefinition("lumar_order_created_with_referrer_relation", "ar", false),
+                ["fridaygreeting"] = CreateDefinition("lumar_friday_greeting", "ar", false),
+                ["friday_greeting"] = CreateDefinition("lumar_friday_greeting", "ar", false),
                 ["generalcampaign"] = CreateDefinition("lumar_general_campaign", "ar", true, "customer_name", "campaign_text"),
                 ["general_campaign"] = CreateDefinition("lumar_general_campaign", "ar", true, "customer_name", "campaign_text"),
             };
@@ -428,9 +499,11 @@ public sealed class WhatsAppCloudMessageChannel(
                 if (Templates.TryGetValue(candidate, out var definition))
                     return definition;
 
-                var normalized = candidate.Trim();
+                var normalized = candidate.Trim().Replace("-", string.Empty).Replace("_", string.Empty);
                 if (normalized.Contains("OrderCreated", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (normalized.Contains("WithReferrerRelation", StringComparison.OrdinalIgnoreCase))
+                        return Templates["lumar_order_created_with_referrer_relation"];
                     if (normalized.Contains("WithReferrer", StringComparison.OrdinalIgnoreCase) || normalized.Contains("referrer", StringComparison.OrdinalIgnoreCase))
                         return Templates["lumar_order_created_with_referrer"];
                     return Templates["lumar_order_created"];

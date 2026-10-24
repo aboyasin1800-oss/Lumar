@@ -7,6 +7,7 @@ using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Controllers;
 using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.Settings;
+using LUMAR_ERP_API_V2.DTOs.WhatsApp;
 using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.DataProtection;
@@ -85,28 +86,15 @@ public sealed class WhatsAppCloudIntegrationTests
     }
 
     [Fact]
-    public void MetaTemplateCatalog_ImplementsExplicitParameterContracts_ForAllSupportedTemplates()
+    public async Task MetaTemplateCatalog_ImplementsExplicitParameterContracts_ForAllSupportedTemplates()
     {
-        var expected = new[]
+        var officialTemplates = await ReadRecordedTemplatesAsync();
+        Assert.Equal(11, officialTemplates.Count);
+        foreach (var template in officialTemplates)
         {
-            ("lumar_order_created", new[] { "customer_name", "order_number", "total_amount" }),
-            ("lumar_order_ready", new[] { "customer_name", "order_number", "delivery_date" }),
-            ("lumar_order_delivered", new[] { "customer_name", "order_number", "delivery_date" }),
-            ("lumar_piece_cancelled", new[] { "customer_name", "order_number", "order_details" }),
-            ("lumar_order_cancelled", new[] { "customer_name", "order_number", "order_details" }),
-            ("lumar_referrer_reward", new[] { "referrer_name", "referrer_code", "referral_points_earned" }),
-            ("lumar_referrer_reward_relation", new[] { "referrer_name", "relationship", "referral_points_earned" }),
-            ("lumar_order_created_with_referrer", new[] { "customer_name", "order_number", "referrer_name" }),
-            ("lumar_order_created_with_referrer_relation", new[] { "customer_name", "order_number", "relationship" }),
-            ("lumar_friday_greeting", new[] { "customer_name", "relation_welcome" }),
-            ("lumar_general_campaign", new[] { "customer_name", "campaign_text" })
-        };
-
-        foreach (var (templateKey, parameterNames) in expected)
-        {
-            var definition = WhatsAppCloudMessageChannel.MetaTemplateCatalog.Resolve(templateKey, templateKey);
+            var definition = WhatsAppCloudMessageChannel.MetaTemplateCatalog.FromOfficial(template);
             Assert.NotNull(definition);
-            Assert.Equal(parameterNames, definition!.Parameters.Select(p => p.Name).ToArray());
+            Assert.Equal(MetaTemplateContractTests.ReadRecordedNames(template.Name), definition!.Parameters.Select(parameter => parameter.Name));
         }
     }
 
@@ -129,7 +117,7 @@ public sealed class WhatsAppCloudIntegrationTests
     public async Task MetaWhatsAppTemplateCatalogClient_UsesRuntimeSettingsAndFetchesOfficialTemplateList()
     {
         var client = new MetaWhatsAppTemplateCatalogClient(
-            new FixedHttpClientFactory(new HttpClient(new OfficialMetaTemplateHandler())),
+            new FixedHttpClientFactory(new HttpClient(new CaptureHandler())),
             new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
             {
                 Enabled = true,
@@ -153,14 +141,15 @@ public sealed class WhatsAppCloudIntegrationTests
         Assert.Contains(templates, x => x.Name == "lumar_order_created_with_referrer");
         Assert.Contains(templates, x => x.Name == "lumar_order_created_with_referrer_relation");
         Assert.Contains(templates, x => x.Name == "lumar_friday_greeting");
-        Assert.DoesNotContain(templates, x => string.Equals(x.Name, "lumar_general_campaign", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(templates, x => string.Equals(x.Name, "lumar_general_campaign", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(11, templates.Count);
     }
 
     [Fact]
     public async Task MetaWhatsAppTemplateCatalogClient_ParsesOfficialBodyParameterNames_FromMetaComponents()
     {
         var client = new MetaWhatsAppTemplateCatalogClient(
-            new FixedHttpClientFactory(new HttpClient(new OfficialMetaTemplateHandler())),
+            new FixedHttpClientFactory(new HttpClient(new CaptureHandler())),
             new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
             {
                 Enabled = true,
@@ -172,11 +161,10 @@ public sealed class WhatsAppCloudIntegrationTests
             NullLogger<MetaWhatsAppTemplateCatalogClient>.Instance);
 
         var templates = await client.GetTemplatesAsync(CancellationToken.None);
-        var orderCreated = Assert.Single(templates.Where(x => x.Name == "lumar_order_created"));
-
-        Assert.Contains("customer_name", orderCreated.Components.SelectMany(x => x.ParameterNames));
-        Assert.Contains("order_number", orderCreated.Components.SelectMany(x => x.ParameterNames));
-        Assert.Contains("total_amount", orderCreated.Components.SelectMany(x => x.ParameterNames));
+        var orderCreated = Assert.Single(templates, template => template.Name == "lumar_order_created");
+        var names = orderCreated.Components.SelectMany(component => component.ParameterNames).ToArray();
+        Assert.Equal(10, names.Length);
+        Assert.Equal(MetaTemplateContractTests.ReadRecordedNames("lumar_order_created"), names);
     }
 
     [Fact]
@@ -203,12 +191,10 @@ public sealed class WhatsAppCloudIntegrationTests
             services.AddLogging();
             services.AddSingleton<IConfiguration>(config);
             services.AddOptions<WhatsAppOptions>().Configure(options => { });
-            services.AddDataProtection()
-                .SetApplicationName("LUMAR_ERP_API_V2")
-                .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LUMAR_ERP_API_V2", "DataProtection-Keys")));
+            services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
 
             services.AddSingleton<IWhatsAppConnectionSettingsStore, WhatsAppConnectionSettingsStore>();
-            services.AddHttpClient();
+            services.AddSingleton<IHttpClientFactory>(new FixedHttpClientFactory(new HttpClient(new CaptureHandler())));
             services.AddScoped<IMetaWhatsAppTemplateCatalogClient, MetaWhatsAppTemplateCatalogClient>();
 
             using var provider = services.BuildServiceProvider();
@@ -235,9 +221,9 @@ public sealed class WhatsAppCloudIntegrationTests
             var client = provider.GetRequiredService<IMetaWhatsAppTemplateCatalogClient>();
             var templates = await client.GetTemplatesAsync(CancellationToken.None);
 
-            Assert.NotNull(templates);
-            Assert.True(templates.Count >= 0,
-                "The runtime-backed Meta fetch path must return a collection safely without exposing or printing any secret material.");
+            Assert.Equal(11, templates.Count);
+            Assert.Equal(10, Assert.Single(templates, template => template.Name == "lumar_order_created")
+                .Components.SelectMany(component => component.ParameterNames).Count());
         }
         finally
         {
@@ -260,28 +246,17 @@ public sealed class WhatsAppCloudIntegrationTests
     [Fact]
     public async Task MetaTemplateCatalog_AllOfficialTemplates_ResolveToExactMetaNameLanguageAndParameters()
     {
-        var expectations = new[]
+        var officialTemplates = await ReadRecordedTemplatesAsync();
+        foreach (var official in officialTemplates)
         {
-            (TemplateKey: "lumar_order_created", MetadataName: "lumar_order_created", Language: "ar", Parameters: new[] { "customer_name", "order_number", "total_amount" }),
-            (TemplateKey: "lumar_order_ready", MetadataName: "lumar_order_ready", Language: "ar", Parameters: new[] { "customer_name", "order_number", "delivery_date" }),
-            (TemplateKey: "lumar_order_delivered", MetadataName: "lumar_order_delivered", Language: "ar", Parameters: new[] { "customer_name", "order_number", "delivery_date" }),
-            (TemplateKey: "lumar_piece_cancelled", MetadataName: "lumar_piece_cancelled", Language: "ar", Parameters: new[] { "customer_name", "order_number", "order_details" }),
-            (TemplateKey: "lumar_order_cancelled", MetadataName: "lumar_order_cancelled", Language: "ar", Parameters: new[] { "customer_name", "order_number", "order_details" }),
-            (TemplateKey: "lumar_referrer_reward", MetadataName: "lumar_referrer_reward", Language: "ar", Parameters: new[] { "referrer_name", "referrer_code", "referral_points_earned" }),
-            (TemplateKey: "lumar_referrer_reward_relation", MetadataName: "lumar_referrer_reward_relation", Language: "ar", Parameters: new[] { "referrer_name", "relationship", "referral_points_earned" }),
-            (TemplateKey: "lumar_order_created_with_referrer", MetadataName: "lumar_order_created_with_referrer", Language: "ar", Parameters: new[] { "customer_name", "order_number", "referrer_name" }),
-            (TemplateKey: "lumar_order_created_with_referrer_relation", MetadataName: "lumar_order_created_with_referrer_relation", Language: "ar", Parameters: new[] { "customer_name", "order_number", "relationship" }),
-            (TemplateKey: "lumar_friday_greeting", MetadataName: "lumar_friday_greeting", Language: "ar", Parameters: new[] { "customer_name", "relation_welcome" }),
-            (TemplateKey: "lumar_general_campaign", MetadataName: "lumar_general_campaign", Language: "ar", Parameters: new[] { "customer_name", "campaign_text" })
-        };
-
-        foreach (var expectation in expectations)
-        {
-            var definition = WhatsAppCloudMessageChannel.MetaTemplateCatalog.Resolve(expectation.TemplateKey, expectation.TemplateKey);
+            var route = WhatsAppCloudMessageChannel.MetaTemplateCatalog.Resolve(official.Name, official.Name);
+            var definition = WhatsAppCloudMessageChannel.MetaTemplateCatalog.FromOfficial(official);
+            Assert.NotNull(route);
             Assert.NotNull(definition);
-            Assert.Equal(expectation.MetadataName, definition!.MetaName);
-            Assert.Equal(expectation.Language, definition.LanguageCode);
-            Assert.Equal(expectation.Parameters, definition.Parameters.Select(p => p.Name).ToArray());
+            Assert.Equal(official.Name, route.MetaName);
+            Assert.Equal(official.Name, definition.MetaName);
+            Assert.Equal(official.Language, definition.LanguageCode);
+            Assert.Equal(MetaTemplateContractTests.ReadRecordedNames(official.Name), definition.Parameters.Select(parameter => parameter.Name));
         }
     }
 
@@ -303,16 +278,16 @@ public sealed class WhatsAppCloudIntegrationTests
 
         var templateCases = new[]
         {
-            (TemplateKey: "lumar_order_created", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["OrderNumber"] = "ORD-1001", ["TotalAmount"] = 1250m }, ExpectedValues: new[] { "أحمد", "ORD-1001", "1250" }, NeedsHeader: false),
-            (TemplateKey: "lumar_order_ready", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["OrderNumber"] = "ORD-1002", ["DeliveryDate"] = new DateTime(2026, 10, 25) }, ExpectedValues: new[] { "أحمد", "ORD-1002", "2026-10-25" }, NeedsHeader: false),
-            (TemplateKey: "lumar_order_delivered", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["OrderNumber"] = "ORD-1003", ["DeliveryDate"] = new DateTime(2026, 10, 26) }, ExpectedValues: new[] { "أحمد", "ORD-1003", "2026-10-26" }, NeedsHeader: false),
-            (TemplateKey: "lumar_piece_cancelled", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["OrderNumber"] = "ORD-1004", ["OrderDetails"] = "قميص + بنطال" }, ExpectedValues: new[] { "أحمد", "ORD-1004", "قميص + بنطال" }, NeedsHeader: false),
-            (TemplateKey: "lumar_order_cancelled", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["OrderNumber"] = "ORD-1005", ["OrderDetails"] = "إلغاء جزئي" }, ExpectedValues: new[] { "أحمد", "ORD-1005", "إلغاء جزئي" }, NeedsHeader: false),
-            (TemplateKey: "lumar_referrer_reward", Context: new Dictionary<string, object?> { ["ReferrerName"] = "سالم", ["ReferrerCode"] = "REF-77", ["ReferralPointsEarned"] = 42m }, ExpectedValues: new[] { "سالم", "REF-77", "42" }, NeedsHeader: false),
-            (TemplateKey: "lumar_referrer_reward_relation", Context: new Dictionary<string, object?> { ["ReferrerName"] = "سالم", ["Relationship"] = "أخ", ["ReferralPointsEarned"] = 42m }, ExpectedValues: new[] { "سالم", "أخ", "42" }, NeedsHeader: false),
-            (TemplateKey: "lumar_order_created_with_referrer", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["OrderNumber"] = "ORD-1006", ["ReferrerName"] = "سالم" }, ExpectedValues: new[] { "أحمد", "ORD-1006", "سالم" }, NeedsHeader: false),
-            (TemplateKey: "lumar_order_created_with_referrer_relation", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["OrderNumber"] = "ORD-1007", ["Relationship"] = "أخ" }, ExpectedValues: new[] { "أحمد", "ORD-1007", "أخ" }, NeedsHeader: false),
-            (TemplateKey: "lumar_friday_greeting", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["RelationWelcome"] = "أهلًا بك" }, ExpectedValues: new[] { "أحمد", "أهلًا بك" }, NeedsHeader: false),
+            (TemplateKey: "lumar_order_created", Context: MetaTemplateContractTests.CreateContext(), ExpectedValues: new[] { "Order customer", "ORD-901", "1250", "C-801", "18" }, NeedsHeader: false),
+            (TemplateKey: "lumar_order_ready", Context: MetaTemplateContractTests.CreateContext(), ExpectedValues: new[] { "Order customer", "ORD-901", "Configured branch", "300" }, NeedsHeader: false),
+            (TemplateKey: "lumar_order_delivered", Context: MetaTemplateContractTests.CreateContext(), ExpectedValues: new[] { "Order customer", "ORD-901" }, NeedsHeader: false),
+            (TemplateKey: "lumar_piece_cancelled", Context: MetaTemplateContractTests.CreateContext(), ExpectedValues: new[] { "Order customer", "ORD-901", "Shirt", "150", "1100", "300" }, NeedsHeader: false),
+            (TemplateKey: "lumar_order_cancelled", Context: MetaTemplateContractTests.CreateContext(), ExpectedValues: new[] { "Order customer", "ORD-901", "150", "50" }, NeedsHeader: false),
+            (TemplateKey: "lumar_referrer_reward", Context: MetaTemplateContractTests.CreateContext(), ExpectedValues: new[] { "Order customer", "Referred customer", "12", "60" }, NeedsHeader: false),
+            (TemplateKey: "lumar_referrer_reward_relation", Context: MetaTemplateContractTests.CreateContext(), ExpectedValues: new[] { "Order customer", "Referred customer", "Configured relationship", "12", "60" }, NeedsHeader: false),
+            (TemplateKey: "lumar_order_created_with_referrer", Context: MetaTemplateContractTests.CreateContext(), ExpectedValues: new[] { "Order customer", "ORD-901", "Referring customer", "C-802" }, NeedsHeader: false),
+            (TemplateKey: "lumar_order_created_with_referrer_relation", Context: MetaTemplateContractTests.CreateContext(), ExpectedValues: new[] { "Order customer", "ORD-901", "Configured relationship", "Configured welcome" }, NeedsHeader: false),
+            (TemplateKey: "lumar_friday_greeting", Context: MetaTemplateContractTests.CreateContext(), ExpectedValues: new[] { "Order customer" }, NeedsHeader: false),
             (TemplateKey: "lumar_general_campaign", Context: new Dictionary<string, object?> { ["CustomerName"] = "أحمد", ["CampaignText"] = "عرض خاص لفريقك" }, ExpectedValues: new[] { "أحمد", "عرض خاص لفريقك" }, NeedsHeader: true)
         };
 
@@ -518,6 +493,7 @@ public sealed class WhatsAppCloudIntegrationTests
             {
                 ["CustomerName"] = "أحمد",
                 ["OrderNumber"] = "ORD-203",
+                ["OrderDetails"] = "Shirt",
                 ["PaidAmount"] = 100m,
                 ["RemainingAmount"] = 50m,
             });
@@ -573,7 +549,14 @@ public sealed class WhatsAppCloudIntegrationTests
             {
                 ["CustomerName"] = "أحمد",
                 ["OrderNumber"] = "ORD-44",
-                ["TotalAmount"] = 1250m
+                ["TotalAmount"] = 1250m,
+                ["OrderDetails"] = "Shirt",
+                ["PaidAmount"] = 1000m,
+                ["RemainingAmount"] = 250m,
+                ["DeliveryDate"] = new DateTime(2026, 10, 25),
+                ["PointsEarned"] = 20m,
+                ["PointsBalance"] = 200m,
+                ["CustomerCode"] = "C-18"
             }), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.Sent, result.Outcome);
@@ -606,7 +589,8 @@ public sealed class WhatsAppCloudIntegrationTests
             {
                 ["CustomerName"] = "أحمد",
                 ["OrderNumber"] = "ORD-44",
-                ["DeliveryDate"] = new DateTime(2026, 10, 25)
+                ["StoreName"] = "Configured store",
+                ["RemainingAmount"] = 300m
             }), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.Sent, result.Outcome);
@@ -636,7 +620,8 @@ public sealed class WhatsAppCloudIntegrationTests
             {
                 ["CustomerName"] = "أحمد",
                 ["OrderNumber"] = "ORD-45",
-                ["DeliveryDate"] = new DateTime(2026, 10, 25)
+                ["StoreName"] = "Configured store",
+                ["RemainingAmount"] = 300m
             }), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
@@ -666,7 +651,8 @@ public sealed class WhatsAppCloudIntegrationTests
             {
                 ["CustomerName"] = "أحمد",
                 ["OrderNumber"] = "ORD-46",
-                ["DeliveryDate"] = new DateTime(2026, 10, 25)
+                ["StoreName"] = "Configured store",
+                ["RemainingAmount"] = 300m
             }), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
@@ -706,7 +692,8 @@ public sealed class WhatsAppCloudIntegrationTests
             {
                 ["CustomerName"] = "أحمد",
                 ["OrderNumber"] = "ORD-47",
-                ["DeliveryDate"] = new DateTime(2026, 10, 25)
+                ["StoreName"] = "Configured store",
+                ["RemainingAmount"] = 300m
             }), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.TransientFailure, result.Outcome);
@@ -737,7 +724,8 @@ public sealed class WhatsAppCloudIntegrationTests
             {
                 ["CustomerName"] = "أحمد",
                 ["OrderNumber"] = "ORD-48",
-                ["DeliveryDate"] = new DateTime(2026, 10, 25)
+                ["StoreName"] = "Configured store",
+                ["RemainingAmount"] = 300m
             }), CancellationToken.None);
 
         Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
@@ -1074,7 +1062,20 @@ public sealed class WhatsAppCloudIntegrationTests
 
     private sealed class FixedHttpClientFactory(HttpClient httpClient) : IHttpClientFactory
     {
-        public HttpClient CreateClient(string name) => httpClient;
+        public HttpClient CreateClient(string name) => new RecordedMetaTemplateHttpClientFactory(httpClient).CreateClient(name);
+    }
+
+    private static Task<IReadOnlyList<MetaWhatsAppTemplateDto>> ReadRecordedTemplatesAsync()
+    {
+        var client = new MetaWhatsAppTemplateCatalogClient(
+            new FixedHttpClientFactory(new HttpClient(new CaptureHandler())),
+            new FakeWhatsAppConnectionSettingsStore(new WhatsAppOptions
+            {
+                Enabled = true,
+                PhoneNumberId = "test-phone-id",
+                AccessToken = "test-token"
+            }));
+        return client.GetTemplatesAsync(CancellationToken.None);
     }
 
     private sealed class CaptureHandler : HttpMessageHandler
@@ -1092,239 +1093,6 @@ public sealed class WhatsAppCloudIntegrationTests
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent("{\"messages\":[{\"id\":\"wamid.template\"}]}")
-            };
-        }
-    }
-
-    private sealed class OfficialMetaTemplateHandler : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            Assert.Equal(HttpMethod.Get, request.Method);
-            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
-            Assert.Equal("runtime-access-token", request.Headers.Authorization?.Parameter);
-            Assert.Contains("1413441637074832/message_templates", request.RequestUri!.ToString(), StringComparison.OrdinalIgnoreCase);
-
-            var payload = new
-            {
-                data = new[]
-                {
-                    new
-                    {
-                        id = "1",
-                        name = "lumar_order_created",
-                        status = "APPROVED",
-                        language = "ar",
-                        category = "UTILITY",
-                        components = new[]
-                        {
-                            new
-                            {
-                                type = "body",
-                                parameters = new[]
-                                {
-                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
-                                    new { type = "text", text = "ORD-1001", parameter_name = "order_number" },
-                                    new { type = "text", text = "1250", parameter_name = "total_amount" }
-                                }
-                            }
-                        }
-                    },
-                    new
-                    {
-                        id = "2",
-                        name = "lumar_order_ready",
-                        status = "APPROVED",
-                        language = "ar",
-                        category = "UTILITY",
-                        components = new[]
-                        {
-                            new
-                            {
-                                type = "body",
-                                parameters = new[]
-                                {
-                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
-                                    new { type = "text", text = "ORD-1002", parameter_name = "order_number" },
-                                    new { type = "text", text = "2026-10-25", parameter_name = "delivery_date" }
-                                }
-                            }
-                        }
-                    },
-                    new
-                    {
-                        id = "3",
-                        name = "lumar_order_delivered",
-                        status = "APPROVED",
-                        language = "ar",
-                        category = "UTILITY",
-                        components = new[]
-                        {
-                            new
-                            {
-                                type = "body",
-                                parameters = new[]
-                                {
-                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
-                                    new { type = "text", text = "ORD-1003", parameter_name = "order_number" },
-                                    new { type = "text", text = "2026-10-26", parameter_name = "delivery_date" }
-                                }
-                            }
-                        }
-                    },
-                    new
-                    {
-                        id = "4",
-                        name = "lumar_piece_cancelled",
-                        status = "APPROVED",
-                        language = "ar",
-                        category = "UTILITY",
-                        components = new[]
-                        {
-                            new
-                            {
-                                type = "body",
-                                parameters = new[]
-                                {
-                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
-                                    new { type = "text", text = "ORD-1004", parameter_name = "order_number" },
-                                    new { type = "text", text = "قميص + بنطال", parameter_name = "order_details" }
-                                }
-                            }
-                        }
-                    },
-                    new
-                    {
-                        id = "5",
-                        name = "lumar_order_cancelled",
-                        status = "APPROVED",
-                        language = "ar",
-                        category = "UTILITY",
-                        components = new[]
-                        {
-                            new
-                            {
-                                type = "body",
-                                parameters = new[]
-                                {
-                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
-                                    new { type = "text", text = "ORD-1005", parameter_name = "order_number" },
-                                    new { type = "text", text = "إلغاء جزئي", parameter_name = "order_details" }
-                                }
-                            }
-                        }
-                    },
-                    new
-                    {
-                        id = "6",
-                        name = "lumar_referrer_reward",
-                        status = "APPROVED",
-                        language = "ar",
-                        category = "UTILITY",
-                        components = new[]
-                        {
-                            new
-                            {
-                                type = "body",
-                                parameters = new[]
-                                {
-                                    new { type = "text", text = "سالم", parameter_name = "referrer_name" },
-                                    new { type = "text", text = "REF-77", parameter_name = "referrer_code" },
-                                    new { type = "text", text = "42", parameter_name = "referral_points_earned" }
-                                }
-                            }
-                        }
-                    },
-                    new
-                    {
-                        id = "7",
-                        name = "lumar_referrer_reward_relation",
-                        status = "APPROVED",
-                        language = "ar",
-                        category = "UTILITY",
-                        components = new[]
-                        {
-                            new
-                            {
-                                type = "body",
-                                parameters = new[]
-                                {
-                                    new { type = "text", text = "سالم", parameter_name = "referrer_name" },
-                                    new { type = "text", text = "أخ", parameter_name = "relationship" },
-                                    new { type = "text", text = "42", parameter_name = "referral_points_earned" }
-                                }
-                            }
-                        }
-                    },
-                    new
-                    {
-                        id = "8",
-                        name = "lumar_order_created_with_referrer",
-                        status = "APPROVED",
-                        language = "ar",
-                        category = "UTILITY",
-                        components = new[]
-                        {
-                            new
-                            {
-                                type = "body",
-                                parameters = new[]
-                                {
-                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
-                                    new { type = "text", text = "ORD-1006", parameter_name = "order_number" },
-                                    new { type = "text", text = "سالم", parameter_name = "referrer_name" }
-                                }
-                            }
-                        }
-                    },
-                    new
-                    {
-                        id = "9",
-                        name = "lumar_order_created_with_referrer_relation",
-                        status = "APPROVED",
-                        language = "ar",
-                        category = "UTILITY",
-                        components = new[]
-                        {
-                            new
-                            {
-                                type = "body",
-                                parameters = new[]
-                                {
-                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
-                                    new { type = "text", text = "ORD-1007", parameter_name = "order_number" },
-                                    new { type = "text", text = "أخ", parameter_name = "relationship" }
-                                }
-                            }
-                        }
-                    },
-                    new
-                    {
-                        id = "10",
-                        name = "lumar_friday_greeting",
-                        status = "APPROVED",
-                        language = "ar",
-                        category = "UTILITY",
-                        components = new[]
-                        {
-                            new
-                            {
-                                type = "body",
-                                parameters = new[]
-                                {
-                                    new { type = "text", text = "أحمد", parameter_name = "customer_name" },
-                                    new { type = "text", text = "أهلًا بك", parameter_name = "relation_welcome" }
-                                }
-                            }
-                        }
-                    }
-                }
-            };
-
-            var json = System.Text.Json.JsonSerializer.Serialize(payload);
-            return new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(json, Encoding.UTF8, "application/json")
             };
         }
     }

@@ -29,8 +29,10 @@ public sealed class MetaWhatsAppTemplateCatalogClient(
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", runtime.AccessToken);
 
         var client = httpClientFactory.CreateClient();
-        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(Math.Max(10, runtime.TimeoutSeconds)));
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        var raw = await response.Content.ReadAsStringAsync(timeout.Token);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -40,7 +42,7 @@ public sealed class MetaWhatsAppTemplateCatalogClient(
                 endpoint,
                 ExtractSafeMetaError(raw));
 
-            return Array.Empty<MetaWhatsAppTemplateDto>();
+            throw new HttpRequestException($"Meta template catalog HTTP {(int)response.StatusCode}.", null, response.StatusCode);
         }
 
         try
@@ -73,7 +75,9 @@ public sealed class MetaWhatsAppTemplateCatalogClient(
                         var componentType = component.TryGetProperty("type", out var typeElement) ? typeElement.GetString() ?? string.Empty : string.Empty;
                         var text = component.TryGetProperty("text", out var textElement) ? textElement.GetString() : null;
                         var format = component.TryGetProperty("format", out var formatElement) ? formatElement.GetString() : null;
-                        var example = component.TryGetProperty("example", out var exampleElement) ? exampleElement.GetString() : null;
+                        var example = component.TryGetProperty("example", out var exampleElement)
+                            ? exampleElement.GetRawText()
+                            : null;
 
                         var parameterName = default(string?);
                         if (component.TryGetProperty("parameter_name", out var parameterNameElement))
@@ -81,28 +85,7 @@ public sealed class MetaWhatsAppTemplateCatalogClient(
                             parameterName = parameterNameElement.GetString();
                         }
 
-                        var parameterNames = Array.Empty<string>();
-                        if (component.TryGetProperty("parameters", out var nestedParametersElement) && nestedParametersElement.ValueKind == JsonValueKind.Array)
-                        {
-                            var collected = new List<string>();
-                            foreach (var parameterNode in nestedParametersElement.EnumerateArray())
-                            {
-                                if (parameterNode.ValueKind != JsonValueKind.Object)
-                                    continue;
-
-                                if (parameterNode.TryGetProperty("parameter_name", out var nestedParameterNameElement)
-                                    && nestedParameterNameElement.ValueKind == JsonValueKind.String)
-                                {
-                                    var nestedName = nestedParameterNameElement.GetString();
-                                    if (!string.IsNullOrWhiteSpace(nestedName))
-                                    {
-                                        collected.Add(nestedName);
-                                    }
-                                }
-                            }
-
-                            parameterNames = collected.ToArray();
-                        }
+                        var parameterNames = ReadParameterNames(component, componentType);
 
                         var imageUrl = default(string?);
                         if (component.TryGetProperty("image", out var imageElement) && imageElement.ValueKind == JsonValueKind.Object)
@@ -147,6 +130,38 @@ public sealed class MetaWhatsAppTemplateCatalogClient(
     {
         var templates = await GetTemplatesAsync(cancellationToken);
         return templates.FirstOrDefault(x => string.Equals(x.Name, templateName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static IReadOnlyList<string> ReadParameterNames(JsonElement component, string componentType)
+    {
+        var metadataKey = componentType.ToUpperInvariant() switch
+        {
+            "BODY" => "body_text_named_params",
+            "HEADER" => "header_text_named_params",
+            _ => string.Empty
+        };
+
+        if (component.TryGetProperty("example", out var example)
+            && example.ValueKind == JsonValueKind.Object
+            && example.TryGetProperty(metadataKey, out var namedParameters)
+            && namedParameters.ValueKind == JsonValueKind.Array)
+        {
+            return namedParameters.EnumerateArray()
+                .Select(parameter => parameter.GetProperty("param_name").GetString()
+                    ?? throw new JsonException("Meta parameter name is missing."))
+                .ToArray();
+        }
+
+        if (component.TryGetProperty("parameters", out var parameters)
+            && parameters.ValueKind == JsonValueKind.Array)
+        {
+            return parameters.EnumerateArray()
+                .Select(parameter => parameter.GetProperty("parameter_name").GetString()
+                    ?? throw new JsonException("Meta parameter name is missing."))
+                .ToArray();
+        }
+
+        return Array.Empty<string>();
     }
 
     private static string? ExtractSafeMetaError(string raw)
