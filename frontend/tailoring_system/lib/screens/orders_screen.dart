@@ -21,8 +21,28 @@ class OrdersScreen extends StatefulWidget {
   ];
 
   static List<OrderSummary> filterOrdersForTab(
-          List<OrderSummary> orders, String status) =>
-      orders.where((order) => order.status == status).toList();
+      List<OrderSummary> orders, String status) {
+    final filtered = orders.where((order) => order.status == status).toList();
+
+    if (status == 'Delivered') {
+      filtered.sort((a, b) {
+        final aDate = a.deliveryDate;
+        final bDate = b.deliveryDate;
+
+        if (aDate == null && bDate == null) {
+          return b.orderId.compareTo(a.orderId);
+        }
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+
+        final byDate = bDate.compareTo(aDate);
+        if (byDate != 0) return byDate;
+        return b.orderId.compareTo(a.orderId);
+      });
+    }
+
+    return filtered;
+  }
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -134,9 +154,12 @@ class _OrdersScreenState extends State<OrdersScreen>
     await _orders;
   }
 
-  void _openDetails(OrderSummary order) {
-    AppNavigation.push(
-        context, (_) => OrderDetailsScreen(orderId: order.orderId));
+  Future<void> _openDetails(OrderSummary order) async {
+    await AppNavigation.push(
+      context,
+      (_) => OrderDetailsScreen(orderId: order.orderId),
+    );
+    if (mounted) await _refresh();
   }
 
   @override

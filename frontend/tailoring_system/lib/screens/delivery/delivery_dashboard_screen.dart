@@ -107,6 +107,23 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen>
       ));
     }
 
+    if (status == 'Delivered') {
+      result.sort((a, b) {
+        final aDate = DateTime.tryParse(a.deliveryDate ?? '');
+        final bDate = DateTime.tryParse(b.deliveryDate ?? '');
+
+        if (aDate == null && bDate == null) {
+          return b.orderId.compareTo(a.orderId);
+        }
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+
+        final byDate = bDate.compareTo(aDate);
+        if (byDate != 0) return byDate;
+        return b.orderId.compareTo(a.orderId);
+      });
+    }
+
     return result;
   }
 
