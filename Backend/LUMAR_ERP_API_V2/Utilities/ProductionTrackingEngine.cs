@@ -44,6 +44,29 @@ public static class ProductionTrackingEngine
             ? route
             : Array.Empty<string>();
 
+    public static string? GetFirstActiveStage(int productTypeId) => GetFirstActiveStage(GetRoute(productTypeId));
+
+    public static string? GetFirstActiveStage(string? pieceType) => GetFirstActiveStage(GetRoute(pieceType));
+
+    public static string? GetFirstActiveStage(IReadOnlyList<string>? route)
+    {
+        if (route is null || route.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var stage in route)
+        {
+            var normalized = NormalizeStage(stage);
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                return normalized;
+            }
+        }
+
+        return null;
+    }
+
     public static IReadOnlyList<string> GetRoute(string? pieceType)
     {
         var routeKey = ResolveRouteKey(pieceType);

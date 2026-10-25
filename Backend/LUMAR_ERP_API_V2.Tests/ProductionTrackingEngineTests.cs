@@ -45,6 +45,15 @@ public class ProductionTrackingEngineTests : IDisposable
     }
 
     [Fact]
+    public void ShouldResolveFirstActiveStageFromRouteOrder()
+    {
+        Assert.Equal("Printing", ProductionTrackingEngine.GetFirstActiveStage(new[] { "Printing", "FabricPrep", "Cutting" }));
+        Assert.Equal("FabricPrep", ProductionTrackingEngine.GetFirstActiveStage(new[] { "FabricPrep", "Cutting", "Sewing" }));
+        Assert.Equal("Cutting", ProductionTrackingEngine.GetFirstActiveStage(new[] { "Cutting", "Sewing", "Assembly" }));
+        Assert.Null(ProductionTrackingEngine.GetFirstActiveStage(Array.Empty<string>()));
+    }
+
+    [Fact]
     public void ShouldHonorCustomRouteByRemovingButtonsFromShirt()
     {
         var method = typeof(SettingsRepository).GetMethod("ParseRouteEntry", BindingFlags.NonPublic | BindingFlags.Static);

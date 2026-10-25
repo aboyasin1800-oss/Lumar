@@ -459,8 +459,16 @@ public sealed class PrintingRepository(
             return;
 
         var route = ProductionTrackingEngine.GetRoute(productTypeId.Value);
-        if (route.Count == 0 || !route.Contains("Printing", StringComparer.OrdinalIgnoreCase))
-            throw new InvalidOperationException("مرحلة الطباعة غير مسموح بها في مسار الإنتاج الرسمي لهذا النوع.");
+        if (route.Count == 0)
+        {
+            return;
+        }
+
+        var firstOfficialStage = ProductionTrackingEngine.GetFirstActiveStage(route);
+        if (string.IsNullOrWhiteSpace(firstOfficialStage) || !route.Contains("Printing", StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
 
         var orderItemId = isReadyMade ? (object)DBNull.Value : await ReadOrderItemIdAsync(connection, transaction, pieceId, cancellationToken);
         var orderId = isReadyMade ? (object)DBNull.Value : await ReadOrderIdAsync(connection, transaction, pieceId, cancellationToken);
@@ -561,7 +569,7 @@ public sealed class PrintingRepository(
             throw new InvalidOperationException("تعذر تحديد نوع المنتج الرسمي لإعادة دخول القطعة التالفة في المسار الرسمي.");
 
         var route = ProductionTrackingEngine.GetRoute(productTypeId);
-        var firstOfficialStage = route.FirstOrDefault(stage => !string.IsNullOrWhiteSpace(stage));
+        var firstOfficialStage = ProductionTrackingEngine.GetFirstActiveStage(route);
         if (string.IsNullOrWhiteSpace(firstOfficialStage))
             throw new InvalidOperationException("لا يوجد مسار إنتاج رسمي قابل للتنفيذ لإعادة دخول القطعة التالفة.");
 
@@ -581,15 +589,18 @@ public sealed class PrintingRepository(
         var orderItemId = history.OrderItemId is int itemId ? (object)itemId : DBNull.Value;
         var orderId = history.OrderId is int currentOrderId ? (object)currentOrderId : DBNull.Value;
         var readyMadePieceId = isReadyMade ? (object)targetPieceId : DBNull.Value;
+        var officialStage = firstOfficialStage;
 
         await using var officialEntry = new SqlCommand(@"
             INSERT INTO dbo.TrackingEvents
                 (OrderItemID, OrderID, TrackingCode, Stage, Status, EventTime, Notes, IsReverted, RevertedAt, PieceID, ReadyMadeProductionOrderPieceInstanceId)
-            VALUES (@orderItemId, @orderId, @trackingCode, N'Printing', N'Printing', SYSUTCDATETIME(), @notes, 0, NULL, @pieceId, @readyMadePieceId);", connection, transaction);
+            VALUES (@orderItemId, @orderId, @trackingCode, @stage, @status, SYSUTCDATETIME(), @notes, 0, NULL, @pieceId, @readyMadePieceId);", connection, transaction);
         officialEntry.Parameters.AddWithValue("@orderItemId", orderItemId);
         officialEntry.Parameters.AddWithValue("@orderId", orderId);
         officialEntry.Parameters.AddWithValue("@trackingCode", history.TrackingCode);
-        officialEntry.Parameters.AddWithValue("@notes", $"MeasurementCardPrintHistoryId={history.PrintHistoryId};Operation=DamagedPieceOfficialReentry;ReenteredAtStage=Printing;Reason=DamagedPiece");
+        officialEntry.Parameters.AddWithValue("@stage", officialStage);
+        officialEntry.Parameters.AddWithValue("@status", officialStage);
+        officialEntry.Parameters.AddWithValue("@notes", $"MeasurementCardPrintHistoryId={history.PrintHistoryId};Operation=DamagedPieceOfficialReentry;ReenteredAtStage={officialStage};Reason=DamagedPiece");
         officialEntry.Parameters.AddWithValue("@pieceId", isReadyMade ? (object)DBNull.Value : targetPieceId);
         officialEntry.Parameters.AddWithValue("@readyMadePieceId", readyMadePieceId);
         await officialEntry.ExecuteNonQueryAsync(cancellationToken);
