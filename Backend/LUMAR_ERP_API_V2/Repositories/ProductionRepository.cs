@@ -232,7 +232,11 @@ public sealed class ProductionRepository(
 
             if (executionSource == "Scanner" && RequiresPieceStageAssignment(finalStage))
             {
-                var authenticatedEmployeeId = TryParseEmployeeId(request.EmployeeCode);
+                var authenticatedEmployeeCode = request.EmployeeCode?.Trim();
+                var authenticatedEmployeeId = string.IsNullOrWhiteSpace(authenticatedEmployeeCode)
+                    ? null
+                    : await ResolveEmployeeIdAsync(connection, transaction, authenticatedEmployeeCode, ct);
+
                 if (!authenticatedEmployeeId.HasValue)
                 {
                     await transaction.RollbackAsync(CancellationToken.None);
