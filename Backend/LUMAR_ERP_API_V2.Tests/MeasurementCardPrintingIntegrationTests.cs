@@ -362,6 +362,243 @@ public sealed class MeasurementCardPrintingIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task DamagedPiece_SecondProductionCycle_WagesAreTrackedPerNewTrackingEvent()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedTailoringPieceAsync(connectionString);
+        var printingRepository = CreateRepository(connectionString);
+        var productionRepository = CreateProductionRepository(connectionString);
+        var scannerCode = $"SCN-{Guid.NewGuid():N}"[..18];
+        const int productTypeId = 4;
+        string? employeeCode = null;
+        string? productCode = null;
+
+        try
+        {
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                employeeCode = await ReadStringAsync(connection, "SELECT EmployeeCode FROM dbo.Employees WHERE EmployeeID = @employeeId", seed.EmployeeId);
+                productCode = await ReadStringAsync(connection, "SELECT TOP (1) Code FROM dbo.PricingProductTypes WHERE ProductTypeId = @productTypeId", productTypeId);
+
+                var scannerId = await InsertIntAsync(connection, null, @"
+                    INSERT INTO dbo.Scanners (ScannerCode, ScannerName, Description, IsActive, CreatedAt, UpdatedAt)
+                    OUTPUT INSERTED.ScannerId
+                    VALUES (@scannerCode, N'Scanner Test', N'DamagedPiece second-cycle wage proof', 1, SYSUTCDATETIME(), SYSUTCDATETIME());",
+                    ("@scannerCode", scannerCode));
+
+                await using (var setEmployee = new SqlCommand(@"UPDATE dbo.Employees SET ScannerCode = @scannerCode WHERE EmployeeID = @employeeId;", connection))
+                {
+                    setEmployee.Parameters.AddWithValue("@scannerCode", scannerCode);
+                    setEmployee.Parameters.AddWithValue("@employeeId", seed.EmployeeId);
+                    await setEmployee.ExecuteNonQueryAsync();
+                }
+
+                await using (var permissionCutting = new SqlCommand(@"INSERT INTO dbo.ScannerStageProductPermissions (ScannerId, ProductTypeId, Stage, IsActive, CreatedAt, UpdatedAt) VALUES (@scannerId, @productTypeId, N'Cutting', 1, SYSUTCDATETIME(), SYSUTCDATETIME());", connection))
+                {
+                    permissionCutting.Parameters.AddWithValue("@scannerId", scannerId);
+                    permissionCutting.Parameters.AddWithValue("@productTypeId", productTypeId);
+                    await permissionCutting.ExecuteNonQueryAsync();
+                }
+
+                await using (var permissionSewing = new SqlCommand(@"INSERT INTO dbo.ScannerStageProductPermissions (ScannerId, ProductTypeId, Stage, IsActive, CreatedAt, UpdatedAt) VALUES (@scannerId, @productTypeId, N'Sewing', 1, SYSUTCDATETIME(), SYSUTCDATETIME());", connection))
+                {
+                    permissionSewing.Parameters.AddWithValue("@scannerId", scannerId);
+                    permissionSewing.Parameters.AddWithValue("@productTypeId", productTypeId);
+                    await permissionSewing.ExecuteNonQueryAsync();
+                }
+
+                var rateCount = await CountAsync(connection, @"SELECT COUNT(*) FROM dbo.PieceWageRates WITH (NOLOCK) WHERE PieceType = @pieceType AND Stage = N'Cutting' AND IsActive = 1;", ("@pieceType", productCode!));
+                if (rateCount == 0)
+                {
+                    await using (var insertCutRate = new SqlCommand(@"INSERT INTO dbo.PieceWageRates (PieceType, Stage, WageRate, IsActive, Notes, CreatedAt) VALUES (@pieceType, N'Cutting', 12.00, 1, N'Test rate', SYSUTCDATETIME());", connection))
+                    {
+                        insertCutRate.Parameters.AddWithValue("@pieceType", productCode!);
+                        await insertCutRate.ExecuteNonQueryAsync();
+                    }
+                }
+
+                var sewingRateCount = await CountAsync(connection, @"SELECT COUNT(*) FROM dbo.PieceWageRates WITH (NOLOCK) WHERE PieceType = @pieceType AND Stage = N'Sewing' AND IsActive = 1;", ("@pieceType", productCode!));
+                if (sewingRateCount == 0)
+                {
+                    await using (var insertSewRate = new SqlCommand(@"INSERT INTO dbo.PieceWageRates (PieceType, Stage, WageRate, IsActive, Notes, CreatedAt) VALUES (@pieceType, N'Sewing', 16.00, 1, N'Test rate', SYSUTCDATETIME());", connection))
+                    {
+                        insertSewRate.Parameters.AddWithValue("@pieceType", productCode!);
+                        await insertSewRate.ExecuteNonQueryAsync();
+                    }
+                }
+
+                var assignmentCount = await CountAsync(connection, @"SELECT COUNT(*) FROM dbo.EmployeePieceRateAssignments WITH (NOLOCK) WHERE EmployeeId = @employeeId AND PieceType = @pieceType AND Stage = N'Cutting' AND IsActive = 1;", ("@employeeId", seed.EmployeeId), ("@pieceType", productCode!));
+                if (assignmentCount == 0)
+                {
+                    await using (var insertCutAssignment = new SqlCommand(@"INSERT INTO dbo.EmployeePieceRateAssignments (EmployeeId, PieceType, Stage, Rate, IsActive, EffectiveFrom, EffectiveTo, CreatedAt, UpdatedAt) VALUES (@employeeId, @pieceType, N'Cutting', 12.00, 1, SYSUTCDATETIME(), NULL, SYSUTCDATETIME(), SYSUTCDATETIME());", connection))
+                    {
+                        insertCutAssignment.Parameters.AddWithValue("@employeeId", seed.EmployeeId);
+                        insertCutAssignment.Parameters.AddWithValue("@pieceType", productCode!);
+                        await insertCutAssignment.ExecuteNonQueryAsync();
+                    }
+                }
+
+                var sewingAssignmentCount = await CountAsync(connection, @"SELECT COUNT(*) FROM dbo.EmployeePieceRateAssignments WITH (NOLOCK) WHERE EmployeeId = @employeeId AND PieceType = @pieceType AND Stage = N'Sewing' AND IsActive = 1;", ("@employeeId", seed.EmployeeId), ("@pieceType", productCode!));
+                if (sewingAssignmentCount == 0)
+                {
+                    await using (var insertSewAssignment = new SqlCommand(@"INSERT INTO dbo.EmployeePieceRateAssignments (EmployeeId, PieceType, Stage, Rate, IsActive, EffectiveFrom, EffectiveTo, CreatedAt, UpdatedAt) VALUES (@employeeId, @pieceType, N'Sewing', 16.00, 1, SYSUTCDATETIME(), NULL, SYSUTCDATETIME(), SYSUTCDATETIME());", connection))
+                    {
+                        insertSewAssignment.Parameters.AddWithValue("@employeeId", seed.EmployeeId);
+                        insertSewAssignment.Parameters.AddWithValue("@pieceType", productCode!);
+                        await insertSewAssignment.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+
+            var firstCutResult = await productionRepository.AdvancePieceStageAsync(new ProductionTrackingAdvanceRequestDto(
+                seed.PieceId,
+                seed.TrackingCode,
+                "قميص",
+                "Cutting",
+                scannerCode,
+                employeeCode,
+                $"ScannerCutting:{Guid.NewGuid():N}",
+                productTypeId,
+                false,
+                false,
+                null));
+            Assert.NotNull(firstCutResult);
+            Assert.True(firstCutResult!.Updated);
+            Assert.Equal("Cutting", firstCutResult.NewStatus);
+
+            var firstSewResult = await productionRepository.AdvancePieceStageAsync(new ProductionTrackingAdvanceRequestDto(
+                seed.PieceId,
+                seed.TrackingCode,
+                "قميص",
+                "Sewing",
+                scannerCode,
+                employeeCode,
+                $"ScannerSewing:{Guid.NewGuid():N}",
+                productTypeId,
+                false,
+                false,
+                null));
+            Assert.NotNull(firstSewResult);
+            Assert.True(firstSewResult!.Updated);
+            Assert.Equal("Sewing", firstSewResult.NewStatus);
+
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                var firstCutEventId = await ReadIntAsync(connection, "SELECT TOP (1) TrackingEventID FROM dbo.TrackingEvents WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Cutting' ORDER BY EventTime, TrackingEventID;", seed.PieceId);
+                var firstSewEventId = await ReadIntAsync(connection, "SELECT TOP (1) TrackingEventID FROM dbo.TrackingEvents WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Sewing' ORDER BY EventTime, TrackingEventID;", seed.PieceId);
+                var firstCutWageId = await ReadIntAsync(connection, "SELECT TOP (1) PieceWageRecordId FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Cutting' ORDER BY CreatedAt, PieceWageRecordId;", seed.PieceId);
+                var firstSewWageId = await ReadIntAsync(connection, "SELECT TOP (1) PieceWageRecordId FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Sewing' ORDER BY CreatedAt, PieceWageRecordId;", seed.PieceId);
+
+                Assert.True(firstCutEventId > 0);
+                Assert.True(firstSewEventId > 0);
+                Assert.True(firstCutWageId > 0);
+                Assert.True(firstSewWageId > 0);
+                Assert.Equal(firstCutEventId, await ReadIntAsync(connection, "SELECT TOP (1) TrackingEventID FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceWageRecordId = @pieceWageId;", firstCutWageId));
+                Assert.Equal(firstSewEventId, await ReadIntAsync(connection, "SELECT TOP (1) TrackingEventID FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceWageRecordId = @pieceWageId;", firstSewWageId));
+
+                await SeedOfficialOriginalFabricConsumptionAsync(connectionString, seed);
+                var damagedPrint = await printingRepository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedPiece", "تمزق أثناء الجولة الأولى", seed.EmployeeId, null, null, null, null), seed.User, CancellationToken.None);
+                await printingRepository.CompleteAsync(damagedPrint.PrintHistoryId, null, seed.User, CancellationToken.None);
+
+                Assert.Equal(2, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Cutting'", seed.PieceId));
+                Assert.Equal(2, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Sewing'", seed.PieceId));
+                Assert.Equal(4, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId", seed.PieceId));
+                Assert.Equal(firstCutEventId, await ReadIntAsync(connection, "SELECT TOP (1) TrackingEventID FROM dbo.TrackingEvents WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Cutting' ORDER BY EventTime, TrackingEventID;", seed.PieceId));
+                Assert.Equal(firstSewEventId, await ReadIntAsync(connection, "SELECT TOP (1) TrackingEventID FROM dbo.TrackingEvents WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Sewing' ORDER BY EventTime, TrackingEventID;", seed.PieceId));
+                Assert.Equal(firstCutWageId, await ReadIntAsync(connection, "SELECT TOP (1) PieceWageRecordId FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Cutting' ORDER BY CreatedAt, PieceWageRecordId;", seed.PieceId));
+                Assert.Equal(firstSewWageId, await ReadIntAsync(connection, "SELECT TOP (1) PieceWageRecordId FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Sewing' ORDER BY CreatedAt, PieceWageRecordId;", seed.PieceId));
+                Assert.Equal(1, await CountAsync(connection, @"SELECT COUNT(*) FROM dbo.FabricConsumptionSources WITH (NOLOCK) WHERE PieceId = @pieceId AND SourceOperationId <> @sourceOperationId AND ConsumedQuantity > 0;", ("@pieceId", seed.PieceId), ("@sourceOperationId", InventoryRepository.CreateFabricConsumptionOperationId(seed.OrderItemId, false))));
+
+                var secondCutResult = await productionRepository.AdvancePieceStageAsync(new ProductionTrackingAdvanceRequestDto(
+                    seed.PieceId,
+                    seed.TrackingCode,
+                    "قميص",
+                    "Cutting",
+                    scannerCode,
+                    employeeCode,
+                    $"ScannerSecondCutting:{Guid.NewGuid():N}",
+                    productTypeId,
+                    false,
+                    false,
+                    null));
+                Assert.NotNull(secondCutResult);
+                Assert.True(secondCutResult!.Updated);
+
+                var secondSewResult = await productionRepository.AdvancePieceStageAsync(new ProductionTrackingAdvanceRequestDto(
+                    seed.PieceId,
+                    seed.TrackingCode,
+                    "قميص",
+                    "Sewing",
+                    scannerCode,
+                    employeeCode,
+                    $"ScannerSecondSewing:{Guid.NewGuid():N}",
+                    productTypeId,
+                    false,
+                    false,
+                    null));
+                Assert.NotNull(secondSewResult);
+                Assert.True(secondSewResult!.Updated);
+
+                var secondCutEventId = await ReadIntAsync(connection, "SELECT TOP (1) TrackingEventID FROM dbo.TrackingEvents WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Cutting' AND TrackingEventID <> @firstEventId ORDER BY EventTime, TrackingEventID;", ("@pieceId", seed.PieceId), ("@firstEventId", firstCutEventId));
+                var secondSewEventId = await ReadIntAsync(connection, "SELECT TOP (1) TrackingEventID FROM dbo.TrackingEvents WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Sewing' AND TrackingEventID <> @firstEventId ORDER BY EventTime, TrackingEventID;", ("@pieceId", seed.PieceId), ("@firstEventId", firstSewEventId));
+                var secondCutWageId = await ReadIntAsync(connection, "SELECT TOP (1) PieceWageRecordId FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Cutting' AND PieceWageRecordId <> @firstWageId ORDER BY CreatedAt, PieceWageRecordId;", ("@pieceId", seed.PieceId), ("@firstWageId", firstCutWageId));
+                var secondSewWageId = await ReadIntAsync(connection, "SELECT TOP (1) PieceWageRecordId FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Sewing' AND PieceWageRecordId <> @firstWageId ORDER BY CreatedAt, PieceWageRecordId;", ("@pieceId", seed.PieceId), ("@firstWageId", firstSewWageId));
+
+                Assert.True(secondCutEventId > 0 && secondCutEventId != firstCutEventId);
+                Assert.True(secondSewEventId > 0 && secondSewEventId != firstSewEventId);
+                Assert.True(secondCutWageId > 0 && secondCutWageId != firstCutWageId);
+                Assert.True(secondSewWageId > 0 && secondSewWageId != firstSewWageId);
+                Assert.Equal(secondCutEventId, await ReadIntAsync(connection, "SELECT TOP (1) TrackingEventID FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceWageRecordId = @pieceWageId;", secondCutWageId));
+                Assert.Equal(secondSewEventId, await ReadIntAsync(connection, "SELECT TOP (1) TrackingEventID FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceWageRecordId = @pieceWageId;", secondSewWageId));
+                Assert.Equal(2, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Cutting'", seed.PieceId));
+                Assert.Equal(2, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Sewing'", seed.PieceId));
+                Assert.Equal(4, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId", seed.PieceId));
+
+                var repeatCuttingResult = await productionRepository.AdvancePieceStageAsync(new ProductionTrackingAdvanceRequestDto(
+                    seed.PieceId,
+                    seed.TrackingCode,
+                    "قميص",
+                    "Cutting",
+                    scannerCode,
+                    employeeCode,
+                    $"ScannerRepeatCutting:{Guid.NewGuid():N}",
+                    productTypeId,
+                    false,
+                    false,
+                    null));
+                Assert.NotNull(repeatCuttingResult);
+                Assert.False(repeatCuttingResult!.Updated);
+                Assert.Equal(2, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Cutting'", seed.PieceId));
+                Assert.Equal(2, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Sewing'", seed.PieceId));
+                Assert.Equal(4, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId", seed.PieceId));
+            }
+        }
+        finally
+        {
+            await using (var cleanupConnection = new SqlConnection(connectionString))
+            {
+                await cleanupConnection.OpenAsync();
+                await using (var cleanupCommand = new SqlCommand(@"
+                    DELETE FROM dbo.ScannerStageProductPermissions WHERE ScannerId IN (SELECT ScannerId FROM dbo.Scanners WHERE ScannerCode = @scannerCode);
+                    DELETE FROM dbo.Scanners WHERE ScannerCode = @scannerCode;
+                    UPDATE dbo.Employees SET ScannerCode = NULL WHERE EmployeeID = @employeeId;
+                    DELETE FROM dbo.EmployeePieceRateAssignments WHERE EmployeeId = @employeeId AND PieceType = @pieceType AND Stage IN (N'Cutting', N'Sewing');
+                    DELETE FROM dbo.PieceWageRates WHERE PieceType = @pieceType AND Stage IN (N'Cutting', N'Sewing') AND Notes = N'Test rate';", cleanupConnection))
+                {
+                    cleanupCommand.Parameters.AddWithValue("@scannerCode", scannerCode);
+                    cleanupCommand.Parameters.AddWithValue("@employeeId", seed.EmployeeId);
+                    cleanupCommand.Parameters.AddWithValue("@pieceType", productCode ?? "SHIRT");
+                    await cleanupCommand.ExecuteNonQueryAsync();
+                }
+            }
+
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
     private static IPrintingRepository CreateRepository(string connectionString)
     {
         var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
@@ -804,6 +1041,42 @@ public sealed class MeasurementCardPrintingIntegrationTests
         command.Parameters.AddWithValue("@pieceId", value is int ? value : DBNull.Value);
         command.Parameters.AddWithValue("@printHistoryId", value is int ? value : DBNull.Value);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> ReadIntAsync(SqlConnection connection, string sql, int value)
+    {
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@pieceId", value);
+        command.Parameters.AddWithValue("@pieceWageId", value);
+        var result = await command.ExecuteScalarAsync();
+        return result is null || result is DBNull ? 0 : Convert.ToInt32(result);
+    }
+
+    private static async Task<int> ReadIntAsync(SqlConnection connection, string sql, params (string Name, object? Value)[] parameters)
+    {
+        await using var command = new SqlCommand(sql, connection);
+        foreach (var parameter in parameters)
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+        var result = await command.ExecuteScalarAsync();
+        return result is null || result is DBNull ? 0 : Convert.ToInt32(result);
+    }
+
+    private static async Task<string> ReadStringAsync(SqlConnection connection, string sql, int value)
+    {
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@employeeId", value);
+        command.Parameters.AddWithValue("@productTypeId", value);
+        var result = await command.ExecuteScalarAsync();
+        return result is null || result is DBNull ? string.Empty : Convert.ToString(result)!;
+    }
+
+    private static async Task<string> ReadStringAsync(SqlConnection connection, string sql, params (string Name, object? Value)[] parameters)
+    {
+        await using var command = new SqlCommand(sql, connection);
+        foreach (var parameter in parameters)
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+        var result = await command.ExecuteScalarAsync();
+        return result is null || result is DBNull ? string.Empty : Convert.ToString(result)!;
     }
 
     private static async Task<int> CountAsync(SqlConnection connection, string sql, params (string Name, object? Value)[] parameters)
