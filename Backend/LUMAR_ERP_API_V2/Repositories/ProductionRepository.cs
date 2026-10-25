@@ -390,7 +390,7 @@ public sealed class ProductionRepository(
                     pieceContext,
                     trackingEventId,
                     finalStage,
-                    identity.Code,
+                    pieceContext.PieceType,
                     employeeCode,
                     ct);
                 if (!wageInsert.IsCreated)

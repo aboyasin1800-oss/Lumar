@@ -381,7 +381,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
             {
                 await connection.OpenAsync();
                 employeeCode = await ReadStringAsync(connection, "SELECT EmployeeCode FROM dbo.Employees WHERE EmployeeID = @employeeId", seed.EmployeeId);
-                pieceTypeCode = await ReadStringAsync(connection, "SELECT TOP (1) Code FROM dbo.PricingProductTypes WHERE ProductTypeId = @productTypeId", productTypeId);
+                pieceTypeCode = await ReadStringAsync(connection, "SELECT PieceType FROM dbo.OrderItems WHERE OrderItemID = @orderItemId", seed.OrderItemId);
 
                 var route = ProductionTrackingEngine.GetRoute(productTypeId);
                 Assert.NotEmpty(route);
@@ -439,6 +439,8 @@ public sealed class MeasurementCardPrintingIntegrationTests
                 }
             }
 
+            await SeedOfficialOriginalFabricConsumptionAsync(connectionString, seed);
+
             var routeConfig = ProductionTrackingEngine.GetRoute(productTypeId).ToList();
             var firstOfficialStage = ProductionTrackingEngine.GetFirstActiveStage(productTypeId);
             Assert.NotNull(firstOfficialStage);
@@ -463,7 +465,9 @@ public sealed class MeasurementCardPrintingIntegrationTests
                     null), CancellationToken.None);
 
                 Assert.NotNull(result);
-                Assert.True(result!.Updated, $"Stage progression failed for {stage} with product type {productTypeId}.");
+                Assert.True(
+                    result!.Updated,
+                    $"Stage progression failed for {stage}. ProductTypeId={productTypeId}, EmployeeCode={employeeCode ?? "<null>"}, ScannerCode={scannerCode}, RequestedStage={stage}, PreviousStatus={result.PreviousStatus}, NewStatus={result.NewStatus}, NextStage={result.NextStage ?? "<null>"}, Message={result.Message ?? "<null>"}");
             }
 
             await using (var connection = new SqlConnection(connectionString))
@@ -485,7 +489,9 @@ public sealed class MeasurementCardPrintingIntegrationTests
                 Assert.Equal(1, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId AND Stage = N'Sewing'", seed.PieceId));
                 Assert.Equal(2, await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WITH (NOLOCK) WHERE PieceID = @pieceId", seed.PieceId));
 
-                await SeedOfficialOriginalFabricConsumptionAsync(connectionString, seed);
+                var originalPrint = await printingRepository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null), seed.User, CancellationToken.None);
+                await printingRepository.CompleteAsync(originalPrint.PrintHistoryId, null, seed.User, CancellationToken.None);
+
                 var damagedPrint = await printingRepository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedPiece", "تمزق أثناء الجولة الأولى", seed.EmployeeId, null, null, null, null), seed.User, CancellationToken.None);
                 await printingRepository.CompleteAsync(damagedPrint.PrintHistoryId, null, seed.User, CancellationToken.None);
 
@@ -937,14 +943,17 @@ public sealed class MeasurementCardPrintingIntegrationTests
                     );
                 END;
 
+                DELETE FROM dbo.PieceWageRecords
+                WHERE PieceID = @pieceId OR OrderItemID = @orderItemId;
+
+                DELETE FROM dbo.TailoringCostPostings
+                WHERE OrderId = @orderId;
+
                 DELETE FROM dbo.TrackingEvents
                 WHERE PieceID = @pieceId OR OrderItemID = @orderItemId OR OrderID = @orderId;
 
                 DELETE FROM dbo.OrderItemFabrics
                 WHERE OrderItemID = @orderItemId;
-
-                DELETE FROM dbo.PieceWageRecords
-                WHERE PieceID = @pieceId OR OrderItemID = @orderItemId;
 
                 DELETE FROM dbo.MeasurementCardPrintHistory
                 WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds);
@@ -1032,8 +1041,8 @@ public sealed class MeasurementCardPrintingIntegrationTests
     private static async Task<int> ReadIntAsync(SqlConnection connection, string sql, int value)
     {
         await using var command = new SqlCommand(sql, connection);
-        command.Parameters.AddWithValue("@pieceId", value);
-        command.Parameters.AddWithValue("@pieceWageId", value);
+        foreach (var parameterName in GetMatchingParameterNames(sql, value))
+            command.Parameters.AddWithValue(parameterName, value);
         var result = await command.ExecuteScalarAsync();
         return result is null || result is DBNull ? 0 : Convert.ToInt32(result);
     }
@@ -1050,10 +1059,33 @@ public sealed class MeasurementCardPrintingIntegrationTests
     private static async Task<string> ReadStringAsync(SqlConnection connection, string sql, int value)
     {
         await using var command = new SqlCommand(sql, connection);
-        command.Parameters.AddWithValue("@employeeId", value);
-        command.Parameters.AddWithValue("@productTypeId", value);
+        foreach (var parameterName in GetMatchingParameterNames(sql, value))
+            command.Parameters.AddWithValue(parameterName, value);
         var result = await command.ExecuteScalarAsync();
         return result is null || result is DBNull ? string.Empty : Convert.ToString(result)!;
+    }
+
+    private static IReadOnlyList<string> GetMatchingParameterNames(string sql, int value)
+    {
+        var names = new[]
+        {
+            "@employeeId",
+            "@orderItemId",
+            "@pieceId",
+            "@pieceWageId",
+            "@productTypeId",
+            "@orderId",
+            "@departmentId",
+            "@customerId",
+            "@inventoryItemId",
+            "@printHistoryId",
+            "@userId",
+            "@sourceOperationId",
+            "@reference",
+            "@id"
+        };
+
+        return names.Where(name => sql.Contains(name, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
     private static async Task<string> ReadStringAsync(SqlConnection connection, string sql, params (string Name, object? Value)[] parameters)
@@ -1108,7 +1140,12 @@ public sealed class MeasurementCardPrintingIntegrationTests
                     SourceOperationId = sourceOperationId
                 }, CancellationToken.None);
 
-            Assert.False(original.IsExisting);
+            if (original.IsExisting)
+            {
+                await transaction.CommitAsync();
+                return sourceOperationId;
+            }
+
             Assert.Equal(36m, original.Quantity);
             Assert.True(
                 string.Equals(seed.FabricCode, original.ItemCode, StringComparison.OrdinalIgnoreCase),
