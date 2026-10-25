@@ -438,6 +438,10 @@ public sealed class MeasurementCardPrintingIntegrationTests
                 DECLARE @inventoryTransactionIds TABLE (TransactionId int PRIMARY KEY);
                 DECLARE @journalEntryIds TABLE (JournalEntryId int PRIMARY KEY);
                 DECLARE @financialTransactionIds TABLE (FinancialTransactionId int PRIMARY KEY);
+                DECLARE @customerLedgerEntryIds TABLE
+                (
+                    CustomerLedgerEntryId int PRIMARY KEY
+                );
 
                 INSERT INTO @historyIds
                 SELECT h.PrintHistoryId
@@ -483,6 +487,58 @@ public sealed class MeasurementCardPrintingIntegrationTests
                 SELECT f.FinancialTransactionId
                 FROM dbo.FinancialTransactions AS f
                 WHERE f.AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
+
+                IF COL_LENGTH('dbo.Payments', 'CustomerLedgerEntryId') IS NOT NULL
+                BEGIN
+                    INSERT INTO @customerLedgerEntryIds
+                    SELECT CustomerLedgerEntryId
+                    FROM
+                    (
+                        SELECT h.CustomerLedgerEntryId AS CustomerLedgerEntryId
+                        FROM dbo.MeasurementCardPrintHistory AS h
+                        WHERE h.PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
+                          AND h.CustomerLedgerEntryId IS NOT NULL
+                        UNION
+                        SELECT h.PaymentCustomerLedgerEntryId AS CustomerLedgerEntryId
+                        FROM dbo.MeasurementCardPrintHistory AS h
+                        WHERE h.PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
+                          AND h.PaymentCustomerLedgerEntryId IS NOT NULL
+                        UNION
+                        SELECT h.WaiverCustomerLedgerEntryId AS CustomerLedgerEntryId
+                        FROM dbo.MeasurementCardPrintHistory AS h
+                        WHERE h.PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
+                          AND h.WaiverCustomerLedgerEntryId IS NOT NULL
+                        UNION
+                        SELECT p.CustomerLedgerEntryId AS CustomerLedgerEntryId
+                        FROM dbo.Payments AS p
+                        WHERE p.PaymentID IN (SELECT PaymentId FROM @paymentIds)
+                          AND p.CustomerLedgerEntryId IS NOT NULL
+                    ) AS customerLedgerEntries
+                    WHERE CustomerLedgerEntryId IS NOT NULL;
+                END
+                ELSE
+                BEGIN
+                    INSERT INTO @customerLedgerEntryIds
+                    SELECT CustomerLedgerEntryId
+                    FROM
+                    (
+                        SELECT h.CustomerLedgerEntryId AS CustomerLedgerEntryId
+                        FROM dbo.MeasurementCardPrintHistory AS h
+                        WHERE h.PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
+                          AND h.CustomerLedgerEntryId IS NOT NULL
+                        UNION
+                        SELECT h.PaymentCustomerLedgerEntryId AS CustomerLedgerEntryId
+                        FROM dbo.MeasurementCardPrintHistory AS h
+                        WHERE h.PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
+                          AND h.PaymentCustomerLedgerEntryId IS NOT NULL
+                        UNION
+                        SELECT h.WaiverCustomerLedgerEntryId AS CustomerLedgerEntryId
+                        FROM dbo.MeasurementCardPrintHistory AS h
+                        WHERE h.PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
+                          AND h.WaiverCustomerLedgerEntryId IS NOT NULL
+                    ) AS customerLedgerEntries
+                    WHERE CustomerLedgerEntryId IS NOT NULL;
+                END;
 
                 UPDATE dbo.AccountingEvents
                 SET FabricConsumptionSourceId = NULL
@@ -566,14 +622,10 @@ public sealed class MeasurementCardPrintingIntegrationTests
                 WHERE PaymentID IN (SELECT PaymentId FROM @paymentIds);
 
                 DELETE FROM dbo.CustomerLedgerEntries
-                WHERE CustomerLedgerEntryId IN (
-                    SELECT CustomerLedgerEntryId FROM dbo.MeasurementCardPrintHistory WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
-                    UNION ALL
-                    SELECT PaymentCustomerLedgerEntryId FROM dbo.MeasurementCardPrintHistory WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
-                    UNION ALL
-                    SELECT WaiverCustomerLedgerEntryId FROM dbo.MeasurementCardPrintHistory WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
-                    UNION ALL
-                    SELECT CustomerLedgerEntryId FROM dbo.Payments WHERE PaymentID IN (SELECT PaymentId FROM @paymentIds)
+                WHERE CustomerLedgerEntryId IN
+                (
+                    SELECT CustomerLedgerEntryId
+                    FROM @customerLedgerEntryIds
                 );
 
                 DELETE FROM dbo.TrackingEvents
@@ -613,14 +665,10 @@ public sealed class MeasurementCardPrintingIntegrationTests
                 WHERE UserID = @userId;
 
                 DELETE FROM dbo.Departments
-                WHERE DepartmentId = @departmentId;
-
-                DELETE FROM dbo.Customers
-                WHERE CustomerID = @customerId;", connection, transaction);
+                WHERE DepartmentId = @departmentId;", connection, transaction);
             command.Parameters.AddWithValue("@pieceId", seed.PieceId);
             command.Parameters.AddWithValue("@orderItemId", seed.OrderItemId);
             command.Parameters.AddWithValue("@orderId", seed.OrderId);
-            command.Parameters.AddWithValue("@customerId", seed.CustomerId);
             command.Parameters.AddWithValue("@cashAccountId", seed.CashAccountId);
             command.Parameters.AddWithValue("@employeeId", seed.EmployeeId);
             command.Parameters.AddWithValue("@userId", seed.UserId);
