@@ -1245,7 +1245,8 @@ public sealed class ProductionRepository(
                 return;
             }
 
-            return;
+            throw new InvalidOperationException(
+                $"Tailoring cost mismatch for order {orderId}: existing TailoringCostPostings.PostingAmount={candidatePostingAmount}, expected SUM(FabricConsumptionSources.PostingAmount)={postingAmount}.");
         }
 
         const string insertSql = @"
