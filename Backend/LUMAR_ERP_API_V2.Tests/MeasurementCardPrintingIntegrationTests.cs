@@ -4,6 +4,7 @@ using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Inventory;
 using LUMAR_ERP_API_V2.DTOs.Printing;
 using LUMAR_ERP_API_V2.Repositories;
+using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -206,8 +207,46 @@ public sealed class MeasurementCardPrintingIntegrationTests
             var printingWages = await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WHERE PieceID = @pieceId AND Stage = N'Printing'", seed.PieceId);
 
             Assert.Equal("Printing", pieceStatus);
-            Assert.Equal(1, printingEvents);
+            Assert.Equal(2, printingEvents);
             Assert.Equal(0, printingWages);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
+    public async Task DamagedPiece_ReentersOfficialRouteAtFirstStage_WithoutLosingReworkAudit()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedTailoringPieceAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        try
+        {
+            var first = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null), seed.User, CancellationToken.None);
+            await repository.CompleteAsync(first.PrintHistoryId, null, seed.User, CancellationToken.None);
+
+            var originalSourceOperationId = await SeedOfficialOriginalFabricConsumptionAsync(connectionString, seed);
+            var damaged = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedPiece", "تمزق أثناء التجهيز", seed.EmployeeId, null, null, null, null), seed.User, CancellationToken.None);
+            await repository.CompleteAsync(damaged.PrintHistoryId, null, seed.User, CancellationToken.None);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            var pieceStatus = await ReadScalarAsync(connection, "SELECT PieceStatus FROM dbo.Pieces WHERE PieceID = @pieceId", seed.PieceId);
+            var officialPrintingEvents = await CountAsync(connection, "SELECT COUNT(*) FROM dbo.TrackingEvents WHERE PieceID = @pieceId AND Stage = N'Printing' AND Status = N'Printing'", seed.PieceId);
+            var reworkEvents = await CountAsync(connection, "SELECT COUNT(*) FROM dbo.TrackingEvents WHERE PieceID = @pieceId AND Stage = N'Rework' AND Status = N'Rework'", seed.PieceId);
+            var replacementSourceCount = await CountAsync(connection,
+                "SELECT COUNT(*) FROM dbo.FabricConsumptionSources WHERE PieceId = @pieceId AND SourceOperationId <> @sourceOperationId AND ConsumedQuantity > 0",
+                ("@pieceId", seed.PieceId),
+                ("@sourceOperationId", originalSourceOperationId));
+
+            Assert.Equal("Printing", pieceStatus);
+            Assert.Equal(2, officialPrintingEvents);
+            Assert.Equal(1, reworkEvents);
+            Assert.Equal(1, replacementSourceCount);
         }
         finally
         {
@@ -263,7 +302,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
             var reworkEvents = await CountAsync(connection, "SELECT COUNT(*) FROM dbo.TrackingEvents WHERE PieceID = @pieceId AND Stage = N'Rework' AND Status = N'Rework'", seed.PieceId);
 
             Assert.Equal("Printing", pieceStatus);
-            Assert.Equal(1, officialPrintingEvents);
+            Assert.Equal(2, officialPrintingEvents);
             Assert.Equal(1, reworkEvents);
         }
         finally
@@ -327,6 +366,14 @@ public sealed class MeasurementCardPrintingIntegrationTests
     {
         var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
         return new PrintingRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options));
+    }
+
+    private static ProductionRepository CreateProductionRepository(string connectionString)
+    {
+        var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+        var readOnlyConnections = new ReadOnlySqlConnectionFactory(options);
+        var operationalConnections = new OperationalSqlConnectionFactory(options);
+        return new ProductionRepository(readOnlyConnections, operationalConnections, new ProductionProductTypeIdentityResolver());
     }
 
     private static string GetConnectionString()

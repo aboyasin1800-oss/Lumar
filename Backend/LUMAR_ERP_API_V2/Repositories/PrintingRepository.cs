@@ -528,6 +528,8 @@ public sealed class PrintingRepository(
         var readyMadePieceId = history.ReadyMadePieceId is int readyPieceId ? (object)readyPieceId : DBNull.Value;
         var notes = $"MeasurementCardPrintHistoryId={history.PrintHistoryId};Operation=DamagedPieceRework;ReplacementFabric={fabricCode};ReplacementInches={replacementInches:0.######};ResponsibleEmployeeId={history.ResponsibleEmployeeId}";
 
+        await ReenterOfficialRouteAfterDamagedPieceAsync(connection, transaction, history, cancellationToken);
+
         await using var trackingInsert = new SqlCommand(@"
             INSERT INTO dbo.TrackingEvents
                 (OrderItemID, OrderID, TrackingCode, Stage, Status, EventTime, Notes, IsReverted, RevertedAt, PieceID, ReadyMadeProductionOrderPieceInstanceId)
@@ -539,6 +541,80 @@ public sealed class PrintingRepository(
         trackingInsert.Parameters.AddWithValue("@pieceId", pieceId);
         trackingInsert.Parameters.AddWithValue("@readyMadePieceId", readyMadePieceId);
         await trackingInsert.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task ReenterOfficialRouteAfterDamagedPieceAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        MeasurementCardPrintHistoryDto history,
+        CancellationToken cancellationToken)
+    {
+        var pieceId = history.PieceId ?? history.ReadyMadePieceId;
+        if (pieceId is not int targetPieceId || targetPieceId <= 0)
+            return;
+
+        var productTypeId = history.ReadyMadeProductionOrderItemId is int readyMadeItemId
+            ? await ReadReadyMadeProductTypeIdAsync(connection, transaction, readyMadeItemId, cancellationToken)
+            : await ReadOrderProductTypeIdAsync(connection, transaction, history.OrderItemId ?? 0, cancellationToken);
+
+        if (productTypeId <= 0)
+            throw new InvalidOperationException("تعذر تحديد نوع المنتج الرسمي لإعادة دخول القطعة التالفة في المسار الرسمي.");
+
+        var route = ProductionTrackingEngine.GetRoute(productTypeId);
+        var firstOfficialStage = route.FirstOrDefault(stage => !string.IsNullOrWhiteSpace(stage));
+        if (string.IsNullOrWhiteSpace(firstOfficialStage))
+            throw new InvalidOperationException("لا يوجد مسار إنتاج رسمي قابل للتنفيذ لإعادة دخول القطعة التالفة.");
+
+        var isReadyMade = history.ReadyMadePieceId is not null;
+        var tableName = isReadyMade ? "dbo.ReadyMadeProductionOrderPieceInstances" : "dbo.Pieces";
+        var keyColumn = isReadyMade ? "ReadyMadeProductionOrderPieceInstanceId" : "PieceID";
+        var statusColumn = isReadyMade ? "PieceStatus" : "PieceStatus";
+
+        await using var resetStatus = new SqlCommand($@"
+            UPDATE {tableName}
+            SET {statusColumn} = @firstOfficialStage
+            WHERE {keyColumn} = @pieceId AND ({statusColumn} IS NULL OR {statusColumn} <> @firstOfficialStage);", connection, transaction);
+        resetStatus.Parameters.AddWithValue("@firstOfficialStage", firstOfficialStage);
+        resetStatus.Parameters.AddWithValue("@pieceId", targetPieceId);
+        await resetStatus.ExecuteNonQueryAsync(cancellationToken);
+
+        var orderItemId = history.OrderItemId is int itemId ? (object)itemId : DBNull.Value;
+        var orderId = history.OrderId is int currentOrderId ? (object)currentOrderId : DBNull.Value;
+        var readyMadePieceId = isReadyMade ? (object)targetPieceId : DBNull.Value;
+
+        await using var officialEntry = new SqlCommand(@"
+            INSERT INTO dbo.TrackingEvents
+                (OrderItemID, OrderID, TrackingCode, Stage, Status, EventTime, Notes, IsReverted, RevertedAt, PieceID, ReadyMadeProductionOrderPieceInstanceId)
+            VALUES (@orderItemId, @orderId, @trackingCode, N'Printing', N'Printing', SYSUTCDATETIME(), @notes, 0, NULL, @pieceId, @readyMadePieceId);", connection, transaction);
+        officialEntry.Parameters.AddWithValue("@orderItemId", orderItemId);
+        officialEntry.Parameters.AddWithValue("@orderId", orderId);
+        officialEntry.Parameters.AddWithValue("@trackingCode", history.TrackingCode);
+        officialEntry.Parameters.AddWithValue("@notes", $"MeasurementCardPrintHistoryId={history.PrintHistoryId};Operation=DamagedPieceOfficialReentry;ReenteredAtStage=Printing;Reason=DamagedPiece");
+        officialEntry.Parameters.AddWithValue("@pieceId", isReadyMade ? (object)DBNull.Value : targetPieceId);
+        officialEntry.Parameters.AddWithValue("@readyMadePieceId", readyMadePieceId);
+        await officialEntry.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<int> ReadOrderProductTypeIdAsync(SqlConnection connection, SqlTransaction transaction, int orderItemId, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand(@"
+            SELECT TOP (1) oi.ProductTypeId
+            FROM dbo.OrderItems oi WITH (UPDLOCK, HOLDLOCK)
+            WHERE oi.OrderItemID = @orderItemId;", connection, transaction);
+        command.Parameters.AddWithValue("@orderItemId", orderItemId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is null || result is DBNull ? 0 : Convert.ToInt32(result);
+    }
+
+    private static async Task<int> ReadReadyMadeProductTypeIdAsync(SqlConnection connection, SqlTransaction transaction, int readyMadeItemId, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand(@"
+            SELECT TOP (1) i.ProductTypeId
+            FROM dbo.ReadyMadeProductionOrderItems i WITH (UPDLOCK, HOLDLOCK)
+            WHERE i.ReadyMadeProductionOrderItemId = @readyMadeItemId;", connection, transaction);
+        command.Parameters.AddWithValue("@readyMadeItemId", readyMadeItemId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is null || result is DBNull ? 0 : Convert.ToInt32(result);
     }
 
     private static async Task<string?> LoadReplacementFabricCodeAsync(
