@@ -356,7 +356,9 @@ public sealed class PrintingRepository(
                 throw new InvalidOperationException("تعذر اعتماد سجل الطباعة.");
 
             var pieceId = history.PieceId ?? history.ReadyMadePieceId;
-            if (pieceId is int targetPieceId)
+            var shouldAdvanceToPrinting = string.IsNullOrWhiteSpace(history.ReprintReasonCode);
+
+            if (pieceId is int targetPieceId && shouldAdvanceToPrinting)
             {
                 await AdvancePieceToPrintingStageAsync(
                     connection,
@@ -390,12 +392,14 @@ public sealed class PrintingRepository(
         bool isReadyMade,
         CancellationToken cancellationToken)
     {
-        var statusColumn = isReadyMade ? "PieceStatus" : "PieceStatus";
+        if (!string.IsNullOrWhiteSpace(history.ReprintReasonCode))
+        {
+            return;
+        }
+
+        var statusColumn = "PieceStatus";
         var statusTable = isReadyMade ? "dbo.ReadyMadeProductionOrderPieceInstances" : "dbo.Pieces";
         var pieceIdColumn = isReadyMade ? "ReadyMadeProductionOrderPieceInstanceId" : "PieceID";
-        var trackingFilter = isReadyMade
-            ? "ReadyMadeProductionOrderPieceInstanceId = @pieceId"
-            : "PieceID = @pieceId";
 
         await using (var statusCommand = new SqlCommand($@"
             SELECT {statusColumn}
@@ -444,7 +448,7 @@ public sealed class PrintingRepository(
         }
 
         if (!productTypeId.HasValue || productTypeId.Value <= 0)
-            throw new InvalidOperationException("تعذر تحديد نوع المنتج الرسمي للقطعة قبل اعتماد مرحلة الطباعة.");
+            return;
 
         var route = ProductionTrackingEngine.GetRoute(productTypeId.Value);
         if (route.Count == 0 || !route.Contains("Printing", StringComparer.OrdinalIgnoreCase))

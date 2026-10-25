@@ -177,6 +177,42 @@ public sealed class MeasurementCardPrintingIntegrationTests
     }
 
     [Fact]
+    public async Task DamagedCard_And_DamagedPiece_Reprints_DoNotAdvanceOfficialProductionStage()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedTailoringPieceAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        try
+        {
+            var first = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null), seed.User, CancellationToken.None);
+            var firstCompleted = await repository.CompleteAsync(first.PrintHistoryId, null, seed.User, CancellationToken.None);
+            Assert.Equal("Completed", firstCompleted.PrintStatus);
+
+            var damagedCard = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedCard", null, null, "بطاقة تالفة", null, null, null), seed.User, CancellationToken.None);
+            await repository.CompleteAsync(damagedCard.PrintHistoryId, null, seed.User, CancellationToken.None);
+
+            var damagedPiece = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedPiece", "تمزق خلال التجهيز", seed.EmployeeId, null, null, null, null), seed.User, CancellationToken.None);
+            await repository.CompleteAsync(damagedPiece.PrintHistoryId, null, seed.User, CancellationToken.None);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            var pieceStatus = await ReadScalarAsync(connection, "SELECT PieceStatus FROM dbo.Pieces WHERE PieceID = @pieceId", seed.PieceId);
+            var printingEvents = await CountAsync(connection, "SELECT COUNT(*) FROM dbo.TrackingEvents WHERE PieceID = @pieceId AND Stage = N'Printing' AND Status = N'Printing'", seed.PieceId);
+            var printingWages = await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WHERE PieceID = @pieceId AND Stage = N'Printing'", seed.PieceId);
+
+            Assert.Equal("Printing", pieceStatus);
+            Assert.Equal(1, printingEvents);
+            Assert.Equal(0, printingWages);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
     public async Task PieceSold_Donation_IsBlockedWithoutCreatingFinancialRecords()
     {
         var connectionString = GetConnectionString();
@@ -216,8 +252,8 @@ public sealed class MeasurementCardPrintingIntegrationTests
         var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
             ?? throw new InvalidOperationException("Lumar__ConnectionString must target the validation database.");
         var builder = new SqlConnectionStringBuilder(connectionString);
-        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_CUSTOMERS_ONLY_VALIDATION", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Measurement card printing tests are restricted to the validation database.");
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Measurement card printing tests are restricted to LUMAR_ERP_ES_VALIDATION.");
         return builder.ConnectionString;
     }
 
@@ -269,9 +305,9 @@ public sealed class MeasurementCardPrintingIntegrationTests
             var orderItemId = await InsertIntAsync(connection, transaction, @"
                 INSERT INTO dbo.OrderItems
                     (OrderID, PieceType, Quantity, FabricCode, FabricType, FabricColor, MeasurementSnapshot,
-                     TrackingCode, PieceStatus, CreatedDate)
+                     TrackingCode, PieceStatus, CreatedDate, ProductTypeId)
                 OUTPUT INSERTED.OrderItemID
-                VALUES (@orderId, N'قميص', 1, N'TEST-FABRIC', N'قماش', N'أبيض', N'{}', @trackingCode, N'New', SYSUTCDATETIME());",
+                VALUES (@orderId, N'قميص', 1, N'TEST-FABRIC', N'قماش', N'أبيض', N'{}', @trackingCode, N'New', SYSUTCDATETIME(), 4);",
                 ("@orderId", orderId), ("@trackingCode", trackingCode));
             var pieceId = await InsertIntAsync(connection, transaction, @"
                 INSERT INTO dbo.Pieces (OrderItemID, TrackingCode, PieceStatus, PieceNumber, CreatedDate)
@@ -314,6 +350,8 @@ public sealed class MeasurementCardPrintingIntegrationTests
             DELETE FROM dbo.FinancialTransactions WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
             DELETE FROM dbo.AccountingEvents WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
             DELETE FROM dbo.Payments WHERE PaymentID IN (SELECT PaymentId FROM @paymentIds);
+            DELETE FROM dbo.TrackingEvents WHERE PieceID = @pieceId OR OrderItemID = @orderItemId OR OrderID = @orderId;
+            DELETE FROM dbo.PieceWageRecords WHERE PieceID = @pieceId OR OrderItemID = @orderItemId;
             DELETE FROM dbo.CustomerLedgerEntries WHERE CustomerID = @customerId;
             DELETE FROM dbo.MeasurementCardPrintHistory WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds);
             DELETE FROM dbo.Pieces WHERE PieceID = @pieceId;
