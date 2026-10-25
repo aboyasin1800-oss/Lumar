@@ -194,7 +194,7 @@ public sealed class MessagesController(
 		if (!string.Equals(currentUser.AccountType, "Customer", StringComparison.OrdinalIgnoreCase))
 			return null;
 
-		return Forbid();
+		return StatusCode(StatusCodes.Status403Forbidden);
 	}
 
 	private async Task<ActionResult?> EnforceCustomerOwnershipAsync(int? customerId, CancellationToken ct)
@@ -207,10 +207,10 @@ public sealed class MessagesController(
 			return null;
 
 		if (customerId is null || customerId <= 0)
-			return Forbid();
+			return StatusCode(StatusCodes.Status403Forbidden);
 
 		var authorizedCustomerIds = ResolveAuthorizedCustomerIds(currentUser);
-		return authorizedCustomerIds.Contains(customerId.Value) ? null : Forbid();
+		return authorizedCustomerIds.Contains(customerId.Value) ? null : StatusCode(StatusCodes.Status403Forbidden);
 	}
 
 	private static HashSet<int> ResolveAuthorizedCustomerIds(CurrentUserDto currentUser)

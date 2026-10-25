@@ -71,13 +71,16 @@ public sealed class MessageWriteServiceTests
             new CampaignMediaStorageService(Path.GetTempPath(), NullLogger<CampaignMediaStorageService>.Instance, "https://example.com"));
 
         var globalResult = await controller.GetNotifications(CancellationToken.None);
-        Assert.True(globalResult.Result is ForbidResult, "Global notifications endpoint must be forbidden for customer mobile sessions.");
+        Assert.IsType<StatusCodeResult>(globalResult.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, ((StatusCodeResult)globalResult.Result!).StatusCode);
 
         var customerResult = await controller.GetCustomerNotifications(2003, CancellationToken.None);
-        Assert.True(customerResult.Result is ForbidResult, "Customer A must not access Customer B notifications.");
+        Assert.IsType<StatusCodeResult>(customerResult.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, ((StatusCodeResult)customerResult.Result!).StatusCode);
 
         var messageListResult = await controller.GetCustomerMessages(2003, CancellationToken.None);
-        Assert.True(messageListResult.Result is ForbidResult, "Customer A must not access Customer B messages.");
+        Assert.IsType<StatusCodeResult>(messageListResult.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, ((StatusCodeResult)messageListResult.Result!).StatusCode);
     }
 
     [Fact]

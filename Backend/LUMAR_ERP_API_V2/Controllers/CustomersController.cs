@@ -149,7 +149,7 @@ public sealed class CustomersController(ICustomerService service, IAuthenticated
     {
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
         if (user is null) return Unauthorized();
-        if (!string.Equals(user.AccountType, "Customer", StringComparison.OrdinalIgnoreCase)) return Forbid();
+        if (!string.Equals(user.AccountType, "Customer", StringComparison.OrdinalIgnoreCase)) return StatusCode(StatusCodes.Status403Forbidden);
 
         var linked = await service.GetLinkedCustomersAsync(user.Username, cancellationToken);
         return Ok(linked);
@@ -163,7 +163,7 @@ public sealed class CustomersController(ICustomerService service, IAuthenticated
 
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
         if (user is null) return Unauthorized();
-        if (!string.Equals(user.AccountType, "Customer", StringComparison.OrdinalIgnoreCase)) return Forbid();
+        if (!string.Equals(user.AccountType, "Customer", StringComparison.OrdinalIgnoreCase)) return StatusCode(StatusCodes.Status403Forbidden);
 
         try
         {
@@ -176,7 +176,7 @@ public sealed class CustomersController(ICustomerService service, IAuthenticated
         }
         catch (UnauthorizedAccessException exception)
         {
-            return Forbid();
+            return StatusCode(StatusCodes.Status403Forbidden);
         }
     }
 }

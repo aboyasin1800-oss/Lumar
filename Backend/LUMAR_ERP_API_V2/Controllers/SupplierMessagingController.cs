@@ -12,7 +12,7 @@ public sealed class SupplierMessagingController(ISupplierMessagingService servic
     public async Task<ActionResult<IReadOnlyList<SupplierMessageDto>>> GetMessages([FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default)
     {
         if (!await IsSupplierAuthenticatedAsync(cancellationToken))
-            return Forbid();
+            return StatusCode(StatusCodes.Status403Forbidden);
 
         var safePage = Math.Max(1, page);
         var safePageSize = Math.Clamp(pageSize, 1, 200);
@@ -24,7 +24,7 @@ public sealed class SupplierMessagingController(ISupplierMessagingService servic
     public async Task<ActionResult<SupplierMessageDto>> GetMessage(int messageId, CancellationToken cancellationToken)
     {
         if (!await IsSupplierAuthenticatedAsync(cancellationToken))
-            return Forbid();
+            return StatusCode(StatusCodes.Status403Forbidden);
 
         var message = await service.GetMessageAsync(messageId, cancellationToken);
         return message is null ? NotFound() : Ok(message);
@@ -34,7 +34,7 @@ public sealed class SupplierMessagingController(ISupplierMessagingService servic
     public async Task<ActionResult<IReadOnlyList<SupplierNotificationDto>>> GetNotifications([FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default)
     {
         if (!await IsSupplierAuthenticatedAsync(cancellationToken))
-            return Forbid();
+            return StatusCode(StatusCodes.Status403Forbidden);
 
         var safePage = Math.Max(1, page);
         var safePageSize = Math.Clamp(pageSize, 1, 200);
@@ -46,7 +46,7 @@ public sealed class SupplierMessagingController(ISupplierMessagingService servic
     public async Task<ActionResult<SupplierNotificationDto>> GetNotification(int notificationId, CancellationToken cancellationToken)
     {
         if (!await IsSupplierAuthenticatedAsync(cancellationToken))
-            return Forbid();
+            return StatusCode(StatusCodes.Status403Forbidden);
 
         var notification = await service.GetNotificationAsync(notificationId, cancellationToken);
         return notification is null ? NotFound() : Ok(notification);
@@ -56,7 +56,7 @@ public sealed class SupplierMessagingController(ISupplierMessagingService servic
     public async Task<ActionResult<IReadOnlyList<SupplierAnnouncementDto>>> GetAnnouncements([FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default)
     {
         if (!await IsSupplierAuthenticatedAsync(cancellationToken))
-            return Forbid();
+            return StatusCode(StatusCodes.Status403Forbidden);
 
         var safePage = Math.Max(1, page);
         var safePageSize = Math.Clamp(pageSize, 1, 200);
@@ -68,7 +68,7 @@ public sealed class SupplierMessagingController(ISupplierMessagingService servic
     public async Task<ActionResult<SupplierAnnouncementDto>> GetAnnouncement(int announcementId, CancellationToken cancellationToken)
     {
         if (!await IsSupplierAuthenticatedAsync(cancellationToken))
-            return Forbid();
+            return StatusCode(StatusCodes.Status403Forbidden);
 
         var announcement = await service.GetAnnouncementAsync(announcementId, cancellationToken);
         return announcement is null ? NotFound() : Ok(announcement);
