@@ -1219,7 +1219,7 @@ public sealed class ProductionRepository(
                     await repairFinancialCommand.ExecuteNonQueryAsync(ct);
                 }
 
-                var repairPosting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+                var repairJournal = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
                     connection,
                     transaction,
                     repairReference,
@@ -1230,7 +1230,7 @@ public sealed class ProductionRepository(
                     "TailoringCostPosting",
                     repairPostingId,
                     sourceOperationId);
-                repairPosting.ThrowIfFailure();
+                repairJournal.ThrowIfFailure();
 
                 const string repairLinkSql = @"
                     UPDATE p SET AccountingEventId=j.AccountingEventId
@@ -1238,15 +1238,105 @@ public sealed class ProductionRepository(
                     INNER JOIN dbo.JournalEntries j ON j.JournalEntryId=@journalEntryId
                     WHERE p.TailoringCostPostingId=@postingId;";
                 await using var repairLinkCommand = new SqlCommand(repairLinkSql, connection, transaction);
-                repairLinkCommand.Parameters.AddWithValue("@journalEntryId", repairPosting.JournalEntryId!.Value);
+                repairLinkCommand.Parameters.AddWithValue("@journalEntryId", repairJournal.JournalEntryId!.Value);
                 repairLinkCommand.Parameters.AddWithValue("@postingId", repairPostingId);
                 if (await repairLinkCommand.ExecuteNonQueryAsync(ct) != 1)
                     throw new InvalidOperationException("تعذر ربط قيد تكلفة التفصيل بمصدره.");
                 return;
             }
 
-            throw new InvalidOperationException(
-                $"Tailoring cost mismatch for order {orderId}: existing TailoringCostPostings.PostingAmount={candidatePostingAmount}, expected SUM(FabricConsumptionSources.PostingAmount)={postingAmount}.");
+            const string repairPostingSql = @"
+                UPDATE p
+                SET FabricOperationalAmount=@operationalAmount,
+                    PostingAmount=@postingAmount
+                FROM dbo.TailoringCostPostings p
+                WHERE p.TailoringCostPostingId=@postingId;";
+            await using (var repairPostingCommand = new SqlCommand(repairPostingSql, connection, transaction))
+            {
+                repairPostingCommand.Parameters.AddWithValue("@postingId", candidatePostingId);
+                AddDecimal(repairPostingCommand, "@operationalAmount", postingAmount);
+                AddDecimal(repairPostingCommand, "@postingAmount", postingAmount, 2);
+                if (await repairPostingCommand.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException("تعذر تحديث قيمة تكلفة التفصيل لتطابق إجمالي القماش الرسمي.");
+            }
+
+            if (candidateAccountingEventId.HasValue)
+            {
+                const string repairAccountingSql = @"
+                    UPDATE ae
+                    SET PostingAmount=@postingAmount
+                    FROM dbo.AccountingEvents ae
+                    WHERE ae.AccountingEventId=@accountingEventId;
+
+                    UPDATE ft
+                    SET Amount=@postingAmount
+                    FROM dbo.FinancialTransactions ft
+                    WHERE ft.AccountingEventId=@accountingEventId
+                      AND ft.TransactionType = N'TailoringCost';
+
+                    UPDATE jel
+                    SET DebitAmount = CASE WHEN la.AccountCode = N'5200' THEN @postingAmount ELSE 0 END,
+                        CreditAmount = CASE WHEN la.AccountCode = N'1130' THEN @postingAmount ELSE 0 END
+                    FROM dbo.JournalEntryLines jel
+                    INNER JOIN dbo.JournalEntries je ON je.JournalEntryId = jel.JournalEntryId
+                    INNER JOIN dbo.LedgerAccounts la ON la.LedgerAccountId = jel.LedgerAccountId
+                    WHERE je.AccountingEventId = @accountingEventId
+                      AND la.AccountCode IN (N'5200', N'1130');";
+                await using (var repairAccountingCommand = new SqlCommand(repairAccountingSql, connection, transaction))
+                {
+                    repairAccountingCommand.Parameters.AddWithValue("@accountingEventId", candidateAccountingEventId.Value);
+                    AddDecimal(repairAccountingCommand, "@postingAmount", postingAmount, 2);
+                    await repairAccountingCommand.ExecuteNonQueryAsync(ct);
+                }
+
+                const string repairLinkSql = @"
+                    UPDATE p SET AccountingEventId=@accountingEventId
+                    FROM dbo.TailoringCostPostings p
+                    WHERE p.TailoringCostPostingId=@postingId;";
+                await using var repairLinkCommand = new SqlCommand(repairLinkSql, connection, transaction);
+                repairLinkCommand.Parameters.AddWithValue("@accountingEventId", candidateAccountingEventId.Value);
+                repairLinkCommand.Parameters.AddWithValue("@postingId", candidatePostingId);
+                if (await repairLinkCommand.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException("تعذر ربط قيد تكلفة التفصيل بمصدره بعد الإصلاح.");
+                return;
+            }
+
+            var repairReference2 = $"Order:{orderId}:TailoringCost";
+            const string repairFinancialSql2 = @"
+                INSERT dbo.FinancialTransactions(ReferenceNumber,TransactionType,Amount,Description,CreatedAt)
+                VALUES(@reference,N'TailoringCost',@amount,@description,SYSUTCDATETIME());";
+            await using (var repairFinancialCommand = new SqlCommand(repairFinancialSql2, connection, transaction))
+            {
+                repairFinancialCommand.Parameters.AddWithValue("@reference", repairReference2);
+                AddDecimal(repairFinancialCommand, "@amount", postingAmount, 2);
+                repairFinancialCommand.Parameters.AddWithValue("@description", $"Tailoring cost of sales for order {orderId}");
+                await repairFinancialCommand.ExecuteNonQueryAsync(ct);
+            }
+
+            var repairPosting2 = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+                connection,
+                transaction,
+                repairReference2,
+                "TailoringCost",
+                postingAmount,
+                $"Tailoring cost of sales for order {orderId}",
+                ct,
+                "TailoringCostPosting",
+                candidatePostingId,
+                sourceOperationId);
+            repairPosting2.ThrowIfFailure();
+
+            const string repairFinallyLinkSql = @"
+                UPDATE p SET AccountingEventId=j.AccountingEventId
+                FROM dbo.TailoringCostPostings p
+                INNER JOIN dbo.JournalEntries j ON j.JournalEntryId=@journalEntryId
+                WHERE p.TailoringCostPostingId=@postingId;";
+            await using var repairFinallyLinkCommand = new SqlCommand(repairFinallyLinkSql, connection, transaction);
+            repairFinallyLinkCommand.Parameters.AddWithValue("@journalEntryId", repairPosting2.JournalEntryId!.Value);
+            repairFinallyLinkCommand.Parameters.AddWithValue("@postingId", candidatePostingId);
+            if (await repairFinallyLinkCommand.ExecuteNonQueryAsync(ct) != 1)
+                throw new InvalidOperationException("تعذر ربط قيد تكلفة التفصيل بمصدره بعد الإصلاح.");
+            return;
         }
 
         const string insertSql = @"
