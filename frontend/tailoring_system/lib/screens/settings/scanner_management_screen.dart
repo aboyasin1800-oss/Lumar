@@ -899,7 +899,7 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
                         const SizedBox(height: 18),
                         if (_employees.isNotEmpty)
                           DropdownButtonFormField<int?>(
-                            value: _selectedEmployeeId,
+                            initialValue: _selectedEmployeeId,
                             decoration: const InputDecoration(
                               labelText: 'الموظف المرتبط بالماسح',
                               hintText: 'بدون موظف',
