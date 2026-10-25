@@ -1,6 +1,7 @@
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Auth;
+using LUMAR_ERP_API_V2.DTOs.Inventory;
 using LUMAR_ERP_API_V2.DTOs.Printing;
 using LUMAR_ERP_API_V2.Repositories;
 using Microsoft.Data.SqlClient;
@@ -36,6 +37,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
         Assert.Equal(3, lostCard.CopyNumber);
         await repository.CompleteAsync(lostCard.PrintHistoryId, null, seed.User, CancellationToken.None);
 
+        var originalSourceOperationId = await SeedOfficialOriginalFabricConsumptionAsync(connectionString, seed);
         var damagedPiece = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedPiece", "تمزق أثناء التجهيز", employeeId, null, null, null, null), seed.User, CancellationToken.None);
         Assert.Equal(4, damagedPiece.CopyNumber);
         await repository.CompleteAsync(damagedPiece.PrintHistoryId, null, seed.User, CancellationToken.None);
@@ -192,6 +194,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
             var damagedCard = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedCard", null, null, "بطاقة تالفة", null, null, null), seed.User, CancellationToken.None);
             await repository.CompleteAsync(damagedCard.PrintHistoryId, null, seed.User, CancellationToken.None);
 
+            var originalSourceOperationId = await SeedOfficialOriginalFabricConsumptionAsync(connectionString, seed);
             var damagedPiece = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedPiece", "تمزق خلال التجهيز", seed.EmployeeId, null, null, null, null), seed.User, CancellationToken.None);
             await repository.CompleteAsync(damagedPiece.PrintHistoryId, null, seed.User, CancellationToken.None);
 
@@ -221,26 +224,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
 
         try
         {
-            var originalSourceOperationId = InventoryRepository.CreateFabricConsumptionOperationId(seed.OrderItemId, false);
-            await using (var connection = new SqlConnection(connectionString))
-            {
-                await connection.OpenAsync();
-                await using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
-                var original = await InventoryRepository.ConsumeFabricCodeInventoryAsync(connection, transaction,
-                    new ConsumeFabricCodeInventoryDto
-                    {
-                        FabricCode = seed.FabricCode,
-                        OrderItemId = seed.OrderItemId,
-                        PieceId = seed.PieceId,
-                        QuantityInches = 36m,
-                        ConfirmedByUserId = seed.UserId,
-                        SourceOperationId = originalSourceOperationId
-                    }, CancellationToken.None);
-                Assert.False(original.IsExisting);
-                Assert.Equal(36m, original.Quantity);
-                Assert.Equal(seed.FabricCode, original.ItemCode);
-                await transaction.CommitAsync();
-            }
+            var originalSourceOperationId = await SeedOfficialOriginalFabricConsumptionAsync(connectionString, seed);
 
             var first = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null), seed.User, CancellationToken.None);
             await repository.CompleteAsync(first.PrintHistoryId, null, seed.User, CancellationToken.None);
@@ -252,10 +236,10 @@ public sealed class MeasurementCardPrintingIntegrationTests
             await connection.OpenAsync();
 
             var originalSources = await ReadFabricConsumptionSourcesAsync(connection, seed.OrderItemId, seed.PieceId, originalSourceOperationId);
-            var replacementSources = await ReadFabricConsumptionSourcesAsync(connection, seed.OrderItemId, seed.PieceId, null);
             var allSources = await ReadAllFabricConsumptionSourcesAsync(connection, seed.OrderItemId, seed.PieceId);
+            var replacementSources = allSources.Where(item => item.SourceOperationId != originalSourceOperationId).ToList();
             Assert.Equal(1, originalSources.Count);
-            Assert.Equal(1, replacementSources.Count);
+            Assert.Single(replacementSources);
             Assert.NotEqual(originalSources[0].SourceOperationId, replacementSources[0].SourceOperationId);
             Assert.Equal(originalSources[0].ConsumedQuantity, replacementSources[0].ConsumedQuantity);
             Assert.Equal(originalSources[0].FabricCode, replacementSources[0].FabricCode);
@@ -543,6 +527,47 @@ public sealed class MeasurementCardPrintingIntegrationTests
         command.Parameters.AddWithValue("@pieceId", pieceId);
         var value = await command.ExecuteScalarAsync();
         return value is null ? string.Empty : Convert.ToString(value)!;
+    }
+
+    private static async Task<decimal> ReadDecimalAsync(SqlConnection connection, string sql, int id)
+    {
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@id", id);
+        var value = await command.ExecuteScalarAsync();
+        return value is null || value is DBNull ? 0m : Convert.ToDecimal(value);
+    }
+
+    private static async Task<Guid> SeedOfficialOriginalFabricConsumptionAsync(string connectionString, Seed seed)
+    {
+        var sourceOperationId = InventoryRepository.CreateFabricConsumptionOperationId(seed.OrderItemId, false);
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+        try
+        {
+            var original = await InventoryRepository.ConsumeFabricCodeInventoryAsync(connection, transaction,
+                new ConsumeFabricCodeInventoryDto
+                {
+                    FabricCode = seed.FabricCode,
+                    OrderItemId = seed.OrderItemId,
+                    PieceId = seed.PieceId,
+                    QuantityInches = 36m,
+                    ConfirmedByUserId = seed.UserId,
+                    SourceOperationId = sourceOperationId
+                }, CancellationToken.None);
+
+            Assert.False(original.IsExisting);
+            Assert.Equal(36m, original.Quantity);
+            Assert.Equal(seed.FabricCode, original.ItemCode);
+
+            await transaction.CommitAsync();
+            return sourceOperationId;
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     private static async Task<(decimal Debit, decimal Credit)> ReadJournalTotalsAsync(SqlConnection connection, int journalEntryId)
