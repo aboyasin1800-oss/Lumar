@@ -255,6 +255,36 @@ public sealed class MeasurementCardPrintingIntegrationTests
     }
 
     [Fact]
+    public async Task DamagedPiece_RequiresOfficialFabricQuantityBeforeRework()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedTailoringPieceAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        try
+        {
+            var first = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null), seed.User, CancellationToken.None);
+            await repository.CompleteAsync(first.PrintHistoryId, null, seed.User, CancellationToken.None);
+
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                await using var delete = new SqlCommand("DELETE FROM dbo.OrderItemFabrics WHERE OrderItemID = @orderItemId;", connection);
+                delete.Parameters.AddWithValue("@orderItemId", seed.OrderItemId);
+                await delete.ExecuteNonQueryAsync();
+            }
+
+            var damaged = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedPiece", "تمزق أثناء تجهيز القطعة", seed.EmployeeId, null, null, null, null), seed.User, CancellationToken.None);
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.CompleteAsync(damaged.PrintHistoryId, null, seed.User, CancellationToken.None));
+            Assert.Contains("الكمية الرسمية", ex.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
     public async Task PieceSold_Donation_IsBlockedWithoutCreatingFinancialRecords()
     {
         var connectionString = GetConnectionString();

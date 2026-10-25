@@ -498,11 +498,11 @@ public sealed class PrintingRepository(
     {
         var fabricCode = await LoadReplacementFabricCodeAsync(connection, transaction, history, cancellationToken);
         if (string.IsNullOrWhiteSpace(fabricCode))
-            return;
+            throw new InvalidOperationException("تعذر تحديد القماش الرسمي البديل للقطعة التالفة.");
 
         var replacementInches = await LoadReplacementFabricQuantityAsync(connection, transaction, history, cancellationToken);
         if (replacementInches <= 0m)
-            return;
+            throw new InvalidOperationException("تعذر استخراج الكمية الرسمية للقماش البديل للقطعة التالفة.");
 
         var sourceOperationId = DeriveDamagedPieceSourceOperationId(history);
         await InventoryRepository.ConsumeFabricCodeInventoryAsync(
@@ -569,7 +569,7 @@ public sealed class PrintingRepository(
             return value is null || value is DBNull ? null : Convert.ToString(value)?.Trim();
         }
 
-        return null;
+        throw new InvalidOperationException("لا توجد بيانات قماش رسمية مرتبطة بهذه القطعة لتسجيل استهلاك بديل للقطعة التالفة.");
     }
 
     private static async Task<decimal> LoadReplacementFabricQuantityAsync(
@@ -591,7 +591,7 @@ public sealed class PrintingRepository(
                 var quantity = reader.GetDecimal(0);
                 var unit = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
                 if (quantity <= 0m)
-                    return 0m;
+                    throw new InvalidOperationException("الكمية الرسمية للقماش البديل للقطعة التالفة غير صالحة.");
 
                 if (string.Equals(unit, "Yard", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(unit, "Yards", StringComparison.OrdinalIgnoreCase)
@@ -613,7 +613,25 @@ public sealed class PrintingRepository(
             }
         }
 
-        return 0m;
+        if (history.ReadyMadeProductionOrderItemId is int readyMadeItemId)
+        {
+            await using var command = new SqlCommand(
+                "SELECT TOP (1) Consumption FROM dbo.ReadyMadeProductionOrderItems WITH (UPDLOCK, HOLDLOCK) WHERE ReadyMadeProductionOrderItemId = @readyMadeItemId;",
+                connection,
+                transaction);
+            command.Parameters.AddWithValue("@readyMadeItemId", readyMadeItemId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                var quantity = reader.GetDecimal(0);
+                if (quantity <= 0m)
+                    throw new InvalidOperationException("الكمية الرسمية للقماش البديل للقطعة التالفة غير صالحة.");
+
+                return quantity;
+            }
+        }
+
+        throw new InvalidOperationException("لا توجد كمية رسمية للقماش البديل للقطعة التالفة.");
     }
 
     private static Guid DeriveDamagedPieceSourceOperationId(MeasurementCardPrintHistoryDto history)
