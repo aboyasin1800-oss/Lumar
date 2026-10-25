@@ -559,16 +559,9 @@ public sealed class PrintingRepository(
                 transaction);
             command.Parameters.AddWithValue("@sourceOperationId", officialSourceOperationId);
             var value = await command.ExecuteScalarAsync(cancellationToken);
-            if (value is not null && value is not DBNull)
-                return Convert.ToString(value)?.Trim();
-
-            await using var legacyCommand = new SqlCommand(
-                "SELECT TOP (1) FabricCode FROM dbo.OrderItemFabrics WITH (UPDLOCK, HOLDLOCK) WHERE OrderItemID = @orderItemId ORDER BY OrderItemFabricID;",
-                connection,
-                transaction);
-            legacyCommand.Parameters.AddWithValue("@orderItemId", orderItemId);
-            var legacyValue = await legacyCommand.ExecuteScalarAsync(cancellationToken);
-            return legacyValue is null || legacyValue is DBNull ? null : Convert.ToString(legacyValue)?.Trim();
+            if (value is null || value is DBNull)
+                throw new InvalidOperationException("لا توجد كمية رسمية للقماش البديل للقطعة التالفة.");
+            return Convert.ToString(value)?.Trim();
         }
 
         if (history.ReadyMadeProductionOrderItemId is int readyMadeItemId)
@@ -583,16 +576,9 @@ public sealed class PrintingRepository(
                 transaction);
             command.Parameters.AddWithValue("@sourceOperationId", officialSourceOperationId);
             var value = await command.ExecuteScalarAsync(cancellationToken);
-            if (value is not null && value is not DBNull)
-                return Convert.ToString(value)?.Trim();
-
-            await using var legacyCommand = new SqlCommand(
-                "SELECT TOP (1) FabricCode FROM dbo.ReadyMadeProductionOrderItems WITH (UPDLOCK, HOLDLOCK) WHERE ReadyMadeProductionOrderItemId = @readyMadeItemId;",
-                connection,
-                transaction);
-            legacyCommand.Parameters.AddWithValue("@readyMadeItemId", readyMadeItemId);
-            var legacyValue = await legacyCommand.ExecuteScalarAsync(cancellationToken);
-            return legacyValue is null || legacyValue is DBNull ? null : Convert.ToString(legacyValue)?.Trim();
+            if (value is null || value is DBNull)
+                throw new InvalidOperationException("لا توجد كمية رسمية للقماش البديل للقطعة التالفة.");
+            return Convert.ToString(value)?.Trim();
         }
 
         throw new InvalidOperationException("لا توجد بيانات قماش رسمية مرتبطة بهذه القطعة لتسجيل استهلاك بديل للقطعة التالفة.");
@@ -615,47 +601,15 @@ public sealed class PrintingRepository(
                 transaction);
             command.Parameters.AddWithValue("@sourceOperationId", officialSourceOperationId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (await reader.ReadAsync(cancellationToken))
-            {
-                var consumedQuantity = reader.GetDecimal(0);
-                var unitId = reader.GetInt16(1);
-                if (consumedQuantity <= 0m)
-                    throw new InvalidOperationException("الكمية الرسمية للقماش البديل للقطعة التالفة غير صالحة.");
+            if (!await reader.ReadAsync(cancellationToken))
+                throw new InvalidOperationException("لا توجد كمية رسمية للقماش البديل للقطعة التالفة.");
 
-                return consumedQuantity * (unitId == 1 ? 36m : 1m);
-            }
+            var consumedQuantity = reader.GetDecimal(0);
+            var unitId = reader.GetInt16(1);
+            if (consumedQuantity <= 0m)
+                throw new InvalidOperationException("الكمية الرسمية للقماش البديل للقطعة التالفة غير صالحة.");
 
-            await using var legacyCommand = new SqlCommand(
-                "SELECT TOP (1) Quantity, Unit FROM dbo.OrderItemFabrics WITH (UPDLOCK, HOLDLOCK) WHERE OrderItemID = @orderItemId ORDER BY OrderItemFabricID;",
-                connection,
-                transaction);
-            legacyCommand.Parameters.AddWithValue("@orderItemId", orderItemId);
-            await using var legacyReader = await legacyCommand.ExecuteReaderAsync(cancellationToken);
-            if (await legacyReader.ReadAsync(cancellationToken))
-            {
-                var quantity = legacyReader.GetDecimal(0);
-                var unit = legacyReader.IsDBNull(1) ? string.Empty : legacyReader.GetString(1);
-                if (quantity <= 0m)
-                    throw new InvalidOperationException("الكمية الرسمية للقماش البديل للقطعة التالفة غير صالحة.");
-
-                if (string.Equals(unit, "Yard", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(unit, "Yards", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(unit, "ياردة", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(unit, "يارد", StringComparison.OrdinalIgnoreCase))
-                {
-                    return quantity * 36m;
-                }
-
-                if (string.Equals(unit, "Inch", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(unit, "Inches", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(unit, "بوصة", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(unit, "بوصات", StringComparison.OrdinalIgnoreCase))
-                {
-                    return quantity;
-                }
-
-                return quantity;
-            }
+            return consumedQuantity * (unitId == 1 ? 36m : 1m);
         }
 
         if (history.ReadyMadeProductionOrderItemId is int readyMadeItemId)
@@ -669,30 +623,15 @@ public sealed class PrintingRepository(
                 transaction);
             command.Parameters.AddWithValue("@sourceOperationId", officialSourceOperationId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (await reader.ReadAsync(cancellationToken))
-            {
-                var consumedQuantity = reader.GetDecimal(0);
-                var unitId = reader.GetInt16(1);
-                if (consumedQuantity <= 0m)
-                    throw new InvalidOperationException("الكمية الرسمية للقماش البديل للقطعة التالفة غير صالحة.");
+            if (!await reader.ReadAsync(cancellationToken))
+                throw new InvalidOperationException("لا توجد كمية رسمية للقماش البديل للقطعة التالفة.");
 
-                return consumedQuantity * (unitId == 1 ? 36m : 1m);
-            }
+            var consumedQuantity = reader.GetDecimal(0);
+            var unitId = reader.GetInt16(1);
+            if (consumedQuantity <= 0m)
+                throw new InvalidOperationException("الكمية الرسمية للقماش البديل للقطعة التالفة غير صالحة.");
 
-            await using var legacyCommand = new SqlCommand(
-                "SELECT TOP (1) Consumption FROM dbo.ReadyMadeProductionOrderItems WITH (UPDLOCK, HOLDLOCK) WHERE ReadyMadeProductionOrderItemId = @readyMadeItemId;",
-                connection,
-                transaction);
-            legacyCommand.Parameters.AddWithValue("@readyMadeItemId", readyMadeItemId);
-            await using var legacyReader = await legacyCommand.ExecuteReaderAsync(cancellationToken);
-            if (await legacyReader.ReadAsync(cancellationToken))
-            {
-                var quantity = legacyReader.GetDecimal(0);
-                if (quantity <= 0m)
-                    throw new InvalidOperationException("الكمية الرسمية للقماش البديل للقطعة التالفة غير صالحة.");
-
-                return quantity;
-            }
+            return consumedQuantity * (unitId == 1 ? 36m : 1m);
         }
 
         throw new InvalidOperationException("لا توجد كمية رسمية للقماش البديل للقطعة التالفة.");

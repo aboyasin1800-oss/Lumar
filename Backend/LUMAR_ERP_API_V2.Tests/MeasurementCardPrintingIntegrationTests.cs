@@ -221,6 +221,27 @@ public sealed class MeasurementCardPrintingIntegrationTests
 
         try
         {
+            var originalSourceOperationId = InventoryRepository.CreateFabricConsumptionOperationId(seed.OrderItemId, false);
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                await using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+                var original = await InventoryRepository.ConsumeFabricCodeInventoryAsync(connection, transaction,
+                    new ConsumeFabricCodeInventoryDto
+                    {
+                        FabricCode = seed.FabricCode,
+                        OrderItemId = seed.OrderItemId,
+                        PieceId = seed.PieceId,
+                        QuantityInches = 36m,
+                        ConfirmedByUserId = seed.UserId,
+                        SourceOperationId = originalSourceOperationId
+                    }, CancellationToken.None);
+                Assert.False(original.IsExisting);
+                Assert.Equal(36m, original.Quantity);
+                Assert.Equal(seed.FabricCode, original.ItemCode);
+                await transaction.CommitAsync();
+            }
+
             var first = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null), seed.User, CancellationToken.None);
             await repository.CompleteAsync(first.PrintHistoryId, null, seed.User, CancellationToken.None);
 
@@ -230,20 +251,31 @@ public sealed class MeasurementCardPrintingIntegrationTests
             await using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync();
 
-            var fabricConsumptionCount = await CountAsync(connection,
+            var originalSources = await ReadFabricConsumptionSourcesAsync(connection, seed.OrderItemId, seed.PieceId, originalSourceOperationId);
+            var replacementSources = await ReadFabricConsumptionSourcesAsync(connection, seed.OrderItemId, seed.PieceId, null);
+            var allSources = await ReadAllFabricConsumptionSourcesAsync(connection, seed.OrderItemId, seed.PieceId);
+            Assert.Equal(1, originalSources.Count);
+            Assert.Equal(1, replacementSources.Count);
+            Assert.NotEqual(originalSources[0].SourceOperationId, replacementSources[0].SourceOperationId);
+            Assert.Equal(originalSources[0].ConsumedQuantity, replacementSources[0].ConsumedQuantity);
+            Assert.Equal(originalSources[0].FabricCode, replacementSources[0].FabricCode);
+            Assert.Equal(2, allSources.Count);
+            Assert.Equal(928m, await ReadDecimalAsync(connection, "SELECT AvailableQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", seed.InventoryItemId));
+            Assert.Equal(72m, await ReadDecimalAsync(connection, "SELECT ConsumedQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", seed.InventoryItemId));
+
+            var idempotent = await repository.CompleteAsync(damaged.PrintHistoryId, null, seed.User, CancellationToken.None);
+            Assert.Equal("Completed", idempotent.PrintStatus);
+            Assert.Equal(2, await CountAsync(connection,
                 @"SELECT COUNT(*)
                   FROM dbo.FabricConsumptionSources s
-                  WHERE s.PieceId = @pieceId
-                    AND s.OrderItemId = @orderItemId
-                    AND s.ConsumedQuantity > 0",
-                ("@pieceId", seed.PieceId),
-                ("@orderItemId", seed.OrderItemId));
+                  WHERE s.OrderItemId = @orderItemId AND s.PieceId = @pieceId AND s.ConsumedQuantity > 0",
+                ("@orderItemId", seed.OrderItemId),
+                ("@pieceId", seed.PieceId))); 
 
             var pieceStatus = await ReadScalarAsync(connection, "SELECT PieceStatus FROM dbo.Pieces WHERE PieceID = @pieceId", seed.PieceId);
             var officialPrintingEvents = await CountAsync(connection, "SELECT COUNT(*) FROM dbo.TrackingEvents WHERE PieceID = @pieceId AND Stage = N'Printing' AND Status = N'Printing'", seed.PieceId);
             var reworkEvents = await CountAsync(connection, "SELECT COUNT(*) FROM dbo.TrackingEvents WHERE PieceID = @pieceId AND Stage = N'Rework' AND Status = N'Rework'", seed.PieceId);
 
-            Assert.Equal(1, fabricConsumptionCount);
             Assert.Equal("Printing", pieceStatus);
             Assert.Equal(1, officialPrintingEvents);
             Assert.Equal(1, reworkEvents);
@@ -265,14 +297,6 @@ public sealed class MeasurementCardPrintingIntegrationTests
         {
             var first = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null), seed.User, CancellationToken.None);
             await repository.CompleteAsync(first.PrintHistoryId, null, seed.User, CancellationToken.None);
-
-            await using (var connection = new SqlConnection(connectionString))
-            {
-                await connection.OpenAsync();
-                await using var delete = new SqlCommand("DELETE FROM dbo.FabricConsumptionSources WHERE OrderItemId = @orderItemId;", connection);
-                delete.Parameters.AddWithValue("@orderItemId", seed.OrderItemId);
-                await delete.ExecuteNonQueryAsync();
-            }
 
             var damaged = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedPiece", "تمزق أثناء تجهيز القطعة", seed.EmployeeId, null, null, null, null), seed.User, CancellationToken.None);
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.CompleteAsync(damaged.PrintHistoryId, null, seed.User, CancellationToken.None));
@@ -338,15 +362,6 @@ public sealed class MeasurementCardPrintingIntegrationTests
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
         try
         {
-            await using (var cleanup = new SqlCommand(@"
-                DELETE FROM dbo.InventoryTransactions WHERE InventoryItemID IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = @fabricCode OR ItemCode = N'TEST-FABRIC');
-                DELETE FROM dbo.InventoryItemFoundation WHERE InventoryItemId IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = @fabricCode OR ItemCode = N'TEST-FABRIC');
-                DELETE FROM dbo.InventoryItems WHERE ItemCode = @fabricCode OR ItemCode = N'TEST-FABRIC';", connection, transaction))
-            {
-                cleanup.Parameters.AddWithValue("@fabricCode", fabricCode);
-                await cleanup.ExecuteNonQueryAsync();
-            }
-
             var customerId = await InsertIntAsync(connection, transaction, @"
                 INSERT INTO dbo.Customers (CustomerCode, CustomerName, PhoneNumber, TotalPoints, TotalPieces, TotalDebts, IsActive)
                 OUTPUT INSERTED.CustomerID
@@ -410,7 +425,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
                 VALUES (@orderItemId, @trackingCode, N'New', 1, SYSUTCDATETIME());",
                 ("@orderItemId", orderItemId), ("@trackingCode", trackingCode));
             await transaction.CommitAsync();
-            return new Seed(orderId, orderItemId, pieceId, customerId, userId, employeeId, departmentId, cashAccountId, trackingCode, fabricCode, await ReadUserAsync(connectionString, userId));
+            return new Seed(orderId, orderItemId, pieceId, inventoryItemId, customerId, userId, employeeId, departmentId, cashAccountId, trackingCode, fabricCode, await ReadUserAsync(connectionString, userId));
         }
         catch
         {
@@ -458,9 +473,9 @@ public sealed class MeasurementCardPrintingIntegrationTests
             DELETE FROM dbo.Pieces WHERE PieceID = @pieceId;
             DELETE FROM dbo.OrderItems WHERE OrderItemID = @orderItemId;
             DELETE FROM dbo.Orders WHERE OrderID = @orderId;
-            DELETE FROM dbo.InventoryTransactions WHERE InventoryItemID IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = @fabricCode OR ItemCode = N'TEST-FABRIC');
-            DELETE FROM dbo.InventoryItemFoundation WHERE InventoryItemId IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = @fabricCode OR ItemCode = N'TEST-FABRIC');
-            DELETE FROM dbo.InventoryItems WHERE ItemCode = @fabricCode OR ItemCode = N'TEST-FABRIC';
+            DELETE FROM dbo.InventoryTransactions WHERE InventoryItemID = @inventoryItemId;
+            DELETE FROM dbo.InventoryItemFoundation WHERE InventoryItemId = @inventoryItemId;
+            DELETE FROM dbo.InventoryItems WHERE InventoryItemID = @inventoryItemId;
             DELETE FROM dbo.CashAccounts WHERE CashAccountId = @cashAccountId;
             DELETE FROM dbo.Employees WHERE EmployeeID = @employeeId;
             DELETE FROM dbo.Users WHERE UserID = @userId;
@@ -474,7 +489,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
         command.Parameters.AddWithValue("@employeeId", seed.EmployeeId);
         command.Parameters.AddWithValue("@userId", seed.UserId);
         command.Parameters.AddWithValue("@departmentId", seed.DepartmentId);
-        command.Parameters.AddWithValue("@fabricCode", seed.FabricCode);
+        command.Parameters.AddWithValue("@inventoryItemId", seed.InventoryItemId);
         await command.ExecuteNonQueryAsync();
     }
 
@@ -539,5 +554,53 @@ public sealed class MeasurementCardPrintingIntegrationTests
         return (reader.GetDecimal(0), reader.GetDecimal(1));
     }
 
-    private sealed record Seed(int OrderId, int OrderItemId, int PieceId, int CustomerId, int UserId, int EmployeeId, int DepartmentId, int CashAccountId, string TrackingCode, string FabricCode, CurrentUserDto User);
+    private static async Task<List<(Guid SourceOperationId, decimal ConsumedQuantity, string FabricCode)>> ReadAllFabricConsumptionSourcesAsync(SqlConnection connection, int orderItemId, int pieceId)
+    {
+        var rows = new List<(Guid SourceOperationId, decimal ConsumedQuantity, string FabricCode)>();
+        await using var command = new SqlCommand(@"
+            SELECT s.SourceOperationId, s.ConsumedQuantity, i.ItemCode
+            FROM dbo.FabricConsumptionSources s
+            INNER JOIN dbo.InventoryItems i ON i.InventoryItemID = s.InventoryItemId
+            WHERE s.OrderItemId = @orderItemId AND s.PieceId = @pieceId
+            ORDER BY s.FabricConsumptionSourceId;", connection);
+        command.Parameters.AddWithValue("@orderItemId", orderItemId);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rows.Add((reader.GetGuid(0), reader.GetDecimal(1), reader.GetString(2)));
+        }
+        return rows;
+    }
+
+    private static async Task<List<(Guid SourceOperationId, decimal ConsumedQuantity, string FabricCode)>> ReadFabricConsumptionSourcesAsync(SqlConnection connection, int orderItemId, int pieceId, Guid? sourceOperationId)
+    {
+        string sql = @"
+            SELECT s.SourceOperationId, s.ConsumedQuantity, i.ItemCode
+            FROM dbo.FabricConsumptionSources s
+            INNER JOIN dbo.InventoryItems i ON i.InventoryItemID = s.InventoryItemId
+            WHERE s.OrderItemId = @orderItemId AND s.PieceId = @pieceId";
+
+        if (sourceOperationId.HasValue)
+            sql += " AND s.SourceOperationId = @sourceOperationId";
+
+        sql += " ORDER BY s.FabricConsumptionSourceId;";
+
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@orderItemId", orderItemId);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        if (sourceOperationId.HasValue)
+            command.Parameters.AddWithValue("@sourceOperationId", sourceOperationId.Value);
+
+        var rows = new List<(Guid SourceOperationId, decimal ConsumedQuantity, string FabricCode)>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rows.Add((reader.GetGuid(0), reader.GetDecimal(1), reader.GetString(2)));
+        }
+
+        return rows;
+    }
+
+    private sealed record Seed(int OrderId, int OrderItemId, int PieceId, int InventoryItemId, int CustomerId, int UserId, int EmployeeId, int DepartmentId, int CashAccountId, string TrackingCode, string FabricCode, CurrentUserDto User);
 }
