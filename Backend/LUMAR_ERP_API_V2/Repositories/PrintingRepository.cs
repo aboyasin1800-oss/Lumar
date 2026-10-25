@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Inventory;
@@ -502,6 +504,7 @@ public sealed class PrintingRepository(
         if (replacementInches <= 0m)
             return;
 
+        var sourceOperationId = DeriveDamagedPieceSourceOperationId(history);
         await InventoryRepository.ConsumeFabricCodeInventoryAsync(
             connection,
             transaction,
@@ -514,7 +517,7 @@ public sealed class PrintingRepository(
                 ReadyMadeProductionOrderPieceInstanceId = history.ReadyMadePieceId,
                 QuantityInches = replacementInches,
                 ConfirmedByUserId = history.PrintedByUserId,
-                SourceOperationId = Guid.NewGuid()
+                SourceOperationId = sourceOperationId
             },
             cancellationToken);
 
@@ -547,7 +550,7 @@ public sealed class PrintingRepository(
         if (history.OrderItemId is int orderItemId)
         {
             await using var command = new SqlCommand(
-                "SELECT TOP (1) FabricCode FROM dbo.OrderItems WITH (UPDLOCK, HOLDLOCK) WHERE OrderItemID = @orderItemId;",
+                "SELECT TOP (1) FabricCode FROM dbo.OrderItemFabrics WITH (UPDLOCK, HOLDLOCK) WHERE OrderItemID = @orderItemId ORDER BY OrderItemFabricID;",
                 connection,
                 transaction);
             command.Parameters.AddWithValue("@orderItemId", orderItemId);
@@ -578,7 +581,7 @@ public sealed class PrintingRepository(
         if (history.OrderItemId is int orderItemId)
         {
             await using var command = new SqlCommand(
-                "SELECT TOP (1) Quantity, Unit FROM dbo.OrderItemFabrics WITH (UPDLOCK, HOLDLOCK) WHERE OrderItemID = @orderItemId ORDER BY OrderItemFabricID DESC;",
+                "SELECT TOP (1) Quantity, Unit FROM dbo.OrderItemFabrics WITH (UPDLOCK, HOLDLOCK) WHERE OrderItemID = @orderItemId ORDER BY OrderItemFabricID;",
                 connection,
                 transaction);
             command.Parameters.AddWithValue("@orderItemId", orderItemId);
@@ -587,13 +590,40 @@ public sealed class PrintingRepository(
             {
                 var quantity = reader.GetDecimal(0);
                 var unit = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
-                return string.Equals(unit, "Yard", StringComparison.OrdinalIgnoreCase) || string.Equals(unit, "Yards", StringComparison.OrdinalIgnoreCase)
-                    ? quantity * 36m
-                    : quantity > 0m ? quantity : 36m;
+                if (quantity <= 0m)
+                    return 0m;
+
+                if (string.Equals(unit, "Yard", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(unit, "Yards", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(unit, "ياردة", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(unit, "يارد", StringComparison.OrdinalIgnoreCase))
+                {
+                    return quantity * 36m;
+                }
+
+                if (string.Equals(unit, "Inch", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(unit, "Inches", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(unit, "بوصة", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(unit, "بوصات", StringComparison.OrdinalIgnoreCase))
+                {
+                    return quantity;
+                }
+
+                return quantity;
             }
         }
 
-        return 36m;
+        return 0m;
+    }
+
+    private static Guid DeriveDamagedPieceSourceOperationId(MeasurementCardPrintHistoryDto history)
+    {
+        var identity = history.PrintHistoryId > 0
+            ? history.PrintHistoryId
+            : history.PieceId ?? history.ReadyMadePieceId ?? 0;
+        var seed = $"DamagedPiece:{history.OrderItemId ?? history.ReadyMadeProductionOrderItemId ?? 0}:{identity}:{history.TrackingCode}:{history.PieceId ?? history.ReadyMadePieceId ?? 0}";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
+        return new Guid(hash[..16]);
     }
 
     private static async Task<bool> HasOfficialPrintingEventAsync(
