@@ -30,6 +30,8 @@ Tools/FlutterSDK/
 backups/
 
 # Local validation and build outputs
+_diagnostics/
+_validation/
 _validation_output/
 _validation_obj/
 
