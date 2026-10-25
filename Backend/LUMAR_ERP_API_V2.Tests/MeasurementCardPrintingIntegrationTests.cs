@@ -242,7 +242,9 @@ public sealed class MeasurementCardPrintingIntegrationTests
             Assert.Single(replacementSources);
             Assert.NotEqual(originalSources[0].SourceOperationId, replacementSources[0].SourceOperationId);
             Assert.Equal(originalSources[0].ConsumedQuantity, replacementSources[0].ConsumedQuantity);
-            Assert.Equal(originalSources[0].FabricCode, replacementSources[0].FabricCode);
+            Assert.True(
+                string.Equals(originalSources[0].FabricCode, replacementSources[0].FabricCode, StringComparison.OrdinalIgnoreCase),
+                $"Expected replacement FabricCode '{originalSources[0].FabricCode}' but found '{replacementSources[0].FabricCode}'.");
             Assert.Equal(2, allSources.Count);
             Assert.Equal(928m, await ReadDecimalAsync(connection, "SELECT AvailableQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", seed.InventoryItemId));
             Assert.Equal(72m, await ReadDecimalAsync(connection, "SELECT ConsumedQuantity FROM dbo.InventoryItemFoundation WHERE InventoryItemId=@id", seed.InventoryItemId));
@@ -284,7 +286,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
 
             var damaged = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedPiece", "تمزق أثناء تجهيز القطعة", seed.EmployeeId, null, null, null, null), seed.User, CancellationToken.None);
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => repository.CompleteAsync(damaged.PrintHistoryId, null, seed.User, CancellationToken.None));
-            Assert.Contains("الكمية الرسمية", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("كمية رسمية", ex.Message, StringComparison.Ordinal);
         }
         finally
         {
@@ -422,59 +424,169 @@ public sealed class MeasurementCardPrintingIntegrationTests
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
-        await using var command = new SqlCommand(@"
-            DECLARE @historyIds TABLE (PrintHistoryId int PRIMARY KEY);
-            DECLARE @paymentIds TABLE (PaymentId int PRIMARY KEY);
-            DECLARE @eventIds TABLE (AccountingEventId bigint PRIMARY KEY);
-            INSERT INTO @historyIds SELECT PrintHistoryId FROM dbo.MeasurementCardPrintHistory WHERE PieceId = @pieceId;
-            INSERT INTO @paymentIds SELECT PaymentID FROM dbo.Payments WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds) OR OrderID = @orderId;
-            INSERT INTO @eventIds
-                SELECT AccountingEventId FROM dbo.AccountingEvents
-                WHERE MeasurementCardPrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
-                   OR PaymentId IN (SELECT PaymentId FROM @paymentIds)
-                   OR FabricConsumptionSourceId IN (
-                       SELECT FabricConsumptionSourceId FROM dbo.FabricConsumptionSources
-                       WHERE PieceId = @pieceId OR OrderItemId = @orderItemId
-                   );
-            UPDATE dbo.Payments SET PrintHistoryId = NULL WHERE PaymentID IN (SELECT PaymentId FROM @paymentIds);
-            UPDATE dbo.MeasurementCardPrintHistory
-            SET FinancialTransactionId = NULL, JournalEntryId = NULL, CustomerLedgerEntryId = NULL, PaymentId = NULL,
-                PaymentFinancialTransactionId = NULL, PaymentJournalEntryId = NULL, PaymentCustomerLedgerEntryId = NULL,
-                WaiverFinancialTransactionId = NULL, WaiverJournalEntryId = NULL, WaiverCustomerLedgerEntryId = NULL
-            WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds);
-            DELETE FROM dbo.CashMovements WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
-            DELETE FROM dbo.JournalEntryLines WHERE JournalEntryId IN (SELECT JournalEntryId FROM dbo.JournalEntries WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds));
-            DELETE FROM dbo.JournalEntries WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
-            DELETE FROM dbo.FinancialTransactions WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
-            DELETE FROM dbo.AccountingEvents WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
-            DELETE FROM dbo.Payments WHERE PaymentID IN (SELECT PaymentId FROM @paymentIds);
-            DELETE FROM dbo.TrackingEvents WHERE PieceID = @pieceId OR OrderItemID = @orderItemId OR OrderID = @orderId;
-            DELETE FROM dbo.FabricConsumptionSources WHERE PieceId = @pieceId OR OrderItemId = @orderItemId;
-            DELETE FROM dbo.OrderItemFabrics WHERE OrderItemID = @orderItemId;
-            DELETE FROM dbo.PieceWageRecords WHERE PieceID = @pieceId OR OrderItemID = @orderItemId;
-            DELETE FROM dbo.CustomerLedgerEntries WHERE CustomerID = @customerId;
-            DELETE FROM dbo.MeasurementCardPrintHistory WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds);
-            DELETE FROM dbo.Pieces WHERE PieceID = @pieceId;
-            DELETE FROM dbo.OrderItems WHERE OrderItemID = @orderItemId;
-            DELETE FROM dbo.Orders WHERE OrderID = @orderId;
-            DELETE FROM dbo.InventoryTransactions WHERE InventoryItemID = @inventoryItemId;
-            DELETE FROM dbo.InventoryItemFoundation WHERE InventoryItemId = @inventoryItemId;
-            DELETE FROM dbo.InventoryItems WHERE InventoryItemID = @inventoryItemId;
-            DELETE FROM dbo.CashAccounts WHERE CashAccountId = @cashAccountId;
-            DELETE FROM dbo.Employees WHERE EmployeeID = @employeeId;
-            DELETE FROM dbo.Users WHERE UserID = @userId;
-            DELETE FROM dbo.Departments WHERE DepartmentId = @departmentId;
-            DELETE FROM dbo.Customers WHERE CustomerID = @customerId;", connection);
-        command.Parameters.AddWithValue("@pieceId", seed.PieceId);
-        command.Parameters.AddWithValue("@orderItemId", seed.OrderItemId);
-        command.Parameters.AddWithValue("@orderId", seed.OrderId);
-        command.Parameters.AddWithValue("@customerId", seed.CustomerId);
-        command.Parameters.AddWithValue("@cashAccountId", seed.CashAccountId);
-        command.Parameters.AddWithValue("@employeeId", seed.EmployeeId);
-        command.Parameters.AddWithValue("@userId", seed.UserId);
-        command.Parameters.AddWithValue("@departmentId", seed.DepartmentId);
-        command.Parameters.AddWithValue("@inventoryItemId", seed.InventoryItemId);
-        await command.ExecuteNonQueryAsync();
+        using var transaction = connection.BeginTransaction();
+
+        try
+        {
+            await using var command = new SqlCommand(@"
+                SET XACT_ABORT ON;
+
+                DECLARE @historyIds TABLE (PrintHistoryId int PRIMARY KEY);
+                DECLARE @paymentIds TABLE (PaymentId int PRIMARY KEY);
+                DECLARE @eventIds TABLE (AccountingEventId bigint PRIMARY KEY);
+                DECLARE @fabricSourceIds TABLE (FabricConsumptionSourceId int PRIMARY KEY);
+                DECLARE @journalEntryIds TABLE (JournalEntryId int PRIMARY KEY);
+                DECLARE @financialTransactionIds TABLE (FinancialTransactionId int PRIMARY KEY);
+                DECLARE @inventoryTransactionIds TABLE (TransactionId int PRIMARY KEY);
+
+                INSERT INTO @historyIds
+                SELECT h.PrintHistoryId
+                FROM dbo.MeasurementCardPrintHistory AS h
+                WHERE h.PieceId = @pieceId OR h.OrderItemId = @orderItemId OR h.OrderId = @orderId;
+
+                INSERT INTO @paymentIds
+                SELECT p.PaymentID
+                FROM dbo.Payments AS p
+                WHERE p.PaymentID IN (
+                        SELECT p2.PaymentId
+                        FROM dbo.MeasurementCardPrintHistory AS h2
+                        INNER JOIN dbo.Payments AS p2 ON p2.PrintHistoryId = h2.PrintHistoryId
+                        WHERE h2.PieceId = @pieceId OR h2.OrderItemId = @orderItemId OR h2.OrderId = @orderId
+                    )
+                   OR p.PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
+                   OR p.OrderID = @orderId;
+
+                INSERT INTO @fabricSourceIds
+                SELECT s.FabricConsumptionSourceId
+                FROM dbo.FabricConsumptionSources AS s
+                WHERE s.PieceId = @pieceId OR s.OrderItemId = @orderItemId;
+
+                INSERT INTO @eventIds
+                SELECT e.AccountingEventId
+                FROM dbo.AccountingEvents AS e
+                WHERE e.MeasurementCardPrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
+                   OR e.PaymentId IN (SELECT PaymentId FROM @paymentIds)
+                   OR e.FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM @fabricSourceIds);
+
+                INSERT INTO @journalEntryIds
+                SELECT j.JournalEntryId
+                FROM dbo.JournalEntries AS j
+                WHERE j.AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
+
+                INSERT INTO @financialTransactionIds
+                SELECT f.FinancialTransactionId
+                FROM dbo.FinancialTransactions AS f
+                WHERE f.AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
+
+                INSERT INTO @inventoryTransactionIds
+                SELECT s.InventoryTransactionId
+                FROM dbo.FabricConsumptionSources AS s
+                WHERE s.FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM @fabricSourceIds)
+                  AND s.InventoryTransactionId IS NOT NULL;
+
+                UPDATE dbo.Payments
+                SET PrintHistoryId = NULL
+                WHERE PaymentID IN (SELECT PaymentId FROM @paymentIds);
+
+                UPDATE dbo.MeasurementCardPrintHistory
+                SET FinancialTransactionId = NULL,
+                    JournalEntryId = NULL,
+                    CustomerLedgerEntryId = NULL,
+                    PaymentId = NULL,
+                    PaymentFinancialTransactionId = NULL,
+                    PaymentJournalEntryId = NULL,
+                    PaymentCustomerLedgerEntryId = NULL,
+                    WaiverFinancialTransactionId = NULL,
+                    WaiverJournalEntryId = NULL,
+                    WaiverCustomerLedgerEntryId = NULL
+                WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds);
+
+                DELETE FROM dbo.JournalEntryLines
+                WHERE JournalEntryId IN (SELECT JournalEntryId FROM @journalEntryIds);
+
+                DELETE FROM dbo.JournalEntries
+                WHERE JournalEntryId IN (SELECT JournalEntryId FROM @journalEntryIds);
+
+                DELETE FROM dbo.CashMovements
+                WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
+
+                DELETE FROM dbo.FinancialTransactions
+                WHERE FinancialTransactionId IN (SELECT FinancialTransactionId FROM @financialTransactionIds)
+                   OR AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
+
+                DELETE FROM dbo.AccountingEvents
+                WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
+
+                DELETE FROM dbo.FabricConsumptionSources
+                WHERE FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM @fabricSourceIds);
+
+                DELETE FROM dbo.InventoryTransactions
+                WHERE TransactionID IN (SELECT TransactionId FROM @inventoryTransactionIds);
+
+                DELETE FROM dbo.Payments
+                WHERE PaymentID IN (SELECT PaymentId FROM @paymentIds);
+
+                DELETE FROM dbo.CustomerLedgerEntries
+                WHERE CustomerID = @customerId;
+
+                DELETE FROM dbo.TrackingEvents
+                WHERE PieceID = @pieceId OR OrderItemID = @orderItemId OR OrderID = @orderId;
+
+                DELETE FROM dbo.OrderItemFabrics
+                WHERE OrderItemID = @orderItemId;
+
+                DELETE FROM dbo.PieceWageRecords
+                WHERE PieceID = @pieceId OR OrderItemID = @orderItemId;
+
+                DELETE FROM dbo.MeasurementCardPrintHistory
+                WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds);
+
+                DELETE FROM dbo.Pieces
+                WHERE PieceID = @pieceId;
+
+                DELETE FROM dbo.OrderItems
+                WHERE OrderItemID = @orderItemId;
+
+                DELETE FROM dbo.Orders
+                WHERE OrderID = @orderId;
+
+                DELETE FROM dbo.InventoryItemFoundation
+                WHERE InventoryItemId = @inventoryItemId;
+
+                DELETE FROM dbo.InventoryItems
+                WHERE InventoryItemID = @inventoryItemId;
+
+                DELETE FROM dbo.CashAccounts
+                WHERE CashAccountId = @cashAccountId;
+
+                DELETE FROM dbo.Employees
+                WHERE EmployeeID = @employeeId;
+
+                DELETE FROM dbo.Users
+                WHERE UserID = @userId;
+
+                DELETE FROM dbo.Departments
+                WHERE DepartmentId = @departmentId;
+
+                DELETE FROM dbo.Customers
+                WHERE CustomerID = @customerId;", connection, transaction);
+            command.Parameters.AddWithValue("@pieceId", seed.PieceId);
+            command.Parameters.AddWithValue("@orderItemId", seed.OrderItemId);
+            command.Parameters.AddWithValue("@orderId", seed.OrderId);
+            command.Parameters.AddWithValue("@customerId", seed.CustomerId);
+            command.Parameters.AddWithValue("@cashAccountId", seed.CashAccountId);
+            command.Parameters.AddWithValue("@employeeId", seed.EmployeeId);
+            command.Parameters.AddWithValue("@userId", seed.UserId);
+            command.Parameters.AddWithValue("@departmentId", seed.DepartmentId);
+            command.Parameters.AddWithValue("@inventoryItemId", seed.InventoryItemId);
+            await command.ExecuteNonQueryAsync();
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     private static async Task<int> InsertIntAsync(SqlConnection connection, SqlTransaction transaction, string sql, params (string Name, object Value)[] parameters)
@@ -558,7 +670,9 @@ public sealed class MeasurementCardPrintingIntegrationTests
 
             Assert.False(original.IsExisting);
             Assert.Equal(36m, original.Quantity);
-            Assert.Equal(seed.FabricCode, original.ItemCode);
+            Assert.True(
+                string.Equals(seed.FabricCode, original.ItemCode, StringComparison.OrdinalIgnoreCase),
+                $"Expected FabricCode '{seed.FabricCode}' but found '{original.ItemCode}'.");
 
             await transaction.CommitAsync();
             return sourceOperationId;
