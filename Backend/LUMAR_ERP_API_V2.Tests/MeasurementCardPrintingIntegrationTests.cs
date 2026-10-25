@@ -213,6 +213,48 @@ public sealed class MeasurementCardPrintingIntegrationTests
     }
 
     [Fact]
+    public async Task DamagedPiece_ConsumesReplacementFabric_WithoutAdvancingOfficialStage()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedTailoringPieceAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        try
+        {
+            var first = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null), seed.User, CancellationToken.None);
+            await repository.CompleteAsync(first.PrintHistoryId, null, seed.User, CancellationToken.None);
+
+            var damaged = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, "DamagedPiece", "تمزق أثناء تجهيز القطعة", seed.EmployeeId, null, null, null, null), seed.User, CancellationToken.None);
+            await repository.CompleteAsync(damaged.PrintHistoryId, null, seed.User, CancellationToken.None);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            var fabricConsumptionCount = await CountAsync(connection,
+                @"SELECT COUNT(*)
+                  FROM dbo.FabricConsumptionSources s
+                  WHERE s.PieceId = @pieceId
+                    AND s.OrderItemId = @orderItemId
+                    AND s.ConsumedQuantity > 0",
+                ("@pieceId", seed.PieceId),
+                ("@orderItemId", seed.OrderItemId));
+
+            var pieceStatus = await ReadScalarAsync(connection, "SELECT PieceStatus FROM dbo.Pieces WHERE PieceID = @pieceId", seed.PieceId);
+            var officialPrintingEvents = await CountAsync(connection, "SELECT COUNT(*) FROM dbo.TrackingEvents WHERE PieceID = @pieceId AND Stage = N'Printing' AND Status = N'Printing'", seed.PieceId);
+            var reworkEvents = await CountAsync(connection, "SELECT COUNT(*) FROM dbo.TrackingEvents WHERE PieceID = @pieceId AND Stage = N'Rework' AND Status = N'Rework'", seed.PieceId);
+
+            Assert.Equal(1, fabricConsumptionCount);
+            Assert.Equal("Printing", pieceStatus);
+            Assert.Equal(1, officialPrintingEvents);
+            Assert.Equal(1, reworkEvents);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
     public async Task PieceSold_Donation_IsBlockedWithoutCreatingFinancialRecords()
     {
         var connectionString = GetConnectionString();
@@ -291,6 +333,14 @@ public sealed class MeasurementCardPrintingIntegrationTests
                     (AccountName, CurrentBalance, IsActive, CreatedAt, CashAccountType, CurrencyCode, LedgerControlAccountId, AllowsReceipts)
                 OUTPUT INSERTED.CashAccountId
                 VALUES (N'صندوق اختبار بطاقة قياس', 0, 1, SYSUTCDATETIME(), 1, 'YER', 7, 1);");
+            var inventoryItemId = await InsertIntAsync(connection, transaction, @"
+                INSERT INTO dbo.InventoryItems (ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt)
+                OUTPUT INSERTED.InventoryItemID
+                VALUES (N'TEST-FABRIC', N'قماش اختبار بطاقة قياس', N'Foundation', N'Inch', 1000, 1000, 0, 1, SYSUTCDATETIME(), SYSUTCDATETIME());");
+            await InsertIntAsync(connection, transaction, @"
+                INSERT INTO dbo.InventoryItemFoundation (InventoryItemId, InventoryClassId, UnitId, CurrencyCode, OriginalQuantity, AvailableQuantity, ConsumedQuantity, OperationalValue, OfficialUnitCost, CreatedAt, UpdatedAt)
+                VALUES (@inventoryItemId, 1, 2, N'YER', 1000, 1000, 0, 500, 0.5, SYSUTCDATETIME(), SYSUTCDATETIME());",
+                ("@inventoryItemId", inventoryItemId));
             var orderId = await InsertIntAsync(connection, transaction, @"
                 INSERT INTO dbo.Orders
                     (OrderNumber, CustomerID, OrderDate, DeliveryDate, TotalAmount, DiscountAmount, PaidAmount,
@@ -309,6 +359,10 @@ public sealed class MeasurementCardPrintingIntegrationTests
                 OUTPUT INSERTED.OrderItemID
                 VALUES (@orderId, N'قميص', 1, N'TEST-FABRIC', N'قماش', N'أبيض', N'{}', @trackingCode, N'New', SYSUTCDATETIME(), 4);",
                 ("@orderId", orderId), ("@trackingCode", trackingCode));
+            await InsertIntAsync(connection, transaction, @"
+                INSERT INTO dbo.OrderItemFabrics (OrderItemID, InventoryItemID, FabricCode, FabricType, FabricColor, Quantity, Unit, UnitCost, TotalCost, ConsumedQuantity, CreatedDate)
+                VALUES (@orderItemId, @inventoryItemId, N'TEST-FABRIC', N'قماش', N'أبيض', 36, N'Inch', 0.5, 18, 0, SYSUTCDATETIME());",
+                ("@orderItemId", orderItemId), ("@inventoryItemId", inventoryItemId));
             var pieceId = await InsertIntAsync(connection, transaction, @"
                 INSERT INTO dbo.Pieces (OrderItemID, TrackingCode, PieceStatus, PieceNumber, CreatedDate)
                 OUTPUT INSERTED.PieceID
@@ -337,7 +391,11 @@ public sealed class MeasurementCardPrintingIntegrationTests
             INSERT INTO @eventIds
                 SELECT AccountingEventId FROM dbo.AccountingEvents
                 WHERE MeasurementCardPrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
-                   OR PaymentId IN (SELECT PaymentId FROM @paymentIds);
+                   OR PaymentId IN (SELECT PaymentId FROM @paymentIds)
+                   OR FabricConsumptionSourceId IN (
+                       SELECT FabricConsumptionSourceId FROM dbo.FabricConsumptionSources
+                       WHERE PieceId = @pieceId OR OrderItemId = @orderItemId
+                   );
             UPDATE dbo.Payments SET PrintHistoryId = NULL WHERE PaymentID IN (SELECT PaymentId FROM @paymentIds);
             UPDATE dbo.MeasurementCardPrintHistory
             SET FinancialTransactionId = NULL, JournalEntryId = NULL, CustomerLedgerEntryId = NULL, PaymentId = NULL,
@@ -351,12 +409,17 @@ public sealed class MeasurementCardPrintingIntegrationTests
             DELETE FROM dbo.AccountingEvents WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
             DELETE FROM dbo.Payments WHERE PaymentID IN (SELECT PaymentId FROM @paymentIds);
             DELETE FROM dbo.TrackingEvents WHERE PieceID = @pieceId OR OrderItemID = @orderItemId OR OrderID = @orderId;
+            DELETE FROM dbo.FabricConsumptionSources WHERE PieceId = @pieceId OR OrderItemId = @orderItemId;
+            DELETE FROM dbo.OrderItemFabrics WHERE OrderItemID = @orderItemId;
             DELETE FROM dbo.PieceWageRecords WHERE PieceID = @pieceId OR OrderItemID = @orderItemId;
             DELETE FROM dbo.CustomerLedgerEntries WHERE CustomerID = @customerId;
             DELETE FROM dbo.MeasurementCardPrintHistory WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds);
             DELETE FROM dbo.Pieces WHERE PieceID = @pieceId;
             DELETE FROM dbo.OrderItems WHERE OrderItemID = @orderItemId;
             DELETE FROM dbo.Orders WHERE OrderID = @orderId;
+            DELETE FROM dbo.InventoryTransactions WHERE InventoryItemID IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = N'TEST-FABRIC');
+            DELETE FROM dbo.InventoryItemFoundation WHERE InventoryItemId IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = N'TEST-FABRIC');
+            DELETE FROM dbo.InventoryItems WHERE ItemCode = N'TEST-FABRIC';
             DELETE FROM dbo.CashAccounts WHERE CashAccountId = @cashAccountId;
             DELETE FROM dbo.Employees WHERE EmployeeID = @employeeId;
             DELETE FROM dbo.Users WHERE UserID = @userId;
@@ -406,6 +469,14 @@ public sealed class MeasurementCardPrintingIntegrationTests
         command.Parameters.AddWithValue("@reference", value is string ? value : DBNull.Value);
         command.Parameters.AddWithValue("@pieceId", value is int ? value : DBNull.Value);
         command.Parameters.AddWithValue("@printHistoryId", value is int ? value : DBNull.Value);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountAsync(SqlConnection connection, string sql, params (string Name, object? Value)[] parameters)
+    {
+        await using var command = new SqlCommand(sql, connection);
+        foreach (var parameter in parameters)
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 

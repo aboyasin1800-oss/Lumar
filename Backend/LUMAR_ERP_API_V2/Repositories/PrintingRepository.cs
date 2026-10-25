@@ -1,5 +1,6 @@
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Auth;
+using LUMAR_ERP_API_V2.DTOs.Inventory;
 using LUMAR_ERP_API_V2.DTOs.Printing;
 using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
@@ -369,6 +370,11 @@ public sealed class PrintingRepository(
                     cancellationToken);
             }
 
+            if (history.ReprintReasonCode == MeasurementCardPrintPolicy.DamagedPiece)
+            {
+                await HandleDamagedPieceReworkAsync(connection, transaction, history, cancellationToken);
+            }
+
             await transaction.CommitAsync(cancellationToken);
             committed = true;
             return await GetHistoryByIdAsync(printHistoryId, cancellationToken)
@@ -480,6 +486,114 @@ public sealed class PrintingRepository(
             update.Parameters.AddWithValue("@pieceId", pieceId);
             await update.ExecuteNonQueryAsync(cancellationToken);
         }
+    }
+
+    private static async Task HandleDamagedPieceReworkAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        MeasurementCardPrintHistoryDto history,
+        CancellationToken cancellationToken)
+    {
+        var fabricCode = await LoadReplacementFabricCodeAsync(connection, transaction, history, cancellationToken);
+        if (string.IsNullOrWhiteSpace(fabricCode))
+            return;
+
+        var replacementInches = await LoadReplacementFabricQuantityAsync(connection, transaction, history, cancellationToken);
+        if (replacementInches <= 0m)
+            return;
+
+        await InventoryRepository.ConsumeFabricCodeInventoryAsync(
+            connection,
+            transaction,
+            new ConsumeFabricCodeInventoryDto
+            {
+                FabricCode = fabricCode,
+                OrderItemId = history.OrderItemId,
+                PieceId = history.PieceId,
+                ReadyMadeProductionOrderItemId = history.ReadyMadeProductionOrderItemId,
+                ReadyMadeProductionOrderPieceInstanceId = history.ReadyMadePieceId,
+                QuantityInches = replacementInches,
+                ConfirmedByUserId = history.PrintedByUserId,
+                SourceOperationId = Guid.NewGuid()
+            },
+            cancellationToken);
+
+        var orderId = history.OrderId is int orderIdValue ? (object)orderIdValue : DBNull.Value;
+        var orderItemId = history.OrderItemId is int itemId ? (object)itemId : DBNull.Value;
+        var pieceId = history.PieceId is int pieceValue ? (object)pieceValue : DBNull.Value;
+        var readyMadeOrderId = history.ReadyMadeProductionOrderId is int readyOrderId ? (object)readyOrderId : DBNull.Value;
+        var readyMadePieceId = history.ReadyMadePieceId is int readyPieceId ? (object)readyPieceId : DBNull.Value;
+        var notes = $"MeasurementCardPrintHistoryId={history.PrintHistoryId};Operation=DamagedPieceRework;ReplacementFabric={fabricCode};ReplacementInches={replacementInches:0.######};ResponsibleEmployeeId={history.ResponsibleEmployeeId}";
+
+        await using var trackingInsert = new SqlCommand(@"
+            INSERT INTO dbo.TrackingEvents
+                (OrderItemID, OrderID, TrackingCode, Stage, Status, EventTime, Notes, IsReverted, RevertedAt, PieceID, ReadyMadeProductionOrderPieceInstanceId)
+            VALUES (@orderItemId, @orderId, @trackingCode, N'Rework', N'Rework', SYSUTCDATETIME(), @notes, 0, NULL, @pieceId, @readyMadePieceId);", connection, transaction);
+        trackingInsert.Parameters.AddWithValue("@orderItemId", orderItemId);
+        trackingInsert.Parameters.AddWithValue("@orderId", orderId);
+        trackingInsert.Parameters.AddWithValue("@trackingCode", history.TrackingCode);
+        trackingInsert.Parameters.AddWithValue("@notes", notes);
+        trackingInsert.Parameters.AddWithValue("@pieceId", pieceId);
+        trackingInsert.Parameters.AddWithValue("@readyMadePieceId", readyMadePieceId);
+        await trackingInsert.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<string?> LoadReplacementFabricCodeAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        MeasurementCardPrintHistoryDto history,
+        CancellationToken cancellationToken)
+    {
+        if (history.OrderItemId is int orderItemId)
+        {
+            await using var command = new SqlCommand(
+                "SELECT TOP (1) FabricCode FROM dbo.OrderItems WITH (UPDLOCK, HOLDLOCK) WHERE OrderItemID = @orderItemId;",
+                connection,
+                transaction);
+            command.Parameters.AddWithValue("@orderItemId", orderItemId);
+            var value = await command.ExecuteScalarAsync(cancellationToken);
+            return value is null || value is DBNull ? null : Convert.ToString(value)?.Trim();
+        }
+
+        if (history.ReadyMadeProductionOrderItemId is int readyMadeItemId)
+        {
+            await using var command = new SqlCommand(
+                "SELECT TOP (1) FabricCode FROM dbo.ReadyMadeProductionOrderItems WITH (UPDLOCK, HOLDLOCK) WHERE ReadyMadeProductionOrderItemId = @readyMadeItemId;",
+                connection,
+                transaction);
+            command.Parameters.AddWithValue("@readyMadeItemId", readyMadeItemId);
+            var value = await command.ExecuteScalarAsync(cancellationToken);
+            return value is null || value is DBNull ? null : Convert.ToString(value)?.Trim();
+        }
+
+        return null;
+    }
+
+    private static async Task<decimal> LoadReplacementFabricQuantityAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        MeasurementCardPrintHistoryDto history,
+        CancellationToken cancellationToken)
+    {
+        if (history.OrderItemId is int orderItemId)
+        {
+            await using var command = new SqlCommand(
+                "SELECT TOP (1) Quantity, Unit FROM dbo.OrderItemFabrics WITH (UPDLOCK, HOLDLOCK) WHERE OrderItemID = @orderItemId ORDER BY OrderItemFabricID DESC;",
+                connection,
+                transaction);
+            command.Parameters.AddWithValue("@orderItemId", orderItemId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                var quantity = reader.GetDecimal(0);
+                var unit = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+                return string.Equals(unit, "Yard", StringComparison.OrdinalIgnoreCase) || string.Equals(unit, "Yards", StringComparison.OrdinalIgnoreCase)
+                    ? quantity * 36m
+                    : quantity > 0m ? quantity : 36m;
+            }
+        }
+
+        return 36m;
     }
 
     private static async Task<bool> HasOfficialPrintingEventAsync(
