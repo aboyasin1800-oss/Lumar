@@ -114,6 +114,37 @@ public sealed class MeasurementCardPrintingIntegrationTests
     }
 
     [Fact]
+    public async Task SuccessfulPrint_UpdatesOfficialProductionStage_AndDoesNotCreatePieceWage()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedTailoringPieceAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        try
+        {
+            var prepared = await repository.PrepareAsync(seed.PieceId, false, new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null), seed.User, CancellationToken.None);
+            var completed = await repository.CompleteAsync(prepared.PrintHistoryId, null, seed.User, CancellationToken.None);
+
+            Assert.Equal("Completed", completed.PrintStatus);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            var pieceStatus = await ReadScalarAsync(connection, "SELECT PieceStatus FROM dbo.Pieces WHERE PieceID = @pieceId", seed.PieceId);
+            var printingEvents = await CountAsync(connection, "SELECT COUNT(*) FROM dbo.TrackingEvents WHERE PieceID = @pieceId AND Stage = N'Printing' AND Status = N'Printing'", seed.PieceId);
+            var printWages = await CountAsync(connection, "SELECT COUNT(*) FROM dbo.PieceWageRecords WHERE PieceID = @pieceId AND Stage = N'Printing'", seed.PieceId);
+
+            Assert.Equal("Printing", pieceStatus);
+            Assert.Equal(1, printingEvents);
+            Assert.Equal(0, printWages);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
     public async Task FailedPrint_DoesNotBecomeOfficialCopy_AndDoesNotCreateRevenue()
     {
         var connectionString = GetConnectionString();
@@ -338,6 +369,14 @@ public sealed class MeasurementCardPrintingIntegrationTests
         command.Parameters.AddWithValue("@pieceId", value is int ? value : DBNull.Value);
         command.Parameters.AddWithValue("@printHistoryId", value is int ? value : DBNull.Value);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<string> ReadScalarAsync(SqlConnection connection, string sql, int pieceId)
+    {
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        var value = await command.ExecuteScalarAsync();
+        return value is null ? string.Empty : Convert.ToString(value)!;
     }
 
     private static async Task<(decimal Debit, decimal Credit)> ReadJournalTotalsAsync(SqlConnection connection, int journalEntryId)

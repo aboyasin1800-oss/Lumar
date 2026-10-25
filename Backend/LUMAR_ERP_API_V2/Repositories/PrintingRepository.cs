@@ -355,6 +355,18 @@ public sealed class PrintingRepository(
             if (await update.ExecuteNonQueryAsync(cancellationToken) != 1)
                 throw new InvalidOperationException("تعذر اعتماد سجل الطباعة.");
 
+            var pieceId = history.PieceId ?? history.ReadyMadePieceId;
+            if (pieceId is int targetPieceId)
+            {
+                await AdvancePieceToPrintingStageAsync(
+                    connection,
+                    transaction,
+                    history,
+                    targetPieceId,
+                    history.ReadyMadePieceId is not null,
+                    cancellationToken);
+            }
+
             await transaction.CommitAsync(cancellationToken);
             committed = true;
             return await GetHistoryByIdAsync(printHistoryId, cancellationToken)
@@ -368,6 +380,138 @@ public sealed class PrintingRepository(
             }
             throw;
         }
+    }
+
+    private static async Task AdvancePieceToPrintingStageAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        MeasurementCardPrintHistoryDto history,
+        int pieceId,
+        bool isReadyMade,
+        CancellationToken cancellationToken)
+    {
+        var statusColumn = isReadyMade ? "PieceStatus" : "PieceStatus";
+        var statusTable = isReadyMade ? "dbo.ReadyMadeProductionOrderPieceInstances" : "dbo.Pieces";
+        var pieceIdColumn = isReadyMade ? "ReadyMadeProductionOrderPieceInstanceId" : "PieceID";
+        var trackingFilter = isReadyMade
+            ? "ReadyMadeProductionOrderPieceInstanceId = @pieceId"
+            : "PieceID = @pieceId";
+
+        await using (var statusCommand = new SqlCommand($@"
+            SELECT {statusColumn}
+            FROM {statusTable}
+            WITH (UPDLOCK, HOLDLOCK)
+            WHERE {pieceIdColumn} = @pieceId;", connection, transaction))
+        {
+            statusCommand.Parameters.AddWithValue("@pieceId", pieceId);
+            var currentStatus = await statusCommand.ExecuteScalarAsync(cancellationToken);
+            if (currentStatus is not null && string.Equals(currentStatus.ToString(), "Printing", StringComparison.OrdinalIgnoreCase))
+                return;
+        }
+
+        var hasPrintingEvent = await HasOfficialPrintingEventAsync(connection, transaction, pieceId, isReadyMade, cancellationToken);
+        if (hasPrintingEvent)
+        {
+            await using (var statusSync = new SqlCommand($@"
+                UPDATE {statusTable}
+                SET {statusColumn} = N'Printing'
+                WHERE {pieceIdColumn} = @pieceId AND {statusColumn} <> N'Printing';", connection, transaction))
+            {
+                statusSync.Parameters.AddWithValue("@pieceId", pieceId);
+                await statusSync.ExecuteNonQueryAsync(cancellationToken);
+            }
+            return;
+        }
+
+        var routeSql = isReadyMade
+            ? @"
+                SELECT i.ProductTypeId
+                FROM dbo.ReadyMadeProductionOrderPieceInstances p WITH (UPDLOCK, HOLDLOCK)
+                INNER JOIN dbo.ReadyMadeProductionOrderItems i ON i.ReadyMadeProductionOrderItemId = p.ReadyMadeProductionOrderItemId
+                WHERE p.ReadyMadeProductionOrderPieceInstanceId = @pieceId;"
+            : @"
+                SELECT oi.ProductTypeId
+                FROM dbo.Pieces p WITH (UPDLOCK, HOLDLOCK)
+                INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = p.OrderItemID
+                WHERE p.PieceID = @pieceId;";
+
+        int? productTypeId = null;
+        await using (var routeCommand = new SqlCommand(routeSql, connection, transaction))
+        {
+            routeCommand.Parameters.AddWithValue("@pieceId", pieceId);
+            var value = await routeCommand.ExecuteScalarAsync(cancellationToken);
+            productTypeId = value is null || value is DBNull ? null : Convert.ToInt32(value);
+        }
+
+        if (!productTypeId.HasValue || productTypeId.Value <= 0)
+            throw new InvalidOperationException("تعذر تحديد نوع المنتج الرسمي للقطعة قبل اعتماد مرحلة الطباعة.");
+
+        var route = ProductionTrackingEngine.GetRoute(productTypeId.Value);
+        if (route.Count == 0 || !route.Contains("Printing", StringComparer.OrdinalIgnoreCase))
+            throw new InvalidOperationException("مرحلة الطباعة غير مسموح بها في مسار الإنتاج الرسمي لهذا النوع.");
+
+        var orderItemId = isReadyMade ? (object)DBNull.Value : await ReadOrderItemIdAsync(connection, transaction, pieceId, cancellationToken);
+        var orderId = isReadyMade ? (object)DBNull.Value : await ReadOrderIdAsync(connection, transaction, pieceId, cancellationToken);
+        var notes = $"MeasurementCardPrintHistoryId={history.PrintHistoryId};Operation=CompletedPrint;OfficialStage=Printing";
+
+        await using (var insert = new SqlCommand(@"
+            INSERT INTO dbo.TrackingEvents
+                (OrderItemID, OrderID, TrackingCode, Stage, Status, EventTime, Notes, IsReverted, RevertedAt, PieceID, ReadyMadeProductionOrderPieceInstanceId)
+            VALUES (@orderItemId, @orderId, @trackingCode, N'Printing', N'Printing', SYSUTCDATETIME(), @notes, 0, NULL, @pieceId, @readyMadePieceInstanceId);", connection, transaction))
+        {
+            insert.Parameters.AddWithValue("@orderItemId", orderItemId);
+            insert.Parameters.AddWithValue("@orderId", orderId);
+            insert.Parameters.AddWithValue("@trackingCode", history.TrackingCode);
+            insert.Parameters.AddWithValue("@notes", notes);
+            insert.Parameters.AddWithValue("@pieceId", isReadyMade ? (object)DBNull.Value : pieceId);
+            insert.Parameters.AddWithValue("@readyMadePieceInstanceId", isReadyMade ? (object)pieceId : DBNull.Value);
+            await insert.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var update = new SqlCommand($@"
+            UPDATE {statusTable}
+            SET {statusColumn} = N'Printing'
+            WHERE {pieceIdColumn} = @pieceId AND {statusColumn} <> N'Printing';", connection, transaction))
+        {
+            update.Parameters.AddWithValue("@pieceId", pieceId);
+            await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    private static async Task<bool> HasOfficialPrintingEventAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int pieceId,
+        bool isReadyMade,
+        CancellationToken cancellationToken)
+    {
+        var sql = isReadyMade
+            ? "SELECT TOP (1) 1 FROM dbo.TrackingEvents WITH (UPDLOCK, HOLDLOCK) WHERE ReadyMadeProductionOrderPieceInstanceId = @pieceId AND Stage = N'Printing' AND Status = N'Printing';"
+            : "SELECT TOP (1) 1 FROM dbo.TrackingEvents WITH (UPDLOCK, HOLDLOCK) WHERE PieceID = @pieceId AND Stage = N'Printing' AND Status = N'Printing';";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is not null;
+    }
+
+    private static async Task<int?> ReadOrderItemIdAsync(SqlConnection connection, SqlTransaction transaction, int pieceId, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand("SELECT OrderItemID FROM dbo.Pieces WITH (UPDLOCK, HOLDLOCK) WHERE PieceID = @pieceId;", connection, transaction);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is null || result is DBNull ? null : Convert.ToInt32(result);
+    }
+
+    private static async Task<int?> ReadOrderIdAsync(SqlConnection connection, SqlTransaction transaction, int pieceId, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand(@"
+            SELECT oi.OrderID
+            FROM dbo.Pieces p WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = p.OrderItemID
+            WHERE p.PieceID = @pieceId;", connection, transaction);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is null || result is DBNull ? null : Convert.ToInt32(result);
     }
 
     public async Task<MeasurementCardPrintHistoryDto?> FailAsync(
