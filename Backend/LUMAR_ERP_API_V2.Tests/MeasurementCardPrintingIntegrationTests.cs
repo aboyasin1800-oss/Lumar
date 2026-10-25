@@ -332,11 +332,21 @@ public sealed class MeasurementCardPrintingIntegrationTests
     private static async Task<Seed> SeedTailoringPieceAsync(string connectionString)
     {
         var suffix = Guid.NewGuid().ToString("N")[..12];
+        var fabricCode = $"TEST-FABRIC-{suffix}";
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
         try
         {
+            await using (var cleanup = new SqlCommand(@"
+                DELETE FROM dbo.InventoryTransactions WHERE InventoryItemID IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = @fabricCode OR ItemCode = N'TEST-FABRIC');
+                DELETE FROM dbo.InventoryItemFoundation WHERE InventoryItemId IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = @fabricCode OR ItemCode = N'TEST-FABRIC');
+                DELETE FROM dbo.InventoryItems WHERE ItemCode = @fabricCode OR ItemCode = N'TEST-FABRIC';", connection, transaction))
+            {
+                cleanup.Parameters.AddWithValue("@fabricCode", fabricCode);
+                await cleanup.ExecuteNonQueryAsync();
+            }
+
             var customerId = await InsertIntAsync(connection, transaction, @"
                 INSERT INTO dbo.Customers (CustomerCode, CustomerName, PhoneNumber, TotalPoints, TotalPieces, TotalDebts, IsActive)
                 OUTPUT INSERTED.CustomerID
@@ -366,7 +376,8 @@ public sealed class MeasurementCardPrintingIntegrationTests
             var inventoryItemId = await InsertIntAsync(connection, transaction, @"
                 INSERT INTO dbo.InventoryItems (ItemCode, ItemName, Category, Unit, CurrentQuantity, AvailableQuantity, ReservedQuantity, IsActive, CreatedAt, UpdatedAt)
                 OUTPUT INSERTED.InventoryItemID
-                VALUES (N'TEST-FABRIC', N'قماش اختبار بطاقة قياس', N'Foundation', N'Inch', 1000, 1000, 0, 1, SYSUTCDATETIME(), SYSUTCDATETIME());");
+                VALUES (@fabricCode, N'قماش اختبار بطاقة قياس', N'Foundation', N'Inch', 1000, 1000, 0, 1, SYSUTCDATETIME(), SYSUTCDATETIME());",
+                ("@fabricCode", fabricCode));
             await InsertIntAsync(connection, transaction, @"
                 INSERT INTO dbo.InventoryItemFoundation (InventoryItemId, InventoryClassId, UnitId, CurrencyCode, OriginalQuantity, AvailableQuantity, ConsumedQuantity, OperationalValue, OfficialUnitCost, CreatedAt, UpdatedAt)
                 VALUES (@inventoryItemId, 1, 2, N'YER', 1000, 1000, 0, 500, 0.5, SYSUTCDATETIME(), SYSUTCDATETIME());",
@@ -387,19 +398,19 @@ public sealed class MeasurementCardPrintingIntegrationTests
                     (OrderID, PieceType, Quantity, FabricCode, FabricType, FabricColor, MeasurementSnapshot,
                      TrackingCode, PieceStatus, CreatedDate, ProductTypeId)
                 OUTPUT INSERTED.OrderItemID
-                VALUES (@orderId, N'قميص', 1, N'TEST-FABRIC', N'قماش', N'أبيض', N'{}', @trackingCode, N'New', SYSUTCDATETIME(), 4);",
-                ("@orderId", orderId), ("@trackingCode", trackingCode));
+                VALUES (@orderId, N'قميص', 1, @fabricCode, N'قماش', N'أبيض', N'{}', @trackingCode, N'New', SYSUTCDATETIME(), 4);",
+                ("@orderId", orderId), ("@trackingCode", trackingCode), ("@fabricCode", fabricCode));
             await InsertIntAsync(connection, transaction, @"
                 INSERT INTO dbo.OrderItemFabrics (OrderItemID, InventoryItemID, FabricCode, FabricType, FabricColor, Quantity, Unit, UnitCost, TotalCost, ConsumedQuantity, CreatedDate)
-                VALUES (@orderItemId, @inventoryItemId, N'TEST-FABRIC', N'قماش', N'أبيض', 36, N'Inch', 0.5, 18, 0, SYSUTCDATETIME());",
-                ("@orderItemId", orderItemId), ("@inventoryItemId", inventoryItemId));
+                VALUES (@orderItemId, @inventoryItemId, @fabricCode, N'قماش', N'أبيض', 36, N'Inch', 0.5, 18, 0, SYSUTCDATETIME());",
+                ("@orderItemId", orderItemId), ("@inventoryItemId", inventoryItemId), ("@fabricCode", fabricCode));
             var pieceId = await InsertIntAsync(connection, transaction, @"
                 INSERT INTO dbo.Pieces (OrderItemID, TrackingCode, PieceStatus, PieceNumber, CreatedDate)
                 OUTPUT INSERTED.PieceID
                 VALUES (@orderItemId, @trackingCode, N'New', 1, SYSUTCDATETIME());",
                 ("@orderItemId", orderItemId), ("@trackingCode", trackingCode));
             await transaction.CommitAsync();
-            return new Seed(orderId, orderItemId, pieceId, customerId, userId, employeeId, departmentId, cashAccountId, trackingCode, await ReadUserAsync(connectionString, userId));
+            return new Seed(orderId, orderItemId, pieceId, customerId, userId, employeeId, departmentId, cashAccountId, trackingCode, fabricCode, await ReadUserAsync(connectionString, userId));
         }
         catch
         {
@@ -447,9 +458,9 @@ public sealed class MeasurementCardPrintingIntegrationTests
             DELETE FROM dbo.Pieces WHERE PieceID = @pieceId;
             DELETE FROM dbo.OrderItems WHERE OrderItemID = @orderItemId;
             DELETE FROM dbo.Orders WHERE OrderID = @orderId;
-            DELETE FROM dbo.InventoryTransactions WHERE InventoryItemID IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = N'TEST-FABRIC');
-            DELETE FROM dbo.InventoryItemFoundation WHERE InventoryItemId IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = N'TEST-FABRIC');
-            DELETE FROM dbo.InventoryItems WHERE ItemCode = N'TEST-FABRIC';
+            DELETE FROM dbo.InventoryTransactions WHERE InventoryItemID IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = @fabricCode OR ItemCode = N'TEST-FABRIC');
+            DELETE FROM dbo.InventoryItemFoundation WHERE InventoryItemId IN (SELECT InventoryItemID FROM dbo.InventoryItems WHERE ItemCode = @fabricCode OR ItemCode = N'TEST-FABRIC');
+            DELETE FROM dbo.InventoryItems WHERE ItemCode = @fabricCode OR ItemCode = N'TEST-FABRIC';
             DELETE FROM dbo.CashAccounts WHERE CashAccountId = @cashAccountId;
             DELETE FROM dbo.Employees WHERE EmployeeID = @employeeId;
             DELETE FROM dbo.Users WHERE UserID = @userId;
@@ -463,6 +474,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
         command.Parameters.AddWithValue("@employeeId", seed.EmployeeId);
         command.Parameters.AddWithValue("@userId", seed.UserId);
         command.Parameters.AddWithValue("@departmentId", seed.DepartmentId);
+        command.Parameters.AddWithValue("@fabricCode", seed.FabricCode);
         await command.ExecuteNonQueryAsync();
     }
 
@@ -527,5 +539,5 @@ public sealed class MeasurementCardPrintingIntegrationTests
         return (reader.GetDecimal(0), reader.GetDecimal(1));
     }
 
-    private sealed record Seed(int OrderId, int OrderItemId, int PieceId, int CustomerId, int UserId, int EmployeeId, int DepartmentId, int CashAccountId, string TrackingCode, CurrentUserDto User);
+    private sealed record Seed(int OrderId, int OrderItemId, int PieceId, int CustomerId, int UserId, int EmployeeId, int DepartmentId, int CashAccountId, string TrackingCode, string FabricCode, CurrentUserDto User);
 }
