@@ -269,7 +269,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
             await using (var connection = new SqlConnection(connectionString))
             {
                 await connection.OpenAsync();
-                await using var delete = new SqlCommand("DELETE FROM dbo.OrderItemFabrics WHERE OrderItemID = @orderItemId;", connection);
+                await using var delete = new SqlCommand("DELETE FROM dbo.FabricConsumptionSources WHERE OrderItemId = @orderItemId;", connection);
                 delete.Parameters.AddWithValue("@orderItemId", seed.OrderItemId);
                 await delete.ExecuteNonQueryAsync();
             }
