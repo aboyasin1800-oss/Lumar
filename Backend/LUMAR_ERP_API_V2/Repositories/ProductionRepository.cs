@@ -1180,20 +1180,73 @@ public sealed class ProductionRepository(
 
         var sourceOperationId = CreateTailoringCostOperationId(orderId);
         const string existingSql = @"
-            SELECT TailoringCostPostingId, PostingAmount, AccountingEventId
+            SELECT TOP (1) TailoringCostPostingId, PostingAmount, AccountingEventId
             FROM dbo.TailoringCostPostings WITH (UPDLOCK, HOLDLOCK)
-            WHERE OrderId=@orderId OR SourceOperationId=@sourceOperationId;";
+            WHERE OrderId=@orderId
+            ORDER BY TailoringCostPostingId DESC;";
         await using var existingCommand = new SqlCommand(existingSql, connection, transaction);
         existingCommand.Parameters.AddWithValue("@orderId", orderId);
-        existingCommand.Parameters.AddWithValue("@sourceOperationId", sourceOperationId);
         await using var existingReader = await existingCommand.ExecuteReaderAsync(ct);
+
+        long candidatePostingId = 0;
+        decimal candidatePostingAmount = 0m;
+        long? candidateAccountingEventId = null;
         if (await existingReader.ReadAsync(ct))
         {
-            if (existingReader.GetDecimal(1) != postingAmount || existingReader.IsDBNull(2))
-                throw new InvalidOperationException("ترحيل تكلفة التفصيل السابق غير مكتمل أو مختلف القيمة.");
-            return;
+            candidatePostingId = existingReader.GetInt64(0);
+            candidatePostingAmount = existingReader.GetDecimal(1);
+            candidateAccountingEventId = existingReader.IsDBNull(2) ? null : existingReader.GetInt64(2);
         }
         await existingReader.DisposeAsync();
+
+        if (candidatePostingId > 0)
+        {
+            if (Math.Abs(candidatePostingAmount - postingAmount) < 0.01m)
+            {
+                if (candidateAccountingEventId.HasValue)
+                    return;
+
+                var repairPostingId = candidatePostingId;
+                var repairReference = $"Order:{orderId}:TailoringCost";
+                const string repairFinancialSql = @"
+                    INSERT dbo.FinancialTransactions(ReferenceNumber,TransactionType,Amount,Description,CreatedAt)
+                    VALUES(@reference,N'TailoringCost',@amount,@description,SYSUTCDATETIME());";
+                await using (var repairFinancialCommand = new SqlCommand(repairFinancialSql, connection, transaction))
+                {
+                    repairFinancialCommand.Parameters.AddWithValue("@reference", repairReference);
+                    AddDecimal(repairFinancialCommand, "@amount", postingAmount, 2);
+                    repairFinancialCommand.Parameters.AddWithValue("@description", $"Tailoring cost of sales for order {orderId}");
+                    await repairFinancialCommand.ExecuteNonQueryAsync(ct);
+                }
+
+                var repairPosting = await FinancialTransactionJournalPoster.TryCreateJournalEntryAsync(
+                    connection,
+                    transaction,
+                    repairReference,
+                    "TailoringCost",
+                    postingAmount,
+                    $"Tailoring cost of sales for order {orderId}",
+                    ct,
+                    "TailoringCostPosting",
+                    repairPostingId,
+                    sourceOperationId);
+                repairPosting.ThrowIfFailure();
+
+                const string repairLinkSql = @"
+                    UPDATE p SET AccountingEventId=j.AccountingEventId
+                    FROM dbo.TailoringCostPostings p
+                    INNER JOIN dbo.JournalEntries j ON j.JournalEntryId=@journalEntryId
+                    WHERE p.TailoringCostPostingId=@postingId;";
+                await using var repairLinkCommand = new SqlCommand(repairLinkSql, connection, transaction);
+                repairLinkCommand.Parameters.AddWithValue("@journalEntryId", repairPosting.JournalEntryId!.Value);
+                repairLinkCommand.Parameters.AddWithValue("@postingId", repairPostingId);
+                if (await repairLinkCommand.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException("تعذر ربط قيد تكلفة التفصيل بمصدره.");
+                return;
+            }
+
+            return;
+        }
 
         const string insertSql = @"
             INSERT dbo.TailoringCostPostings
