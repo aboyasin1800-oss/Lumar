@@ -431,24 +431,21 @@ public sealed class MeasurementCardPrintingIntegrationTests
             await using var command = new SqlCommand(@"
                 SET XACT_ABORT ON;
 
-                DECLARE @historyIds TABLE (PrintHistoryId int PRIMARY KEY);
-                DECLARE @paymentIds TABLE (PaymentId int PRIMARY KEY);
-                DECLARE @eventIds TABLE (AccountingEventId bigint PRIMARY KEY);
-                DECLARE @fabricSourceIds TABLE (FabricConsumptionSourceId int PRIMARY KEY);
-                DECLARE @inventoryTransactionIds TABLE (TransactionId int PRIMARY KEY);
-                DECLARE @journalEntryIds TABLE (JournalEntryId int PRIMARY KEY);
-                DECLARE @financialTransactionIds TABLE (FinancialTransactionId int PRIMARY KEY);
-                DECLARE @customerLedgerEntryIds TABLE
-                (
-                    CustomerLedgerEntryId int PRIMARY KEY
-                );
+                CREATE TABLE #historyIds (PrintHistoryId int PRIMARY KEY);
+                CREATE TABLE #paymentIds (PaymentId int PRIMARY KEY);
+                CREATE TABLE #eventIds (AccountingEventId bigint PRIMARY KEY);
+                CREATE TABLE #fabricSourceIds (FabricConsumptionSourceId int PRIMARY KEY);
+                CREATE TABLE #inventoryTransactionIds (TransactionId int PRIMARY KEY);
+                CREATE TABLE #journalEntryIds (JournalEntryId int PRIMARY KEY);
+                CREATE TABLE #financialTransactionIds (FinancialTransactionId int PRIMARY KEY);
+                CREATE TABLE #customerLedgerEntryIds (CustomerLedgerEntryId int PRIMARY KEY);
 
-                INSERT INTO @historyIds
+                INSERT INTO #historyIds
                 SELECT h.PrintHistoryId
                 FROM dbo.MeasurementCardPrintHistory AS h
                 WHERE h.PieceId = @pieceId OR h.OrderItemId = @orderItemId OR h.OrderId = @orderId;
 
-                INSERT INTO @paymentIds
+                INSERT INTO #paymentIds
                 SELECT p.PaymentID
                 FROM dbo.Payments AS p
                 WHERE p.PaymentID IN (
@@ -457,46 +454,46 @@ public sealed class MeasurementCardPrintingIntegrationTests
                         INNER JOIN dbo.Payments AS p2 ON p2.PrintHistoryId = h2.PrintHistoryId
                         WHERE h2.PieceId = @pieceId OR h2.OrderItemId = @orderItemId OR h2.OrderId = @orderId
                     )
-                   OR p.PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
+                   OR p.PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
                    OR p.OrderID = @orderId;
 
-                INSERT INTO @fabricSourceIds
+                INSERT INTO #fabricSourceIds
                 SELECT s.FabricConsumptionSourceId
                 FROM dbo.FabricConsumptionSources AS s
                 WHERE s.PieceId = @pieceId OR s.OrderItemId = @orderItemId;
 
-                INSERT INTO @eventIds
+                INSERT INTO #eventIds
                 SELECT e.AccountingEventId
                 FROM dbo.AccountingEvents AS e
-                WHERE e.MeasurementCardPrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
-                   OR e.PaymentId IN (SELECT PaymentId FROM @paymentIds)
-                   OR e.FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM @fabricSourceIds);
+                WHERE e.MeasurementCardPrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
+                   OR e.PaymentId IN (SELECT PaymentId FROM #paymentIds)
+                   OR e.FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM #fabricSourceIds);
 
-                INSERT INTO @inventoryTransactionIds
+                INSERT INTO #inventoryTransactionIds
                 SELECT DISTINCT s.InventoryTransactionId
                 FROM dbo.FabricConsumptionSources AS s
-                WHERE s.FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM @fabricSourceIds)
+                WHERE s.FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM #fabricSourceIds)
                   AND s.InventoryTransactionId IS NOT NULL;
 
-                INSERT INTO @journalEntryIds
+                INSERT INTO #journalEntryIds
                 SELECT j.JournalEntryId
                 FROM dbo.JournalEntries AS j
-                WHERE j.AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
+                WHERE j.AccountingEventId IN (SELECT AccountingEventId FROM #eventIds);
 
-                INSERT INTO @financialTransactionIds
+                INSERT INTO #financialTransactionIds
                 SELECT f.FinancialTransactionId
                 FROM dbo.FinancialTransactions AS f
-                WHERE f.AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
+                WHERE f.AccountingEventId IN (SELECT AccountingEventId FROM #eventIds);
 
                 IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'CustomerLedgerEntryId') IS NOT NULL
                 BEGIN
-                    INSERT INTO @customerLedgerEntryIds
+                    INSERT INTO #customerLedgerEntryIds
                     SELECT CustomerLedgerEntryId
                     FROM
                     (
                         SELECT h.CustomerLedgerEntryId AS CustomerLedgerEntryId
                         FROM dbo.MeasurementCardPrintHistory AS h
-                        WHERE h.PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
+                        WHERE h.PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
                           AND h.CustomerLedgerEntryId IS NOT NULL
                     ) AS customerLedgerEntries
                     WHERE CustomerLedgerEntryId IS NOT NULL;
@@ -504,13 +501,13 @@ public sealed class MeasurementCardPrintingIntegrationTests
 
                 IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'PaymentCustomerLedgerEntryId') IS NOT NULL
                 BEGIN
-                    INSERT INTO @customerLedgerEntryIds
+                    INSERT INTO #customerLedgerEntryIds
                     SELECT CustomerLedgerEntryId
                     FROM
                     (
                         SELECT h.PaymentCustomerLedgerEntryId AS CustomerLedgerEntryId
                         FROM dbo.MeasurementCardPrintHistory AS h
-                        WHERE h.PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
+                        WHERE h.PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
                           AND h.PaymentCustomerLedgerEntryId IS NOT NULL
                     ) AS customerLedgerEntries
                     WHERE CustomerLedgerEntryId IS NOT NULL;
@@ -518,13 +515,13 @@ public sealed class MeasurementCardPrintingIntegrationTests
 
                 IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'WaiverCustomerLedgerEntryId') IS NOT NULL
                 BEGIN
-                    INSERT INTO @customerLedgerEntryIds
+                    INSERT INTO #customerLedgerEntryIds
                     SELECT CustomerLedgerEntryId
                     FROM
                     (
                         SELECT h.WaiverCustomerLedgerEntryId AS CustomerLedgerEntryId
                         FROM dbo.MeasurementCardPrintHistory AS h
-                        WHERE h.PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
+                        WHERE h.PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
                           AND h.WaiverCustomerLedgerEntryId IS NOT NULL
                     ) AS customerLedgerEntries
                     WHERE CustomerLedgerEntryId IS NOT NULL;
@@ -532,91 +529,143 @@ public sealed class MeasurementCardPrintingIntegrationTests
 
                 IF COL_LENGTH('dbo.Payments', 'CustomerLedgerEntryId') IS NOT NULL
                 BEGIN
-                    EXEC(N'
-                        INSERT INTO @customerLedgerEntryIds
-                        SELECT CustomerLedgerEntryId
-                        FROM
-                        (
-                            SELECT p.CustomerLedgerEntryId AS CustomerLedgerEntryId
-                            FROM dbo.Payments AS p
-                            WHERE p.PaymentID IN (SELECT PaymentId FROM @paymentIds)
-                              AND p.CustomerLedgerEntryId IS NOT NULL
-                        ) AS customerLedgerEntries
-                        WHERE CustomerLedgerEntryId IS NOT NULL;');
+                    INSERT INTO #customerLedgerEntryIds
+                    SELECT p.CustomerLedgerEntryId
+                    FROM dbo.Payments AS p
+                    WHERE p.PaymentID IN (SELECT PaymentId FROM #paymentIds)
+                      AND p.CustomerLedgerEntryId IS NOT NULL;
                 END;
-
-                DELETE FROM dbo.JournalEntryLines
-                WHERE JournalEntryId IN (SELECT JournalEntryId FROM @journalEntryIds);
-
-                DELETE FROM dbo.JournalEntries
-                WHERE JournalEntryId IN (SELECT JournalEntryId FROM @journalEntryIds);
-
-                DELETE FROM dbo.CashMovements
-                WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
-
-                DELETE FROM dbo.FinancialTransactions
-                WHERE FinancialTransactionId IN (SELECT FinancialTransactionId FROM @financialTransactionIds)
-                   OR AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
-
-                DELETE FROM dbo.FabricConsumptionSources
-                WHERE FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM @fabricSourceIds);
-
-                DELETE FROM dbo.InventoryTransactions
-                WHERE TransactionID IN (SELECT TransactionId FROM @inventoryTransactionIds);
-
-                DELETE FROM dbo.AccountingEvents
-                WHERE AccountingEventId IN (SELECT AccountingEventId FROM @eventIds);
 
                 UPDATE dbo.FabricConsumptionSources
                 SET AccountingEventId = NULL,
                     InventoryTransactionId = NULL
-                WHERE FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM @fabricSourceIds)
+                WHERE FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM #fabricSourceIds)
                   AND (AccountingEventId IS NOT NULL OR InventoryTransactionId IS NOT NULL);
 
                 UPDATE dbo.InventoryTransactions
                 SET AccountingEventId = NULL
-                WHERE TransactionID IN (SELECT TransactionId FROM @inventoryTransactionIds)
+                WHERE TransactionID IN (SELECT TransactionId FROM #inventoryTransactionIds)
                   AND AccountingEventId IS NOT NULL;
+
+                IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'FinancialTransactionId') IS NOT NULL
+                BEGIN
+                    UPDATE dbo.MeasurementCardPrintHistory
+                    SET FinancialTransactionId = NULL
+                    WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
+                      AND FinancialTransactionId IS NOT NULL;
+                END;
+
+                IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'JournalEntryId') IS NOT NULL
+                BEGIN
+                    UPDATE dbo.MeasurementCardPrintHistory
+                    SET JournalEntryId = NULL
+                    WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
+                      AND JournalEntryId IS NOT NULL;
+                END;
+
+                IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'CustomerLedgerEntryId') IS NOT NULL
+                BEGIN
+                    UPDATE dbo.MeasurementCardPrintHistory
+                    SET CustomerLedgerEntryId = NULL
+                    WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
+                      AND CustomerLedgerEntryId IS NOT NULL;
+                END;
+
+                IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'PaymentId') IS NOT NULL
+                BEGIN
+                    UPDATE dbo.MeasurementCardPrintHistory
+                    SET PaymentId = NULL
+                    WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
+                      AND PaymentId IS NOT NULL;
+                END;
+
+                IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'PaymentFinancialTransactionId') IS NOT NULL
+                BEGIN
+                    UPDATE dbo.MeasurementCardPrintHistory
+                    SET PaymentFinancialTransactionId = NULL
+                    WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
+                      AND PaymentFinancialTransactionId IS NOT NULL;
+                END;
+
+                IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'PaymentJournalEntryId') IS NOT NULL
+                BEGIN
+                    UPDATE dbo.MeasurementCardPrintHistory
+                    SET PaymentJournalEntryId = NULL
+                    WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
+                      AND PaymentJournalEntryId IS NOT NULL;
+                END;
+
+                IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'PaymentCustomerLedgerEntryId') IS NOT NULL
+                BEGIN
+                    UPDATE dbo.MeasurementCardPrintHistory
+                    SET PaymentCustomerLedgerEntryId = NULL
+                    WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
+                      AND PaymentCustomerLedgerEntryId IS NOT NULL;
+                END;
+
+                IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'WaiverFinancialTransactionId') IS NOT NULL
+                BEGIN
+                    UPDATE dbo.MeasurementCardPrintHistory
+                    SET WaiverFinancialTransactionId = NULL
+                    WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
+                      AND WaiverFinancialTransactionId IS NOT NULL;
+                END;
+
+                IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'WaiverJournalEntryId') IS NOT NULL
+                BEGIN
+                    UPDATE dbo.MeasurementCardPrintHistory
+                    SET WaiverJournalEntryId = NULL
+                    WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
+                      AND WaiverJournalEntryId IS NOT NULL;
+                END;
+
+                IF COL_LENGTH('dbo.MeasurementCardPrintHistory', 'WaiverCustomerLedgerEntryId') IS NOT NULL
+                BEGIN
+                    UPDATE dbo.MeasurementCardPrintHistory
+                    SET WaiverCustomerLedgerEntryId = NULL
+                    WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds)
+                      AND WaiverCustomerLedgerEntryId IS NOT NULL;
+                END;
 
                 UPDATE dbo.Payments
                 SET PrintHistoryId = NULL
-                WHERE PaymentID IN (SELECT PaymentId FROM @paymentIds)
+                WHERE PaymentID IN (SELECT PaymentId FROM #paymentIds)
                   AND PrintHistoryId IS NOT NULL;
 
-                UPDATE dbo.MeasurementCardPrintHistory
-                SET FinancialTransactionId = NULL,
-                    JournalEntryId = NULL,
-                    CustomerLedgerEntryId = NULL,
-                    PaymentId = NULL,
-                    PaymentFinancialTransactionId = NULL,
-                    PaymentJournalEntryId = NULL,
-                    PaymentCustomerLedgerEntryId = NULL,
-                    WaiverFinancialTransactionId = NULL,
-                    WaiverJournalEntryId = NULL,
-                    WaiverCustomerLedgerEntryId = NULL
-                WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds)
-                  AND (
-                        FinancialTransactionId IS NOT NULL
-                     OR JournalEntryId IS NOT NULL
-                     OR CustomerLedgerEntryId IS NOT NULL
-                     OR PaymentId IS NOT NULL
-                     OR PaymentFinancialTransactionId IS NOT NULL
-                     OR PaymentJournalEntryId IS NOT NULL
-                     OR PaymentCustomerLedgerEntryId IS NOT NULL
-                     OR WaiverFinancialTransactionId IS NOT NULL
-                     OR WaiverJournalEntryId IS NOT NULL
-                     OR WaiverCustomerLedgerEntryId IS NOT NULL
-                  );
+                DELETE FROM dbo.JournalEntryLines
+                WHERE JournalEntryId IN (SELECT JournalEntryId FROM #journalEntryIds);
+
+                DELETE FROM dbo.JournalEntries
+                WHERE JournalEntryId IN (SELECT JournalEntryId FROM #journalEntryIds);
+
+                DELETE FROM dbo.CashMovements
+                WHERE AccountingEventId IN (SELECT AccountingEventId FROM #eventIds);
+
+                DELETE FROM dbo.FinancialTransactions
+                WHERE FinancialTransactionId IN (SELECT FinancialTransactionId FROM #financialTransactionIds)
+                   OR AccountingEventId IN (SELECT AccountingEventId FROM #eventIds);
+
+                DELETE FROM dbo.AccountingEvents
+                WHERE AccountingEventId IN (SELECT AccountingEventId FROM #eventIds);
+
+                DELETE FROM dbo.FabricConsumptionSources
+                WHERE FabricConsumptionSourceId IN (SELECT FabricConsumptionSourceId FROM #fabricSourceIds);
+
+                DELETE FROM dbo.InventoryTransactions
+                WHERE TransactionID IN (SELECT TransactionId FROM #inventoryTransactionIds);
 
                 DELETE FROM dbo.Payments
-                WHERE PaymentID IN (SELECT PaymentId FROM @paymentIds);
+                WHERE PaymentID IN (SELECT PaymentId FROM #paymentIds);
 
-                DELETE FROM dbo.CustomerLedgerEntries
-                WHERE CustomerLedgerEntryId IN
-                (
-                    SELECT CustomerLedgerEntryId
-                    FROM @customerLedgerEntryIds
-                );
+                IF OBJECT_ID('dbo.CustomerLedgerEntries', 'U') IS NOT NULL
+                BEGIN
+                    DELETE FROM dbo.CustomerLedgerEntries
+                    WHERE CustomerLedgerEntryId IN
+                    (
+                        SELECT CustomerLedgerEntryId
+                        FROM #customerLedgerEntryIds
+                    );
+                END;
 
                 DELETE FROM dbo.TrackingEvents
                 WHERE PieceID = @pieceId OR OrderItemID = @orderItemId OR OrderID = @orderId;
@@ -628,7 +677,7 @@ public sealed class MeasurementCardPrintingIntegrationTests
                 WHERE PieceID = @pieceId OR OrderItemID = @orderItemId;
 
                 DELETE FROM dbo.MeasurementCardPrintHistory
-                WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM @historyIds);
+                WHERE PrintHistoryId IN (SELECT PrintHistoryId FROM #historyIds);
 
                 DELETE FROM dbo.Pieces
                 WHERE PieceID = @pieceId;
