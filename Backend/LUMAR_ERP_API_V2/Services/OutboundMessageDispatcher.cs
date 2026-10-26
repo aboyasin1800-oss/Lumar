@@ -47,6 +47,7 @@ public sealed class OutboundMessageDispatcher(
                 if (result.Outcome == OutboundDispatchOutcome.Unconfirmed)
                 {
                     var unconfirmedReason = BuildSafeFailureReason(result);
+                    await repository.MarkUnconfirmedAsync(message.CustomerMessageId, result.ProviderMessageId, unconfirmedReason, cancellationToken);
                     logger.LogWarning("Outbound message {MessageId} is unconfirmed via {Channel}. HttpStatusCode={HttpStatusCode} Retryable={Retryable} FailureReason={FailureReason}", message.CustomerMessageId, channelName, result.HttpStatusCode, result.Retryable, unconfirmedReason);
                     return new OutboundDispatchResult(message.CustomerMessageId, message.EventType, channelName, false, result.ProviderMessageId, unconfirmedReason, message.AttemptCount, "Unconfirmed");
                 }

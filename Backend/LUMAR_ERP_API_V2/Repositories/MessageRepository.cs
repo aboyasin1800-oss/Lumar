@@ -552,6 +552,26 @@ WHERE MessageTemplateID = @id;";
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task MarkUnconfirmedAsync(int customerMessageId, string? providerMessageId, string failureReason, CancellationToken cancellationToken)
+    {
+        const string sql = @"
+            UPDATE dbo.CustomerMessages
+            SET DeliveryStatus = N'Unconfirmed',
+                ProviderMessageId = CASE WHEN @providerMessageId IS NOT NULL THEN @providerMessageId ELSE ProviderMessageId END,
+                FailureReason = @failureReason,
+                IsRetryable = 0,
+                ProcessingAtUtc = NULL
+            WHERE CustomerMessageID = @customerMessageId;";
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@customerMessageId", customerMessageId);
+        command.Parameters.AddWithValue("@providerMessageId", (object?)providerMessageId ?? DBNull.Value);
+        command.Parameters.AddWithValue("@failureReason", failureReason.Length > 500 ? failureReason[..497] + "..." : failureReason);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task MarkFailedAsync(int customerMessageId, string failureReason, bool retryable, CancellationToken cancellationToken)
     {
         const string sql = @"

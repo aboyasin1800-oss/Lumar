@@ -1244,6 +1244,33 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task OutboundMessageDispatcher_PersistsUnconfirmedOutcomeWithoutRetrying()
+    {
+        var repo = new FakeMessageRepository();
+        var channel = new FakeOutboundChannel("InApp", false, forcedUnconfirmed: true);
+        var dispatcher = new OutboundMessageDispatcher(repo, [channel], new LoggerFactory().CreateLogger<OutboundMessageDispatcher>(), new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["OutboundMessaging:MaxAttempts"] = "5",
+            ["OutboundMessaging:StaleProcessingMinutes"] = "30",
+        }).Build());
+
+        var messageId = await repo.CreateCustomerMessageAsync(7, 99, "OrderCreated", "OrderCreated", "InApp", "Title", "Body", "770000000", "ORD-99", "Order", "idempotency-unconfirmed", CancellationToken.None);
+        Assert.NotNull(messageId);
+
+        var result = await dispatcher.DispatchNextAsync(CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.False(result!.Sent);
+        Assert.Equal("Unconfirmed", result.DeliveryStatus);
+        var stored = repo.Messages.Single(x => x.CustomerMessageId == messageId.Value);
+        Assert.Equal("Unconfirmed", stored.DeliveryStatus);
+        Assert.Equal("local-provider-id", stored.ProviderMessageId);
+        Assert.NotNull(stored.FailureReason);
+        Assert.Contains("unconfirmed", stored.FailureReason!, StringComparison.OrdinalIgnoreCase);
+        Assert.True(stored.ProcessingAtUtc is null);
+    }
+
+    [Fact]
     public async Task OutboundMessageDispatcher_RetryUsesSameMessage_WhenTransientFailureOccurs()
     {
         var repo = new FakeMessageRepository();
@@ -3059,7 +3086,7 @@ public sealed class MessageWriteServiceTests
                 [new ReadyMadeSaleLineDto(88, null, 9, "Ready item", 1, 100m, 100m, 80m)]));
     }
 
-    private sealed class FakeOutboundChannel(string channelName, bool succeed, bool forcedTransientFailure = false) : IOutboundMessageChannel
+    private sealed class FakeOutboundChannel(string channelName, bool succeed, bool forcedTransientFailure = false, bool forcedUnconfirmed = false) : IOutboundMessageChannel
     {
         public string ChannelName { get; } = channelName;
 
@@ -3067,6 +3094,9 @@ public sealed class MessageWriteServiceTests
         {
             if (forcedTransientFailure)
                 return Task.FromResult(new OutboundAdapterResult(OutboundDispatchOutcome.TransientFailure, FailureReason: "Temporary transport issue", Retryable: true));
+
+            if (forcedUnconfirmed)
+                return Task.FromResult(new OutboundAdapterResult(OutboundDispatchOutcome.Unconfirmed, "local-provider-id", "Local WhatsApp outcome is unconfirmed; automatic retry is unsafe.", Retryable: false));
 
             return succeed
                 ? Task.FromResult(new OutboundAdapterResult(OutboundDispatchOutcome.Sent, "provider-123"))
@@ -3312,6 +3342,7 @@ public sealed class MessageWriteServiceTests
         public Task<CustomerMessageDto?> GetByProviderMessageIdAsync(string providerMessageId, CancellationToken cancellationToken) => Task.FromResult<CustomerMessageDto?>(null);
         public Task UpdateDeliveryStatusByProviderIdAsync(string providerMessageId, string status, DateTime occurredAtUtc, string? failureReason, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task MarkSentAsync(int customerMessageId, string? providerMessageId, DateTime sentAtUtc, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task MarkUnconfirmedAsync(int customerMessageId, string? providerMessageId, string failureReason, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task MarkFailedAsync(int customerMessageId, string failureReason, bool retryable, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<(int? MessageId, int? NotificationId)> CreateCustomerMessageAndNotificationAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, string? campaignImageUrl, string? rawCampaignText = null, CancellationToken c = default)
             => Task.FromResult((MessageId: (int?)1, NotificationId: (int?)1));
@@ -3400,6 +3431,15 @@ public sealed class MessageWriteServiceTests
         {
             var message = Messages.First(x => x.CustomerMessageId == customerMessageId);
             var updated = message with { DeliveryStatus = "Sent", SentAtUtc = message.SentAtUtc ?? sentAtUtc, ProcessingAtUtc = null, FailureReason = null, ProviderMessageId = providerMessageId, DeliveredAtUtc = message.DeliveredAtUtc };
+            var index = Messages.IndexOf(message);
+            Messages[index] = updated;
+            return Task.CompletedTask;
+        }
+
+        public Task MarkUnconfirmedAsync(int customerMessageId, string? providerMessageId, string failureReason, CancellationToken cancellationToken)
+        {
+            var message = Messages.First(x => x.CustomerMessageId == customerMessageId);
+            var updated = message with { DeliveryStatus = "Unconfirmed", ProviderMessageId = providerMessageId, FailureReason = failureReason, ProcessingAtUtc = null };
             var index = Messages.IndexOf(message);
             Messages[index] = updated;
             return Task.CompletedTask;
