@@ -85,6 +85,22 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
                     ProviderMessageId: result.ProviderMessageId, Retryable: false, HttpStatusCode: (int)response.StatusCode);
             }
 
+            if (response.IsSuccessStatusCode && result is not null && result.Outcome == "Sent")
+            {
+                return new OutboundAdapterResult(OutboundDispatchOutcome.Unconfirmed,
+                    FailureReason: "Local WhatsApp outcome is unconfirmed; automatic retry is unsafe.",
+                    Retryable: false,
+                    HttpStatusCode: (int)response.StatusCode);
+            }
+
+            if (result?.Code == "SEND_UNCONFIRMED" || result?.Outcome == "Unconfirmed" || result?.Outcome == "SendUnconfirmed")
+            {
+                return new OutboundAdapterResult(OutboundDispatchOutcome.Unconfirmed,
+                    FailureReason: "Local WhatsApp outcome is unconfirmed; automatic retry is unsafe.",
+                    Retryable: false,
+                    HttpStatusCode: (int)response.StatusCode);
+            }
+
             var retryable = !response.IsSuccessStatusCode && result?.Code is "NOT_CONNECTED" or "BUSY";
             var reason = result?.Code switch
             {
@@ -112,7 +128,7 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
         }
     }
 
-    private static OutboundAdapterResult Unconfirmed() => new(OutboundDispatchOutcome.PermanentFailure,
+    private static OutboundAdapterResult Unconfirmed() => new(OutboundDispatchOutcome.Unconfirmed,
         FailureReason: "Local WhatsApp outcome is unconfirmed; automatic retry is unsafe.", Retryable: false);
 
     private sealed record GatewaySendResponse(string? Outcome, string? ProviderMessageId, string? Code);

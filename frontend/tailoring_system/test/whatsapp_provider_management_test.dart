@@ -150,6 +150,34 @@ void main() {
   });
 
   testWidgets(
+      'error session remains recoverable and allows link from the screen',
+      (tester) async {
+    final api = ProviderApi()..state = 'Error'..lastError = 'SESSION_CONNECTION_FAILED';
+    await open(tester, api);
+    final linkButton = find.byKey(const ValueKey('session-link'));
+    expect(linkButton, findsOneWidget);
+    expect(
+        tester.widget<OutlinedButton>(linkButton).onPressed,
+        isNotNull,
+    );
+    await tester.tap(linkButton);
+    await tester.pumpAndSettle();
+    expect(api.writes, ['/local-whatsapp/session/link']);
+    expect(find.text('جارٍ الربط'), findsOneWidget);
+  });
+
+  testWidgets(
+      'unconfirmed send outcome is explained without retrying or exposing raw failure',
+      (tester) async {
+    final api = ProviderApi()
+      ..state = 'Connected'
+      ..lastError = 'SEND_UNCONFIRMED';
+    await open(tester, api);
+    expect(find.text('نتيجة الإرسال غير مؤكدة؛ لا تعاد الرسالة تلقائيًا.'), findsOneWidget);
+    expect(find.textContaining('secret'), findsNothing);
+  });
+
+  testWidgets(
       'expired QR and backgrounded window do not retain pairing material',
       (tester) async {
     final api = ProviderApi();

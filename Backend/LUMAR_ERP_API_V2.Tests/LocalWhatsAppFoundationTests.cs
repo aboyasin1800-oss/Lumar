@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.Controllers;
@@ -17,6 +18,7 @@ using Xunit;
 
 namespace LUMAR_ERP_API_V2.Tests;
 
+[Collection(nameof(LocalWhatsAppGatewayProcessHostCollection))]
 public sealed class LocalWhatsAppFoundationTests
 {
     private static CustomerMessageDto Message() => new(12, 3, null, "OrderCreated", "existing-template",
@@ -37,9 +39,26 @@ public sealed class LocalWhatsAppFoundationTests
         using var http = Client(handler);
         var adapter = new LocalWhatsAppMessageChannel(new LocalWhatsAppGatewayClient(http));
         var result = await adapter.SendAsync(Message(), CancellationToken.None);
+        var expected = body.Contains("SEND_UNCONFIRMED") || body.Contains("secret raw provider stack")
+            ? OutboundDispatchOutcome.Unconfirmed
+            : retryable ? OutboundDispatchOutcome.TransientFailure : OutboundDispatchOutcome.PermanentFailure;
         Assert.Equal(retryable, result.Retryable);
-        Assert.Equal(retryable ? OutboundDispatchOutcome.TransientFailure : OutboundDispatchOutcome.PermanentFailure, result.Outcome);
+        Assert.Equal(expected, result.Outcome);
         Assert.DoesNotContain("secret", result.FailureReason!);
+    }
+
+    [Fact]
+    public async Task Adapter_ReportsUnconfirmed_WhenGatewayCannotProveTheMessageId()
+    {
+        using var handler = new GatewayHandler { ResponseStatus = HttpStatusCode.BadGateway, ResponseBody = "{\"code\":\"SEND_UNCONFIRMED\",\"error\":\"secret\"}" };
+        using var http = Client(handler);
+        var adapter = new LocalWhatsAppMessageChannel(new LocalWhatsAppGatewayClient(http));
+
+        var result = await adapter.SendAsync(Message(), CancellationToken.None);
+
+        Assert.Equal(OutboundDispatchOutcome.Unconfirmed, result.Outcome);
+        Assert.False(result.Retryable);
+        Assert.Contains("unconfirmed", result.FailureReason!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -191,6 +210,37 @@ public sealed class LocalWhatsAppFoundationTests
     }
 
     [Fact]
+    public async Task GatewayLifecycle_UsesConfiguredApprovedRecipient_WhenStartingGateway()
+    {
+        var port = GetFreeTcpPort();
+        var baseUrl = $"http://127.0.0.1:{port}/";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["LocalWhatsAppGateway:BaseUrl"] = baseUrl,
+                ["LocalWhatsAppGateway:AutoStart"] = "true",
+                ["LocalWhatsAppGateway:ApprovedTestRecipient"] = "967775106545"
+            }).Build();
+
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddDebug().AddConsole());
+        var host = new LocalWhatsAppGatewayProcessHost(loggerFactory.CreateLogger<LocalWhatsAppGatewayProcessHost>(), configuration);
+
+        await host.StartAsync(CancellationToken.None);
+
+        var tokenPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LUMAR", "LocalWhatsAppGateway", "gateway-token");
+        var token = (await File.ReadAllTextAsync(tokenPath)).Trim();
+        using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var response = await client.PostAsJsonAsync("/messages/send", new { recipient = "775106545", text = "final body" });
+        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("NOT_CONNECTED", payload.GetProperty("code").GetString());
+
+        await host.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task GatewayLifecycle_StartsHealthAndShutsDownWithoutDuplicateBinding()
     {
         var port = GetFreeTcpPort();
@@ -237,6 +287,11 @@ public sealed class LocalWhatsAppFoundationTests
 
         await host.StopAsync(CancellationToken.None);
         await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync("/health"));
+    }
+
+    [CollectionDefinition(nameof(LocalWhatsAppGatewayProcessHostCollection), DisableParallelization = true)]
+    public sealed class LocalWhatsAppGatewayProcessHostCollection
+    {
     }
 
     private static int GetFreeTcpPort()

@@ -63,6 +63,37 @@ export class WebDriver extends EventEmitter {
     const content = media ? new MessageMedia(media.mimeType, media.base64, 'lumar-image') : text;
     const message = await this.client.sendMessage(`${recipient}@c.us`, content,
       { caption: media ? text : undefined, sendSeen: false, waitUntilMsgSent: true });
-    return message?.id?._serialized ?? null;
+    return extractProviderMessageId(message);
   }
+}
+
+function extractProviderMessageId(message) {
+  const direct = [
+    message?.id?._serialized,
+    message?._serialized,
+    message?.id?.['$1'],
+    message?.id?.id,
+    typeof message?.id === 'string' ? message.id : null,
+  ];
+
+  for (const value of direct) {
+    if (typeof value !== 'string') continue;
+    const normalized = value.trim();
+    if (normalized.length > 0 && normalized.length <= 200 && !normalized.startsWith('undefined')) {
+      return normalized;
+    }
+  }
+
+  const nested = message?.id;
+  if (!nested || typeof nested !== 'object') return null;
+  const fromMe = typeof nested.fromMe === 'boolean' ? nested.fromMe : null;
+  const remote = typeof nested.remote === 'string' ? nested.remote.trim() : '';
+  const id = typeof nested.id === 'string' ? nested.id.trim() : '';
+  if (fromMe === null || remote.length === 0 || id.length === 0) return null;
+  const reconstructed = `${fromMe}_${remote}_${id}`;
+  if (reconstructed.length > 0 && reconstructed.length <= 200 && !reconstructed.startsWith('undefined')) {
+    return reconstructed;
+  }
+
+  return null;
 }

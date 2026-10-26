@@ -5,6 +5,20 @@ import { GatewayError } from './session.mjs';
 const hash = value => createHash('sha256').update(value).digest();
 const actions = new Set(['link', 'disconnect', 'logout', 'reconnect', 'replace']);
 
+function normalizeYemenMobileNumber(phoneNumber) {
+  if (typeof phoneNumber !== 'string') return null;
+  const digitsOnly = phoneNumber.replace(/\D+/g, '');
+  if (!digitsOnly) return null;
+  const trimmed = digitsOnly.startsWith('00') ? digitsOnly.slice(2) : digitsOnly;
+  if (trimmed.startsWith('967')) {
+    const localPart = trimmed.slice(3);
+    if (localPart.length === 9 && localPart.startsWith('7')) return `967${localPart}`;
+    return null;
+  }
+  if (trimmed.length === 9 && trimmed.startsWith('7')) return `967${trimmed}`;
+  return null;
+}
+
 async function jsonBody(request) {
   if (request.headers['content-type']?.split(';')[0] !== 'application/json') throw new GatewayError('INVALID_MESSAGE', 415);
   let size = 0;
@@ -74,7 +88,11 @@ export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin 
           || (body.imageUrl != null && (typeof body.imageUrl !== 'string' || body.imageUrl.length > 2048))) {
           throw new GatewayError('INVALID_MESSAGE', 400);
         }
-        if (!testRecipient || body.recipient !== testRecipient) throw new GatewayError('TEST_RECIPIENT_REQUIRED', 403);
+        const normalizedRecipient = normalizeYemenMobileNumber(body.recipient);
+        const normalizedApproved = normalizeYemenMobileNumber(testRecipient);
+        if (!normalizedRecipient || !normalizedApproved || normalizedRecipient !== normalizedApproved) {
+          throw new GatewayError('TEST_RECIPIENT_REQUIRED', 403);
+        }
         const media = body.imageUrl ? await loadMedia(body.imageUrl, mediaOrigin) : null;
         reply(200, await manager.send({ recipient: body.recipient, text: body.text, media }));
       } else {

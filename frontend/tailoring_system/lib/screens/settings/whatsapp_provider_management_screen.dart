@@ -449,7 +449,7 @@ class _WhatsAppProviderManagementScreenState
                   'link',
                   _healthy == true &&
                       !_linked &&
-                      ['NotLinked', 'LoggedOut'].contains(_session)),
+                      ['NotLinked', 'LoggedOut', 'Error'].contains(_session)),
               _command(
                   'فصل الاتصال',
                   Icons.pause_circle_outline,

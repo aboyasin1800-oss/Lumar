@@ -59,6 +59,23 @@ test('approved test recipient still requires connected session', async context =
   assert.equal((await call('/messages/send', { recipient: '967777999999', text: 'final body' })).status, 403);
 });
 
+test('yemen test recipient accepts equivalent local and international formats only', async context => {
+  const { call } = await host(context, { testRecipient: '967775106545' });
+  const localApproved = await call('/messages/send', { recipient: '775106545', text: 'final body' });
+  const internationalApproved = await call('/messages/send', { recipient: '967775106545', text: 'final body' });
+  const mismatched = await call('/messages/send', { recipient: '967775106546', text: 'final body' });
+  const reverseMismatch = await call('/messages/send', { recipient: '775106546', text: 'final body' });
+
+  assert.equal(localApproved.status, 503);
+  assert.equal((await localApproved.json()).code, 'NOT_CONNECTED');
+  assert.equal(internationalApproved.status, 503);
+  assert.equal((await internationalApproved.json()).code, 'NOT_CONNECTED');
+  assert.equal(mismatched.status, 403);
+  assert.equal((await mismatched.json()).code, 'TEST_RECIPIENT_REQUIRED');
+  assert.equal(reverseMismatch.status, 403);
+  assert.equal((await reverseMismatch.json()).code, 'TEST_RECIPIENT_REQUIRED');
+});
+
 test('invalid payloads, remote media and arbitrary administrative fields are rejected', async context => {
   const { call } = await host(context, { testRecipient: '967777123456' });
   for (const body of [null, [], {}, { recipient: 'group@g.us', text: 'x' }, { recipient: '967777123456', text: 'x', template: 'meta' }]) {

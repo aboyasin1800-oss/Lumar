@@ -3,6 +3,7 @@ namespace LUMAR_ERP_API_V2.DTOs.Messages;
 public enum OutboundDispatchOutcome
 {
     Sent,
+    Unconfirmed,
     TransientFailure,
     PermanentFailure
 }

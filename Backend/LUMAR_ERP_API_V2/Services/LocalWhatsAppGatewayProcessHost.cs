@@ -11,6 +11,7 @@ public sealed class LocalWhatsAppGatewayProcessHost(
     private Process? _process;
     private string _gatewayDirectory = string.Empty;
     private string _gatewayScript = string.Empty;
+    private string _approvedTestRecipient = string.Empty;
     private bool _enabled;
     private int _port;
 
@@ -33,8 +34,17 @@ public sealed class LocalWhatsAppGatewayProcessHost(
         }
 
         _port = uri.Port <= 0 ? 5094 : uri.Port;
+        _approvedTestRecipient = configuration["LocalWhatsAppGateway:ApprovedTestRecipient"]
+            ?? configuration["LocalWhatsAppGateway:TestRecipient"]
+            ?? configuration["LUMAR_LOCAL_TEST_RECIPIENT"]
+            ?? string.Empty;
         _gatewayDirectory = FindGatewayDirectory();
         _gatewayScript = Path.Combine(_gatewayDirectory, "src", "server.mjs");
+
+        if (!string.IsNullOrWhiteSpace(_approvedTestRecipient))
+        {
+            logger.LogInformation("Local WhatsApp gateway approved recipient configured: {MaskedRecipient}", MaskPhone(_approvedTestRecipient));
+        }
 
         if (!File.Exists(_gatewayScript))
         {
@@ -119,6 +129,7 @@ public sealed class LocalWhatsAppGatewayProcessHost(
             CreateNoWindow = true,
         };
         psi.Environment["LUMAR_LOCAL_GATEWAY_PORT"] = _port.ToString();
+        psi.Environment["LUMAR_LOCAL_TEST_RECIPIENT"] = _approvedTestRecipient;
 
         _process = Process.Start(psi);
         if (_process is null)
@@ -128,6 +139,24 @@ public sealed class LocalWhatsAppGatewayProcessHost(
         }
 
         logger.LogInformation("Started Local WhatsApp gateway process with PID {Pid} on port {Port}.", _process.Id, _port);
+
+        using var readinessClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                using var response = await readinessClient.GetAsync($"http://127.0.0.1:{_port}/health");
+                if (response.StatusCode == System.Net.HttpStatusCode.OK || response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    break;
+                }
+            }
+            catch
+            {
+                await Task.Delay(200);
+            }
+        }
 
         _ = Task.Run(async () =>
         {
@@ -152,6 +181,13 @@ public sealed class LocalWhatsAppGatewayProcessHost(
             {
             }
         }, cancellationToken);
+    }
+
+    private static string MaskPhone(string value)
+    {
+        var digits = new string(value.Where(char.IsDigit).ToArray());
+        if (digits.Length <= 4) return new string('*', Math.Max(4, digits.Length));
+        return $"****{digits[^4..]}";
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

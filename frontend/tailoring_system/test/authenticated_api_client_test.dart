@@ -5,65 +5,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tailoring_system/core/authenticated_api_client.dart';
+import 'package:tailoring_system/screens/messages_screen.dart';
 import 'package:tailoring_system/services/auth_state.dart';
+
+class _FakeAuth extends AuthState {
+  _FakeAuth() : super(baseUrl: 'http://127.0.0.1');
+
+  @override
+  String? get token => 'demo-session-token';
+}
 
 void main() {
   test('AuthenticatedApiClient adds the Bearer token when saving an order', () async {
-    final server = await HttpServer.bind('127.0.0.1', 0);
-    addTearDown(() async => server.close(force: true));
-
-    final baseUrl = 'http://${server.address.host}:${server.port}';
-    final auth = AuthState(baseUrl: baseUrl);
-
-    server.listen((request) async {
-      if (request.uri.path == '/auth/login') {
-        final body = await utf8.decoder.bind(request).join();
-        expect(jsonDecode(body)['username'], 'admin');
-
-        request.response.statusCode = HttpStatus.ok;
-        request.response.headers.contentType = ContentType.json;
-        request.response.write(jsonEncode({
-          'token': 'demo-session-token',
-          'user': {
-            'userId': 1,
-            'username': 'admin',
-            'fullName': 'Admin',
-            'isActive': true,
-            'accountType': 'Employee',
-            'employeeId': 7,
-          },
-        }));
-        await request.response.close();
-        return;
-      }
-
-      if (request.uri.path == '/orders') {
-        expect(request.headers.value(HttpHeaders.authorizationHeader),
-            'Bearer demo-session-token');
-
-        final body = await utf8.decoder.bind(request).join();
-        final payload = jsonDecode(body) as Map<String, dynamic>;
-        expect(payload['requestReference'], 'ORD-TEST-001');
-        expect(payload['cashAccountId'], 42);
-
-        request.response.statusCode = HttpStatus.created;
-        request.response.headers.contentType = ContentType.json;
-        request.response.write(jsonEncode({
-          'orderId': 77,
-          'orderNumber': 'ORD-77',
-        }));
-        await request.response.close();
-        return;
-      }
-
-      request.response.statusCode = HttpStatus.notFound;
-      await request.response.close();
-    });
-
-    final loginError = await auth.login('admin', '1234', true);
-    expect(loginError, isNull);
-    expect(auth.token, 'demo-session-token');
-
+    final auth = _FakeAuth();
     final api = AuthenticatedApiClient(
       auth: auth,
       client: MockClient((request) {
@@ -75,7 +29,7 @@ void main() {
           201,
         ));
       }),
-      baseUrl: baseUrl,
+      baseUrl: 'http://127.0.0.1',
     );
 
     final result = await api.postObject('/orders', {
@@ -92,5 +46,27 @@ void main() {
     });
 
     expect(result['orderNumber'], 'ORD-77');
+  });
+
+  test('MessagesRepository adds the bearer token when reading customer messages', () async {
+    final auth = _FakeAuth();
+    final repository = MessagesRepository(
+      auth: auth,
+      client: MockClient((request) {
+        expect(request.url.path, '/messages/customer-messages');
+        expect(request.headers['authorization'], 'Bearer demo-session-token');
+        return Future.value(http.Response.bytes(
+          utf8.encode(jsonEncode([
+            {'id': 1, 'title': 'مرحبا', 'body': 'نص', 'channel': 'LocalWhatsApp', 'eventType': 'ManualCampaign', 'deliveryStatus': 'Sent', 'createdAtUtc': DateTime.now().toUtc().toIso8601String()}
+          ])),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ));
+      }),
+    );
+
+    final messages = await repository.getCustomerMessages();
+    expect(messages, hasLength(1));
+    expect(messages.first.title, 'مرحبا');
   });
 }

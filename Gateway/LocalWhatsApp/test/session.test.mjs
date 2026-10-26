@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { SessionManager } from '../src/session.mjs';
+import { WebDriver } from '../src/web-driver.mjs';
 
 function fixture(saved = { linked: false, connect: false }) {
   const drivers = [];
@@ -111,4 +112,39 @@ test('concurrent commands are rejected while sending, not queued', async () => {
   await assert.rejects(manager.send({ text: 'other' }), { code: 'BUSY' });
   complete('provider-id');
   assert.deepEqual(await sending, { outcome: 'Sent', providerMessageId: 'provider-id', retryable: false });
+});
+
+test('web driver supports the installed whatsapp-web.js message contract and blocks unconfirmed sends', async () => {
+  const driver = new WebDriver('test-data');
+  driver.client = {
+    sendMessage: async () => ({
+      id: { _serialized: 'wamid.1', id: 'remote-id' },
+      body: 'ok',
+    }),
+  };
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'hello' }), 'wamid.1');
+
+  driver.client.sendMessage = async () => ({ id: { id: 'fallback-id' } });
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'hello' }), 'fallback-id');
+
+  driver.client.sendMessage = async () => ({ id: {} });
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'hello' }), null);
+
+  const manager = new SessionManager(() => ({
+    initialize: async () => {},
+    destroy: async () => {},
+    logout: async () => {},
+    send: async () => null,
+    on: () => {},
+  }), { read: () => ({ linked: true, connect: true, loggedOut: false }), write: () => {} });
+  const session = manager;
+  session.state = 'Connected';
+  session.driver = { send: async () => null };
+  await assert.rejects(session.send({ text: 'final' }), { code: 'SEND_UNCONFIRMED' });
+  assert.equal(session.status().lastError, 'SEND_UNCONFIRMED');
+
+  session.driver = { send: async () => { throw new Error('secret post-send exception'); } };
+  await assert.rejects(session.send({ text: 'final' }), { code: 'SEND_UNCONFIRMED' });
+  assert.equal(session.status().lastError, 'SEND_UNCONFIRMED');
+  assert.equal(JSON.stringify(session.status()).includes('secret'), false);
 });

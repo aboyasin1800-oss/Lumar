@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../core/app_navigation.dart';
 import '../core/ui_palette.dart';
+import '../services/auth_state.dart';
 
 const _apiBaseUrl = String.fromEnvironment(
   'LUMAR_API_URL',
@@ -186,14 +187,21 @@ class _MessagesScreenState extends State<MessagesScreen> {
 }
 
 class MessagesRepository {
-  MessagesRepository({http.Client? client}) : _client = client ?? http.Client();
+  MessagesRepository({http.Client? client, AuthState? auth})
+      : _client = client ?? http.Client(),
+        _auth = auth ?? AuthState.instance;
 
   final http.Client _client;
+  final AuthState _auth;
 
   Future<List<CustomerMessageRecord>> getCustomerMessages() async {
+    final token = _auth.token?.trim();
     final response = await _client.get(
       Uri.parse('$_apiBaseUrl/messages/customer-messages'),
-      headers: {'Accept': 'application/json'},
+      headers: {
+        'Accept': 'application/json',
+        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+      },
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1195,6 +1203,7 @@ String _normalizeStatus(String value) {
   if (normalized.isEmpty) return 'الكل';
   final lower = normalized.toLowerCase();
   if (lower.contains('sent') || lower.contains('مكتمل') || lower.contains('تم الإرسال')) return 'تم الإرسال';
+  if (lower.contains('unconfirmed') || lower.contains('غير مؤكدة') || lower.contains('not confirmed') || lower.contains('confirmation')) return 'غير مؤكدة';
   if (lower.contains('delivered') || lower.contains('تم التسليم') || lower.contains('deliv')) return 'تم التسليم';
   if (lower.contains('read') || lower.contains('مقروء')) return 'مقروء';
   if (lower.contains('queued') || lower.contains('pending') || lower.contains('processing') || lower.contains('waiting')) return 'قيد التنفيذ';
@@ -1207,6 +1216,8 @@ String _statusLabel(String value) {
   switch (normalized) {
     case 'تم الإرسال':
       return 'تم الإرسال';
+    case 'غير مؤكدة':
+      return 'غير مؤكدة';
     case 'تم التسليم':
       return 'تم التسليم';
     case 'مقروء':
@@ -1224,6 +1235,8 @@ Color _statusColor(String value) {
   switch (_normalizeStatus(value)) {
     case 'تم الإرسال':
       return const Color(0xFF2FA5D9);
+    case 'غير مؤكدة':
+      return const Color(0xFFE5B93A);
     case 'تم التسليم':
       return const Color(0xFF2E9D5A);
     case 'مقروء':
@@ -1246,12 +1259,14 @@ class _SummaryCards extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = messages.length;
     final sent = messages.where((m) => _normalizeStatus(m.deliveryStatus) == 'تم الإرسال').length;
+    final unconfirmed = messages.where((m) => _normalizeStatus(m.deliveryStatus) == 'غير مؤكدة').length;
     final delivered = messages.where((m) => _normalizeStatus(m.deliveryStatus) == 'تم التسليم').length;
     final failed = messages.where((m) => _normalizeStatus(m.deliveryStatus) == 'فشل').length;
 
     final items = [
       _MetricCard(title: 'إجمالي الرسائل', value: '$total', color: UiPalette.primary),
       _MetricCard(title: 'تم الإرسال', value: '$sent', color: const Color(0xFF2FA5D9)),
+      _MetricCard(title: 'غير مؤكدة', value: '$unconfirmed', color: const Color(0xFFE5B93A)),
       _MetricCard(title: 'تم التسليم', value: '$delivered', color: const Color(0xFF2E9D5A)),
       _MetricCard(title: 'الفشل', value: '$failed', color: const Color(0xFFD64B4B)),
     ];
@@ -1326,7 +1341,7 @@ class _FilterChips extends StatelessWidget {
   final String selected;
   final ValueChanged<String> onSelected;
 
-  static const List<String> _labels = ['الكل', 'قيد التنفيذ', 'تم الإرسال', 'تم التسليم', 'مقروء', 'فشل'];
+  static const List<String> _labels = ['الكل', 'قيد التنفيذ', 'تم الإرسال', 'غير مؤكدة', 'تم التسليم', 'مقروء', 'فشل'];
 
   @override
   Widget build(BuildContext context) {
