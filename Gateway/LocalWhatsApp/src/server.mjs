@@ -36,9 +36,13 @@ try {
   startupStage = 'SESSION_STATE';
   manager = new SessionManager(() => new WebDriver(directory), new SessionStore(directory));
   startupStage = 'GATEWAY_TOKEN';
+  const mediaOrigin = process.env.LUMAR_CAMPAIGN_MEDIA_PUBLIC_BASE_URL
+    || process.env.LUMAR_PUBLIC_BACKEND_BASE_URL
+    || process.env.LUMAR_LOCAL_MEDIA_ORIGIN
+    || '';
   server = gatewayServer(manager, { token: gatewayToken(directory, true),
     testRecipient: process.env.LUMAR_LOCAL_TEST_RECIPIENT ?? '',
-    mediaOrigin: process.env.LUMAR_LOCAL_MEDIA_ORIGIN ?? '' });
+    mediaOrigin: mediaOrigin.replace(/\/$/, '') });
   startupStage = 'HTTP_BIND';
   server.listen(port, '127.0.0.1');
   await once(server, 'listening');

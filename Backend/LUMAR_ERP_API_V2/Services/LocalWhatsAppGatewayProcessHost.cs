@@ -130,6 +130,7 @@ public sealed class LocalWhatsAppGatewayProcessHost(
         };
         psi.Environment["LUMAR_LOCAL_GATEWAY_PORT"] = _port.ToString();
         psi.Environment["LUMAR_LOCAL_TEST_RECIPIENT"] = _approvedTestRecipient;
+        psi.Environment["LUMAR_LOCAL_MEDIA_ORIGIN"] = ResolveMediaOrigin(configuration);
 
         _process = Process.Start(psi);
         if (_process is null)
@@ -181,6 +182,20 @@ public sealed class LocalWhatsAppGatewayProcessHost(
             {
             }
         }, cancellationToken);
+    }
+
+    public static string ResolveMediaOrigin(IConfiguration configuration)
+    {
+        var configured = configuration["CampaignMedia:PublicBaseUrl"]
+            ?? configuration["LUMAR_CAMPAIGN_MEDIA_PUBLIC_BASE_URL"]
+            ?? configuration["LUMAR_PUBLIC_BACKEND_BASE_URL"]
+            ?? Environment.GetEnvironmentVariable("LUMAR_CAMPAIGN_MEDIA_PUBLIC_BASE_URL")
+            ?? Environment.GetEnvironmentVariable("LUMAR_PUBLIC_BACKEND_BASE_URL")
+            ?? configuration["LUMAR_LOCAL_MEDIA_ORIGIN"]
+            ?? Environment.GetEnvironmentVariable("LUMAR_LOCAL_MEDIA_ORIGIN")
+            ?? string.Empty;
+
+        return string.IsNullOrWhiteSpace(configured) ? string.Empty : configured.TrimEnd('/');
     }
 
     private static string MaskPhone(string value)

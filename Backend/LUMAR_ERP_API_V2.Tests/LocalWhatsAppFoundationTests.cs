@@ -197,6 +197,20 @@ public sealed class LocalWhatsAppFoundationTests
     }
 
     [Fact]
+    public void GatewayLifecycle_ResolvesOfficialCampaignMediaOriginFromBackendConfig()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["CampaignMedia:PublicBaseUrl"] = "https://public-backend.example.com",
+            ["LUMAR_LOCAL_MEDIA_ORIGIN"] = "https://other.invalid"
+        }).Build();
+
+        var origin = LocalWhatsAppGatewayProcessHost.ResolveMediaOrigin(configuration);
+
+        Assert.Equal("https://public-backend.example.com", origin);
+    }
+
+    [Fact]
     public void StartupRegistration_RegisterGatewayLifecycleHost()
     {
         var services = new ServiceCollection();
