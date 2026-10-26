@@ -46,16 +46,16 @@ public sealed class OutboundMessageDispatcher(
 
                 if (result.Outcome == OutboundDispatchOutcome.Unconfirmed)
                 {
-                    var failureReason = BuildSafeFailureReason(result);
-                    logger.LogWarning("Outbound message {MessageId} is unconfirmed via {Channel}. HttpStatusCode={HttpStatusCode} Retryable={Retryable} FailureReason={FailureReason}", message.CustomerMessageId, channelName, result.HttpStatusCode, result.Retryable, failureReason);
-                    return new OutboundDispatchResult(message.CustomerMessageId, message.EventType, channelName, false, result.ProviderMessageId, failureReason, message.AttemptCount, "Unconfirmed");
+                    var unconfirmedReason = BuildSafeFailureReason(result);
+                    logger.LogWarning("Outbound message {MessageId} is unconfirmed via {Channel}. HttpStatusCode={HttpStatusCode} Retryable={Retryable} FailureReason={FailureReason}", message.CustomerMessageId, channelName, result.HttpStatusCode, result.Retryable, unconfirmedReason);
+                    return new OutboundDispatchResult(message.CustomerMessageId, message.EventType, channelName, false, result.ProviderMessageId, unconfirmedReason, message.AttemptCount, "Unconfirmed");
                 }
 
-                var failureReason = BuildSafeFailureReason(result);
+                var failedReason = BuildSafeFailureReason(result);
 
-                await repository.MarkFailedAsync(message.CustomerMessageId, failureReason, result.Retryable, cancellationToken);
-                logger.LogWarning("Outbound message {MessageId} failed via {Channel}. HttpStatusCode={HttpStatusCode} ProviderErrorCode={ProviderErrorCode} ProviderErrorSubcode={ProviderErrorSubcode} Retryable={Retryable} FailureReason={FailureReason}", message.CustomerMessageId, channelName, result.HttpStatusCode, result.ProviderErrorCode, result.ProviderErrorSubcode, result.Retryable, failureReason);
-                return new OutboundDispatchResult(message.CustomerMessageId, message.EventType, channelName, false, result.ProviderMessageId, failureReason, message.AttemptCount, "Failed");
+                await repository.MarkFailedAsync(message.CustomerMessageId, failedReason, result.Retryable, cancellationToken);
+                logger.LogWarning("Outbound message {MessageId} failed via {Channel}. HttpStatusCode={HttpStatusCode} ProviderErrorCode={ProviderErrorCode} ProviderErrorSubcode={ProviderErrorSubcode} Retryable={Retryable} FailureReason={FailureReason}", message.CustomerMessageId, channelName, result.HttpStatusCode, result.ProviderErrorCode, result.ProviderErrorSubcode, result.Retryable, failedReason);
+                return new OutboundDispatchResult(message.CustomerMessageId, message.EventType, channelName, false, result.ProviderMessageId, failedReason, message.AttemptCount, "Failed");
             }
             catch (Exception exception)
             {
