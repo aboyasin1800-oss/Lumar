@@ -14,7 +14,7 @@ public sealed class LocalWhatsAppGatewayProcessHost(
     private bool _enabled;
     private int _port;
 
-    public override Task StartAsync(CancellationToken cancellationToken)
+    public override async Task StartAsync(CancellationToken cancellationToken)
     {
         _enabled = configuration.GetValue("LocalWhatsAppGateway:AutoStart", true)
             && OperatingSystem.IsWindows();
@@ -22,14 +22,14 @@ public sealed class LocalWhatsAppGatewayProcessHost(
         if (!_enabled)
         {
             logger.LogInformation("Local WhatsApp gateway auto-start is disabled.");
-            return Task.CompletedTask;
+            return;
         }
 
         var baseUrl = configuration["LocalWhatsAppGateway:BaseUrl"] ?? "http://127.0.0.1:5094/";
         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttp || uri.Host != "127.0.0.1")
         {
             logger.LogWarning("Local WhatsApp gateway base URL is invalid; skipping auto-start. Value={BaseUrl}", baseUrl);
-            return Task.CompletedTask;
+            return;
         }
 
         _port = uri.Port <= 0 ? 5094 : uri.Port;
@@ -39,10 +39,11 @@ public sealed class LocalWhatsAppGatewayProcessHost(
         if (!File.Exists(_gatewayScript))
         {
             logger.LogWarning("Local WhatsApp gateway script not found at {ScriptPath}; skipping auto-start.", _gatewayScript);
-            return Task.CompletedTask;
+            return;
         }
 
-        return base.StartAsync(cancellationToken);
+        await EnsureRunningAsync(cancellationToken);
+        await base.StartAsync(cancellationToken);
     }
 
     private string FindGatewayDirectory()

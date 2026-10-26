@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.Controllers;
@@ -10,6 +11,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace LUMAR_ERP_API_V2.Tests;
@@ -178,12 +181,69 @@ public sealed class LocalWhatsAppFoundationTests
     public void StartupRegistration_RegisterGatewayLifecycleHost()
     {
         var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         services.AddLocalWhatsAppFoundation(new ConfigurationBuilder().Build());
         services.AddHostedService<LocalWhatsAppGatewayProcessHost>();
 
         using var provider = services.BuildServiceProvider();
         var hostedServices = provider.GetServices<IHostedService>();
         Assert.Contains(hostedServices, service => service is LocalWhatsAppGatewayProcessHost);
+    }
+
+    [Fact]
+    public async Task GatewayLifecycle_StartsHealthAndShutsDownWithoutDuplicateBinding()
+    {
+        var port = GetFreeTcpPort();
+        var baseUrl = $"http://127.0.0.1:{port}/";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["LocalWhatsAppGateway:BaseUrl"] = baseUrl,
+                ["LocalWhatsAppGateway:AutoStart"] = "true"
+            }).Build();
+
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddDebug().AddConsole());
+        var host = new LocalWhatsAppGatewayProcessHost(loggerFactory.CreateLogger<LocalWhatsAppGatewayProcessHost>(), configuration);
+
+        await host.StartAsync(CancellationToken.None);
+
+        var tokenPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LUMAR", "LocalWhatsAppGateway", "gateway-token");
+        var token = (await File.ReadAllTextAsync(tokenPath)).Trim();
+        using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        HttpResponseMessage? first = null;
+        while (!timeout.IsCancellationRequested)
+        {
+            try
+            {
+                first = await client.GetAsync("/health", timeout.Token);
+                if (first.StatusCode == HttpStatusCode.OK)
+                {
+                    break;
+                }
+            }
+            catch (HttpRequestException)
+            {
+                first = null;
+            }
+
+            await Task.Delay(200, timeout.Token);
+        }
+
+        Assert.NotNull(first);
+        Assert.Equal(HttpStatusCode.OK, first!.StatusCode);
+
+        await host.StopAsync(CancellationToken.None);
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync("/health"));
+    }
+
+    private static int GetFreeTcpPort()
+    {
+        using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
     }
 
     private sealed class GatewayHandler : HttpMessageHandler
