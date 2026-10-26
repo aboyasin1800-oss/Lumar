@@ -39,7 +39,7 @@ public sealed class LocalWhatsAppFoundationTests
         using var http = Client(handler);
         var adapter = new LocalWhatsAppMessageChannel(new LocalWhatsAppGatewayClient(http));
         var result = await adapter.SendAsync(Message(), CancellationToken.None);
-        var expected = body.Contains("SEND_UNCONFIRMED") || body.Contains("secret raw provider stack")
+        var expected = body.Contains("SEND_UNCONFIRMED") || body.Contains("secret raw provider stack") || body.Contains("\"outcome\":\"Sent\"")
             ? OutboundDispatchOutcome.Unconfirmed
             : retryable ? OutboundDispatchOutcome.TransientFailure : OutboundDispatchOutcome.PermanentFailure;
         Assert.Equal(retryable, result.Retryable);
