@@ -102,6 +102,10 @@ builder.Services.AddScoped<ILoyaltyAccountLifecycleService, LoyaltyAccountLifecy
 builder.Services.AddScoped<IVipLevelEvaluationService, VipLevelEvaluationService>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<LoyaltyFreezeBackgroundService>();
+if (OperatingSystem.IsWindows())
+{
+    builder.Services.AddHostedService<LocalWhatsAppGatewayProcessHost>();
+}
 builder.Services.AddScoped<ILoyaltyRedemptionRepository, LoyaltyRedemptionRepository>();
 builder.Services.AddScoped<ILoyaltyRedemptionService, LoyaltyRedemptionService>();
 builder.Services.AddScoped<ILoyaltyManagementSettingsService, LoyaltyManagementSettingsService>();

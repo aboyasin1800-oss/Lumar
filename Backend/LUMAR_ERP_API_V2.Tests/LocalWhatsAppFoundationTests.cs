@@ -174,6 +174,18 @@ public sealed class LocalWhatsAppFoundationTests
         Assert.Equal("/messages/send", handler.Path);
     }
 
+    [Fact]
+    public void StartupRegistration_RegisterGatewayLifecycleHost()
+    {
+        var services = new ServiceCollection();
+        services.AddLocalWhatsAppFoundation(new ConfigurationBuilder().Build());
+        services.AddHostedService<LocalWhatsAppGatewayProcessHost>();
+
+        using var provider = services.BuildServiceProvider();
+        var hostedServices = provider.GetServices<IHostedService>();
+        Assert.Contains(hostedServices, service => service is LocalWhatsAppGatewayProcessHost);
+    }
+
     private sealed class GatewayHandler : HttpMessageHandler
     {
         public string? Body { get; private set; }
