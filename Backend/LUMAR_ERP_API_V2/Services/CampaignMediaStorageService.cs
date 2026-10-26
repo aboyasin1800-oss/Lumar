@@ -13,15 +13,17 @@ public sealed record CampaignMediaUploadResult(
     string StoragePath,
     string OriginalFileName);
 
+public sealed record LocalCampaignMediaPayload(string MimeType, string Base64, string Filename);
+
 public sealed class CampaignMediaStorageService
 {
     private const long MaxBytes = 8 * 1024 * 1024;
+    private const long LocalGatewayMaxBytes = 5 * 1024 * 1024;
     private static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "image/png",
         "image/jpeg",
-        "image/webp",
-        "image/gif"
+        "image/webp"
     };
 
     private readonly string _rootPath;
@@ -100,6 +102,93 @@ public sealed class CampaignMediaStorageService
             originalName);
     }
 
+    public bool TryResolveLocalCampaignMedia(string? campaignImageUrl, out LocalCampaignMediaPayload media)
+    {
+        media = null!;
+        if (string.IsNullOrWhiteSpace(campaignImageUrl))
+            return false;
+
+        var trimmed = campaignImageUrl.Trim();
+        var fileName = ResolveLocalCampaignFileName(trimmed);
+        if (string.IsNullOrWhiteSpace(fileName) || !IsAllowedCampaignMediaFileName(fileName))
+            return false;
+
+        var rootPath = Path.GetFullPath(_rootPath);
+        var fullPath = Path.GetFullPath(Path.Combine(rootPath, fileName));
+        if (!fullPath.StartsWith(rootPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(fullPath, rootPath, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!File.Exists(fullPath))
+            return false;
+
+        var bytes = File.ReadAllBytes(fullPath);
+        if (bytes.Length <= 0 || bytes.Length > LocalGatewayMaxBytes)
+            return false;
+
+        var mimeType = DetectMimeType(bytes, fileName);
+        if (string.IsNullOrWhiteSpace(mimeType) || !AllowedContentTypes.Contains(mimeType))
+            return false;
+
+        media = new LocalCampaignMediaPayload(mimeType, Convert.ToBase64String(bytes), fileName);
+        return true;
+    }
+
+    private static string? ResolveLocalCampaignFileName(string url)
+    {
+        try
+        {
+            var candidate = url.Split('?', 2)[0].Split('#', 2)[0].Trim();
+            if (string.IsNullOrWhiteSpace(candidate))
+                return null;
+
+            if (candidate.Contains("..", StringComparison.Ordinal))
+                return null;
+
+            var normalized = candidate.Replace('\\', '/');
+            if (normalized.StartsWith("/", StringComparison.Ordinal))
+                normalized = normalized.TrimStart('/');
+
+            if (normalized.Contains("/campaign-media/", StringComparison.OrdinalIgnoreCase))
+            {
+                var index = normalized.LastIndexOf("/campaign-media/", StringComparison.OrdinalIgnoreCase);
+                normalized = normalized[(index + "/campaign-media/".Length)..];
+            }
+
+            var fileName = Path.GetFileName(normalized);
+            if (string.IsNullOrWhiteSpace(fileName) || fileName.Contains("..", StringComparison.Ordinal) || fileName.Contains('/') || fileName.Contains('\\'))
+                return null;
+
+            return fileName;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? DetectMimeType(byte[] bytes, string fileName)
+    {
+        if (bytes.Length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47)
+            return "image/png";
+
+        if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+            return "image/jpeg";
+
+        if (bytes.Length >= 12 && bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46
+            && bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50)
+            return "image/webp";
+
+        var extension = Path.GetExtension(fileName).Trim().ToLowerInvariant();
+        return extension switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            _ => null
+        };
+    }
+
     private string BuildPublicCampaignImageUrl(string uniqueFileName)
     {
         var baseUrl = string.IsNullOrWhiteSpace(_publicBaseUrl)
@@ -108,11 +197,19 @@ public sealed class CampaignMediaStorageService
               string.Empty
             : _publicBaseUrl;
 
-        if (!TryCreatePublicBaseUri(baseUrl, out var publicBaseUri))
-            throw new InvalidOperationException("Campaign image public base URL is not configured or is invalid. Set CampaignMedia:PublicBaseUrl to an HTTPS public backend URL.");
+        if (TryCreatePublicBaseUri(baseUrl, out var publicBaseUri))
+        {
+            var path = publicBaseUri.AbsolutePath.TrimEnd('/') + "/campaign-media/" + uniqueFileName;
+            return new Uri(publicBaseUri, path).ToString();
+        }
 
-        var path = publicBaseUri.AbsolutePath.TrimEnd('/') + "/campaign-media/" + uniqueFileName;
-        return new Uri(publicBaseUri, path).ToString();
+        if (TryCreateLocalDevelopmentBaseUri(baseUrl, out var localBaseUri))
+        {
+            var path = localBaseUri.AbsolutePath.TrimEnd('/') + "/campaign-media/" + uniqueFileName;
+            return new Uri(localBaseUri, path).ToString();
+        }
+
+        return "/campaign-media/" + uniqueFileName;
     }
 
     private static bool TryCreatePublicBaseUri(string? rawBaseUrl, out Uri publicBaseUri)
@@ -135,6 +232,26 @@ public sealed class CampaignMediaStorageService
             return false;
 
         publicBaseUri = baseUri;
+        return true;
+    }
+
+    private static bool TryCreateLocalDevelopmentBaseUri(string? rawBaseUrl, out Uri localBaseUri)
+    {
+        localBaseUri = null!;
+        if (string.IsNullOrWhiteSpace(rawBaseUrl))
+            return false;
+
+        var trimmed = rawBaseUrl.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var baseUri) || !string.Equals(baseUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!baseUri.IsLoopback && !string.Equals(baseUri.Host, "localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!IPAddress.TryParse(baseUri.Host, out var ipAddress) || !ipAddress.Equals(IPAddress.Loopback) && !IsPrivateAddress(ipAddress))
+                return false;
+        }
+
+        localBaseUri = baseUri;
         return true;
     }
 
@@ -161,9 +278,14 @@ public sealed class CampaignMediaStorageService
         ".png" => true,
         ".jpg" or ".jpeg" => true,
         ".webp" => true,
-        ".gif" => true,
         _ => false
     };
+
+    private static bool IsAllowedCampaignMediaFileName(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).Trim().ToLowerInvariant();
+        return extension is ".png" or ".jpg" or ".jpeg" or ".webp";
+    }
 
     private static bool HasImageSignature(byte[] bytes)
     {

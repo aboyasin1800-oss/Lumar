@@ -72,17 +72,33 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
 
     public async Task<OutboundAdapterResult> SendAsync(string recipient, string text, string? imageUrl, CancellationToken cancellationToken)
     {
+        return await SendInternalAsync(recipient, text, imageUrl, null, cancellationToken);
+    }
+
+    public async Task<OutboundAdapterResult> SendAsync(string recipient, string text, LocalCampaignMediaPayload? media, CancellationToken cancellationToken)
+    {
+        return await SendInternalAsync(recipient, text, null, media, cancellationToken);
+    }
+
+    private static LocalWhatsAppSendRequest CreateSendPayload(string recipient, string text, string? imageUrl, LocalCampaignMediaPayload? media)
+        => new(recipient, text, imageUrl, media);
+
+    private async Task<OutboundAdapterResult> SendInternalAsync(string recipient, string text, string? imageUrl, LocalCampaignMediaPayload? media, CancellationToken cancellationToken)
+    {
         try
         {
-            using var response = await http.PostAsJsonAsync("messages/send", new { recipient, text, imageUrl }, cancellationToken);
+            var payload = CreateSendPayload(recipient, text, imageUrl, media);
+
+            using var response = await http.PostAsJsonAsync("messages/send", payload, cancellationToken);
             await response.Content.LoadIntoBufferAsync(65536, cancellationToken);
             var result = await response.Content.ReadFromJsonAsync<GatewaySendResponse>(cancellationToken);
-            if (response.IsSuccessStatusCode && result?.Outcome == "Sent"
-                && !string.IsNullOrWhiteSpace(result.ProviderMessageId)
-                && result.ProviderMessageId.Length <= 200)
+
+            if (response.IsSuccessStatusCode && result?.Outcome == "Sent" && !string.IsNullOrWhiteSpace(result.ProviderMessageId) && result.ProviderMessageId.Length <= 200)
             {
                 return new OutboundAdapterResult(OutboundDispatchOutcome.Sent,
-                    ProviderMessageId: result.ProviderMessageId, Retryable: false, HttpStatusCode: (int)response.StatusCode);
+                    ProviderMessageId: result.ProviderMessageId,
+                    Retryable: false,
+                    HttpStatusCode: (int)response.StatusCode);
             }
 
             if (response.IsSuccessStatusCode && result is not null && result.Outcome == "Sent")
@@ -111,8 +127,12 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
                 "MEDIA_REJECTED" => "Local WhatsApp media was rejected before sending.",
                 _ => "Local WhatsApp outcome is unconfirmed; automatic retry is unsafe."
             };
-            return new OutboundAdapterResult(retryable ? OutboundDispatchOutcome.TransientFailure : OutboundDispatchOutcome.PermanentFailure,
-                FailureReason: reason, Retryable: retryable, HttpStatusCode: (int)response.StatusCode);
+
+            return new OutboundAdapterResult(
+                retryable ? OutboundDispatchOutcome.TransientFailure : OutboundDispatchOutcome.PermanentFailure,
+                FailureReason: reason,
+                Retryable: retryable,
+                HttpStatusCode: (int)response.StatusCode);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -130,6 +150,8 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
 
     private static OutboundAdapterResult Unconfirmed() => new(OutboundDispatchOutcome.Unconfirmed,
         FailureReason: "Local WhatsApp outcome is unconfirmed; automatic retry is unsafe.", Retryable: false);
+
+    private sealed record LocalWhatsAppSendRequest(string Recipient, string Text, string? ImageUrl, LocalCampaignMediaPayload? Media);
 
     private sealed record GatewaySendResponse(string? Outcome, string? ProviderMessageId, string? Code);
 }

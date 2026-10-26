@@ -197,6 +197,61 @@ public sealed class LocalWhatsAppFoundationTests
     }
 
     [Fact]
+    public async Task LocalWhatsApp_UsesOfficialLocalCampaignMedia_WhenPublicUrlIsCloudflare()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "lumar-local-media-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var bytes = CreatePngBytes();
+        var fileName = "official-campaign.png";
+        await File.WriteAllBytesAsync(Path.Combine(root, fileName), bytes);
+
+        var storage = new CampaignMediaStorageService(root, new NullLogger<CampaignMediaStorageService>(), "https://public-backend.example.com");
+        using var handler = new GatewayHandler { ResponseBody = "{\"outcome\":\"Sent\",\"providerMessageId\":\"local-provider-id\",\"retryable\":false}" };
+        using var http = Client(handler);
+        var adapter = new LocalWhatsAppMessageChannel(new LocalWhatsAppGatewayClient(http), storage);
+
+        var result = await adapter.SendAsync(Message() with
+        {
+            CampaignImageUrl = "https://corner-march-scenarios-headset.trycloudflare.com/campaign-media/official-campaign.png",
+            RawCampaignText = "Must not replace final body"
+        }, CancellationToken.None);
+
+        Assert.Equal(OutboundDispatchOutcome.Sent, result.Outcome);
+        Assert.Equal("local-provider-id", result.ProviderMessageId);
+        using var payload = JsonDocument.Parse(handler.Body!);
+        Assert.Equal(Message().Body, payload.RootElement.GetProperty("text").GetString());
+        Assert.Equal("967777123456", payload.RootElement.GetProperty("recipient").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("imageUrl", out _));
+        var media = payload.RootElement.GetProperty("media");
+        Assert.Equal("image/png", media.GetProperty("mimeType").GetString());
+        Assert.Equal("official-campaign.png", media.GetProperty("filename").GetString());
+        Assert.True(Convert.FromBase64String(media.GetProperty("base64").GetString()!) .Length > 0 );
+    }
+
+    [Fact]
+    public void LocalWhatsApp_RejectsMissingAndTraversalCampaignMediaReferences()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "lumar-local-media-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var storage = new CampaignMediaStorageService(root, new NullLogger<CampaignMediaStorageService>(), "https://public-backend.example.com");
+
+        Assert.False(storage.TryResolveLocalCampaignMedia("https://public-backend.example.com/campaign-media/missing.png", out _));
+        Assert.False(storage.TryResolveLocalCampaignMedia("https://public-backend.example.com/../outside.png", out _));
+    }
+
+    [Fact]
+    public void LocalWhatsApp_RejectsInvalidCampaignMediaTypeAndSignature()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "lumar-local-media-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        File.WriteAllBytes(Path.Combine(root, "invalid.txt"), new byte[] { 1, 2, 3, 4 });
+        var storage = new CampaignMediaStorageService(root, new NullLogger<CampaignMediaStorageService>(), "https://public-backend.example.com");
+
+        Assert.False(storage.TryResolveLocalCampaignMedia("https://public-backend.example.com/campaign-media/invalid.txt", out _));
+        Assert.False(storage.TryResolveLocalCampaignMedia("https://public-backend.example.com/campaign-media/invalid.png", out _));
+    }
+
+    [Fact]
     public void GatewayLifecycle_ResolvesOfficialCampaignMediaOriginFromBackendConfig()
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -208,6 +263,19 @@ public sealed class LocalWhatsAppFoundationTests
         var origin = LocalWhatsAppGatewayProcessHost.ResolveMediaOrigin(configuration);
 
         Assert.Equal("https://public-backend.example.com", origin);
+    }
+
+    private static byte[] CreatePngBytes()
+    {
+        var png = new byte[]
+        {
+            137, 80, 78, 71, 13, 10, 26, 10,
+            0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0,
+            31, 21, 196, 137, 0, 0, 0, 10, 73, 68, 65, 84,
+            120, 156, 99, 96, 0, 0, 0, 0, 0, 0, 0, 0
+        };
+        return png;
     }
 
     [Fact]

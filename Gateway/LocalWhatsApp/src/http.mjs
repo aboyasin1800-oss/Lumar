@@ -56,6 +56,24 @@ async function loadMedia(imageUrl, allowedOrigin) {
   } catch { throw new GatewayError('MEDIA_REJECTED', 400); }
 }
 
+function normalizeInternalMedia(bodyMedia) {
+  if (!bodyMedia || typeof bodyMedia !== 'object' || Array.isArray(bodyMedia)) return null;
+  const { mimeType, base64, filename } = bodyMedia;
+  if (typeof mimeType !== 'string' || typeof base64 !== 'string' || typeof filename !== 'string') return null;
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) return null;
+  const trimmed = filename.trim();
+  if (!trimmed || trimmed.includes('..') || trimmed.includes('/') || trimmed.includes('\\')) return null;
+  let bytes;
+  try { bytes = Buffer.from(base64, 'base64'); }
+  catch { return null; }
+  if (bytes.length <= 0 || bytes.length > 5 * 1024 * 1024) return null;
+  const valid = mimeType === 'image/jpeg' ? bytes[0] === 0xff && bytes[1] === 0xd8
+    : mimeType === 'image/png' ? bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
+      : bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+  if (!valid) return null;
+  return { mimeType, base64: bytes.toString('base64'), filename: trimmed };
+}
+
 export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin = '' }) {
   if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('INVALID_GATEWAY_TOKEN');
   return createServer({ requestTimeout: 15000, headersTimeout: 10000, maxHeaderSize: 8192 }, async (request, response) => {
@@ -82,10 +100,11 @@ export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin 
       } else if (request.method === 'POST' && path === '/messages/send') {
         const body = await jsonBody(request);
         if (!body || typeof body !== 'object' || Array.isArray(body)
-          || Object.keys(body).some(key => !['recipient', 'text', 'imageUrl'].includes(key))
+          || Object.keys(body).some(key => !['recipient', 'text', 'imageUrl', 'media'].includes(key))
           || typeof body.recipient !== 'string' || !/^[1-9][0-9]{7,14}$/.test(body.recipient)
           || typeof body.text !== 'string' || !body.text.trim() || body.text.length > 4096
-          || (body.imageUrl != null && (typeof body.imageUrl !== 'string' || body.imageUrl.length > 2048))) {
+          || (body.imageUrl != null && (typeof body.imageUrl !== 'string' || body.imageUrl.length > 2048))
+          || (body.media != null && (typeof body.media !== 'object' || Array.isArray(body.media)))) {
           throw new GatewayError('INVALID_MESSAGE', 400);
         }
         const normalizedRecipient = normalizeYemenMobileNumber(body.recipient);
@@ -93,7 +112,7 @@ export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin 
         if (!normalizedRecipient || !normalizedApproved || normalizedRecipient !== normalizedApproved) {
           throw new GatewayError('TEST_RECIPIENT_REQUIRED', 403);
         }
-        const media = body.imageUrl ? await loadMedia(body.imageUrl, mediaOrigin) : null;
+        const media = normalizeInternalMedia(body.media) ?? (body.imageUrl ? await loadMedia(body.imageUrl, mediaOrigin) : null);
         reply(200, await manager.send({ recipient: body.recipient, text: body.text, media }));
       } else {
         reply(404, { code: 'NOT_FOUND' });
