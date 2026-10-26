@@ -2,6 +2,8 @@ using System.Text.Json;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Finance;
 using LUMAR_ERP_API_V2.DTOs.Settings;
+using LUMAR_ERP_API_V2.DTOs.WhatsApp;
+using LUMAR_ERP_API_V2.Services;
 using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
 
@@ -10,7 +12,7 @@ namespace LUMAR_ERP_API_V2.Repositories;
 public sealed class SettingsRepository(
     ReadOnlySqlConnectionFactory connections,
     OperationalSqlConnectionFactory operationalConnections,
-    IProductionProductTypeIdentityResolver identities) : ISettingsRepository
+    IProductionProductTypeIdentityResolver identities) : ISettingsRepository, IWhatsAppProviderStore
 {
     private const string Safe = "LOWER(COALESCE(SettingName,'')) NOT LIKE '%password%' AND LOWER(COALESCE(SettingName,'')) NOT LIKE '%secret%' AND LOWER(COALESCE(SettingName,'')) NOT LIKE '%token%' AND LOWER(COALESCE(SettingName,'')) NOT LIKE '%api%key%' AND LOWER(COALESCE(SettingName,'')) NOT LIKE '%connection%string%' AND LOWER(COALESCE(SettingName,'')) NOT LIKE '%jwt%' AND LOWER(COALESCE(SettingName,'')) NOT LIKE '%scanner%key%' AND LOWER(COALESCE(SettingName,'')) NOT LIKE '%webhook%' AND LOWER(COALESCE(SettingValue,'')) NOT LIKE '%password=%' AND LOWER(COALESCE(SettingValue,'')) NOT LIKE '%server=%'";
     private const string ProductionRoutesSettingName = "ProductionRoutesConfig";
@@ -26,6 +28,68 @@ public sealed class SettingsRepository(
             "Quality",
             "Assembly"
         };
+
+    public async Task<IWhatsAppProviderLease> AcquireAsync(bool exclusive, CancellationToken cancellationToken)
+    {
+        var connection = operationalConnections.Create();
+        SqlTransaction? transaction = null;
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+            await using var guard = new SqlCommand("""
+                DECLARE @result int;
+                EXEC @result = sys.sp_getapplock @Resource=N'LUMAR.ActiveWhatsAppProvider',
+                    @LockMode=@mode, @LockOwner='Transaction', @LockTimeout=5000;
+                SELECT @result;
+                """, connection, transaction);
+            guard.Parameters.AddWithValue("@mode", exclusive ? "Exclusive" : "Shared");
+            if (Convert.ToInt32(await guard.ExecuteScalarAsync(cancellationToken)) < 0)
+                throw new WhatsAppProviderConflictException("هناك عملية إرسال أو تبديل مزود قيد التنفيذ. حاول مجددًا بعد انتهائها.");
+            await using var read = new SqlCommand("SELECT SettingValue FROM dbo.System_Settings WHERE SettingName=N'ActiveWhatsAppProvider';", connection, transaction);
+            await using var reader = await read.ExecuteReaderAsync(cancellationToken);
+            string? stored = null;
+            if (await reader.ReadAsync(cancellationToken))
+                stored = reader.IsDBNull(0) ? string.Empty : reader.GetString(0);
+            if (await reader.ReadAsync(cancellationToken))
+                throw new WhatsAppProviderConflictException("إعداد مزود واتساب مكرر. يلزم تدقيق الإعداد قبل التفعيل.");
+            return new ProviderLease(connection, transaction, exclusive, WhatsAppProviderChannels.FromStoredValue(stored));
+        }
+        catch
+        {
+            if (transaction is not null) await transaction.DisposeAsync();
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    private sealed class ProviderLease(SqlConnection connection, SqlTransaction transaction, bool exclusive,
+        ActiveWhatsAppProvider provider) : IWhatsAppProviderLease
+    {
+        public ActiveWhatsAppProvider Provider { get; private set; } = provider;
+
+        public async Task SetAsync(ActiveWhatsAppProvider value, CancellationToken cancellationToken)
+        {
+            if (!exclusive || !Enum.IsDefined(value)) throw new InvalidOperationException("Invalid provider update.");
+            await using var command = new SqlCommand("""
+                UPDATE dbo.System_Settings SET SettingValue=@value
+                WHERE SettingName=N'ActiveWhatsAppProvider';
+                IF @@ROWCOUNT=0
+                    INSERT INTO dbo.System_Settings (SettingName,SettingValue,Description)
+                    VALUES (N'ActiveWhatsAppProvider',@value,N'Manually selected WhatsApp provider: Meta, Local or None');
+                """, connection, transaction);
+            command.Parameters.AddWithValue("@value", value.ToString());
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            Provider = value;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await transaction.DisposeAsync();
+            await connection.DisposeAsync();
+        }
+    }
 
     public Task<IReadOnlyList<SystemSettingListDto>> GetAllAsync(CancellationToken cancellationToken) =>
         QueryAsync("SELECT SettingID,SettingName,Description FROM dbo.System_Settings WHERE " + Safe + " ORDER BY SettingName,SettingID", null, MapList, cancellationToken);
@@ -302,6 +366,9 @@ public sealed class SettingsRepository(
             return false;
         }
 
+        if (values.Keys.Any(key => string.Equals(key.Trim(), "ActiveWhatsAppProvider", StringComparison.OrdinalIgnoreCase)))
+            throw new ArgumentException("تغيير مزود واتساب متاح من إدارة مزودي واتساب فقط.");
+
         const string insertSql = """
             INSERT INTO dbo.System_Settings (SettingName, SettingValue, Description)
             VALUES (@key, @value, @description);
@@ -323,6 +390,10 @@ public sealed class SettingsRepository(
             foreach (var item in values)
             {
                 var key = item.Key.Trim();
+                await using var reservedKeyGuard = new SqlCommand("SELECT CASE WHEN @key=N'ActiveWhatsAppProvider' THEN 1 ELSE 0 END;", connection, transaction);
+                reservedKeyGuard.Parameters.AddWithValue("@key", key);
+                if (Convert.ToInt32(await reservedKeyGuard.ExecuteScalarAsync(cancellationToken)) == 1)
+                    throw new ArgumentException("تغيير مزود واتساب متاح من إدارة مزودي واتساب فقط.");
                 var value = item.Value ?? string.Empty;
                 var exists = await ExistsAsync(connection, transaction, key, cancellationToken);
 

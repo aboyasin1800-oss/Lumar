@@ -1,0 +1,28 @@
+
+> lumar-local-whatsapp-gateway@1.0.0 test
+> node --test test/*.test.mjs
+
+✔ every route requires a token including health; browser-origin requests are rejected (194.6719ms)
+✔ health is independent of WhatsApp and responses cannot be cached (52.0364ms)
+✔ foundation sending is closed by default and denies non-approved numbers (25.9064ms)
+✔ approved test recipient still requires connected session (24.1509ms)
+✔ invalid payloads, remote media and arbitrary administrative fields are rejected (43.6659ms)
+✔ installed Chromium runs with its sandbox; actual WhatsApp driver is loadable (1784.942ms)
+✔ link exposes temporary QR only through material, never status (7.3404ms)
+✔ disconnect retains persisted session and reconnect uses it (2.8888ms)
+✔ restart restores intent without sending; intentional disconnect stays disconnected (1.1913ms)
+✔ replace logs out old account, clears number and accepts only newly proven number (1.0951ms)
+✔ offline logout cannot pretend to revoke the account (2.6355ms)
+✔ errors never expose raw library data, and unknown send is not retried (1.3827ms)
+✔ concurrent commands are rejected while sending, not queued (4.2038ms)
+✔ Windows ACL protection, token durability and atomic session state survive reconstruction (2063.5643ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2906.585
+
+EXIT_CODE=0

@@ -1,0 +1,218 @@
+{
+  "capturedAt": "2026-10-26T00:27:46.232Z",
+  "node": "v24.21.0",
+  "executable": "C:\\Program Files\\nodejs\\node.exe",
+  "directory": "C:\\Users\\LENOVO\\AppData\\Local\\LUMAR\\LocalWhatsAppGateway",
+  "configuredPort": "5094",
+  "nodeOptionsPresent": false,
+  "chromium": {
+    "dependencyLoadable": true,
+    "executableExists": true,
+    "executable": "C:\\Users\\LENOVO\\.cache\\puppeteer\\chrome\\win64-156.0.8078.47\\chrome-win64\\chrome.exe"
+  },
+  "files": {
+    "state.json": {
+      "exists": true,
+      "readable": true,
+      "valid": true,
+      "modified": "2026-10-25T23:36:37.341Z",
+      "state": {
+        "linked": false,
+        "connect": false,
+        "loggedOut": false
+      }
+    },
+    "gateway-token": {
+      "exists": true,
+      "readable": true,
+      "valid": true,
+      "modified": "2026-10-25T23:36:21.484Z"
+    }
+  },
+  "windowsInspectionExitCode": 0,
+  "windows": {
+    "Listeners": [],
+    "Processes": [
+      {
+        "Pid": 45884,
+        "ParentPid": 52136,
+        "Created": "2026-10-25T10:12:24.0698190Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 14072,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T10:12:24.0965340Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 29684,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T10:12:24.2872930Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 10324,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T10:12:24.2949540Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 52860,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T10:12:24.3930220Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 38692,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T12:23:40.3584160Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 51524,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T13:45:14.4567630Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 22892,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T13:45:14.5615200Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 49060,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T19:24:16.8416350Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 5560,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T19:27:35.5139410Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 49088,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T19:51:11.5694890Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 21836,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T19:51:35.7252970Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 40580,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T22:09:30.8443260Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 44264,
+        "ParentPid": 45884,
+        "Created": "2026-10-25T22:09:47.1377160Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 1536,
+        "ParentPid": 51680,
+        "Created": "2026-10-25T23:08:11.5335460Z",
+        "Name": "node.exe",
+        "Path": "C:\\Program Files\\nodejs\\node.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 5416,
+        "ParentPid": 45884,
+        "Created": "2026-10-26T00:19:42.6936100Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 46760,
+        "ParentPid": 45884,
+        "Created": "2026-10-26T00:26:18.0526370Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 47516,
+        "ParentPid": 45884,
+        "Created": "2026-10-26T00:27:18.0492320Z",
+        "Name": "chrome.exe",
+        "Path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "GatewayScript": "",
+        "LumarProfile": false
+      },
+      {
+        "Pid": 35124,
+        "ParentPid": 46916,
+        "Created": "2026-10-26T00:27:46.1593760Z",
+        "Name": "node.exe",
+        "Path": "C:\\Program Files\\nodejs\\node.exe",
+        "GatewayScript": "diagnose-startup.mjs",
+        "LumarProfile": false
+      }
+    ],
+    "StorageAcl": {
+      "InheritanceProtected": true,
+      "UnexpectedRuleCount": 0
+    }
+  },
+  "startAttempt": {
+    "pid": 41324,
+    "ready": true,
+    "exitCode": 0
+  }
+}

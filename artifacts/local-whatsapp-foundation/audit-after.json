@@ -1,0 +1,130 @@
+{
+  "capturedAt": "2026-10-25T23:39:52.677Z",
+  "node": "v24.21.0",
+  "platform": "win32",
+  "operationalMapping": "WhatsApp -> WhatsAppCloudMessageChannel (Program.cs)",
+  "operationalAdapters": [
+    "InAppMessageChannel",
+    "WhatsAppCloudMessageChannel"
+  ],
+  "metaStore": {
+    "present": true,
+    "enabled": true,
+    "phoneConfigured": true,
+    "sha256": "7118b6bb466355fb4f5959cae1e23cfec66c0c176fe4e7804d9d4e842d2b4503"
+  },
+  "protectedFiles": {
+    "Services/IOutboundMessageChannel.cs": "fd30bf6e8988614139870d86b2c1687331d991a92b81d0f7eddbe378def6fb21",
+    "Services/OutboundMessageDispatcher.cs": "909b7a416eb9f3912216c582d1a59c787c074dd3e7b3f17d78117b635869e493",
+    "Services/OutboundMessageBackgroundService.cs": "1238c5805d6dfeaa019a8cae3a5a25b884f733f5d2a706c145b388f22ac73171",
+    "Services/MessageWriteService.cs": "fa20864a26e48aa012d000372245cd923346b4da8c349e4f0446836fcbd6a638",
+    "Services/WhatsAppCloudMessageChannel.cs": "019cc7a28793d7ede4497b83661c5244694a9a0c12c1226b7b605e095562371b",
+    "Services/InAppMessageChannel.cs": "dffbe5cce834bc69065272d5cbbc07ded7d5d26e9e57fbdc7acff4879c1bfc58",
+    "Services/FirebasePushSender.cs": "d6eb364a1cfec4ed21a561523c1acd8a7a12d62160c22dfec6c5785bd2bf39da",
+    "Services/PushDeviceService.cs": "50463ebd8f96a624c9b18f57cc207792f5580ca79c37ea3ef645dba0585e9a24",
+    "Repositories/MessageRepository.cs": "13b647ce5571cfc0ab2e958e986f6cedcc927a82c333e96036ba342dc5247799",
+    "Repositories/SettingsRepository.cs": "ddcf52f59d1cd8f2f9592ccc28e12bb892191439f15667d9dfa858f06f936c84",
+    "Services/WhatsAppConnectionSettingsStore.cs": "8d549a35682236080eee681306a4255620115c8e8935012057cee04db4ea90a7"
+  },
+  "libraries": {
+    "@whiskeysockets/baileys": {
+      "version": "7.0.0-rc14",
+      "tags": {
+        "latest": "7.0.0-rc14",
+        "legacy": "6.7.24"
+      },
+      "modified": "2026-07-29T01:14:02.060Z",
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "license": "MIT",
+      "repository": {
+        "url": "git+ssh://git@github.com/WhiskeySockets/Baileys.git"
+      },
+      "dependencies": {
+        "ws": "^8.13.0",
+        "pino": "^9.6",
+        "p-queue": "^9.0.0",
+        "libsignal": "^6.0.0",
+        "lru-cache": "^11.1.0",
+        "@hapi/boom": "^9.1.3",
+        "protobufjs": "^7.5.6",
+        "async-mutex": "^0.5.0",
+        "music-metadata": "^11.12.3",
+        "whatsapp-rust-bridge": "0.5.4",
+        "@cacheable/node-cache": "^1.4.0"
+      }
+    },
+    "whatsapp-web.js": {
+      "version": "1.34.7",
+      "tags": {
+        "next": "1.34.5-alpha.3",
+        "latest": "1.34.7"
+      },
+      "modified": "2026-07-08T09:18:13.911Z",
+      "engines": {
+        "node": ">=18.0.0"
+      },
+      "license": "Apache-2.0",
+      "repository": {
+        "url": "git+https://github.com/wwebjs/whatsapp-web.js.git",
+        "type": "git"
+      },
+      "dependencies": {
+        "mime": "3.0.0",
+        "puppeteer": "24.38.0",
+        "node-fetch": "2.7.0",
+        "node-webpmux": "3.2.1",
+        "fluent-ffmpeg": "2.1.3"
+      }
+    },
+    "@wppconnect-team/wppconnect": {
+      "version": "2.3.6",
+      "tags": {
+        "alpha": "2.1.0-alpha.0",
+        "latest": "2.3.6"
+      },
+      "modified": "2026-10-23T18:26:15.337Z",
+      "license": "LGPL-3.0-or-later",
+      "repository": {
+        "url": "git+https://github.com/wppconnect-team/wppconnect.git",
+        "type": "git"
+      },
+      "dependencies": {
+        "ws": "^8.21.3",
+        "tmp": "^0.2.7",
+        "atob": "^2.1.2",
+        "axios": "^1.20.0",
+        "boxen": "^5.1.2",
+        "chalk": "~4.1.2",
+        "execa": "^5.1.1",
+        "sharp": "0.35.5",
+        "rimraf": "^3.0.2",
+        "logform": "^2.7.0",
+        "winston": "^3.19.0",
+        "lookpath": "^1.2.3",
+        "puppeteer": "^24.43.1",
+        "tree-kill": "^1.2.2",
+        "catch-exit": "^2.0.0",
+        "mime-types": "^3.0.2",
+        "futoin-hkdf": "^1.5.3",
+        "chrome-launcher": "^0.15.2",
+        "puppeteer-extra": "^3.3.6",
+        "qrcode-terminal": "^0.12.0",
+        "reflect-metadata": "^0.2.1",
+        "@wppconnect/wa-js": "^4.7.2",
+        "sanitize-filename": "^1.6.4",
+        "@wppconnect/wa-version": "^1.5.4472",
+        "puppeteer-extra-plugin-stealth": "^2.11.2",
+        "puppeteer-extra-plugin-user-data-dir": "^2.4.1",
+        "puppeteer-extra-plugin-user-preferences": "^2.4.1"
+      }
+    },
+    "@wppconnect-team/wppconnect-server": {
+      "registryStatus": 404,
+      "availableAsNpmPackage": false
+    }
+  },
+  "protectedFilesUnchanged": true,
+  "metaStoreUnchanged": true
+}

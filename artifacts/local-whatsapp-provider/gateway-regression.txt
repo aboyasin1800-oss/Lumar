@@ -1,0 +1,7 @@
+
+> lumar-local-whatsapp-gateway@1.0.0 build
+> node scripts/check.mjs
+
+Gateway Build EXIT_CODE=0
+
+EXIT_CODE=0

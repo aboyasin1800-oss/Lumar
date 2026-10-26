@@ -1,6 +1,90 @@
-﻿{
+{
     "version":  "2.0.0",
     "tasks":  [
+                  {
+                      "label": "Local WhatsApp Startup Failure Proof",
+                      "type": "shell",
+                      "command": "node Gateway/LocalWhatsApp/scripts/diagnose-startup.mjs --probe-start",
+                      "problemMatcher": [],
+                      "isBackground": false
+                  },
+                  {
+                      "label": "Local WhatsApp Startup Diagnostics",
+                      "type": "shell",
+                      "command": "node Gateway/LocalWhatsApp/scripts/diagnose-startup.mjs",
+                      "problemMatcher": [],
+                      "isBackground": false
+                  },
+                  {
+                      "label": "Local WhatsApp Corrected Push Test",
+                      "type": "shell",
+                      "command": "git diff --exit-code HEAD -- Backend/LUMAR_ERP_API_V2/Services/PushDeviceService.cs Backend/LUMAR_ERP_API_V2/Services/FirebasePushSender.cs; if ($LASTEXITCODE -ne 0) { throw 'Protected Push implementation changed' }; dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --filter FullyQualifiedName~DispatchForOfficialNotification_MissingTargetDevices_DoesNotUseCurrentUserDevices --tl:off --nologo -v minimal --logger 'trx;LogFileName=push-corrected.trx' --results-directory artifacts/local-whatsapp-foundation; Write-Output \"EXIT_CODE=$LASTEXITCODE\"",
+                      "problemMatcher": [],
+                      "isBackground": false
+                  },
+                  {
+                      "label": "Local WhatsApp Protected Source Verify",
+                      "type": "shell",
+                      "command": "node scripts/audit-local-whatsapp.mjs --after",
+                      "problemMatcher": [],
+                      "isBackground": false
+                  },
+                  {
+                      "label": "Local WhatsApp Live Prelink Probe",
+                      "type": "shell",
+                      "command": "node Gateway/LocalWhatsApp/scripts/probe.mjs",
+                      "problemMatcher": [],
+                      "isBackground": false
+                  },
+                  {
+                      "label": "Local WhatsApp Dependency Options",
+                      "type": "shell",
+                      "command": "node scripts/audit-local-whatsapp.mjs --dependencies",
+                      "problemMatcher": [],
+                      "isBackground": false
+                  },
+                  {
+                      "label": "Local WhatsApp Push Baseline Proof",
+                      "type": "shell",
+                      "command": "node Gateway/LocalWhatsApp/scripts/verify.mjs --push-baseline",
+                      "problemMatcher": [],
+                      "isBackground": false
+                  },
+                  {
+                      "label": "Local WhatsApp Backend Regression",
+                      "type": "shell",
+                      "command": "node Gateway/LocalWhatsApp/scripts/verify.mjs --backend",
+                      "problemMatcher": [],
+                      "isBackground": false
+                  },
+                  {
+                      "label": "Local WhatsApp Gateway Tests",
+                      "type": "shell",
+                      "command": "node Gateway/LocalWhatsApp/scripts/verify.mjs",
+                      "problemMatcher": [],
+                      "isBackground": false
+                  },
+                  {
+                      "label": "Local WhatsApp Install",
+                      "type": "shell",
+                      "command": "npm.cmd --prefix Gateway/LocalWhatsApp install --no-fund --no-audit; Write-Output \"EXIT_CODE=$LASTEXITCODE\"",
+                      "problemMatcher": [],
+                      "isBackground": false
+                  },
+                  {
+                      "label": "Local WhatsApp ReadOnly Audit",
+                      "type": "shell",
+                      "command": "node scripts/audit-local-whatsapp.mjs",
+                      "problemMatcher": [],
+                      "isBackground": false
+                  },
+                  {
+                      "label": "Local WhatsApp Foundation Verify",
+                      "type": "shell",
+                      "command": "dotnet test Backend/LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --filter FullyQualifiedName~LocalWhatsAppFoundationTests --tl:off --nologo -v minimal --logger 'trx;LogFileName=local-whatsapp-backend.trx' --results-directory artifacts/local-whatsapp-foundation; Write-Output \"EXIT_CODE=$LASTEXITCODE\"",
+                      "problemMatcher": [],
+                      "isBackground": false
+                  },
                   {
                       "label":  "RL6 Apply Migration",
                       "type":  "shell",

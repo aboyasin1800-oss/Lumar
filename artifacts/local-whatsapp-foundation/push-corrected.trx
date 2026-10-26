@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="a084ea5c-2418-45e1-b519-e055da6ef45f" name="LENOVO@YASIN-YASIN 2026-10-26 03:04:50" runUser="YASIN-YASIN\LENOVO" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-26T03:04:50.6386714+03:00" queuing="2026-10-26T03:04:50.6386726+03:00" start="2026-10-26T03:04:47.7427586+03:00" finish="2026-10-26T03:04:50.6576557+03:00" />
+  <TestSettings name="default" id="ad09b869-a6a6-4a04-8450-91b1e7fc6f1e">
+    <Deployment runDeploymentRoot="LENOVO_YASIN-YASIN_2026-10-26_03_04_50" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="37501c4a-4a92-4643-863d-5349182a9687" testId="34adef1f-a01a-0949-5029-c6d80fdd19d1" testName="LUMAR_ERP_API_V2.Tests.MobilePushDeviceServiceTests.DispatchForOfficialNotification_MissingTargetDevices_DoesNotUseCurrentUserDevices" computerName="YASIN-YASIN" duration="00:00:00.0772693" startTime="2026-10-26T03:04:50.0950439+03:00" endTime="2026-10-26T03:04:50.2064805+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="37501c4a-4a92-4643-863d-5349182a9687" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.MobilePushDeviceServiceTests.DispatchForOfficialNotification_MissingTargetDevices_DoesNotUseCurrentUserDevices" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="34adef1f-a01a-0949-5029-c6d80fdd19d1">
+      <Execution id="37501c4a-4a92-4643-863d-5349182a9687" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.MobilePushDeviceServiceTests" name="DispatchForOfficialNotification_MissingTargetDevices_DoesNotUseCurrentUserDevices" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="34adef1f-a01a-0949-5029-c6d80fdd19d1" executionId="37501c4a-4a92-4643-863d-5349182a9687" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="1" executed="1" passed="1" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.01] xUnit.net VSTest Adapter v3.0.2+dd36e86129 (64-bit .NET 10.0.12)&#xD;
+[xUnit.net 00:00:00.40]   Discovering: LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:00.86]   Discovered:  LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:00.96]   Starting:    LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:01.20]   Finished:    LUMAR_ERP_API_V2.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

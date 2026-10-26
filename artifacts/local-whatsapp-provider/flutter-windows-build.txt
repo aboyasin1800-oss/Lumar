@@ -1,0 +1,4 @@
+Building Windows application...                                   118.6s
+√ Built build\windows\x64\runner\Debug\tailoring_system.exe
+
+EXIT_CODE=0

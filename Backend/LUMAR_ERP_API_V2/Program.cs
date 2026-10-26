@@ -144,6 +144,8 @@ builder.Services.AddHostedService<OutboundMessageBackgroundService>();
 builder.Services.AddScoped<IOutboundMessageDispatcher, OutboundMessageDispatcher>();
 builder.Services.AddScoped<IOutboundMessageChannel, InAppMessageChannel>();
 builder.Services.AddScoped<IOutboundMessageChannel, WhatsAppCloudMessageChannel>();
+builder.Services.AddLocalWhatsAppFoundation(builder.Configuration);
+builder.Services.AddWhatsAppProviderIntegration();
 builder.Services.AddScoped<ICancelledPieceReadyInventoryTransferService, CancelledPieceReadyInventoryTransferService>();
 builder.Services.AddScoped<ICancelledPieceDispositionRepository, CancelledPieceDispositionRepository>();
 builder.Services.AddScoped<ICancelledPieceDispositionService, CancelledPieceDispositionService>();

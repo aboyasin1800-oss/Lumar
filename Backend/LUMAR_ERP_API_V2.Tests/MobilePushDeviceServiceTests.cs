@@ -214,17 +214,18 @@ public sealed class MobilePushDeviceServiceTests
     }
 
     [Fact]
-    public async Task DispatchForOfficialNotification_UsesResolvedAccountWithoutClientTargetIds()
+    public async Task DispatchForOfficialNotification_MissingTargetDevices_DoesNotUseCurrentUserDevices()
     {
         var fakeRepo = new FakePushRepository(new[]
         {
             new PushDeviceTokenRecord(7, 77, "FCM", "Android", "bridge-device", "cipher-bridge", "hash-bridge", "token-bridge", true, false, DateTime.UtcNow, null, null)
         });
+        var sender = new TestPushSender(new[] { new PushSendOutcome(true, "bridge-msg", null, false, "Success") });
 
         var service = new PushDeviceService(
             fakeRepo,
             new TestAuthenticatedUserContext(new CurrentUserDto(8, "customer-user", "Customer User", "Customer", true, DateTime.UtcNow, "Customer", 77, null, null)),
-            new TestPushSender(new[] { new PushSendOutcome(true, "bridge-msg", null, false, "Success") }),
+            sender,
             null!,
             NullLogger<PushDeviceService>.Instance);
 
@@ -238,10 +239,12 @@ public sealed class MobilePushDeviceServiceTests
             referenceId: "C-9001",
             cancellationToken: CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Equal(1, result.SentCount);
-        Assert.Contains("bridge-device", result.DeviceKeys, StringComparer.OrdinalIgnoreCase);
-        Assert.Equal(77, fakeRepo.AccountIdSeenForDispatch);
+        Assert.False(result.Success);
+        Assert.Equal("NoDevices", result.Status);
+        Assert.Equal(0, result.SentCount);
+        Assert.Empty(result.DeviceKeys);
+        Assert.Empty(sender.Calls);
+        Assert.Equal(9999, fakeRepo.AccountIdSeenForDispatch);
     }
 
     [Fact]

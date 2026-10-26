@@ -1,0 +1,13 @@
+{
+  "connected": true,
+  "currentNumber": true,
+  "health": true,
+  "restart": true,
+  "sessionRecovery": true,
+  "newQrRequired": false,
+  "operationalActivation": false,
+  "sendRequests": 0,
+  "maskedNumber": "***6592",
+  "exitCode": 0,
+  "capturedAt": "2026-10-26T11:43:39.273Z"
+}

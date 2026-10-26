@@ -1,0 +1,24 @@
+✔ every route requires a token including health; browser-origin requests are rejected (233.4836ms)
+✔ health is independent of WhatsApp and responses cannot be cached (65.9396ms)
+✔ foundation sending is closed by default and denies non-approved numbers (22.5426ms)
+✔ approved test recipient still requires connected session (26.2666ms)
+✔ invalid payloads, remote media and arbitrary administrative fields are rejected (42.302ms)
+✔ installed Chromium runs with its sandbox; actual WhatsApp driver is loadable (1649.5393ms)
+✔ link exposes temporary QR only through material, never status (8.4804ms)
+✔ disconnect retains persisted session and reconnect uses it (4.4324ms)
+✔ restart restores intent without sending; intentional disconnect stays disconnected (1.5305ms)
+✔ replace logs out old account, clears number and accepts only newly proven number (1.2216ms)
+✔ offline logout cannot pretend to revoke the account (3.0972ms)
+✔ errors never expose raw library data, and unknown send is not retried (1.4179ms)
+✔ concurrent commands are rejected while sending, not queued (3.0404ms)
+✔ Windows ACL protection, token durability and atomic session state survive reconstruction (2119.8674ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3171.8233
+
+EXIT_CODE=0

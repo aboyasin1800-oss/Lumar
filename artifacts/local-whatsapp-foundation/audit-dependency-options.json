@@ -1,0 +1,123 @@
+{
+  "capturedAt": "2026-10-25T23:29:22.116Z",
+  "node": "v24.21.0",
+  "platform": "win32",
+  "operationalMapping": "WhatsApp -> WhatsAppCloudMessageChannel (Program.cs)",
+  "metaStore": {
+    "present": true,
+    "enabled": true,
+    "phoneConfigured": true,
+    "sha256": "7118b6bb466355fb4f5959cae1e23cfec66c0c176fe4e7804d9d4e842d2b4503"
+  },
+  "protectedFiles": {
+    "Services/IOutboundMessageChannel.cs": "fd30bf6e8988614139870d86b2c1687331d991a92b81d0f7eddbe378def6fb21",
+    "Services/OutboundMessageDispatcher.cs": "909b7a416eb9f3912216c582d1a59c787c074dd3e7b3f17d78117b635869e493",
+    "Services/OutboundMessageBackgroundService.cs": "1238c5805d6dfeaa019a8cae3a5a25b884f733f5d2a706c145b388f22ac73171",
+    "Services/MessageWriteService.cs": "fa20864a26e48aa012d000372245cd923346b4da8c349e4f0446836fcbd6a638",
+    "Services/WhatsAppCloudMessageChannel.cs": "019cc7a28793d7ede4497b83661c5244694a9a0c12c1226b7b605e095562371b",
+    "Services/InAppMessageChannel.cs": "dffbe5cce834bc69065272d5cbbc07ded7d5d26e9e57fbdc7acff4879c1bfc58",
+    "Services/FirebasePushSender.cs": "d6eb364a1cfec4ed21a561523c1acd8a7a12d62160c22dfec6c5785bd2bf39da",
+    "Services/PushDeviceService.cs": "50463ebd8f96a624c9b18f57cc207792f5580ca79c37ea3ef645dba0585e9a24",
+    "Repositories/MessageRepository.cs": "13b647ce5571cfc0ab2e958e986f6cedcc927a82c333e96036ba342dc5247799",
+    "Repositories/SettingsRepository.cs": "ddcf52f59d1cd8f2f9592ccc28e12bb892191439f15667d9dfa858f06f936c84",
+    "Services/WhatsAppConnectionSettingsStore.cs": "8d549a35682236080eee681306a4255620115c8e8935012057cee04db4ea90a7"
+  },
+  "libraries": {
+    "puppeteer": {
+      "version": "25.16.0",
+      "tags": {
+        "chrome-65": "1.0.0",
+        "chrome-66": "1.1.1",
+        "chrome-67": "1.3.0",
+        "chrome-68": "1.4.0",
+        "chrome-69": "1.6.2",
+        "chrome-70": "1.7.0",
+        "chrome-71": "1.9.0",
+        "chrome-72": "1.11.0",
+        "chrome-73": "1.12.2",
+        "chrome-74": "1.13.0",
+        "chrome-75": "1.15.0",
+        "chrome-76": "1.17.0",
+        "chrome-77": "1.19.0",
+        "chrome-78": "1.20.0",
+        "chrome-79": "2.0.0",
+        "chrome-80": "2.1.0",
+        "chrome-81": "3.0.0",
+        "chrome-83": "3.1.0",
+        "chrome-84": "5.1.0",
+        "chrome-85": "5.2.1",
+        "chrome-86": "5.3.1",
+        "latest": "25.16.0"
+      },
+      "modified": "2026-10-22T11:53:04.835Z",
+      "engines": {
+        "node": ">=22.12.0"
+      },
+      "license": "Apache-2.0",
+      "repository": {
+        "url": "git+https://github.com/puppeteer/puppeteer.git#main",
+        "type": "git"
+      },
+      "dependencies": {
+        "lilconfig": "^3.1.3",
+        "chromium-bidi": "157.0.8090-0",
+        "puppeteer-core": "25.16.0",
+        "devtools-protocol": "0.0.1704951",
+        "@puppeteer/browsers": "3.2.6",
+        "typed-query-selector": "^2.12.3"
+      }
+    },
+    "extract-zip": {
+      "version": "2.0.1",
+      "tags": {
+        "latest": "2.0.1"
+      },
+      "modified": "2023-03-04T05:05:11.590Z",
+      "engines": {
+        "node": ">= 10.17.0"
+      },
+      "license": "BSD-2-Clause",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/maxogden/extract-zip.git"
+      },
+      "dependencies": {
+        "debug": "^4.1.1",
+        "get-stream": "^5.1.0",
+        "yauzl": "^2.10.0",
+        "@types/yauzl": "^2.9.1"
+      }
+    },
+    "basic-ftp": {
+      "version": "6.2.3",
+      "tags": {
+        "latest": "6.2.3"
+      },
+      "modified": "2026-10-09T08:31:17.476Z",
+      "engines": {
+        "node": ">=10.0.0"
+      },
+      "license": "MIT",
+      "repository": {
+        "url": "git+https://github.com/patrickjuchli/basic-ftp.git",
+        "type": "git"
+      }
+    },
+    "zod": {
+      "version": "4.6.7",
+      "tags": {
+        "next": "3.25.0-beta.20250519T094321",
+        "alpha": "3.25.68-alpha.11",
+        "beta": "4.1.13-beta.0",
+        "canary": "4.5.0-canary.20260828T171753",
+        "latest": "4.6.7"
+      },
+      "modified": "2026-10-12T16:29:38.042Z",
+      "license": "MIT",
+      "repository": {
+        "url": "git+https://github.com/colinhacks/zod.git",
+        "type": "git"
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+Test run for D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+  Failed LUMAR_ERP_API_V2.Tests.MobilePushDeviceServiceTests.DispatchForOfficialNotification_UsesResolvedAccountWithoutClientTargetIds [28 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at LUMAR_ERP_API_V2.Tests.MobilePushDeviceServiceTests.DispatchForOfficialNotification_UsesResolvedAccountWithoutClientTargetIds() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\MobilePushDeviceServiceTests.cs:line 241
+--- End of stack trace from previous location ---
+Results File: D:\YASIN\artifacts\local-whatsapp-foundation\push-baseline.trx
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 66 ms - LUMAR_ERP_API_V2.Tests.dll (net10.0)
+[xUnit.net 00:00:00.77]     LUMAR_ERP_API_V2.Tests.MobilePushDeviceServiceTests.DispatchForOfficialNotification_UsesResolvedAccountWithoutClientTargetIds [FAIL]
+
+EXIT_CODE=1

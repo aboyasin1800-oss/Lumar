@@ -1,0 +1,11 @@
+00:00 +0: loading D:/YASIN/frontend/tailoring_system/test/whatsapp_provider_management_test.dart
+00:00 +0: manual activation is exclusive; rejection does not change provider
+00:02 +1: disconnect reconnect logout and replacement preserve activation and require confirmation
+00:02 +2: expired QR and backgrounded window do not retain pairing material
+00:03 +3: unready Local cannot be activated and unknown errors are sanitized
+00:03 +4: connection and activation remain separate in Brightness.dark
+00:04 +5: connection and activation remain separate in Brightness.light
+00:04 +6: link shows temporary QR then clears it on connection without activation
+00:04 +7: All tests passed!
+
+EXIT_CODE=0

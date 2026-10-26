@@ -25,6 +25,10 @@ Tools/FlutterSDK/
 # Secrets and local environment configuration
 **/appsettings.Local.json
 **/.env
+**/.wwebjs_auth/
+**/.wwebjs_cache/
+Gateway/LocalWhatsApp/node_modules/
+Gateway/LocalWhatsApp/data/
 
 # Database backup retained outside version control
 backups/

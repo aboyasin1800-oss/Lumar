@@ -1,0 +1,12 @@
+{
+  "startedAt": "2026-10-26T00:28:00.671Z",
+  "health": true,
+  "unauthenticatedRejected": true,
+  "linkContract": true,
+  "disconnect": true,
+  "shutdownConfirmed": true,
+  "operationalActivation": false,
+  "sendRequests": 0,
+  "exitCode": 0,
+  "capturedAt": "2026-10-26T00:28:11.585Z"
+}

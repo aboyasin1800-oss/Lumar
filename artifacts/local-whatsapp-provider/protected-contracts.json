@@ -1,0 +1,39 @@
+{
+  "capturedAt": "2026-10-26T11:57:34.855Z",
+  "files": [
+    {
+      "name": "Services/IOutboundMessageChannel.cs",
+      "unchanged": true
+    },
+    {
+      "name": "Services/OutboundMessageBackgroundService.cs",
+      "unchanged": true
+    },
+    {
+      "name": "Services/WhatsAppCloudMessageChannel.cs",
+      "unchanged": true
+    },
+    {
+      "name": "Services/InAppMessageChannel.cs",
+      "unchanged": true
+    },
+    {
+      "name": "Services/FirebasePushSender.cs",
+      "unchanged": true
+    },
+    {
+      "name": "Services/PushDeviceService.cs",
+      "unchanged": true
+    },
+    {
+      "name": "Repositories/MessageRepository.cs",
+      "unchanged": true
+    },
+    {
+      "name": "Services/WhatsAppConnectionSettingsStore.cs",
+      "unchanged": true
+    }
+  ],
+  "metaStoreUnchanged": true,
+  "passed": true
+}

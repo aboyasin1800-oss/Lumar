@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+	<testcase name="every route requires a token including health; browser-origin requests are rejected" time="0.233484" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\http.test.mjs"/>
+	<testcase name="health is independent of WhatsApp and responses cannot be cached" time="0.065940" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\http.test.mjs"/>
+	<testcase name="foundation sending is closed by default and denies non-approved numbers" time="0.022543" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\http.test.mjs"/>
+	<testcase name="approved test recipient still requires connected session" time="0.026267" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\http.test.mjs"/>
+	<testcase name="invalid payloads, remote media and arbitrary administrative fields are rejected" time="0.042302" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\http.test.mjs"/>
+	<testcase name="installed Chromium runs with its sandbox; actual WhatsApp driver is loadable" time="1.649539" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\runtime.test.mjs"/>
+	<testcase name="link exposes temporary QR only through material, never status" time="0.008480" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\session.test.mjs"/>
+	<testcase name="disconnect retains persisted session and reconnect uses it" time="0.004432" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\session.test.mjs"/>
+	<testcase name="restart restores intent without sending; intentional disconnect stays disconnected" time="0.001530" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\session.test.mjs"/>
+	<testcase name="replace logs out old account, clears number and accepts only newly proven number" time="0.001222" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\session.test.mjs"/>
+	<testcase name="offline logout cannot pretend to revoke the account" time="0.003097" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\session.test.mjs"/>
+	<testcase name="errors never expose raw library data, and unknown send is not retried" time="0.001418" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\session.test.mjs"/>
+	<testcase name="concurrent commands are rejected while sending, not queued" time="0.003040" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\session.test.mjs"/>
+	<testcase name="Windows ACL protection, token durability and atomic session state survive reconstruction" time="2.119867" classname="test" file="D:\YASIN\Gateway\LocalWhatsApp\test\storage.test.mjs"/>
+	<!-- tests 14 -->
+	<!-- suites 0 -->
+	<!-- pass 14 -->
+	<!-- fail 0 -->
+	<!-- cancelled 0 -->
+	<!-- skipped 0 -->
+	<!-- todo 0 -->
+	<!-- duration_ms 3171.8233 -->
+</testsuites>

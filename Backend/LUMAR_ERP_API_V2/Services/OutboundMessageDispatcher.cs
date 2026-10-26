@@ -1,4 +1,5 @@
 using LUMAR_ERP_API_V2.DTOs.Messages;
+using LUMAR_ERP_API_V2.DTOs.WhatsApp;
 using LUMAR_ERP_API_V2.Repositories;
 
 namespace LUMAR_ERP_API_V2.Services;
@@ -7,7 +8,8 @@ public sealed class OutboundMessageDispatcher(
     IMessageRepository repository,
     IEnumerable<IOutboundMessageChannel> channels,
     ILogger<OutboundMessageDispatcher> logger,
-    IConfiguration configuration) : IOutboundMessageDispatcher
+    IConfiguration configuration,
+    IWhatsAppProviderStore? providerStore = null) : IOutboundMessageDispatcher
 {
     public async Task<OutboundDispatchResult?> DispatchNextAsync(CancellationToken cancellationToken)
     {
@@ -23,6 +25,10 @@ public sealed class OutboundMessageDispatcher(
 
         foreach (var channelName in channelMap.Keys)
         {
+            await using var providerLease = providerStore is not null && channelName is "WhatsApp" or "LocalWhatsApp"
+                ? await providerStore.AcquireAsync(false, cancellationToken) : null;
+            if (providerLease is not null && !string.Equals(providerLease.Provider.Channel(), channelName, StringComparison.Ordinal))
+                continue;
             var message = await repository.ClaimNextAsync(channelName, maxAttempts, TimeSpan.FromMinutes(staleProcessingMinutes), cancellationToken);
             if (message is null)
                 continue;

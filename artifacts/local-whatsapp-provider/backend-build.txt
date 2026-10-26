@@ -1,0 +1,20 @@
+  Determining projects to restore...
+D:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1902: Package 'System.Security.Cryptography.Pkcs' 9.0.4 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2fmv-rv2c-59x7
+D:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1903: Package 'System.Security.Cryptography.Pkcs' 9.0.4 has a known high severity vulnerability, https://github.com/advisories/GHSA-846f-f764-76mx
+  All projects are up-to-date for restore.
+D:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1902: Package 'System.Security.Cryptography.Pkcs' 9.0.4 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2fmv-rv2c-59x7
+D:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1903: Package 'System.Security.Cryptography.Pkcs' 9.0.4 has a known high severity vulnerability, https://github.com/advisories/GHSA-846f-f764-76mx
+  LUMAR_ERP_API_V2 -> D:\YASIN\Backend\LUMAR_ERP_API_V2\bin\Debug\net10.0\LUMAR_ERP_API_V2.dll
+
+Build succeeded.
+
+D:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1902: Package 'System.Security.Cryptography.Pkcs' 9.0.4 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2fmv-rv2c-59x7
+D:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1903: Package 'System.Security.Cryptography.Pkcs' 9.0.4 has a known high severity vulnerability, https://github.com/advisories/GHSA-846f-f764-76mx
+D:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1902: Package 'System.Security.Cryptography.Pkcs' 9.0.4 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2fmv-rv2c-59x7
+D:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1903: Package 'System.Security.Cryptography.Pkcs' 9.0.4 has a known high severity vulnerability, https://github.com/advisories/GHSA-846f-f764-76mx
+    4 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:02.21
+
+EXIT_CODE=0

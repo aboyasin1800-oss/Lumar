@@ -1,5 +1,6 @@
 using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.Settings;
+using LUMAR_ERP_API_V2.DTOs.WhatsApp;
 using LUMAR_ERP_API_V2.Repositories;
 
 namespace LUMAR_ERP_API_V2.Services;
@@ -8,7 +9,8 @@ public sealed class MessageWriteService(
     IMessageRepository repository,
     IMessageTemplateRenderer renderer,
     ISettingsRepository? settingsRepository = null,
-    IYemenPhoneNumberNormalizer? phoneNormalizer = null) : IMessageWriteService
+    IYemenPhoneNumberNormalizer? phoneNormalizer = null,
+    IWhatsAppProviderStore? providerStore = null) : IMessageWriteService
 {
     private readonly IYemenPhoneNumberNormalizer _phoneNormalizer = phoneNormalizer ?? new YemenPhoneNumberNormalizer();
 
@@ -43,6 +45,9 @@ public sealed class MessageWriteService(
             return new MessageWriteResult(false, null, null, legacyTemplateKey, string.Empty, string.Empty);
         }
 
+        await using var providerLease = runtimeSettings.WhatsAppEnabled && providerStore is not null
+            ? await providerStore.AcquireAsync(false, cancellationToken) : null;
+        var whatsAppChannel = providerLease is null ? "WhatsApp" : providerLease.Provider.Channel();
         var createdResults = new List<MessageWriteResult>();
         foreach (var route in routes)
         {
@@ -62,7 +67,7 @@ public sealed class MessageWriteService(
             int? notificationId = null;
             var normalizedPhone = _phoneNormalizer.TryNormalizeMobileNumber(route.PhoneNumber);
 
-            if (runtimeSettings.WhatsAppEnabled && !string.IsNullOrWhiteSpace(normalizedPhone))
+            if (runtimeSettings.WhatsAppEnabled && whatsAppChannel is not null && !string.IsNullOrWhiteSpace(normalizedPhone))
             {
                 var rawCampaignText = GetContextStringValue(request.Context, "RawCampaignText")
                     ?? GetContextStringValue(request.Context, "CampaignText");
@@ -93,7 +98,7 @@ public sealed class MessageWriteService(
                     request.OrderId,
                     request.EventType,
                     template.TemplateKey,
-                    "WhatsApp",
+                    whatsAppChannel,
                     title,
                     body,
                     normalizedPhone,
