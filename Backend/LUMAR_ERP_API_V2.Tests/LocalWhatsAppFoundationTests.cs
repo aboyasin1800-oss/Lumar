@@ -288,7 +288,7 @@ public sealed class LocalWhatsAppFoundationTests
     }
 
     [Fact]
-    public async Task GatewayLifecycle_UsesConfiguredApprovedRecipient_WhenStartingGateway()
+    public async Task GatewayLifecycle_UsesOfficialCustomerRecipients_WhenStartingGateway()
     {
         var port = GetFreeTcpPort();
         var baseUrl = $"http://127.0.0.1:{port}/";
@@ -315,10 +315,13 @@ public sealed class LocalWhatsAppFoundationTests
             using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-            using var response = await client.PostAsJsonAsync("/messages/send", new { recipient = "775106545", text = "final body" });
-            Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
-            var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal("NOT_CONNECTED", payload.GetProperty("code").GetString());
+            foreach (var number in new[] { "775106545", "967777123456", "967775106545" })
+            {
+                using var response = await client.PostAsJsonAsync("/messages/send", new { recipient = number, text = "final body" });
+                Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+                var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+                Assert.Equal("NOT_CONNECTED", payload.GetProperty("code").GetString());
+            }
         }
         finally
         {

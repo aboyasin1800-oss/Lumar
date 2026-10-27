@@ -132,10 +132,9 @@ export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin 
           throw new GatewayError('INVALID_MESSAGE', 400);
         }
         const normalizedRecipient = normalizeYemenMobileNumber(body.recipient);
-        const normalizedApproved = normalizeYemenMobileNumber(testRecipient);
-        if (!normalizedRecipient || !normalizedApproved || normalizedRecipient !== normalizedApproved) {
-          safeStageLog('message-validation', { status: 'recipient-rejected', normalizedRecipient: normalizedRecipient ?? null, approvedRecipient: normalizedApproved ?? null });
-          throw new GatewayError('TEST_RECIPIENT_REQUIRED', 403);
+        if (!normalizedRecipient) {
+          safeStageLog('message-validation', { status: 'recipient-rejected', normalizedRecipient: null, approvedRecipient: normalizeYemenMobileNumber(testRecipient) ?? null });
+          throw new GatewayError('INVALID_MESSAGE', 400);
         }
 
         let media = null;

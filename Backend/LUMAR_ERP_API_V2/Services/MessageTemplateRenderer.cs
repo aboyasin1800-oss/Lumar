@@ -37,11 +37,14 @@ public sealed class MessageTemplateRenderer : IMessageTemplateRenderer
         if (value is null)
             return string.Empty;
 
+        if (value is DateOnly dateOnly)
+            return dateOnly.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
         if (value is DateTime date)
-            return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            return DateTime.SpecifyKind(date.Date, DateTimeKind.Unspecified).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
         if (value is DateTimeOffset offset)
-            return offset.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            return offset.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
         if (value is decimal d)
             return d.ToString(CultureInfo.InvariantCulture);

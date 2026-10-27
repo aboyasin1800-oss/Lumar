@@ -44,36 +44,35 @@ test('health is independent of WhatsApp and responses cannot be cached', async c
   assert.equal((await (await call('/session/link-material')).json()).value, null);
 });
 
-test('foundation sending is closed by default and denies non-approved numbers', async context => {
+test('official customer recipients are accepted after local validation without test-recipient lock', async context => {
   const { call } = await host(context);
-  const response = await call('/messages/send', { recipient: '967777123456', text: 'final body' });
-  assert.equal(response.status, 403);
-  assert.equal((await response.json()).code, 'TEST_RECIPIENT_REQUIRED');
+  const officialA = await call('/messages/send', { recipient: '967777123456', text: 'final body' });
+  const officialB = await call('/messages/send', { recipient: '967775106545', text: 'final body' });
+
+  assert.equal(officialA.status, 503);
+  assert.equal((await officialA.json()).code, 'NOT_CONNECTED');
+  assert.equal(officialB.status, 503);
+  assert.equal((await officialB.json()).code, 'NOT_CONNECTED');
 });
 
-test('approved test recipient still requires connected session', async context => {
-  const { call } = await host(context, { testRecipient: '967777123456' });
-  const response = await call('/messages/send', { recipient: '967777123456', text: 'final body' });
-  assert.equal(response.status, 503);
-  assert.equal((await response.json()).code, 'NOT_CONNECTED');
-  assert.equal((await call('/messages/send', { recipient: '967777999999', text: 'final body' })).status, 403);
-});
-
-test('yemen test recipient accepts equivalent local and international formats only', async context => {
-  const { call } = await host(context, { testRecipient: '967775106545' });
+test('valid official customer numbers accept equivalent local and international formats; invalid or missing numbers fail safely', async context => {
+  const { call } = await host(context);
   const localApproved = await call('/messages/send', { recipient: '775106545', text: 'final body' });
   const internationalApproved = await call('/messages/send', { recipient: '967775106545', text: 'final body' });
-  const mismatched = await call('/messages/send', { recipient: '967775106546', text: 'final body' });
-  const reverseMismatch = await call('/messages/send', { recipient: '775106546', text: 'final body' });
+  const invalid = await call('/messages/send', { recipient: '967775106546x', text: 'final body' });
+  const missing = await call('/messages/send', { recipient: '', text: 'final body' });
+  const deleted = await call('/messages/send', { text: 'final body' });
 
   assert.equal(localApproved.status, 503);
   assert.equal((await localApproved.json()).code, 'NOT_CONNECTED');
   assert.equal(internationalApproved.status, 503);
   assert.equal((await internationalApproved.json()).code, 'NOT_CONNECTED');
-  assert.equal(mismatched.status, 403);
-  assert.equal((await mismatched.json()).code, 'TEST_RECIPIENT_REQUIRED');
-  assert.equal(reverseMismatch.status, 403);
-  assert.equal((await reverseMismatch.json()).code, 'TEST_RECIPIENT_REQUIRED');
+  assert.equal(invalid.status, 400);
+  assert.equal((await invalid.json()).code, 'INVALID_MESSAGE');
+  assert.equal(missing.status, 400);
+  assert.equal((await missing.json()).code, 'INVALID_MESSAGE');
+  assert.equal(deleted.status, 400);
+  assert.equal((await deleted.json()).code, 'INVALID_MESSAGE');
 });
 
 test('invalid payloads, remote media and arbitrary administrative fields are rejected', async context => {

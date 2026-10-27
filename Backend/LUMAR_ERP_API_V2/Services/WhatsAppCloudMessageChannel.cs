@@ -363,11 +363,14 @@ public sealed class WhatsAppCloudMessageChannel(
 
     private static string FormatMetaValue(object value)
     {
+        if (value is DateOnly dateOnly)
+            return dateOnly.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
         if (value is DateTime date)
-            return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            return DateTime.SpecifyKind(date.Date, DateTimeKind.Unspecified).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
         if (value is DateTimeOffset offset)
-            return offset.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            return offset.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
         if (value is decimal decimalValue)
             return decimalValue.ToString(CultureInfo.InvariantCulture);

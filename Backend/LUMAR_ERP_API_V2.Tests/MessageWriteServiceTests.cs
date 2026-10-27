@@ -1940,6 +1940,25 @@ public sealed class MessageWriteServiceTests
         Assert.DoesNotContain("{{", delivered, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(2026, 11, 1, "2026-11-01")]
+    [InlineData(2026, 12, 1, "2026-12-01")]
+    public void MessageTemplateRenderer_RendersCalendarDateWithoutTimezoneDrift(int year, int month, int day, string expected)
+    {
+        var renderer = new MessageTemplateRenderer();
+        var template = "تاريخ التسليم: {{DeliveryDate}}";
+        var values = new Dictionary<string, object?>
+        {
+            ["DeliveryDate"] = new DateTime(year, month, day, 23, 30, 0, DateTimeKind.Utc)
+        };
+
+        var rendered = renderer.Render(template, values);
+
+        Assert.Contains(expected, rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain("2026-10-31", rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain("2026-12-00", rendered, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task TryCreateAsync_WhenCustomerHasNoReferrer_CreatesOnlyCustomerMessage()
     {

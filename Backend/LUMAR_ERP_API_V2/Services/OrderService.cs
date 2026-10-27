@@ -137,7 +137,7 @@ public sealed class OrderService(
             ["TotalAmount"] = order.TotalAmount,
             ["PaidAmount"] = order.PaidAmount,
             ["RemainingAmount"] = order.RemainingAmount,
-            ["DeliveryDate"] = order.DeliveryDate,
+            ["DeliveryDate"] = NormalizeCalendarDate(order.DeliveryDate),
             ["PhoneNumber"] = order.PhoneNumber,
             ["CustomerPhoneNumber"] = order.PhoneNumber,
             ["CurrencyName"] = await GetRequiredSettingValueAsync("Currency", cancellationToken),
@@ -151,6 +151,15 @@ public sealed class OrderService(
         context["OrderDetails"] = string.Join(", ", items.Select(item => item.PieceType).Where(static value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase));
 
         return context;
+    }
+
+    private static DateTime? NormalizeCalendarDate(DateTime? input)
+    {
+        if (!input.HasValue)
+            return null;
+
+        var calendar = input.Value.Date;
+        return DateTime.SpecifyKind(calendar, DateTimeKind.Unspecified);
     }
 
     private async Task<string?> GetCustomerCodeAsync(int customerId, CancellationToken cancellationToken)
