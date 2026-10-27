@@ -86,3 +86,98 @@ test('invalid payloads, remote media and arbitrary administrative fields are rej
   assert.equal((await media.json()).code, 'MEDIA_REJECTED');
   assert.equal((await call('/messages/send', { recipient: '967777123456', text: 'x'.repeat(40000) })).status, 413);
 });
+
+test('valid media payloads route to sendMessage without connection drops', async context => {
+  const manager = {
+    status: () => ({ state: 'Connected', currentNumber: '967777123456', lastError: null, linked: true, operationalActivation: false }),
+    linkMaterial: () => ({ kind: null, value: null, expiresAt: null }),
+    command: async () => ({ state: 'Connected', currentNumber: '967777123456', lastError: null, linked: true, operationalActivation: false }),
+    send: async ({ recipient, text, media }) => {
+      assert.equal(recipient, '967777123456');
+      assert.equal(text, 'final body');
+      assert.ok(media);
+      assert.equal(media.mimeType, 'image/png');
+      assert.equal(media.filename, 'valid.png');
+      return { outcome: 'Sent', providerMessageId: 'provider-42', retryable: false };
+    },
+  };
+  const server = gatewayServer(manager, { token, testRecipient: '967777123456' });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  context.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
+  const port = server.address().port;
+  const response = await fetch(`http://127.0.0.1:${port}/messages/send`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      recipient: '967777123456',
+      text: 'final body',
+      media: { mimeType: 'image/png', filename: 'valid.png', base64: Buffer.from([137,80,78,71,13,10,26,10,1,2,3,4]).toString('base64') },
+    }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).providerMessageId, 'provider-42');
+});
+
+test('oversized and malformed media produce 413/400 without abrupt socket close', async context => {
+  const manager = {
+    status: () => ({ state: 'Connected', currentNumber: '967777123456', lastError: null, linked: true, operationalActivation: false }),
+    linkMaterial: () => ({ kind: null, value: null, expiresAt: null }),
+    command: async () => ({ state: 'Connected', currentNumber: '967777123456', lastError: null, linked: true, operationalActivation: false }),
+    send: async () => ({ outcome: 'Sent', providerMessageId: 'provider-42', retryable: false }),
+  };
+  const server = gatewayServer(manager, { token, testRecipient: '967777123456' });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  context.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
+  const port = server.address().port;
+
+  const oversized = await fetch(`http://127.0.0.1:${port}/messages/send`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      recipient: '967777123456',
+      text: 'final body',
+      media: {
+        mimeType: 'image/png',
+        filename: 'over.png',
+        base64: Buffer.alloc(5 * 1024 * 1024 + 1, 0x00).toString('base64'),
+      },
+    }),
+  });
+  assert.equal(oversized.status, 413);
+  assert.equal((await oversized.json()).code, 'INVALID_MESSAGE');
+
+  const invalid = await fetch(`http://127.0.0.1:${port}/messages/send`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      recipient: '967777123456',
+      text: 'final body',
+      media: { mimeType: 'image/png', filename: 'broken.png', base64: 'not-base64!!!' },
+    }),
+  });
+  assert.equal(invalid.status, 400);
+  assert.equal((await invalid.json()).code, 'INVALID_MESSAGE');
+});
+
+test('pre-send internal failures return 500 and never masquerade as unconfirmed', async context => {
+  const manager = {
+    status: () => ({ state: 'Connected', currentNumber: '967777123456', lastError: null, linked: true, operationalActivation: false }),
+    linkMaterial: () => ({ kind: null, value: null, expiresAt: null }),
+    command: async () => ({ state: 'Connected', currentNumber: '967777123456', lastError: null, linked: true, operationalActivation: false }),
+    send: async () => { throw new Error('internal send failure'); },
+  };
+  const server = gatewayServer(manager, { token, testRecipient: '967777123456' });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  context.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
+  const port = server.address().port;
+  const response = await fetch(`http://127.0.0.1:${port}/messages/send`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipient: '967777123456', text: 'final body' }),
+  });
+  assert.equal(response.status, 500);
+  assert.equal((await response.json()).code, 'GATEWAY_ERROR');
+});

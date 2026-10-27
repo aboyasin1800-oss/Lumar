@@ -60,14 +60,60 @@ export class WebDriver extends EventEmitter {
   }
 
   async send({ recipient, text, media }) {
-    const content = media ? new MessageMedia(media.mimeType, media.base64, 'lumar-image') : text;
-    const message = await this.client.sendMessage(`${recipient}@c.us`, content,
-      { caption: media ? text : undefined, sendSeen: false, waitUntilMsgSent: true });
-    return extractProviderMessageId(message);
+    const chatId = `${recipient}@c.us`;
+    const mediaFileName = media?.filename || 'lumar-image';
+    const mediaPayload = media ? new MessageMedia(media.mimeType, media.base64, mediaFileName) : null;
+    const sendOptions = media ? { caption: text, sendSeen: false, waitUntilMsgSent: true } : undefined;
+
+    console.error(JSON.stringify({
+      stage: 'whatsapp-media-send',
+      hasMedia: Boolean(media),
+      chatId,
+      mimeType: media?.mimeType ?? null,
+      dataBytes: media ? Buffer.byteLength(media.base64, 'base64') : 0,
+      filename: mediaFileName,
+      callShape: media ? 'client.sendMessage(chatId, media, { caption: text, sendSeen: false, waitUntilMsgSent: true })' : 'client.sendMessage(chatId, text)',
+    }));
+
+    try {
+      const content = media ? mediaPayload : text;
+      const message = await this.client.sendMessage(chatId, content, sendOptions);
+      const providerMessageId = extractProviderMessageId(message);
+      console.error(JSON.stringify({
+        stage: 'whatsapp-media-result',
+        hasMedia: Boolean(media),
+        providerMessageId: providerMessageId ?? null,
+        messageType: message && typeof message === 'object' ? Object.keys(message).slice(0, 10) : null,
+      }));
+      return providerMessageId;
+    } catch (error) {
+      console.error(JSON.stringify({
+        stage: 'whatsapp-media-error',
+        hasMedia: Boolean(media),
+        hasMessage: error instanceof Error ? error.message : String(error),
+      }));
+      throw error;
+    }
   }
 }
 
 function extractProviderMessageId(message) {
+  const nested = message?.id;
+  if (nested && typeof nested === 'object') {
+    const fromMe = typeof nested.fromMe === 'boolean' ? nested.fromMe : null;
+    const remoteValue = nested.remote;
+    const remote = typeof remoteValue === 'string' ? remoteValue.trim() : (
+      remoteValue && typeof remoteValue === 'object' && typeof remoteValue._serialized === 'string' ? remoteValue._serialized.trim() : ''
+    );
+    const id = typeof nested.id === 'string' ? nested.id.trim() : '';
+    if (fromMe !== null && remote.length > 0 && id.length > 0) {
+      const reconstructed = `${fromMe}_${remote}_${id}`;
+      if (reconstructed.length > 0 && reconstructed.length <= 200 && !reconstructed.startsWith('undefined')) {
+        return reconstructed;
+      }
+    }
+  }
+
   const direct = [
     message?.id?._serialized,
     message?._serialized,
@@ -82,17 +128,6 @@ function extractProviderMessageId(message) {
     if (normalized.length > 0 && normalized.length <= 200 && !normalized.startsWith('undefined')) {
       return normalized;
     }
-  }
-
-  const nested = message?.id;
-  if (!nested || typeof nested !== 'object') return null;
-  const fromMe = typeof nested.fromMe === 'boolean' ? nested.fromMe : null;
-  const remote = typeof nested.remote === 'string' ? nested.remote.trim() : '';
-  const id = typeof nested.id === 'string' ? nested.id.trim() : '';
-  if (fromMe === null || remote.length === 0 || id.length === 0) return null;
-  const reconstructed = `${fromMe}_${remote}_${id}`;
-  if (reconstructed.length > 0 && reconstructed.length <= 200 && !reconstructed.startsWith('undefined')) {
-    return reconstructed;
   }
 
   return null;

@@ -4,6 +4,12 @@ import { GatewayError } from './session.mjs';
 
 const hash = value => createHash('sha256').update(value).digest();
 const actions = new Set(['link', 'disconnect', 'logout', 'reconnect', 'replace']);
+const MAX_JSON_BODY_BYTES = 8 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
+
+function safeStageLog(stage, detail = {}) {
+  console.error(JSON.stringify({ stage, ...detail }));
+}
 
 function normalizeYemenMobileNumber(phoneNumber) {
   if (typeof phoneNumber !== 'string') return null;
@@ -25,11 +31,20 @@ async function jsonBody(request) {
   const chunks = [];
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 32768) throw new GatewayError('INVALID_MESSAGE', 413);
+    if (size > MAX_JSON_BODY_BYTES) {
+      safeStageLog('request-body-read', { status: 'oversized', bytes: size, limit: MAX_JSON_BODY_BYTES });
+      throw new GatewayError('INVALID_MESSAGE', 413);
+    }
     chunks.push(chunk);
   }
-  try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-  catch { throw new GatewayError('INVALID_MESSAGE', 400); }
+  try {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    safeStageLog('request-body-read', { status: 'completed', bytes: raw.length });
+    return JSON.parse(raw);
+  } catch {
+    safeStageLog('request-body-read', { status: 'invalid-json' });
+    throw new GatewayError('INVALID_MESSAGE', 400);
+  }
 }
 
 async function loadMedia(imageUrl, allowedOrigin) {
@@ -44,7 +59,10 @@ async function loadMedia(imageUrl, allowedOrigin) {
     let size = 0;
     for await (const chunk of response.body) {
       size += chunk.length;
-      if (size > 5 * 1024 * 1024) throw new Error();
+      if (size > MAX_MEDIA_BYTES) {
+        safeStageLog('media-download', { status: 'oversized', bytes: size, limit: MAX_MEDIA_BYTES });
+        throw new Error();
+      }
       chunks.push(chunk);
     }
     const bytes = Buffer.concat(chunks);
@@ -57,21 +75,25 @@ async function loadMedia(imageUrl, allowedOrigin) {
 }
 
 function normalizeInternalMedia(bodyMedia) {
-  if (!bodyMedia || typeof bodyMedia !== 'object' || Array.isArray(bodyMedia)) return null;
+  if (!bodyMedia || typeof bodyMedia !== 'object' || Array.isArray(bodyMedia)) return { status: 'invalid' };
   const { mimeType, base64, filename } = bodyMedia;
-  if (typeof mimeType !== 'string' || typeof base64 !== 'string' || typeof filename !== 'string') return null;
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) return null;
+  if (typeof mimeType !== 'string' || typeof base64 !== 'string' || typeof filename !== 'string') return { status: 'invalid' };
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) return { status: 'invalid' };
   const trimmed = filename.trim();
-  if (!trimmed || trimmed.includes('..') || trimmed.includes('/') || trimmed.includes('\\')) return null;
+  if (!trimmed || trimmed.includes('..') || trimmed.includes('/') || trimmed.includes('\\')) return { status: 'invalid' };
+  const allowedExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+  const extension = trimmed.includes('.') ? trimmed.slice(trimmed.lastIndexOf('.')).toLowerCase() : '';
+  if (!allowedExtensions.has(extension)) return { status: 'invalid' };
   let bytes;
   try { bytes = Buffer.from(base64, 'base64'); }
-  catch { return null; }
-  if (bytes.length <= 0 || bytes.length > 5 * 1024 * 1024) return null;
+  catch { return { status: 'invalid' }; }
+  if (bytes.length <= 0) return { status: 'invalid' };
+  if (bytes.length > MAX_MEDIA_BYTES) return { status: 'oversized' };
   const valid = mimeType === 'image/jpeg' ? bytes[0] === 0xff && bytes[1] === 0xd8
     : mimeType === 'image/png' ? bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
       : bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
-  if (!valid) return null;
-  return { mimeType, base64: bytes.toString('base64'), filename: trimmed };
+  if (!valid) return { status: 'invalid' };
+  return { status: 'ok', value: { mimeType, base64: bytes.toString('base64'), filename: trimmed } };
 }
 
 export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin = '' }) {
@@ -102,23 +124,49 @@ export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin 
         if (!body || typeof body !== 'object' || Array.isArray(body)
           || Object.keys(body).some(key => !['recipient', 'text', 'imageUrl', 'media'].includes(key))
           || typeof body.recipient !== 'string' || !/^[1-9][0-9]{7,14}$/.test(body.recipient)
-          || typeof body.text !== 'string' || !body.text.trim() || body.text.length > 4096
+          || typeof body.text !== 'string' || !body.text.trim()
+          || (body.text.length > 4096 ? (() => { throw new GatewayError('INVALID_MESSAGE', 413); })() : false)
           || (body.imageUrl != null && (typeof body.imageUrl !== 'string' || body.imageUrl.length > 2048))
           || (body.media != null && (typeof body.media !== 'object' || Array.isArray(body.media)))) {
+          safeStageLog('message-validation', { status: 'invalid-input' });
           throw new GatewayError('INVALID_MESSAGE', 400);
         }
         const normalizedRecipient = normalizeYemenMobileNumber(body.recipient);
         const normalizedApproved = normalizeYemenMobileNumber(testRecipient);
         if (!normalizedRecipient || !normalizedApproved || normalizedRecipient !== normalizedApproved) {
+          safeStageLog('message-validation', { status: 'recipient-rejected', normalizedRecipient: normalizedRecipient ?? null, approvedRecipient: normalizedApproved ?? null });
           throw new GatewayError('TEST_RECIPIENT_REQUIRED', 403);
         }
-        const media = normalizeInternalMedia(body.media) ?? (body.imageUrl ? await loadMedia(body.imageUrl, mediaOrigin) : null);
-        reply(200, await manager.send({ recipient: body.recipient, text: body.text, media }));
+
+        let media = null;
+        if (body.media != null) {
+          const normalizedMedia = normalizeInternalMedia(body.media);
+          if (normalizedMedia.status === 'oversized') {
+            safeStageLog('media-validation', { status: 'oversized-internal-media', bytes: Buffer.byteLength(String(body.media.base64 ?? ''), 'base64') });
+            throw new GatewayError('INVALID_MESSAGE', 413);
+          }
+          if (normalizedMedia.status !== 'ok') {
+            safeStageLog('media-validation', { status: 'rejected-internal-media' });
+            throw new GatewayError('INVALID_MESSAGE', 400);
+          }
+          media = normalizedMedia.value;
+          safeStageLog('media-validation', { status: 'internal-media-ready', mimeType: media.mimeType, bytes: Buffer.byteLength(media.base64, 'base64'), filename: media.filename });
+        } else if (body.imageUrl) {
+          safeStageLog('media-validation', { status: 'remote-media-load-start' });
+          media = await loadMedia(body.imageUrl, mediaOrigin);
+          safeStageLog('media-validation', { status: 'remote-media-ready', mimeType: media.mimeType, bytes: Buffer.byteLength(media.base64, 'base64') });
+        }
+
+        safeStageLog('send-gateway', { status: 'before-send-message' });
+        const result = await manager.send({ recipient: body.recipient, text: body.text, media });
+        safeStageLog('send-gateway', { status: 'after-send-message', outcome: result?.outcome ?? 'unknown' });
+        reply(200, result);
       } else {
         reply(404, { code: 'NOT_FOUND' });
       }
     } catch (error) {
       const known = error instanceof GatewayError;
+      safeStageLog('gateway-error', { status: known ? 'handled' : 'unhandled', code: known ? error.code : 'GATEWAY_ERROR', httpStatus: known ? error.status : 500 });
       reply(known ? error.status : 500, { code: known ? error.code : 'GATEWAY_ERROR',
         outcome: 'Failed', retryable: known && ['BUSY', 'NOT_CONNECTED'].includes(error.code) });
     }

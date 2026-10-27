@@ -109,6 +109,9 @@ public sealed class CampaignMediaStorageService
             return false;
 
         var trimmed = campaignImageUrl.Trim();
+        if (!IsOfficialCampaignMediaReference(trimmed))
+            return false;
+
         var fileName = ResolveLocalCampaignFileName(trimmed);
         if (string.IsNullOrWhiteSpace(fileName) || !IsAllowedCampaignMediaFileName(fileName))
             return false;
@@ -132,6 +135,35 @@ public sealed class CampaignMediaStorageService
 
         media = new LocalCampaignMediaPayload(mimeType, Convert.ToBase64String(bytes), fileName);
         return true;
+    }
+
+    private bool IsOfficialCampaignMediaReference(string url)
+    {
+        var trimmed = url.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return false;
+
+        if (!trimmed.Contains("/campaign-media/", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absoluteUri))
+        {
+            if (!string.Equals(absoluteUri.AbsolutePath, "/campaign-media/" + Path.GetFileName(absoluteUri.AbsolutePath), StringComparison.OrdinalIgnoreCase)
+                && !absoluteUri.AbsolutePath.Contains("/campaign-media/", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(_publicBaseUrl))
+                return absoluteUri.IsLoopback || string.Equals(absoluteUri.Host, "localhost", StringComparison.OrdinalIgnoreCase);
+
+            return Uri.TryCreate(_publicBaseUrl, UriKind.Absolute, out var officialBase)
+                && string.Equals(officialBase.GetLeftPart(UriPartial.Authority), absoluteUri.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase)
+                && absoluteUri.AbsolutePath.Contains("/campaign-media/", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return trimmed.StartsWith("/campaign-media/", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("campaign-media/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ResolveLocalCampaignFileName(string url)

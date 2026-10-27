@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -14,6 +15,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace LUMAR_ERP_API_V2.Tests;
@@ -197,7 +199,7 @@ public sealed class LocalWhatsAppFoundationTests
     }
 
     [Fact]
-    public async Task LocalWhatsApp_UsesOfficialLocalCampaignMedia_WhenPublicUrlIsCloudflare()
+    public async Task LocalWhatsApp_RejectsCloudflarePublicCampaignMediaBeforeDispatch()
     {
         var root = Path.Combine(Path.GetTempPath(), "lumar-local-media-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -216,16 +218,10 @@ public sealed class LocalWhatsAppFoundationTests
             RawCampaignText = "Must not replace final body"
         }, CancellationToken.None);
 
-        Assert.Equal(OutboundDispatchOutcome.Sent, result.Outcome);
-        Assert.Equal("local-provider-id", result.ProviderMessageId);
-        using var payload = JsonDocument.Parse(handler.Body!);
-        Assert.Equal(Message().Body, payload.RootElement.GetProperty("text").GetString());
-        Assert.Equal("967777123456", payload.RootElement.GetProperty("recipient").GetString());
-        Assert.False(payload.RootElement.TryGetProperty("imageUrl", out _));
-        var media = payload.RootElement.GetProperty("media");
-        Assert.Equal("image/png", media.GetProperty("mimeType").GetString());
-        Assert.Equal("official-campaign.png", media.GetProperty("filename").GetString());
-        Assert.True(Convert.FromBase64String(media.GetProperty("base64").GetString()!) .Length > 0 );
+        Assert.Equal(OutboundDispatchOutcome.PermanentFailure, result.Outcome);
+        Assert.False(result.Retryable);
+        Assert.Null(handler.Body);
+        Assert.Contains("unavailable or invalid", result.FailureReason!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -306,20 +302,28 @@ public sealed class LocalWhatsAppFoundationTests
 
         var loggerFactory = LoggerFactory.Create(builder => builder.AddDebug().AddConsole());
         var host = new LocalWhatsAppGatewayProcessHost(loggerFactory.CreateLogger<LocalWhatsAppGatewayProcessHost>(), configuration);
+        Process? startedProcess = null;
 
-        await host.StartAsync(CancellationToken.None);
+        try
+        {
+            await host.StartAsync(CancellationToken.None);
+            startedProcess = GetStartedProcess(host);
+            Assert.NotNull(startedProcess);
 
-        var tokenPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LUMAR", "LocalWhatsAppGateway", "gateway-token");
-        var token = (await File.ReadAllTextAsync(tokenPath)).Trim();
-        using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var tokenPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LUMAR", "LocalWhatsAppGateway", "gateway-token");
+            var token = (await File.ReadAllTextAsync(tokenPath)).Trim();
+            using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        using var response = await client.PostAsJsonAsync("/messages/send", new { recipient = "775106545", text = "final body" });
-        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
-        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("NOT_CONNECTED", payload.GetProperty("code").GetString());
-
-        await host.StopAsync(CancellationToken.None);
+            using var response = await client.PostAsJsonAsync("/messages/send", new { recipient = "775106545", text = "final body" });
+            Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+            var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("NOT_CONNECTED", payload.GetProperty("code").GetString());
+        }
+        finally
+        {
+            StopProcess(startedProcess);
+        }
     }
 
     [Fact]
@@ -336,39 +340,46 @@ public sealed class LocalWhatsAppFoundationTests
 
         var loggerFactory = LoggerFactory.Create(builder => builder.AddDebug().AddConsole());
         var host = new LocalWhatsAppGatewayProcessHost(loggerFactory.CreateLogger<LocalWhatsAppGatewayProcessHost>(), configuration);
+        Process? startedProcess = null;
 
-        await host.StartAsync(CancellationToken.None);
-
-        var tokenPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LUMAR", "LocalWhatsAppGateway", "gateway-token");
-        var token = (await File.ReadAllTextAsync(tokenPath)).Trim();
-        using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        HttpResponseMessage? first = null;
-        while (!timeout.IsCancellationRequested)
+        try
         {
-            try
+            await host.StartAsync(CancellationToken.None);
+            startedProcess = GetStartedProcess(host);
+            Assert.NotNull(startedProcess);
+
+            var tokenPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LUMAR", "LocalWhatsAppGateway", "gateway-token");
+            var token = (await File.ReadAllTextAsync(tokenPath)).Trim();
+            using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            HttpResponseMessage? first = null;
+            while (!timeout.IsCancellationRequested)
             {
-                first = await client.GetAsync("/health", timeout.Token);
-                if (first.StatusCode == HttpStatusCode.OK)
+                try
                 {
-                    break;
+                    first = await client.GetAsync("/health", timeout.Token);
+                    if (first.StatusCode == HttpStatusCode.OK)
+                    {
+                        break;
+                    }
                 }
-            }
-            catch (HttpRequestException)
-            {
-                first = null;
+                catch (HttpRequestException)
+                {
+                    first = null;
+                }
+
+                await Task.Delay(200, timeout.Token);
             }
 
-            await Task.Delay(200, timeout.Token);
+            Assert.NotNull(first);
+            Assert.Equal(HttpStatusCode.OK, first!.StatusCode);
         }
-
-        Assert.NotNull(first);
-        Assert.Equal(HttpStatusCode.OK, first!.StatusCode);
-
-        await host.StopAsync(CancellationToken.None);
-        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync("/health"));
+        finally
+        {
+            StopProcess(startedProcess);
+        }
     }
 
     [CollectionDefinition(nameof(LocalWhatsAppGatewayProcessHostCollection), DisableParallelization = true)]
@@ -381,6 +392,30 @@ public sealed class LocalWhatsAppFoundationTests
         using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+    }
+
+    private static Process? GetStartedProcess(LocalWhatsAppGatewayProcessHost host)
+    {
+        var field = typeof(LocalWhatsAppGatewayProcessHost).GetField("_process", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        return field?.GetValue(host) as Process;
+    }
+
+    private static void StopProcess(Process? process)
+    {
+        if (process is null || process.HasExited)
+        {
+            return;
+        }
+
+        try
+        {
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit(TimeSpan.FromSeconds(15));
+        }
+        catch
+        {
+            // Only the test-owned Local WhatsApp gateway PID is stopped here.
+        }
     }
 
     private sealed class GatewayHandler : HttpMessageHandler

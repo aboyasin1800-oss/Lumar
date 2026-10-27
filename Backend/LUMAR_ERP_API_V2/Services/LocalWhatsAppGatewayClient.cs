@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.WhatsApp;
 
@@ -88,8 +89,13 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
         try
         {
             var payload = CreateSendPayload(recipient, text, imageUrl, media);
+            var options = new JsonSerializerOptions
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            };
 
-            using var response = await http.PostAsJsonAsync("messages/send", payload, cancellationToken);
+            using var response = await http.PostAsJsonAsync("messages/send", payload, options, cancellationToken);
             await response.Content.LoadIntoBufferAsync(65536, cancellationToken);
             var result = await response.Content.ReadFromJsonAsync<GatewaySendResponse>(cancellationToken);
 

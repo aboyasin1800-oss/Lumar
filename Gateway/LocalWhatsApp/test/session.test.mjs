@@ -130,6 +130,34 @@ test('web driver supports the installed whatsapp-web.js message contract and blo
   driver.client.sendMessage = async () => ({ id: {} });
   assert.equal(await driver.send({ recipient: '967777123456', text: 'hello' }), null);
 
+  let mediaCall;
+  driver.client.sendMessage = async (...args) => {
+    mediaCall = args;
+    return { id: { _serialized: 'wamid.media', id: 'media-id' }, body: 'ok' };
+  };
+  const mediaPayload = {
+    mimeType: 'image/png',
+    base64: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]).toString('base64'),
+    filename: 'valid.png',
+  };
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'hello-image', media: mediaPayload }), 'wamid.media');
+  assert.equal(mediaCall[0], '967777123456@c.us');
+  assert.equal(mediaCall[1].constructor.name, 'MessageMedia');
+  assert.equal(mediaCall[1].filename, 'valid.png');
+  assert.equal(mediaCall[2].caption, 'hello-image');
+  assert.equal(mediaCall[2].sendSeen, false);
+  assert.equal(mediaCall[2].waitUntilMsgSent, true);
+
+  driver.client.sendMessage = async () => ({
+    id: {
+      fromMe: false,
+      remote: { _serialized: '967777123456@c.us' },
+      id: 'media-message-123',
+    },
+    body: 'ok',
+  });
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'hello-image', media: mediaPayload }), 'false_967777123456@c.us_media-message-123');
+
   const manager = new SessionManager(() => ({
     initialize: async () => {},
     destroy: async () => {},

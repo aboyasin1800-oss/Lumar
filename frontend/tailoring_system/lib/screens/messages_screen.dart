@@ -48,6 +48,57 @@ String _templateDescriptionFor(String? key) {
       'لا يتوفر تعريف تشغيلي موثق لهذا القالب حالياً. راجع مفتاح القالب وارتباطه بالأحداث قبل تعديله أو تعطيله.';
 }
 
+bool isValidCampaignImageUrl(String? value) {
+  final trimmed = (value ?? '').trim();
+  if (trimmed.isEmpty || trimmed.endsWith('/')) {
+    return false;
+  }
+
+  final normalized = trimmed.replaceAll('\\', '/');
+  final lower = normalized.toLowerCase();
+
+  if (normalized.contains('..')) {
+    return false;
+  }
+
+  final localPrefix = '/campaign-media/';
+  final localRelativePrefix = 'campaign-media/';
+  if (lower.startsWith(localPrefix) || lower.startsWith(localRelativePrefix)) {
+    final startIndex = lower.startsWith(localPrefix) ? localPrefix.length : localRelativePrefix.length;
+    final fileName = normalized.substring(startIndex);
+    if (fileName.isEmpty || fileName.contains('/') || fileName.contains('?') || fileName.contains('#')) {
+      return false;
+    }
+    final extension = fileName.split('.').last.toLowerCase();
+    return const ['png', 'jpg', 'jpeg', 'webp'].contains(extension);
+  }
+
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null) {
+    return false;
+  }
+
+  if ((uri.scheme == 'http' || uri.scheme == 'https') && uri.hasAbsolutePath) {
+    final path = uri.path.trim();
+    if (path.isEmpty) {
+      return false;
+    }
+
+    if (path.endsWith('/')) {
+      return false;
+    }
+
+    final lastSegment = path.split('/').where((segment) => segment.isNotEmpty).lastOrNull;
+    if (lastSegment == null || lastSegment.contains('.')) {
+      return true;
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});
 
@@ -588,13 +639,7 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
     }
   }
 
-  static bool _isValidCampaignImageUrl(String? value) {
-    final trimmed = (value ?? '').trim();
-    if (trimmed.isEmpty) return false;
-
-    final uri = Uri.tryParse(trimmed);
-    return uri != null && (uri.scheme == 'http' || uri.scheme == 'https') && uri.hasAbsolutePath;
-  }
+  static bool _isValidCampaignImageUrl(String? value) => isValidCampaignImageUrl(value);
 
   bool get _hasCampaignImage => _isValidCampaignImageUrl(_campaignImageUrlController.text);
 
@@ -725,7 +770,7 @@ class _ManualCampaignSheetState extends State<_ManualCampaignSheet> {
     final campaignImageUrl = _campaignImageUrlController.text.trim();
     if (campaignImageUrl.isNotEmpty && !_isValidCampaignImageUrl(campaignImageUrl)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('رابط صورة الحملة غير صالح. استخدم رابط HTTP أو HTTPS صحيحاً.')),
+        const SnackBar(content: Text('رابط صورة الحملة غير صالح. استخدم رابط HTTP/HTTPS صالحاً أو مسار campaign-media الرسمي.')),
       );
       return;
     }

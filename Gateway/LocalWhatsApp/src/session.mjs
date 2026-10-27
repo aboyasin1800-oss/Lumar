@@ -144,8 +144,10 @@ export class SessionManager {
         const providerMessageId = await this.driver.send(message);
         if (!providerMessageId) throw new GatewayError('SEND_UNCONFIRMED', 502);
         return { outcome: 'Sent', providerMessageId, retryable: false };
-      } catch {
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
         this.lastError = 'SEND_UNCONFIRMED';
+        console.error(JSON.stringify({ stage: 'session-send-failed', error: reason }));
         throw new GatewayError('SEND_UNCONFIRMED', 502);
       }
     });

@@ -1,24 +1,96 @@
-✔ every route requires a token including health; browser-origin requests are rejected (233.4836ms)
-✔ health is independent of WhatsApp and responses cannot be cached (65.9396ms)
-✔ foundation sending is closed by default and denies non-approved numbers (22.5426ms)
-✔ approved test recipient still requires connected session (26.2666ms)
-✔ invalid payloads, remote media and arbitrary administrative fields are rejected (42.302ms)
-✔ installed Chromium runs with its sandbox; actual WhatsApp driver is loadable (1649.5393ms)
-✔ link exposes temporary QR only through material, never status (8.4804ms)
-✔ disconnect retains persisted session and reconnect uses it (4.4324ms)
-✔ restart restores intent without sending; intentional disconnect stays disconnected (1.5305ms)
-✔ replace logs out old account, clears number and accepts only newly proven number (1.2216ms)
-✔ offline logout cannot pretend to revoke the account (3.0972ms)
-✔ errors never expose raw library data, and unknown send is not retried (1.4179ms)
-✔ concurrent commands are rejected while sending, not queued (3.0404ms)
-✔ Windows ACL protection, token durability and atomic session state survive reconstruction (2119.8674ms)
-ℹ tests 14
+✔ every route requires a token including health; browser-origin requests are rejected (531.517ms)
+✔ health is independent of WhatsApp and responses cannot be cached (116.9728ms)
+{"stage":"request-body-read","status":"completed","bytes":48}
+{"stage":"message-validation","status":"recipient-rejected","normalizedRecipient":"967777123456","approvedRecipient":null}
+{"stage":"gateway-error","status":"handled","code":"TEST_RECIPIENT_REQUIRED","httpStatus":403}
+✔ foundation sending is closed by default and denies non-approved numbers (26.3683ms)
+{"stage":"request-body-read","status":"completed","bytes":48}
+{"stage":"send-gateway","status":"before-send-message"}
+{"stage":"gateway-error","status":"handled","code":"NOT_CONNECTED","httpStatus":503}
+{"stage":"request-body-read","status":"completed","bytes":48}
+{"stage":"message-validation","status":"recipient-rejected","normalizedRecipient":"967777999999","approvedRecipient":"967777123456"}
+{"stage":"gateway-error","status":"handled","code":"TEST_RECIPIENT_REQUIRED","httpStatus":403}
+✔ approved test recipient still requires connected session (63.2736ms)
+{"stage":"request-body-read","status":"completed","bytes":45}
+{"stage":"send-gateway","status":"before-send-message"}
+{"stage":"gateway-error","status":"handled","code":"NOT_CONNECTED","httpStatus":503}
+{"stage":"request-body-read","status":"completed","bytes":48}
+{"stage":"send-gateway","status":"before-send-message"}
+{"stage":"gateway-error","status":"handled","code":"NOT_CONNECTED","httpStatus":503}
+{"stage":"request-body-read","status":"completed","bytes":48}
+{"stage":"message-validation","status":"recipient-rejected","normalizedRecipient":"967775106546","approvedRecipient":"967775106545"}
+{"stage":"gateway-error","status":"handled","code":"TEST_RECIPIENT_REQUIRED","httpStatus":403}
+{"stage":"request-body-read","status":"completed","bytes":45}
+{"stage":"message-validation","status":"recipient-rejected","normalizedRecipient":"967775106546","approvedRecipient":"967775106545"}
+{"stage":"gateway-error","status":"handled","code":"TEST_RECIPIENT_REQUIRED","httpStatus":403}
+✔ yemen test recipient accepts equivalent local and international formats only (130.2684ms)
+{"stage":"request-body-read","status":"completed","bytes":4}
+{"stage":"message-validation","status":"invalid-input"}
+{"stage":"gateway-error","status":"handled","code":"INVALID_MESSAGE","httpStatus":400}
+{"stage":"request-body-read","status":"completed","bytes":2}
+{"stage":"message-validation","status":"invalid-input"}
+{"stage":"gateway-error","status":"handled","code":"INVALID_MESSAGE","httpStatus":400}
+{"stage":"request-body-read","status":"completed","bytes":2}
+{"stage":"message-validation","status":"invalid-input"}
+{"stage":"gateway-error","status":"handled","code":"INVALID_MESSAGE","httpStatus":400}
+{"stage":"request-body-read","status":"completed","bytes":37}
+{"stage":"message-validation","status":"invalid-input"}
+{"stage":"gateway-error","status":"handled","code":"INVALID_MESSAGE","httpStatus":400}
+{"stage":"request-body-read","status":"completed","bytes":57}
+{"stage":"message-validation","status":"invalid-input"}
+{"stage":"gateway-error","status":"handled","code":"INVALID_MESSAGE","httpStatus":400}
+{"stage":"request-body-read","status":"completed","bytes":24}
+{"stage":"gateway-error","status":"handled","code":"INVALID_MESSAGE","httpStatus":400}
+{"stage":"request-body-read","status":"completed","bytes":88}
+{"stage":"media-validation","status":"remote-media-load-start"}
+{"stage":"gateway-error","status":"handled","code":"MEDIA_REJECTED","httpStatus":400}
+{"stage":"request-body-read","status":"completed","bytes":40038}
+{"stage":"gateway-error","status":"handled","code":"INVALID_MESSAGE","httpStatus":413}
+✔ invalid payloads, remote media and arbitrary administrative fields are rejected (72.1669ms)
+{"stage":"request-body-read","status":"completed","bytes":132}
+{"stage":"media-validation","status":"internal-media-ready","mimeType":"image/png","bytes":12,"filename":"valid.png"}
+{"stage":"send-gateway","status":"before-send-message"}
+{"stage":"send-gateway","status":"after-send-message","outcome":"Sent"}
+✔ valid media payloads route to sendMessage without connection drops (17.939ms)
+{"stage":"request-body-read","status":"completed","bytes":6990623}
+{"stage":"media-validation","status":"oversized-internal-media","bytes":5242881}
+{"stage":"gateway-error","status":"handled","code":"INVALID_MESSAGE","httpStatus":413}
+{"stage":"request-body-read","status":"completed","bytes":130}
+{"stage":"media-validation","status":"rejected-internal-media"}
+{"stage":"gateway-error","status":"handled","code":"INVALID_MESSAGE","httpStatus":400}
+✔ oversized and malformed media produce 413/400 without abrupt socket close (379.9231ms)
+{"stage":"request-body-read","status":"completed","bytes":48}
+{"stage":"send-gateway","status":"before-send-message"}
+{"stage":"gateway-error","status":"unhandled","code":"GATEWAY_ERROR","httpStatus":500}
+✔ pre-send internal failures return 500 and never masquerade as unconfirmed (34.6269ms)
+✔ installed Chromium runs with its sandbox; actual WhatsApp driver is loadable (4923.8542ms)
+{"stage":"session-send-failed","error":"secret phone"}
+{"stage":"whatsapp-media-send","hasMedia":false,"chatId":"967777123456@c.us","mimeType":null,"dataBytes":0,"filename":"lumar-image","callShape":"client.sendMessage(chatId, text)"}
+{"stage":"whatsapp-media-result","hasMedia":false,"providerMessageId":"wamid.1","messageType":["id","body"]}
+{"stage":"whatsapp-media-send","hasMedia":false,"chatId":"967777123456@c.us","mimeType":null,"dataBytes":0,"filename":"lumar-image","callShape":"client.sendMessage(chatId, text)"}
+{"stage":"whatsapp-media-result","hasMedia":false,"providerMessageId":"fallback-id","messageType":["id"]}
+{"stage":"whatsapp-media-send","hasMedia":false,"chatId":"967777123456@c.us","mimeType":null,"dataBytes":0,"filename":"lumar-image","callShape":"client.sendMessage(chatId, text)"}
+{"stage":"whatsapp-media-result","hasMedia":false,"providerMessageId":null,"messageType":["id"]}
+{"stage":"whatsapp-media-send","hasMedia":true,"chatId":"967777123456@c.us","mimeType":"image/png","dataBytes":12,"filename":"valid.png","callShape":"client.sendMessage(chatId, media, { caption: text, sendSeen: false, waitUntilMsgSent: true })"}
+{"stage":"whatsapp-media-result","hasMedia":true,"providerMessageId":"wamid.media","messageType":["id","body"]}
+{"stage":"session-send-failed","error":"SEND_UNCONFIRMED"}
+{"stage":"session-send-failed","error":"secret post-send exception"}
+✔ link exposes temporary QR only through material, never status (11.246ms)
+✔ disconnect retains persisted session and reconnect uses it (2.051ms)
+✔ restart restores intent without sending; intentional disconnect stays disconnected (1.8448ms)
+✔ replace logs out old account, clears number and accepts only newly proven number (1.804ms)
+✔ offline logout cannot pretend to revoke the account (5.2722ms)
+✔ errors never expose raw library data, and unknown send is not retried (6.2446ms)
+✔ concurrent commands are rejected while sending, not queued (5.1413ms)
+✔ web driver supports the installed whatsapp-web.js message contract and blocks unconfirmed sends (14.0002ms)
+✔ Windows ACL protection, token durability and atomic session state survive reconstruction (6129.3403ms)
+ℹ tests 19
 ℹ suites 0
-ℹ pass 14
+ℹ pass 19
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 3171.8233
+ℹ duration_ms 7664.6793
 
 EXIT_CODE=0
