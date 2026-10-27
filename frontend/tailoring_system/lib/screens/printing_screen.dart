@@ -1512,6 +1512,7 @@ class _MeasurementCardPdfGenerator {
     {int copyNumber = 1}
   ) async {
     final pdf = pw.Document();
+    final layout = DocumentPrintSupport.layout;
     final arabicFont = await DocumentPrintSupport.loadArabicFont();
     final headerWidget = await DocumentPrintSupport.buildHeader(
       DocumentPrintHeader(
@@ -1523,6 +1524,7 @@ class _MeasurementCardPdfGenerator {
         phone2: header.phone2,
       ),
       arabicFont,
+      imageHeight: layout.headerImageHeight,
     );
     final qrValue = piece.qrCode.trim().isNotEmpty ? piece.qrCode : 'LUMAR';
     final barcodeValue =
@@ -1545,20 +1547,20 @@ class _MeasurementCardPdfGenerator {
                   'الكود: ${piece.fabricCode.isNotEmpty ? piece.fabricCode : 'غير محدد'}',
                   textAlign: pw.TextAlign.right,
                   textDirection: pw.TextDirection.rtl,
-                  style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                  style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
             ),
-            pw.SizedBox(width: 4),
+            pw.SizedBox(width: layout.sectionSpacing),
             pw.Expanded(
               child: pw.Text(
                   'اللنوع : ${piece.fabricType.isNotEmpty ? piece.fabricType : 'غير محدد'}',
                   textAlign: pw.TextAlign.right,
                   textDirection: pw.TextDirection.rtl,
-                  style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                  style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
             ),
           ],
         ),
       );
-      fabricRows.add(pw.SizedBox(height: 4));
+      fabricRows.add(pw.SizedBox(height: layout.sectionSpacing));
       fabricRows.add(
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1568,26 +1570,26 @@ class _MeasurementCardPdfGenerator {
                   'اللون : ${piece.fabricColor.isNotEmpty ? piece.fabricColor : 'غير محدد'}',
                   textAlign: pw.TextAlign.right,
                   textDirection: pw.TextDirection.rtl,
-                  style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                  style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
             ),
-            pw.SizedBox(width: 4),
+            pw.SizedBox(width: layout.sectionSpacing),
             pw.Expanded(
               child: pw.Text(
                   ' الكتالوج: ${piece.catalogNumber.isNotEmpty ? piece.catalogNumber : 'غير محدد'}',
                   textAlign: pw.TextAlign.right,
                   textDirection: pw.TextDirection.rtl,
-                  style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                  style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
             ),
           ],
         ),
       );
-      fabricRows.add(pw.SizedBox(height: 4));
+      fabricRows.add(pw.SizedBox(height: layout.sectionSpacing));
       fabricRows.add(
         pw.Text(
             'الاستهلاك: ${piece.consumptionDisplay.isNotEmpty ? piece.consumptionDisplay : 'غير محدد'}',
             textAlign: pw.TextAlign.right,
             textDirection: pw.TextDirection.rtl,
-            style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+            style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
       );
     }
 
@@ -1601,27 +1603,27 @@ class _MeasurementCardPdfGenerator {
           '  1: ${piece.request1.isNotEmpty ? piece.request1 : 'لا يوجد'}',
           textAlign: pw.TextAlign.right,
           textDirection: pw.TextDirection.rtl,
-          style: pw.TextStyle(font: arabicFont, fontSize: 11.2),
+          style: pw.TextStyle(font: arabicFont, fontSize: layout.requestTextSize),
         ),
       ));
-      specialRows.add(pw.SizedBox(height: 4));
+      specialRows.add(pw.SizedBox(height: layout.sectionSpacing));
       specialRows.add(pw.Align(
         alignment: pw.Alignment.centerRight,
         child: pw.Text(
           '  2: ${piece.request2.isNotEmpty ? piece.request2 : 'لا يوجد'}',
           textAlign: pw.TextAlign.right,
           textDirection: pw.TextDirection.rtl,
-          style: pw.TextStyle(font: arabicFont, fontSize: 11.2),
+          style: pw.TextStyle(font: arabicFont, fontSize: layout.requestTextSize),
         ),
       ));
-      specialRows.add(pw.SizedBox(height: 4));
+      specialRows.add(pw.SizedBox(height: layout.sectionSpacing));
       specialRows.add(pw.Align(
         alignment: pw.Alignment.centerRight,
         child: pw.Text(
           '4 : ${piece.specialRequest.isNotEmpty ? piece.specialRequest : 'لا يوجد'}',
           textAlign: pw.TextAlign.right,
           textDirection: pw.TextDirection.rtl,
-          style: pw.TextStyle(font: arabicFont, fontSize: 11.2),
+          style: pw.TextStyle(font: arabicFont, fontSize: layout.requestTextSize),
         ),
       ));
     }
@@ -1638,59 +1640,67 @@ class _MeasurementCardPdfGenerator {
       return text;
     }
 
-    final measurementCells = piece.measurements.entries
-        .where((entry) =>
-            entry.value != null && entry.value.toString().trim().isNotEmpty)
-        .map((entry) => pw.SizedBox(
-              width: 40,
-              child: pw.Container(
-                padding: const pw.EdgeInsets.all(2),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(width: 0.4),
-                ),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                  children: [
-                    pw.Text(
-                      entry.key,
-                      textAlign: pw.TextAlign.right,
-                      textDirection: pw.TextDirection.rtl,
-                      style: pw.TextStyle(
-                          font: arabicFont,
-                          fontSize: 6.8,
-                          fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 2),
-                    pw.Text(
-                      measurementText(entry.value),
-                      textAlign: pw.TextAlign.right,
-                      textDirection: pw.TextDirection.rtl,
-                      style: pw.TextStyle(font: arabicFont, fontSize: 16),
-                    ),
-                  ],
-                ),
-              ),
-            ))
-        .toList();
-
     final measurementRows = <pw.Widget>[];
-    for (var i = 0; i < measurementCells.length; i += 5) {
-      final rowCells = measurementCells.sublist(
-        i,
-        i + 5 < measurementCells.length ? i + 5 : measurementCells.length,
-      );
+    for (final rowEntries in DocumentPrintSupport.buildMeasurementGridRows(piece.measurements)) {
+      final rowCells = rowEntries
+          .map(
+            (entry) => pw.Container(
+              padding: pw.EdgeInsets.symmetric(
+                horizontal: layout.measurementCellPaddingX,
+                vertical: layout.measurementCellPaddingY,
+              ),
+              child: pw.Column(
+                mainAxisSize: pw.MainAxisSize.min,
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  pw.Text(
+                    entry.key,
+                    textAlign: pw.TextAlign.center,
+                    textDirection: pw.TextDirection.rtl,
+                    style: pw.TextStyle(
+                      font: arabicFont,
+                      fontSize: layout.measurementLabelSize,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: layout.measurementCellPaddingY),
+                  pw.Text(
+                    measurementText(entry.value),
+                    textAlign: pw.TextAlign.center,
+                    textDirection: pw.TextDirection.rtl,
+                    style: pw.TextStyle(
+                      font: arabicFont,
+                      fontSize: layout.measurementValueSize,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList();
+
       measurementRows.add(
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: rowCells,
+        pw.Padding(
+          padding: const pw.EdgeInsets.only(bottom: 0),
+          child: pw.Table(
+            columnWidths: {
+              for (var i = 0; i < rowCells.length; i++) i: const pw.FlexColumnWidth(1),
+            },
+            border: pw.TableBorder.all(width: layout.measurementTableBorderWidth),
+            children: [
+              pw.TableRow(
+                children: rowCells,
+              ),
+            ],
+          ),
         ),
       );
     }
 
     pdf.addPage(
       pw.Page(
-        pageFormat: DocumentPrintSupport.a5Portrait,
+        pageFormat: DocumentPrintSupport.measurementCardPortrait,
         build: (pw.Context context) {
           final rows = <pw.Widget>[];
 
@@ -1722,9 +1732,9 @@ class _MeasurementCardPdfGenerator {
           rows.add(
             pw.Container(
               decoration: pw.BoxDecoration(
-                border: pw.Border.all(width: 1.3),
+                border: pw.Border.all(width: layout.outerBorderWidth),
               ),
-              padding: const pw.EdgeInsets.all(6),
+              padding: pw.EdgeInsets.all(layout.sectionPadding),
               child: pw.Row(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
@@ -1787,8 +1797,8 @@ class _MeasurementCardPdfGenerator {
               child: pw.BarcodeWidget(
                 barcode: pw.Barcode.code128(),
                 data: barcodeValue,
-                width: 160,
-                height: 40,
+                width: 140,
+                height: 30,
                 drawText: false,
               ),
             ),
@@ -1797,14 +1807,14 @@ class _MeasurementCardPdfGenerator {
           if (fabricRows.isNotEmpty) {
             rows.add(
               pw.Divider(
-                height: 0.7,
+                height: layout.dividerHeight,
                 color: const PdfColor.fromInt(0xFF000000),
               ),
             );
             rows.add(
               pw.Container(
-                decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.8)),
-                padding: const pw.EdgeInsets.all(6),
+                decoration: pw.BoxDecoration(border: pw.Border.all(width: layout.innerBorderWidth)),
+                padding: pw.EdgeInsets.all(layout.sectionPadding),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
@@ -1813,7 +1823,7 @@ class _MeasurementCardPdfGenerator {
                         textDirection: pw.TextDirection.rtl,
                         style: pw.TextStyle(
                             font: arabicFont,
-                            fontSize: 7,
+                            fontSize: layout.sectionTitleSize,
                             fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 2),
                     ...fabricRows,
@@ -1826,14 +1836,14 @@ class _MeasurementCardPdfGenerator {
           if (specialRows.isNotEmpty) {
             rows.add(
               pw.Divider(
-                height: 0.7,
+                height: layout.dividerHeight,
                 color: const PdfColor.fromInt(0xFF000000),
               ),
             );
             rows.add(
               pw.Container(
-                decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.8)),
-                padding: const pw.EdgeInsets.all(6),
+                decoration: pw.BoxDecoration(border: pw.Border.all(width: layout.innerBorderWidth)),
+                padding: pw.EdgeInsets.all(layout.sectionPadding),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
@@ -1842,7 +1852,7 @@ class _MeasurementCardPdfGenerator {
                         textDirection: pw.TextDirection.rtl,
                         style: pw.TextStyle(
                             font: arabicFont,
-                            fontSize: 7,
+                            fontSize: layout.sectionTitleSize,
                             fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 2),
                     ...specialRows,
@@ -1855,14 +1865,19 @@ class _MeasurementCardPdfGenerator {
           if (piece.measurements.isNotEmpty) {
             rows.add(
               pw.Divider(
-                height: 0.7,
+                height: layout.dividerHeight,
                 color: const PdfColor.fromInt(0xFF000000),
               ),
             );
             rows.add(
               pw.Container(
-                decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.8)),
-                padding: const pw.EdgeInsets.fromLTRB(4, 0, 6, 5),
+                decoration: pw.BoxDecoration(border: pw.Border.all(width: layout.innerBorderWidth)),
+                padding: pw.EdgeInsets.fromLTRB(
+                  layout.sectionSpacing,
+                  0,
+                  layout.sectionPadding,
+                  layout.sectionPadding,
+                ),
                 child: pw.Column(
                   children: measurementRows,
                 ),
@@ -2195,35 +2210,47 @@ class _OrderPieceDetail {
     final rawTracking = (json['trackingCode'] ?? '').toString();
     final statusValue =
         (json['pieceStatus'] ?? json['status'] ?? '').toString();
-    final fabricCode = _firstAvailableString([
+    final fabricCode = DocumentPrintSupport.firstAvailableString([
       json['fabricCode'],
+      json['FabricCode'],
+      json['fabric_code'],
+      json['Fabric_Code'],
       measurementMap['fabricCode'],
       measurementMap['FabricCode'],
-      json['fabric_code'],
     ]);
-    final fabricType = _firstAvailableString([
+    final fabricType = DocumentPrintSupport.firstAvailableString([
       json['fabricType'],
+      json['FabricType'],
+      json['fabric_type'],
+      json['Fabric_Type'],
       measurementMap['fabricType'],
       measurementMap['FabricType'],
-      json['fabric_type'],
     ]);
-    final fabricColor = _firstAvailableString([
+    final fabricColor = DocumentPrintSupport.firstAvailableString([
       json['fabricColor'],
+      json['FabricColor'],
+      json['fabric_color'],
+      json['Fabric_Color'],
       measurementMap['fabricColor'],
       measurementMap['FabricColor'],
-      json['fabric_color'],
     ]);
-    final catalogNumber = _firstAvailableString([
+    final catalogNumber = DocumentPrintSupport.firstAvailableString([
       json['catalogNumber'],
+      json['CatalogNumber'],
+      json['catalog_number'],
+      json['Catalog_Number'],
       measurementMap['catalogNumber'],
       measurementMap['CatalogNumber'],
       measurementMap['barcode'],
       measurementMap['Barcode'],
       json['barcode'],
+      json['Barcode'],
     ]);
-    final consumptionRaw = _firstAvailableString([
+    final consumptionRaw = DocumentPrintSupport.firstAvailableString([
       json['consumption'],
+      json['Consumption'],
       json['consumptionValue'],
+      json['ConsumptionValue'],
       measurementMap['_consumption'],
       measurementMap['consumption'],
       measurementMap['Consumption'],
@@ -2233,30 +2260,39 @@ class _OrderPieceDetail {
       measurementMap['AvailableInches'],
     ]);
     final consumption = double.tryParse(consumptionRaw) ?? 0;
-    final consumptionUnit = _firstAvailableString([
+    final consumptionUnit = DocumentPrintSupport.firstAvailableString([
       json['consumptionUnit'],
+      json['ConsumptionUnit'],
       measurementMap['_consumptionUnit'],
       measurementMap['consumptionUnit'],
       measurementMap['ConsumptionUnit'],
       json['unit'],
+      json['Unit'],
       measurementMap['unit'],
+      measurementMap['Unit'],
       'بوصة',
     ]);
-    final request1 = _firstAvailableString([
+    final request1 = DocumentPrintSupport.firstAvailableString([
       json['request1'],
+      json['Request1'],
       json['notes1'],
+      json['Notes1'],
       measurementMap['request1'],
       measurementMap['Request1'],
     ]);
-    final request2 = _firstAvailableString([
+    final request2 = DocumentPrintSupport.firstAvailableString([
       json['request2'],
+      json['Request2'],
       json['notes2'],
+      json['Notes2'],
       measurementMap['request2'],
       measurementMap['Request2'],
     ]);
-    final specialRequest = _firstAvailableString([
+    final specialRequest = DocumentPrintSupport.firstAvailableString([
       json['specialRequest'],
+      json['SpecialRequest'],
       json['specialRequests'],
+      json['SpecialRequests'],
       measurementMap['specialRequest'],
       measurementMap['SpecialRequest'],
     ]);

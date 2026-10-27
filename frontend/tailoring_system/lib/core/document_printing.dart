@@ -35,12 +35,106 @@ class DocumentPrintHeader {
   final String phone2;
 }
 
+class MeasurementCardLayoutConfig {
+  const MeasurementCardLayoutConfig({
+    this.pageWidthInches = 3,
+    this.pageHeightInches = 6,
+    this.pageMarginMm = 4,
+    this.headerImageHeight = 38,
+    this.headerTitleSize = 13,
+    this.headerMetaSize = 8,
+    this.customerTextSize = 12,
+    this.metaTextSize = 11,
+    this.requestTextSize = 11.2,
+    this.sectionTitleSize = 7,
+    this.sectionPadding = 6,
+    this.sectionSpacing = 4,
+    this.outerBorderWidth = 1.3,
+    this.innerBorderWidth = 0.8,
+    this.dividerHeight = 0.7,
+    this.qrSize = 60,
+    this.barcodeWidth = 140,
+    this.barcodeHeight = 30,
+    this.measurementLabelSize = 6.5,
+    this.measurementValueSize = 11.5,
+    this.measurementCellPaddingY = 1,
+    this.measurementCellPaddingX = 2,
+    this.measurementTableBorderWidth = 0.3,
+  });
+
+  final double pageWidthInches;
+  final double pageHeightInches;
+  final double pageMarginMm;
+  final double headerImageHeight;
+  final double headerTitleSize;
+  final double headerMetaSize;
+  final double customerTextSize;
+  final double metaTextSize;
+  final double requestTextSize;
+  final double sectionTitleSize;
+  final double sectionPadding;
+  final double sectionSpacing;
+  final double outerBorderWidth;
+  final double innerBorderWidth;
+  final double dividerHeight;
+  final double qrSize;
+  final double barcodeWidth;
+  final double barcodeHeight;
+  final double measurementLabelSize;
+  final double measurementValueSize;
+  final double measurementCellPaddingY;
+  final double measurementCellPaddingX;
+  final double measurementTableBorderWidth;
+}
+
 class DocumentPrintSupport {
-  static final PdfPageFormat a5Portrait = PdfPageFormat(
-    148 * PdfPageFormat.mm,
-    210 * PdfPageFormat.mm,
-    marginAll: 8 * PdfPageFormat.mm,
-  );
+  static const MeasurementCardLayoutConfig layout = MeasurementCardLayoutConfig();
+
+  static double a5WidthMm = 148;
+  static double a5HeightMm = 210;
+  static double a5MarginMm = 8;
+
+  static double measurementCardWidthInches = layout.pageWidthInches;
+  static double measurementCardHeightInches = layout.pageHeightInches;
+  static double measurementCardMarginMm = layout.pageMarginMm;
+
+  static PdfPageFormat get a5Portrait => PdfPageFormat(
+        a5WidthMm * PdfPageFormat.mm,
+        a5HeightMm * PdfPageFormat.mm,
+        marginAll: a5MarginMm * PdfPageFormat.mm,
+      );
+
+  static PdfPageFormat get measurementCardPortrait => PdfPageFormat(
+        measurementCardWidthInches * PdfPageFormat.inch,
+        measurementCardHeightInches * PdfPageFormat.inch,
+        marginAll: measurementCardMarginMm * PdfPageFormat.mm,
+      );
+
+  static String firstAvailableString(Iterable<dynamic> values) {
+    for (final value in values) {
+      final text = value?.toString().trim();
+      if (text != null && text.isNotEmpty) {
+        return text;
+      }
+    }
+    return '';
+  }
+
+  static List<List<MapEntry<String, dynamic>>> buildMeasurementGridRows(
+    Map<String, dynamic> measurements,
+  ) {
+    final entries = measurements.entries
+        .where((entry) =>
+            entry.value != null && entry.value.toString().trim().isNotEmpty)
+        .toList();
+
+    final rows = <List<MapEntry<String, dynamic>>>[];
+    for (var index = 0; index < entries.length; index += 6) {
+      final end = index + 6;
+      rows.add(entries.sublist(index, end > entries.length ? entries.length : end));
+    }
+    return rows;
+  }
 
   static Future<pw.Font> loadArabicFont() async {
     final fontData = await rootBundle.load('assets/fonts/Tahoma.ttf');
