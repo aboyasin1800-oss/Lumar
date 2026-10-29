@@ -287,18 +287,25 @@ public sealed class ProductionController(IProductionService service, IProduction
         var authError = EmployeeScannerRequestGuard.ValidateEmployeeAccount(user);
         if (authError is not null) return authError;
 
+        HttpContext.Items["LiveMonitor.EmployeeId"] = user!.EmployeeId;
+        HttpContext.Items["LiveMonitor.TrackingCode"] = request.TrackingCode.Trim();
+        HttpContext.Items["LiveMonitor.RequestedStage"] = request.RequestedStage.Trim();
+        HttpContext.Items["LiveMonitor.AuthResult"] = authError is null ? "EmployeeAuthValid" : "EmployeeAuthRejected";
+
         var route = await service.GetPieceRouteByTrackingCodeAsync(request.TrackingCode.Trim(), ct);
         if (route is null)
         {
             return NotFound(new EmployeeScannerAdvanceResponseDto(null, request.TrackingCode.Trim(), "New", "New", null, "TrackingCode غير معروف في النظام.", false, false, null, null));
         }
 
+        var effectiveScannerCode = EmployeeScannerRequestGuard.NormalizeScannerCodeForAuthenticatedEmployee(request.ScannerCode, user);
+
         var resolvedRequest = new ProductionTrackingAdvanceRequestDto(
             null,
             request.TrackingCode.Trim(),
             route.PieceType,
             request.RequestedStage.Trim(),
-            request.ScannerCode,
+            effectiveScannerCode,
             user!.EmployeeId.HasValue ? user.EmployeeId.Value.ToString() : null,
             request.OperationReference ?? "EmployeeScanner",
             route.ProductTypeId,

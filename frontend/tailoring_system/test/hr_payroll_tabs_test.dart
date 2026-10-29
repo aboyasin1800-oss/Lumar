@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -439,5 +440,16 @@ void main() {
 
     expect(filtered, hasLength(1));
     expect(filtered.single.productTypeCode, 'PANTS');
+  });
+
+  test('piece rate save flow keeps async reload work outside setState', () {
+    final source = File('lib/screens/payroll/piece_rate_screen.dart').readAsStringSync();
+
+    expect(source, contains('void _reload()'));
+    expect(source, contains('final nextFuture = _loadData();'));
+    expect(source, contains('setState(() {'));
+    expect(source, contains('_future = nextFuture;'));
+    expect(source, isNot(contains('setState(() => _future = _loadData())')));
+    expect(source, isNot(contains('setState(() async')));
   });
 }

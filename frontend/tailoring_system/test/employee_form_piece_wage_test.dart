@@ -472,6 +472,68 @@ void main() {
     expect((json['pieceRates'] as List).first['rate'], 15.5);
   });
 
+  test('piece wage payload stores only the employee extra value',
+      () {
+    const payload = EmployeeWritePayload(
+      fullName: 'عبد الله أحمد',
+      departmentId: 1,
+      basicSalary: 0,
+      hireDate: null,
+      status: 'Active',
+      salaryType: 'PieceWage',
+      officialPieceRates: {
+        'بنطلون': {'Cutting': 18.5},
+      },
+      pieceRates: [
+        EmployeePieceRateRow(pieceType: 'بنطلون', stage: 'Cutting', rateText: '3.25'),
+      ],
+    );
+
+    final json = payload.toJson();
+    expect((json['pieceRates'] as List).first['rate'], 3.25);
+  });
+
+  test('piece wage payload uses the official rate alone when the extra is blank',
+      () {
+    const payload = EmployeeWritePayload(
+      fullName: 'عبد الله أحمد',
+      departmentId: 1,
+      basicSalary: 0,
+      hireDate: null,
+      status: 'Active',
+      salaryType: 'PieceWage',
+      officialPieceRates: {
+        'بنطلون': {'Cutting': 18.5},
+      },
+      pieceRates: [
+        EmployeePieceRateRow(pieceType: 'بنطلون', stage: 'Cutting', rateText: ''),
+      ],
+    );
+
+    final json = payload.toJson();
+    expect((json['pieceRates'] as List).first['rate'], 0.0);
+  });
+
+  test('piece wage payload stores only the employee extra value', () {
+    const payload = EmployeeWritePayload(
+      fullName: 'عبد الله أحمد',
+      departmentId: 1,
+      basicSalary: 0,
+      hireDate: null,
+      status: 'Active',
+      salaryType: 'PieceWage',
+      officialPieceRates: {
+        'بنطلون': {'Cutting': 500.0},
+      },
+      pieceRates: [
+        EmployeePieceRateRow(pieceType: 'بنطلون', stage: 'Cutting', rateText: '100'),
+      ],
+    );
+
+    final json = payload.toJson();
+    expect((json['pieceRates'] as List).first['rate'], 100.0);
+  });
+
   test(
       'EmployeeDetails accepts a wrapped payload and falls back when fullName is null',
       () {

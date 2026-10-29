@@ -230,7 +230,17 @@ WHERE EmployeeID = @id;";
             ? "SELECT TOP (1) EmployeeId, PayrollPeriodId, BasicSalaryAmount, PieceWageAmount, OvertimeAmount, GrossAmount, DeductionsAmount, NetAmount, Status, CreatedAt FROM dbo.PayrollRecords WHERE EmployeeId = @id AND PayrollPeriodId = @periodId ORDER BY PayrollPeriodId DESC, CreatedAt DESC"
             : "SELECT TOP (1) EmployeeId, PayrollPeriodId, BasicSalaryAmount, PieceWageAmount, OvertimeAmount, GrossAmount, DeductionsAmount, NetAmount, Status, CreatedAt FROM dbo.PayrollRecords WHERE EmployeeId = @id ORDER BY PayrollPeriodId DESC, CreatedAt DESC";
 
-        var parameters = new { id = employeeId, periodId = periodId ?? 0 };
+        var parameters = new Dictionary<string, object?>
+        {
+            ["@id"] = employeeId,
+            ["@periodId"] = periodId.HasValue ? (object)periodId.Value : DBNull.Value
+        };
+
+        if (!periodId.HasValue)
+        {
+            parameters.Remove("@periodId");
+        }
+
         var rows = await QueryAsync(sql, parameters, reader => new EmployeeSelfFinancialSummaryDto(reader.GetInt32(0), reader.NullableInt32("PayrollPeriodId"), reader.GetDecimal(2), reader.GetDecimal(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.NullableString("Status"), reader.NullableDateTime("CreatedAt")), ct);
         return rows.FirstOrDefault();
     }
@@ -238,13 +248,69 @@ WHERE EmployeeID = @id;";
     {
         var rows = await QueryAsync(
             "SELECT p.PayrollPeriodId, p.PeriodCode, p.StartDate, p.EndDate, p.Status, r.BasicSalaryAmount, r.PieceWageAmount, r.OvertimeAmount, r.GrossAmount, r.DeductionsAmount, ISNULL((SELECT SUM(d.Amount) FROM dbo.Employee_Draws d INNER JOIN dbo.Employees e ON e.EmployeeCode = d.EmployeeCode WHERE e.EmployeeId = @id AND d.DrawDate >= p.StartDate AND d.DrawDate < DATEADD(day, 1, p.EndDate)), 0) AS DrawAmount, ISNULL((SELECT SUM(s.Amount) FROM dbo.EmployeeDrawSettlements s INNER JOIN dbo.Employee_Draws d ON d.DrawID = s.DrawId INNER JOIN dbo.Employees e ON e.EmployeeCode = d.EmployeeCode WHERE e.EmployeeId = @id AND s.SettlementDate >= p.StartDate AND s.SettlementDate < DATEADD(day, 1, p.EndDate)), 0) AS SettlementAmount, r.NetAmount, p.GeneratedAt, p.ApprovedAt FROM dbo.PayrollPeriods p LEFT JOIN dbo.PayrollRecords r ON r.PayrollPeriodId = p.PayrollPeriodId AND r.EmployeeId = @id WHERE p.PayrollPeriodId = @periodId",
-            new { id = employeeId, periodId },
+            new Dictionary<string, object?>
+            {
+                ["@id"] = employeeId,
+                ["@periodId"] = periodId
+            },
             reader => new EmployeeSelfMonthlyStatementDto(reader.GetInt32(0), reader.GetString(1), reader.GetDateTime(2), reader.GetDateTime(3), reader.GetString(4), reader.NullableDecimal("BasicSalaryAmount"), reader.NullableDecimal("PieceWageAmount"), reader.NullableDecimal("OvertimeAmount"), reader.NullableDecimal("GrossAmount"), reader.NullableDecimal("DeductionsAmount"), reader.NullableDecimal("DrawAmount"), reader.NullableDecimal("SettlementAmount"), reader.NullableDecimal("NetAmount"), reader.NullableDateTime("GeneratedAt"), reader.NullableDateTime("ApprovedAt")),
             ct);
         return rows.FirstOrDefault();
     }
     public Task<IReadOnlyList<EmployeeDocumentDto>> GetDocumentsAsync(int employeeId, CancellationToken ct) => QueryAsync("SELECT EmployeeDocumentId, EmployeeId, DocumentType, DocumentNumber, IssueDate, ExpiryDate, FilePath, Notes, CreatedAt FROM dbo.EmployeeDocuments WHERE EmployeeId = @id ORDER BY CreatedAt DESC, EmployeeDocumentId DESC", employeeId, reader => new EmployeeDocumentDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.NullableString("DocumentNumber"), reader.NullableDateTime("IssueDate"), reader.NullableDateTime("ExpiryDate"), reader.NullableString("FilePath"), reader.NullableString("Notes"), reader.GetDateTime(8)), ct);
-    public Task<IReadOnlyList<EmployeeWorkflowDto>> GetWorkflowAsync(string employeeCode, CancellationToken ct) => QueryAsync("SELECT EmployeeCode, WorkStage FROM dbo.Employee_Workflow WHERE EmployeeCode = @code", employeeCode, reader => new EmployeeWorkflowDto(reader.GetString(0), reader.NullableString("WorkStage")), ct);
+    public async Task<IReadOnlyList<EmployeeWorkflowDto>> GetWorkflowAsync(string employeeCode, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(employeeCode))
+        {
+            return Array.Empty<EmployeeWorkflowDto>();
+        }
+
+        var employeeRows = await QueryAsync(
+            @"SELECT TOP (1) EmployeeId, EmployeeCode, ScannerCode
+                FROM dbo.Employees WITH (NOLOCK)
+                WHERE EmployeeCode = @code AND IsActive = 1;",
+            employeeCode,
+            reader => new
+            {
+                EmployeeId = reader.GetInt32(0),
+                EmployeeCode = reader.GetString(1),
+                ScannerCode = reader.IsDBNull(2) ? null : reader.GetString(2)
+            },
+            ct);
+
+        var employee = employeeRows.FirstOrDefault();
+        if (employee is null)
+        {
+            return Array.Empty<EmployeeWorkflowDto>();
+        }
+
+        var pieceRateSql = @"
+            SELECT DISTINCT e.EmployeeCode, a.Stage AS WorkStage
+            FROM dbo.Employees e
+            INNER JOIN dbo.EmployeePieceRateAssignments a ON a.EmployeeId = e.EmployeeId
+            WHERE e.EmployeeCode = @code
+              AND a.IsActive = 1
+              AND (a.EffectiveFrom IS NULL OR a.EffectiveFrom <= SYSUTCDATETIME())
+              AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= SYSUTCDATETIME())
+            UNION ALL
+            SELECT DISTINCT e.EmployeeCode, p.Stage AS WorkStage
+            FROM dbo.Employees e
+            INNER JOIN dbo.Scanners s ON s.ScannerCode = e.ScannerCode
+            INNER JOIN dbo.ScannerStageProductPermissions p ON p.ScannerId = s.ScannerId
+            WHERE e.EmployeeCode = @code
+              AND e.ScannerCode IS NOT NULL
+              AND e.ScannerCode <> ''
+              AND p.IsActive = 1;";
+
+        var stages = await QueryAsync(pieceRateSql, employeeCode, reader => new EmployeeWorkflowDto(reader.GetString(0), reader.NullableString("WorkStage")), ct);
+        return stages
+            .Where(item => !string.IsNullOrWhiteSpace(item.WorkStage))
+            .GroupBy(item => item.WorkStage, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new EmployeeWorkflowDto(employee.EmployeeCode, group.Key))
+            .OrderBy(item => item.WorkStage, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     public Task<IReadOnlyList<EmployeePieceRateAssignmentDto>> GetPieceRateAssignmentsAsync(int employeeId, CancellationToken ct) => QueryAsync("SELECT EmployeePieceRateAssignmentId, EmployeeId, PieceType, Stage, Rate, EffectiveFrom, EffectiveTo, IsActive, CreatedAt FROM dbo.EmployeePieceRateAssignments WHERE EmployeeId = @id ORDER BY IsActive DESC, EffectiveFrom DESC, EmployeePieceRateAssignmentId DESC", employeeId, reader => new EmployeePieceRateAssignmentDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetString(3), reader.GetDecimal(4), reader.NullableDateTime("EffectiveFrom"), reader.NullableDateTime("EffectiveTo"), reader.GetBoolean(7), reader.GetDateTime(8)), ct);
     public async Task<IReadOnlyList<EmployeeContractTemplateDto>> GetContractTemplatesAsync(CancellationToken ct)
     {
@@ -454,30 +520,114 @@ WHEN NOT MATCHED THEN
             await upsert.ExecuteNonQueryAsync(ct);
         }
 
-        if (pieceRates is not null)
+        var effectivePieceRates = pieceRates is null || pieceRates.Count == 0
+            ? Array.Empty<EmployeePieceRateAssignmentInputDto>()
+            : pieceRates;
+
+        await using (var deleteExisting = new SqlCommand("DELETE FROM dbo.EmployeePieceRateAssignments WHERE EmployeeId = @employeeId;", connection, transaction))
         {
-            await using var deleteExisting = new SqlCommand("DELETE FROM dbo.EmployeePieceRateAssignments WHERE EmployeeId = @employeeId;", connection, transaction);
             deleteExisting.Parameters.AddWithValue("@employeeId", employeeId);
             await deleteExisting.ExecuteNonQueryAsync(ct);
+        }
 
-            foreach (var item in pieceRates)
-            {
-                if (item is null) continue;
-                if (string.IsNullOrWhiteSpace(item.PieceType) || string.IsNullOrWhiteSpace(item.Stage)) continue;
-                await using var insertAssignment = new SqlCommand(@"INSERT INTO dbo.EmployeePieceRateAssignments (EmployeeId, PieceType, Stage, Rate, EffectiveFrom, EffectiveTo, IsActive, CreatedAt)
+        foreach (var item in effectivePieceRates)
+        {
+            if (item is null) continue;
+            if (string.IsNullOrWhiteSpace(item.PieceType) || string.IsNullOrWhiteSpace(item.Stage)) continue;
+            await using var insertAssignment = new SqlCommand(@"INSERT INTO dbo.EmployeePieceRateAssignments (EmployeeId, PieceType, Stage, Rate, EffectiveFrom, EffectiveTo, IsActive, CreatedAt)
 VALUES (@employeeId, @pieceType, @stage, @rate, @effectiveFrom, @effectiveTo, @isActive, SYSDATETIME());", connection, transaction);
-                insertAssignment.Parameters.AddWithValue("@employeeId", employeeId);
-                insertAssignment.Parameters.AddWithValue("@pieceType", item.PieceType.Trim());
-                insertAssignment.Parameters.AddWithValue("@stage", item.Stage.Trim());
-                insertAssignment.Parameters.AddWithValue("@rate", item.Rate);
-                insertAssignment.Parameters.AddWithValue("@effectiveFrom", item.EffectiveFrom ?? (object)DBNull.Value);
-                insertAssignment.Parameters.AddWithValue("@effectiveTo", item.EffectiveTo ?? (object)DBNull.Value);
-                insertAssignment.Parameters.AddWithValue("@isActive", item.IsActive);
-                await insertAssignment.ExecuteNonQueryAsync(ct);
-            }
+            insertAssignment.Parameters.AddWithValue("@employeeId", employeeId);
+            insertAssignment.Parameters.AddWithValue("@pieceType", item.PieceType.Trim());
+            insertAssignment.Parameters.AddWithValue("@stage", item.Stage.Trim());
+            insertAssignment.Parameters.AddWithValue("@rate", item.Rate);
+            insertAssignment.Parameters.AddWithValue("@effectiveFrom", item.EffectiveFrom ?? (object)DBNull.Value);
+            insertAssignment.Parameters.AddWithValue("@effectiveTo", item.EffectiveTo ?? (object)DBNull.Value);
+            insertAssignment.Parameters.AddWithValue("@isActive", item.IsActive);
+            await insertAssignment.ExecuteNonQueryAsync(ct);
         }
     }
 
     private async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameter, Func<SqlDataReader, T> map, CancellationToken ct)
-    { await using var connection = connections.Create(); await connection.OpenAsync(ct); await using var command = new SqlCommand(sql, connection); if (parameter is not null) command.Parameters.AddWithValue(sql.Contains("@code") ? "@code" : "@id", parameter); await using var reader = await command.ExecuteReaderAsync(ct); var items = new List<T>(); while (await reader.ReadAsync(ct)) items.Add(map(reader)); return items; }
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        await using var command = new SqlCommand(sql, connection);
+
+        if (parameter is IReadOnlyDictionary<string, object?> dictionary)
+        {
+            foreach (var item in dictionary)
+            {
+                command.Parameters.AddWithValue(item.Key, item.Value ?? DBNull.Value);
+            }
+        }
+        else if (parameter is not null)
+        {
+            var type = parameter.GetType();
+            var isScalarValue = type == typeof(string)
+                || type.IsPrimitive
+                || type.IsEnum
+                || type == typeof(decimal)
+                || type == typeof(DateTime)
+                || type == typeof(DateTimeOffset)
+                || type == typeof(Guid)
+                || type == typeof(TimeSpan)
+                || Nullable.GetUnderlyingType(type) is not null;
+
+            if (isScalarValue)
+            {
+                var parameterName = sql.Contains("@code", StringComparison.OrdinalIgnoreCase)
+                    ? "@code"
+                    : sql.Contains("@periodId", StringComparison.OrdinalIgnoreCase)
+                        ? "@periodId"
+                        : sql.Contains("@id", StringComparison.OrdinalIgnoreCase)
+                            ? "@id"
+                            : "@value";
+
+                command.Parameters.AddWithValue(parameterName, parameter ?? DBNull.Value);
+            }
+            else
+            {
+                foreach (var property in type.GetProperties())
+                {
+                    var parameterName = property.Name.StartsWith('@') ? property.Name : $"@{property.Name}";
+                    var value = property.GetValue(parameter) ?? DBNull.Value;
+                    command.Parameters.AddWithValue(parameterName, value);
+                }
+            }
+        }
+
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        var items = new List<T>();
+        while (await reader.ReadAsync(ct))
+        {
+            items.Add(map(reader));
+        }
+
+        return items;
+    }
+
+    private async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, IReadOnlyDictionary<string, object?>? parameters, Func<SqlDataReader, T> map, CancellationToken ct)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        await using var command = new SqlCommand(sql, connection);
+
+        if (parameters is not null)
+        {
+            foreach (var parameter in parameters)
+            {
+                var value = parameter.Value ?? DBNull.Value;
+                command.Parameters.AddWithValue(parameter.Key, value);
+            }
+        }
+
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        var items = new List<T>();
+        while (await reader.ReadAsync(ct))
+        {
+            items.Add(map(reader));
+        }
+
+        return items;
+    }
 }

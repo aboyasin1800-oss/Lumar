@@ -1,0 +1,7 @@
+﻿EMPLOYEE_ID:171
+EMPLOYEE_CODE:MO8
+ACTIVE EmployeePieceRateAssignments:
+STALE_ASSIGNMENTS_REMAINING:0
+GET /employees/171/workflow
+HTTP STATUS:401
+RESPONSE BODY:{"success":false,"errorCode":"GEN-001","userFriendlyMessage":"حدث خطأ غير متوقع. يرجى إعادة المحاولة.","correlationId":"0HNPL7LQ4UNFB:00000004"}

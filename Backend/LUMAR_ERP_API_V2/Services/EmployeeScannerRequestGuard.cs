@@ -6,6 +6,29 @@ namespace LUMAR_ERP_API_V2.Services;
 
 public static class EmployeeScannerRequestGuard
 {
+    public const string MobileEmployeeScannerCode = "MOBILE-EMPLOYEE";
+
+    public static bool IsMobileEmployeeScanner(string? scannerCode)
+        => !string.IsNullOrWhiteSpace(scannerCode)
+        && string.Equals(scannerCode.Trim(), MobileEmployeeScannerCode, StringComparison.OrdinalIgnoreCase);
+
+    public static string NormalizeScannerCodeForAuthenticatedEmployee(string? scannerCode, CurrentUserDto? user)
+    {
+        if (!string.IsNullOrWhiteSpace(scannerCode))
+        {
+            return scannerCode.Trim();
+        }
+
+        if (user is not null
+            && string.Equals(user.AccountType, "Employee", StringComparison.OrdinalIgnoreCase)
+            && user.EmployeeId is > 0)
+        {
+            return MobileEmployeeScannerCode;
+        }
+
+        return scannerCode?.Trim() ?? string.Empty;
+    }
+
     public static ActionResult? ValidateEmployeeAccount(CurrentUserDto? user)
     {
         if (user is null)

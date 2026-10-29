@@ -233,9 +233,10 @@ public sealed class ProductionRepository(
             if (executionSource == "Scanner" && RequiresPieceStageAssignment(finalStage))
             {
                 var authenticatedEmployeeCode = request.EmployeeCode?.Trim();
-                var authenticatedEmployeeId = string.IsNullOrWhiteSpace(authenticatedEmployeeCode)
-                    ? null
-                    : await ResolveEmployeeIdAsync(connection, transaction, authenticatedEmployeeCode, ct);
+                var authenticatedEmployeeId = ResolveEmployeeIdentifier(authenticatedEmployeeCode)
+                    ?? (string.IsNullOrWhiteSpace(authenticatedEmployeeCode)
+                        ? null
+                        : await ResolveEmployeeIdAsync(connection, transaction, authenticatedEmployeeCode, ct));
 
                 if (!authenticatedEmployeeId.HasValue)
                 {
@@ -534,7 +535,11 @@ public sealed class ProductionRepository(
 
     private static async Task<ScannerValidationResult> ValidateScannerAsync(SqlConnection connection, SqlTransaction transaction, string? scannerCode, string? employeeCode, int productTypeId, string? stage, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(scannerCode))
+        var effectiveScannerCode = string.IsNullOrWhiteSpace(scannerCode) && !string.IsNullOrWhiteSpace(employeeCode)
+            ? EmployeeScannerRequestGuard.MobileEmployeeScannerCode
+            : scannerCode;
+
+        if (string.IsNullOrWhiteSpace(effectiveScannerCode))
         {
             return ScannerValidationResult.Invalid("ScannerCode is required for this production stage.");
         }
@@ -549,9 +554,21 @@ public sealed class ProductionRepository(
             return ScannerValidationResult.Invalid("Requested production stage is required for scanner validation.");
         }
 
+        if (EmployeeScannerRequestGuard.IsMobileEmployeeScanner(effectiveScannerCode))
+        {
+            var mobileEmployeeCode = await ResolveEmployeeCodeAsync(connection, transaction, effectiveScannerCode, employeeCode, ct);
+            var mobileRequiresPieceWageEmployee = RequiresPieceWage(stage.Trim());
+            if (string.IsNullOrWhiteSpace(mobileEmployeeCode) && mobileRequiresPieceWageEmployee)
+            {
+                return ScannerValidationResult.Invalid("Piece-wage employee is required for Cutting/Sewing execution.");
+            }
+
+            return ScannerValidationResult.Valid(mobileEmployeeCode);
+        }
+
         const string scannerSql = "SELECT ScannerId, ScannerCode, IsActive FROM dbo.Scanners WITH (NOLOCK) WHERE ScannerCode = @scannerCode";
         await using var scannerCommand = new SqlCommand(scannerSql, connection, transaction);
-        scannerCommand.Parameters.AddWithValue("@scannerCode", scannerCode.Trim());
+        scannerCommand.Parameters.AddWithValue("@scannerCode", effectiveScannerCode.Trim());
         await using var scannerReader = await scannerCommand.ExecuteReaderAsync(ct);
         if (!await scannerReader.ReadAsync(ct)) return ScannerValidationResult.Invalid("Scanner does not exist.");
         var scannerId = scannerReader.GetInt32(0);
@@ -575,7 +592,7 @@ public sealed class ProductionRepository(
             return ScannerValidationResult.Invalid("Scanner is not authorized for this product type and stage.");
         }
 
-        var employeeCodeResult = await ResolveEmployeeCodeAsync(connection, transaction, scannerCode, employeeCode, ct);
+        var employeeCodeResult = await ResolveEmployeeCodeAsync(connection, transaction, effectiveScannerCode, employeeCode, ct);
         var requiresPieceWageEmployee = RequiresPieceWage(stage.Trim());
         if (string.IsNullOrWhiteSpace(employeeCodeResult) && requiresPieceWageEmployee)
         {
@@ -587,16 +604,49 @@ public sealed class ProductionRepository(
 
     private static async Task<string?> ResolveEmployeeCodeAsync(SqlConnection connection, SqlTransaction transaction, string? scannerCode, string? employeeCode, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(scannerCode)) return null;
+        if (string.IsNullOrWhiteSpace(scannerCode) && string.IsNullOrWhiteSpace(employeeCode)) return null;
+
+        var effectiveScannerCode = string.IsNullOrWhiteSpace(scannerCode) && !string.IsNullOrWhiteSpace(employeeCode)
+            ? EmployeeScannerRequestGuard.MobileEmployeeScannerCode
+            : scannerCode;
+
+        if (EmployeeScannerRequestGuard.IsMobileEmployeeScanner(effectiveScannerCode))
+        {
+            if (ResolveEmployeeIdentifier(employeeCode) is var employeeId && employeeId.HasValue)
+            {
+                const string employeeIdSql = "SELECT EmployeeCode FROM dbo.Employees WITH (NOLOCK) WHERE EmployeeID = @employeeId AND IsActive = 1 ORDER BY EmployeeID";
+                await using var command = new SqlCommand(employeeIdSql, connection, transaction);
+                command.Parameters.AddWithValue("@employeeId", employeeId.Value);
+                await using var reader = await command.ExecuteReaderAsync(ct);
+                if (await reader.ReadAsync(ct))
+                {
+                    return reader.IsDBNull(0) ? null : reader.GetString(0);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(employeeCode))
+            {
+                const string employeeCodeSql = "SELECT EmployeeCode FROM dbo.Employees WITH (NOLOCK) WHERE EmployeeCode = @employeeCode AND IsActive = 1 ORDER BY EmployeeID";
+                await using var command = new SqlCommand(employeeCodeSql, connection, transaction);
+                command.Parameters.AddWithValue("@employeeCode", employeeCode.Trim());
+                await using var reader = await command.ExecuteReaderAsync(ct);
+                if (await reader.ReadAsync(ct))
+                {
+                    return reader.IsDBNull(0) ? null : reader.GetString(0);
+                }
+            }
+
+            return null;
+        }
 
         const string sql = "SELECT EmployeeID, EmployeeCode, ScannerCode, IsActive FROM dbo.Employees WITH (NOLOCK) WHERE ScannerCode = @scannerCode ORDER BY EmployeeID";
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("@scannerCode", scannerCode.Trim());
-        await using var reader = await command.ExecuteReaderAsync(ct);
+        await using var command2 = new SqlCommand(sql, connection, transaction);
+        command2.Parameters.AddWithValue("@scannerCode", scannerCode.Trim());
+        await using var reader2 = await command2.ExecuteReaderAsync(ct);
         var employees = new List<string>();
-        while (await reader.ReadAsync(ct))
+        while (await reader2.ReadAsync(ct))
         {
-            if (reader.GetBoolean(3)) employees.Add(reader.GetString(1));
+            if (reader2.GetBoolean(3)) employees.Add(reader2.GetString(1));
         }
 
         if (employees.Count == 0) return null;
@@ -745,12 +795,25 @@ public sealed class ProductionRepository(
     {
         if (string.IsNullOrWhiteSpace(employeeCode)) return null;
 
-        const string sql = "SELECT EmployeeID FROM dbo.Employees WITH (NOLOCK) WHERE EmployeeCode = @employeeCode AND IsActive = 1 ORDER BY EmployeeID";
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("@employeeCode", employeeCode.Trim());
-        await using var reader = await command.ExecuteReaderAsync(ct);
-        if (!await reader.ReadAsync(ct)) return null;
-        return reader.GetInt32(0);
+        var trimmed = employeeCode.Trim();
+        if (ResolveEmployeeIdentifier(trimmed) is var employeeId && employeeId.HasValue)
+        {
+            const string sql = "SELECT EmployeeID FROM dbo.Employees WITH (NOLOCK) WHERE EmployeeID = @employeeId AND IsActive = 1 ORDER BY EmployeeID";
+            await using var command = new SqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("@employeeId", employeeId.Value);
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+            {
+                return reader.GetInt32(0);
+            }
+        }
+
+        const string codeSql = "SELECT EmployeeID FROM dbo.Employees WITH (NOLOCK) WHERE EmployeeCode = @employeeCode AND IsActive = 1 ORDER BY EmployeeID";
+        await using var codeCommand = new SqlCommand(codeSql, connection, transaction);
+        codeCommand.Parameters.AddWithValue("@employeeCode", trimmed);
+        await using var codeReader = await codeCommand.ExecuteReaderAsync(ct);
+        if (!await codeReader.ReadAsync(ct)) return null;
+        return codeReader.GetInt32(0);
     }
 
     private static async Task<string?> ResolveEmployeeJobTitleAsync(SqlConnection connection, SqlTransaction transaction, string? employeeCode, CancellationToken ct)
@@ -1521,11 +1584,13 @@ public sealed class ProductionRepository(
         string.Equals(stage, "Cutting", StringComparison.OrdinalIgnoreCase)
         || string.Equals(stage, "Sewing", StringComparison.OrdinalIgnoreCase);
 
-    private static int? TryParseEmployeeId(string? value)
+    public static int? ResolveEmployeeIdentifier(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
         return int.TryParse(value.Trim(), out var employeeId) && employeeId > 0 ? employeeId : null;
     }
+
+    private static int? TryParseEmployeeId(string? value) => ResolveEmployeeIdentifier(value);
 
     private static string NormalizeStageForStatus(string stage) => stage.Trim() switch
     {

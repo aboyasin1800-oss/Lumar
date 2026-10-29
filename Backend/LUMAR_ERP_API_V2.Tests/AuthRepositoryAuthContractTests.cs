@@ -1,7 +1,10 @@
 using System.Reflection;
+using LUMAR_ERP_API_V2.Configuration;
+using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.Repositories;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace LUMAR_ERP_API_V2.Tests;
@@ -64,6 +67,166 @@ public sealed class AuthRepositoryAuthContractTests
             "   ");
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public async Task RegisterMobileCustomerAsync_Rejects_Existing_Active_Primary_Phone_Before_Inserts()
+    {
+        var connectionString = GetValidationConnectionString();
+        var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+        var customerRepository = new CustomerRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options));
+        var repository = new AuthRepository(new OperationalSqlConnectionFactory(options), customerRepository);
+
+        var uniqueToken = Guid.NewGuid().ToString("N")[..8];
+        var phoneNumber = $"775{DateTime.UtcNow:HHmmssfff}";
+        var primaryUsername = $"primary_{uniqueToken}@example.com";
+        var primaryFullName = $"Primary Family {uniqueToken}";
+        var primaryCustomerName = $"Primary Customer {uniqueToken}";
+
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        await using var setupConnection = new SqlConnection(connectionString);
+        await setupConnection.OpenAsync();
+        await using var scope = setupConnection.BeginTransaction();
+        try
+        {
+            var customerId = await CreateCustomerAsync(setupConnection, scope, primaryCustomerName, phoneNumber);
+            var mobileAccountId = await CreateMobileAccountAsync(setupConnection, scope, customerId, primaryUsername, primaryFullName);
+            var userId = await GetUserIdByUsernameAsync(setupConnection, scope, primaryUsername);
+            scope.Commit();
+
+            var request = new MobileCustomerRegistrationDto(
+                $"second_{uniqueToken}@example.com",
+                "P@ssword1",
+                "P@ssword1",
+                "Different Family Member",
+                $"Different Family Member {uniqueToken}",
+                phoneNumber,
+                "Test address",
+                "Test note",
+                true,
+                null,
+                null);
+
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() => repository.RegisterMobileCustomerAsync(request, CancellationToken.None));
+            Assert.Contains("رقم الهاتف مستخدم بالفعل", ex.Message, StringComparison.Ordinal);
+
+            await using var verifyConnection = new SqlConnection(connectionString);
+            await verifyConnection.OpenAsync();
+            var customerCount = await CountCustomersForPhoneAsync(verifyConnection, phoneNumber);
+            var userCount = await CountUsersAsync(verifyConnection, $"second_{uniqueToken}@example.com");
+            var mobileAccountCount = await CountMobileAccountsAsync(verifyConnection, $"second_{uniqueToken}@example.com");
+
+            Assert.Equal(1, customerCount);
+            Assert.Equal(0, userCount);
+            Assert.Equal(0, mobileAccountCount);
+
+            await CleanupInsertedRowsAsync(verifyConnection, customerId, mobileAccountId, userId);
+        }
+        finally
+        {
+            if (scope.Connection is not null && scope.Connection.State == System.Data.ConnectionState.Open)
+            {
+                try { scope.Rollback(); } catch { }
+            }
+        }
+    }
+
+    private static async Task<int> CreateCustomerAsync(SqlConnection connection, SqlTransaction transaction, string customerName, string phoneNumber)
+    {
+        const string sql = @"INSERT INTO dbo.Customers (CustomerCode, CustomerName, PhoneNumber, IsActive, RelationshipType) OUTPUT INSERTED.CustomerID VALUES (@code, @name, @phone, 1, N'Family');";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@code", $"T{Guid.NewGuid():N}".Substring(0, 10));
+        command.Parameters.AddWithValue("@name", customerName);
+        command.Parameters.AddWithValue("@phone", phoneNumber);
+        return (int)(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CreateMobileAccountAsync(SqlConnection connection, SqlTransaction transaction, int customerId, string username, string fullName)
+    {
+        const string sql = @"INSERT INTO dbo.Users (Username, FullName, UserRole, IsActive, PasswordHash, UserPassword, SecurityStamp, LastLoginUtc) OUTPUT INSERTED.UserID VALUES (@username, @fullName, 'Customer', 1, '', '', NEWID(), SYSUTCDATETIME());";
+        await using var userCommand = new SqlCommand(sql, connection, transaction);
+        userCommand.Parameters.AddWithValue("@username", username);
+        userCommand.Parameters.AddWithValue("@fullName", fullName);
+        var userId = (int)(await userCommand.ExecuteScalarAsync());
+
+        const string mobileSql = @"INSERT INTO dbo.MobileAccounts (AccountType, CustomerId, EmployeeId, SupplierId, Username, NormalizedUsername, PasswordHash, IsActive, FailedLoginAttempts, LockoutEndUtc, SecurityStamp, TokenVersion, CreatedAtUtc, UpdatedAtUtc) OUTPUT INSERTED.MobileAccountId VALUES (@accountType, @customerId, NULL, NULL, @username, @normalizedUsername, '', 1, 0, NULL, CAST(NEWID() AS nvarchar(128)), 0, SYSUTCDATETIME(), SYSUTCDATETIME());";
+        await using var mobileCommand = new SqlCommand(mobileSql, connection, transaction);
+        mobileCommand.Parameters.AddWithValue("@accountType", "Customer");
+        mobileCommand.Parameters.AddWithValue("@customerId", customerId);
+        mobileCommand.Parameters.AddWithValue("@username", username);
+        mobileCommand.Parameters.AddWithValue("@normalizedUsername", username.ToUpperInvariant());
+        return (int)(await mobileCommand.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> GetUserIdByUsernameAsync(SqlConnection connection, SqlTransaction transaction, string username)
+    {
+        const string sql = "SELECT UserID FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE Username = @username;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@username", username);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountCustomersForPhoneAsync(SqlConnection connection, string phoneNumber)
+    {
+        const string sql = "SELECT COUNT(*) FROM dbo.Customers WHERE PhoneNumber = @phoneNumber AND IsActive = 1;";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@phoneNumber", phoneNumber);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountUsersAsync(SqlConnection connection, string username)
+    {
+        const string sql = "SELECT COUNT(*) FROM dbo.Users WHERE Username = @username;";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@username", username);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountMobileAccountsAsync(SqlConnection connection, string username)
+    {
+        const string sql = "SELECT COUNT(*) FROM dbo.MobileAccounts WHERE Username = @username;";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@username", username);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task CleanupInsertedRowsAsync(SqlConnection connection, int customerId, int mobileAccountId, int userId)
+    {
+        await using var deletePush = new SqlCommand("DELETE FROM dbo.MobilePushDevices WHERE MobileAccountId = @mobileAccountId;", connection);
+        deletePush.Parameters.AddWithValue("@mobileAccountId", mobileAccountId);
+        await deletePush.ExecuteNonQueryAsync();
+
+        await using var deleteSessions = new SqlCommand("DELETE FROM dbo.UserSessions WHERE UserId = @userId;", connection);
+        deleteSessions.Parameters.AddWithValue("@userId", userId);
+        await deleteSessions.ExecuteNonQueryAsync();
+
+        await using var deleteAccount = new SqlCommand("DELETE FROM dbo.MobileAccounts WHERE MobileAccountId = @mobileAccountId;", connection);
+        deleteAccount.Parameters.AddWithValue("@mobileAccountId", mobileAccountId);
+        await deleteAccount.ExecuteNonQueryAsync();
+
+        await using var deleteUser = new SqlCommand("DELETE FROM dbo.Users WHERE UserID = @userId;", connection);
+        deleteUser.Parameters.AddWithValue("@userId", userId);
+        await deleteUser.ExecuteNonQueryAsync();
+
+        await using var deleteAccess = new SqlCommand("DELETE FROM dbo.MobileAccountCustomerAccess WHERE CustomerId = @customerId;", connection);
+        deleteAccess.Parameters.AddWithValue("@customerId", customerId);
+        await deleteAccess.ExecuteNonQueryAsync();
+
+        await using var deleteCustomer = new SqlCommand("DELETE FROM dbo.Customers WHERE CustomerID = @customerId;", connection);
+        deleteCustomer.Parameters.AddWithValue("@customerId", customerId);
+        await deleteCustomer.ExecuteNonQueryAsync();
+    }
+
+    private static string GetValidationConnectionString()
+    {
+        var value = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Set Lumar__ConnectionString to the approved validation database.");
+        var builder = new SqlConnectionStringBuilder(value);
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Auth repository tests require LUMAR_ERP_ES_VALIDATION.");
+        return builder.ConnectionString;
     }
 
     [Theory]

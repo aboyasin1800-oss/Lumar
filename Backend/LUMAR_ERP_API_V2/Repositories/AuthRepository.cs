@@ -61,6 +61,24 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
                     throw new ArgumentException("Username already exists.");
             }
 
+            await using (var phoneOwnershipCheck = new SqlCommand(
+                @"SELECT TOP (1) ma.MobileAccountId
+                  FROM dbo.MobileAccounts ma WITH (UPDLOCK, HOLDLOCK)
+                  INNER JOIN dbo.Customers c WITH (UPDLOCK, HOLDLOCK) ON c.CustomerID = ma.CustomerId
+                  WHERE ma.AccountType = N'Customer'
+                    AND ma.CustomerId IS NOT NULL
+                    AND ma.IsActive = 1
+                    AND c.IsActive = 1
+                    AND c.PhoneNumber = @phoneNumber
+                  ORDER BY ma.MobileAccountId;",
+                connection,
+                transaction))
+            {
+                phoneOwnershipCheck.Parameters.AddWithValue("@phoneNumber", phoneNumber);
+                if (await phoneOwnershipCheck.ExecuteScalarAsync(ct) is not null)
+                    throw new ArgumentException("رقم الهاتف مستخدم بالفعل لحساب أسرة. يرجى إنشاء الحساب من الحساب الأساسي لصاحب هذا الرقم.");
+            }
+
             var officialCustomer = await customerRepository.CreateWithReferralInTransactionAsync(
                 connection,
                 transaction,
@@ -933,6 +951,25 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
             return digits.Substring(4);
 
         return digits;
+    }
+
+    private static async Task<bool> IsActivePrimaryCustomerPhoneInUseAsync(SqlConnection connection, SqlTransaction transaction, string phoneNumber, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(phoneNumber))
+            return false;
+
+        const string sql = @"SELECT TOP (1) ma.MobileAccountId
+            FROM dbo.MobileAccounts ma WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.Customers c WITH (UPDLOCK, HOLDLOCK) ON c.CustomerID = ma.CustomerId
+            WHERE ma.AccountType = N'Customer'
+              AND ma.CustomerId IS NOT NULL
+              AND ma.IsActive = 1
+              AND c.IsActive = 1
+              AND c.PhoneNumber = @phoneNumber;";
+
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@phoneNumber", phoneNumber);
+        return await command.ExecuteScalarAsync(ct) is not null;
     }
 
     private static async Task<int> CreateUserRecordAsync(SqlConnection connection, SqlTransaction transaction, string username, string fullName, string role, CancellationToken ct)

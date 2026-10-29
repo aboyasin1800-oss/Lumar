@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -7,6 +9,18 @@ import '../../core/app_navigation.dart';
 import '../../core/ui_palette.dart';
 import '../../models/employee_models.dart';
 import '../../repositories/employee_repository.dart';
+import 'scanner_details_screen.dart';
+
+const Map<String, String> _scannerStageLabels = {
+  'Printing': 'الطباعة',
+  'FabricPrep': 'تجهيز القماش',
+  'Cutting': 'القص',
+  'Sewing': 'الخياطة',
+  'Buttons': 'الأزرار',
+  'Ironing': 'الكَي',
+  'Quality': 'الجودة',
+  'Assembly': 'التجميع',
+};
 
 const List<String> _scannerPermissionStages = [
   'Printing',
@@ -18,6 +32,9 @@ const List<String> _scannerPermissionStages = [
   'Quality',
   'Assembly',
 ];
+
+String localizedScannerStage(String stage) =>
+    _scannerStageLabels[stage.trim()] ?? stage.trim();
 
 class ScannerRecord {
   const ScannerRecord({
@@ -195,172 +212,229 @@ class ScannerRepository {
 
   final http.Client _client;
 
-  Future<List<ScannerRecord>> getScanners() async {
-    final response =
-        await _client.get(Uri.parse('$_baseUrl/production/scanners'));
-    if (response.statusCode < 200 || response.statusCode >= 300) {
+  Future<T> _guardRequest<T>(String path, Future<T> Function() action) async {
+    try {
+      return await action();
+    } on ScannerApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const ScannerApiException(
+        '',
+        504,
+        'انتهت مهلة الاتصال بالخادم. حاول مرة أخرى.',
+      );
+    } on SocketException {
+      throw const ScannerApiException(
+        '',
+        0,
+        'تعذر الاتصال بالخادم. تأكد من تشغيل الخدمة ثم حاول مرة أخرى.',
+      );
+    } on http.ClientException {
+      throw const ScannerApiException(
+        '',
+        0,
+        'تعذر الاتصال بالخادم. تأكد من تشغيل الخدمة ثم حاول مرة أخرى.',
+      );
+    } catch (_) {
       throw ScannerApiException(
-        '/production/scanners',
-        response.statusCode,
-        _extractMessage(response),
+        path,
+        500,
+        'حدث خطأ غير متوقع أثناء الاتصال بالخادم. حاول مرة أخرى.',
       );
     }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is! List) {
-      return const [];
-    }
-
-    return decoded
-        .map((item) => ScannerRecord.fromJson(item as Map<String, dynamic>))
-        .toList();
   }
 
-  Future<ScannerRecord> createScanner(ScannerWritePayload payload) async {
-    final response = await _client.post(
-      Uri.parse('$_baseUrl/production/scanners'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
-      body: jsonEncode(payload.toJson()),
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ScannerApiException(
+  Future<List<ScannerRecord>> getScanners() => _guardRequest(
         '/production/scanners',
-        response.statusCode,
-        _extractMessage(response),
+        () async {
+          final response =
+              await _client.get(Uri.parse('$_baseUrl/production/scanners'));
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            throw ScannerApiException(
+              '/production/scanners',
+              response.statusCode,
+              _extractMessage(response),
+            );
+          }
+
+          final decoded = jsonDecode(response.body);
+          if (decoded is! List) {
+            return const [];
+          }
+
+          return decoded
+              .map((item) => ScannerRecord.fromJson(item as Map<String, dynamic>))
+              .toList();
+        },
       );
-    }
-    return ScannerRecord.fromJson(
-        jsonDecode(response.body) as Map<String, dynamic>);
-  }
+
+  Future<ScannerRecord> createScanner(ScannerWritePayload payload) => _guardRequest(
+        '/production/scanners',
+        () async {
+          final response = await _client.post(
+            Uri.parse('$_baseUrl/production/scanners'),
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+            body: jsonEncode(payload.toJson()),
+          );
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            throw ScannerApiException(
+              '/production/scanners',
+              response.statusCode,
+              _extractMessage(response),
+            );
+          }
+          return ScannerRecord.fromJson(
+              jsonDecode(response.body) as Map<String, dynamic>);
+        },
+      );
 
   Future<ScannerRecord> updateScanner(
-      int scannerId, ScannerWritePayload payload) async {
-    final response = await _client.put(
-      Uri.parse('$_baseUrl/production/scanners/$scannerId'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
-      body: jsonEncode(payload.toJson()),
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ScannerApiException(
+      int scannerId, ScannerWritePayload payload) => _guardRequest(
         '/production/scanners/$scannerId',
-        response.statusCode,
-        _extractMessage(response),
+        () async {
+          final response = await _client.put(
+            Uri.parse('$_baseUrl/production/scanners/$scannerId'),
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+            body: jsonEncode(payload.toJson()),
+          );
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            throw ScannerApiException(
+              '/production/scanners/$scannerId',
+              response.statusCode,
+              _extractMessage(response),
+            );
+          }
+          return ScannerRecord.fromJson(
+              jsonDecode(response.body) as Map<String, dynamic>);
+        },
       );
-    }
-    return ScannerRecord.fromJson(
-        jsonDecode(response.body) as Map<String, dynamic>);
-  }
 
-  Future<ScannerRecord> activateScanner(int scannerId) async {
-    final response = await _client.put(
-      Uri.parse('$_baseUrl/production/scanners/$scannerId/activate'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ScannerApiException(
+  Future<ScannerRecord> activateScanner(int scannerId) => _guardRequest(
         '/production/scanners/$scannerId/activate',
-        response.statusCode,
-        _extractMessage(response),
+        () async {
+          final response = await _client.put(
+            Uri.parse('$_baseUrl/production/scanners/$scannerId/activate'),
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+          );
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            throw ScannerApiException(
+              '/production/scanners/$scannerId/activate',
+              response.statusCode,
+              _extractMessage(response),
+            );
+          }
+          return ScannerRecord.fromJson(
+              jsonDecode(response.body) as Map<String, dynamic>);
+        },
       );
-    }
-    return ScannerRecord.fromJson(
-        jsonDecode(response.body) as Map<String, dynamic>);
-  }
 
-  Future<ScannerRecord> deactivateScanner(int scannerId) async {
-    final response = await _client.put(
-      Uri.parse('$_baseUrl/production/scanners/$scannerId/deactivate'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ScannerApiException(
+  Future<ScannerRecord> deactivateScanner(int scannerId) => _guardRequest(
         '/production/scanners/$scannerId/deactivate',
-        response.statusCode,
-        _extractMessage(response),
+        () async {
+          final response = await _client.put(
+            Uri.parse('$_baseUrl/production/scanners/$scannerId/deactivate'),
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+          );
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            throw ScannerApiException(
+              '/production/scanners/$scannerId/deactivate',
+              response.statusCode,
+              _extractMessage(response),
+            );
+          }
+          return ScannerRecord.fromJson(
+              jsonDecode(response.body) as Map<String, dynamic>);
+        },
       );
-    }
-    return ScannerRecord.fromJson(
-        jsonDecode(response.body) as Map<String, dynamic>);
-  }
 
-  Future<List<ScannerPermissionRecord>> getPermissions(int scannerId) async {
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/production/scanners/$scannerId/permissions'),
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ScannerApiException(
+  Future<List<ScannerPermissionRecord>> getPermissions(int scannerId) =>
+      _guardRequest(
         '/production/scanners/$scannerId/permissions',
-        response.statusCode,
-        _extractMessage(response),
+        () async {
+          final response = await _client.get(
+            Uri.parse('$_baseUrl/production/scanners/$scannerId/permissions'),
+          );
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            throw ScannerApiException(
+              '/production/scanners/$scannerId/permissions',
+              response.statusCode,
+              _extractMessage(response),
+            );
+          }
+
+          final decoded = jsonDecode(response.body);
+          if (decoded is! List) {
+            return const <ScannerPermissionRecord>[];
+          }
+
+          return decoded
+              .map((item) =>
+                  ScannerPermissionRecord.fromJson(item as Map<String, dynamic>))
+              .toList();
+        },
       );
-    }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is! List) {
-      return const <ScannerPermissionRecord>[];
-    }
-
-    return decoded
-        .map((item) =>
-            ScannerPermissionRecord.fromJson(item as Map<String, dynamic>))
-        .toList();
-  }
 
   Future<List<ScannerPermissionRecord>> upsertPermissions(
     int scannerId,
     List<ScannerPermissionWritePayload> permissions,
-  ) async {
-    final response = await _client.put(
-      Uri.parse('$_baseUrl/production/scanners/$scannerId/permissions'),
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
-      body: jsonEncode(
-          permissions.map((permission) => permission.toJson()).toList()),
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ScannerApiException(
+  ) => _guardRequest(
         '/production/scanners/$scannerId/permissions',
-        response.statusCode,
-        _extractMessage(response),
+        () async {
+          final response = await _client.put(
+            Uri.parse('$_baseUrl/production/scanners/$scannerId/permissions'),
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+            body: jsonEncode(
+                permissions.map((permission) => permission.toJson()).toList()),
+          );
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            throw ScannerApiException(
+              '/production/scanners/$scannerId/permissions',
+              response.statusCode,
+              _extractMessage(response),
+            );
+          }
+
+          final decoded = jsonDecode(response.body);
+          if (decoded is! List) {
+            return const <ScannerPermissionRecord>[];
+          }
+
+          return decoded
+              .map((item) =>
+                  ScannerPermissionRecord.fromJson(item as Map<String, dynamic>))
+              .toList();
+        },
       );
-    }
 
-    final decoded = jsonDecode(response.body);
-    if (decoded is! List) {
-      return const <ScannerPermissionRecord>[];
-    }
-
-    return decoded
-        .map((item) =>
-            ScannerPermissionRecord.fromJson(item as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<List<ProductTypeOption>> getProductTypes() async {
-    final response =
-        await _client.get(Uri.parse('$_baseUrl/consumption-rules'));
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ScannerApiException(
+  Future<List<ProductTypeOption>> getProductTypes() => _guardRequest(
         '/consumption-rules',
-        response.statusCode,
-        _extractMessage(response),
+        () async {
+          final response =
+              await _client.get(Uri.parse('$_baseUrl/consumption-rules'));
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            throw ScannerApiException(
+              '/consumption-rules',
+              response.statusCode,
+              _extractMessage(response),
+            );
+          }
+
+          final decoded = jsonDecode(response.body);
+          if (decoded is! Map<String, dynamic>) {
+            return const <ProductTypeOption>[];
+          }
+
+          final productTypes = (decoded['productTypes'] as List<dynamic>? ??
+                  const <dynamic>[])
+              .whereType<Map<String, dynamic>>()
+              .map(ProductTypeOption.fromJson)
+              .where((option) => option.productTypeId > 0 && option.nameAr.isNotEmpty)
+              .toList()
+            ..sort((a, b) => a.nameAr.compareTo(b.nameAr));
+
+          return productTypes;
+        },
       );
-    }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      return const <ProductTypeOption>[];
-    }
-
-    final productTypes = (decoded['productTypes'] as List<dynamic>? ??
-            const <dynamic>[])
-        .whereType<Map<String, dynamic>>()
-        .map(ProductTypeOption.fromJson)
-        .where((option) => option.productTypeId > 0 && option.nameAr.isNotEmpty)
-        .toList()
-      ..sort((a, b) => a.nameAr.compareTo(b.nameAr));
-
-    return productTypes;
-  }
 }
 
 String _extractMessage(http.Response response) {
@@ -379,6 +453,20 @@ String _extractMessage(http.Response response) {
     404 => 'الماسح المطلوب غير موجود.',
     _ => 'تعذر تنفيذ العملية المطلوبة.',
   };
+}
+
+String _safeScannerErrorMessage(Object? error) {
+  if (error is ScannerApiException) return error.message;
+  if (error is TimeoutException) {
+    return 'انتهت مهلة الاتصال بالخادم. حاول مرة أخرى.';
+  }
+  if (error is SocketException || error is http.ClientException) {
+    return 'تعذر الاتصال بالخادم. تأكد من تشغيل الخدمة ثم حاول مرة أخرى.';
+  }
+  if (error != null) {
+    return 'تعذر تحميل أجهزة المسح. حاول مرة أخرى.';
+  }
+  return 'تعذر تحميل أجهزة المسح.';
 }
 
 class ScannerApiException implements Exception {
@@ -429,6 +517,13 @@ class _ScannerManagementScreenState extends State<ScannerManagementScreen> {
     }
   }
 
+  Future<void> _openDetails(ScannerRecord scanner) async {
+    await AppNavigation.push(
+      context,
+      (_) => ScannerDetailsScreen(scanner: scanner),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -458,6 +553,7 @@ class _ScannerManagementScreenState extends State<ScannerManagementScreen> {
           }
 
           if (snapshot.hasError) {
+            final message = _safeScannerErrorMessage(snapshot.error);
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -467,8 +563,7 @@ class _ScannerManagementScreenState extends State<ScannerManagementScreen> {
                     const Icon(Icons.error_outline_rounded, size: 42),
                     const SizedBox(height: 12),
                     Text(
-                      (snapshot.error as ScannerApiException?)?.message ??
-                          'تعذر تحميل أجهزة المسح.',
+                      message,
                       textAlign: TextAlign.center,
                       style: UiPalette.adaptiveTextStyle(
                         context,
@@ -616,6 +711,11 @@ class _ScannerManagementScreenState extends State<ScannerManagementScreen> {
                     const SizedBox(width: 10),
                     Column(
                       children: [
+                        IconButton(
+                          tooltip: 'تفاصيل',
+                          onPressed: () => _openDetails(scanner),
+                          icon: const Icon(Icons.info_outline_rounded),
+                        ),
                         IconButton(
                           tooltip: 'تعديل',
                           onPressed: () => _openForm(scanner),
@@ -810,21 +910,45 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
     );
 
     try {
-      if (widget.scanner == null) {
-        final created = await repository.createScanner(payload);
-        if (created.id > 0 &&
-            payload.permissions != null &&
-            payload.permissions!.isNotEmpty) {
-          await repository.upsertPermissions(created.id, payload.permissions!);
-        }
-      } else {
-        await repository.updateScanner(widget.scanner!.id, payload);
-        await repository.upsertPermissions(widget.scanner!.id,
-            payload.permissions ?? const <ScannerPermissionWritePayload>[]);
+      final saved = widget.scanner == null
+          ? await repository.createScanner(payload)
+          : await repository.updateScanner(widget.scanner!.id, payload);
+
+      if (saved.id <= 0) {
+        throw const ScannerApiException(
+          '/production/scanners',
+          500,
+          'تعذر حفظ بيانات الماسح: لم يتم استلام هوية الماسح بعد الحفظ.',
+        );
+      }
+
+      final reloaded = await repository.getScanners();
+      final persisted = reloaded.firstWhere(
+        (item) => item.id == saved.id || item.scannerCode == payload.scannerCode,
+        orElse: () => saved,
+      );
+
+      final expectedEmployeeId = _selectedEmployeeId;
+      final matchesEmployee = expectedEmployeeId == null
+          ? persisted.employeeId == null
+          : persisted.employeeId == expectedEmployeeId;
+
+      if (!matchesEmployee) {
+        throw const ScannerApiException(
+          '/production/scanners',
+          500,
+          'تعذر التحقق من حفظ بيانات الماسح. لم يكتمل ربط الموظف بالماسح.',
+        );
       }
 
       if (!mounted) return;
       widget.onSaved?.call();
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          backgroundColor: Colors.green,
+          content: Text('تم حفظ بيانات الماسح بنجاح.'),
+        ),
+      );
       Navigator.pop(context, true);
     } on ScannerApiException catch (error) {
       if (!mounted) return;
@@ -1015,7 +1139,7 @@ class _ScannerFormScreenState extends State<ScannerFormScreen> {
                                         final isSelected =
                                             selectedStages.contains(stage);
                                         return FilterChip(
-                                          label: Text(stage),
+                                          label: Text(localizedScannerStage(stage)),
                                           selected: isSelected,
                                           onSelected: (value) {
                                             setState(() {

@@ -91,7 +91,7 @@ class DocumentPrintSupport {
   static const MeasurementCardLayoutConfig layout = MeasurementCardLayoutConfig();
 
   static double a5WidthMm = 148;
-  static double a5HeightMm = 210;
+  static double a5HeightMm = 250;
   static double a5MarginMm = 8;
 
   static double measurementCardWidthInches = layout.pageWidthInches;

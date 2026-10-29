@@ -1774,7 +1774,7 @@ class _MeasurementCardPdfGenerator {
                             textAlign: pw.TextAlign.right,
                             textDirection: pw.TextDirection.rtl,
                             style: pw.TextStyle(font: arabicFont, fontSize: 11)),
-                        pw.Text('التسليم: ${piece.deliveryDateText}',
+                        pw.Text('الاستلام: ${piece.deliveryDateText}',
                             textAlign: pw.TextAlign.right,
                             textDirection: pw.TextDirection.rtl,
                             style: pw.TextStyle(font: arabicFont, fontSize: 11)),

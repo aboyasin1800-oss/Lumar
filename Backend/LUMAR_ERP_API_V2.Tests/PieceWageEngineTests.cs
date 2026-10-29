@@ -94,6 +94,14 @@ public class PieceWageEngineTests
     }
 
     [Fact]
+    public void ShouldKeepOfficialBaseRateSeparateFromEmployeeExtra()
+    {
+        Assert.Equal(500m, PieceWageEngine.ApplyEmployeeExtra(500m, 0m));
+        Assert.Equal(600m, PieceWageEngine.ApplyEmployeeExtra(500m, 100m));
+        Assert.Equal(650m, PieceWageEngine.ApplyEmployeeExtra(550m, 100m));
+    }
+
+    [Fact]
     public void ShouldValidateTotalWageFormula()
     {
         var total = PieceWageEngine.CalculateTotalWage(4m, 13.25m);

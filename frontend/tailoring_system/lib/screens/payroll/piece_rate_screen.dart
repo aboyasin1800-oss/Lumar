@@ -205,7 +205,12 @@ class _PieceRateScreenState extends State<PieceRateScreen> {
     );
   }
 
-  void _reload() => setState(() => _future = _loadData());
+  void _reload() {
+    final nextFuture = _loadData();
+    setState(() {
+      _future = nextFuture;
+    });
+  }
 
   Future<void> _create() async {
     final catalog = (await _future).catalog;

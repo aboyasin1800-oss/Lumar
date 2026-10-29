@@ -314,6 +314,16 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
           _showMessage('مرحلة العمل مطلوبة في كل سطر.', isError: true);
           return;
         }
+
+        final officialRate = _officialPieceWageRatesByType[row.pieceType.trim()]?[row.stage.trim()];
+        if (officialRate == null) {
+          _showMessage(
+            'السعر العام الرسمي غير متاح لنوع القطعة "${row.pieceType.trim()}" في المرحلة "${row.stage.trim()}". لا يمكن حفظ الأجر دون مصدر السعر الرسمي.',
+            isError: true,
+          );
+          return;
+        }
+
         final extra = row.parsedRate ?? 0.0;
         if (extra < 0) {
           _showMessage('الإضافي لا يمكن أن يكون سالباً.', isError: true);
@@ -351,6 +361,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       hireDate: parsedHireDate,
       status: _status,
       salaryType: _salaryType,
+      officialPieceRates: _officialPieceWageRatesByType,
       pieceRates: _salaryType == _salaryTypePiece
           ? _pieceRateRows
               .where((row) => row.pieceType.trim().isNotEmpty || row.stage.trim().isNotEmpty || row.rateText.trim().isNotEmpty)

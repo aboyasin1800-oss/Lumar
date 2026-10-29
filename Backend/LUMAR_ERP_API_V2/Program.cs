@@ -3,6 +3,7 @@ using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.ErrorHandling;
 using LUMAR_ERP_API_V2.FinancialFoundation;
+using LUMAR_ERP_API_V2.Monitoring;
 using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
 using LUMAR_ERP_API_V2.Utilities;
@@ -157,6 +158,7 @@ builder.Services.AddScoped<ICancelledPieceDispositionService, CancelledPieceDisp
 var app = builder.Build();
 
 app.UseStaticFiles();
+app.UseMiddleware<SafeRequestCaptureMiddleware>();
 app.UseRouting();
 app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 app.UseSwagger();

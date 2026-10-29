@@ -42,6 +42,7 @@ class EmployeeWritePayload {
     this.status = 'Active',
     this.salaryType = 'BasicSalary',
     this.pieceRates = const <EmployeePieceRateRow>[],
+    this.officialPieceRates = const <String, Map<String, double>>{},
   });
 
   final String employeeCode;
@@ -53,6 +54,7 @@ class EmployeeWritePayload {
   final String status;
   final String salaryType;
   final List<EmployeePieceRateRow> pieceRates;
+  final Map<String, Map<String, double>> officialPieceRates;
 
   Map<String, dynamic> toJson() => {
         'employeeCode':
@@ -66,7 +68,18 @@ class EmployeeWritePayload {
         'hireDate': hireDate?.toIso8601String(),
         'status': status,
         'salaryType': salaryType,
-        'pieceRates': pieceRates.map((row) => row.toJson()).toList(),
+        'pieceRates': pieceRates.map((row) {
+          final pieceType = row.pieceType.trim();
+          final stage = row.stage.trim();
+          final rateText = row.rateText.trim();
+          final employeeExtra = rateText.isEmpty ? 0.0 : (double.tryParse(rateText) ?? 0.0);
+
+          return {
+            'pieceType': pieceType,
+            'stage': stage,
+            'rate': employeeExtra,
+          };
+        }).toList(),
       };
 }
 

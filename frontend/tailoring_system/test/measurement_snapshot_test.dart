@@ -215,11 +215,11 @@ void main() {
     }
   });
 
-  test('measurement card keeps the approved 3x5 inch portrait sizing', () {
+  test('measurement card keeps the approved 3x8 inch portrait sizing', () {
     expect(DocumentPrintSupport.measurementCardPortrait.width,
         closeTo(3 * 72, 0.1));
     expect(DocumentPrintSupport.measurementCardPortrait.height,
-        closeTo(5 * 72, 0.1));
+        closeTo(8 * 72, 0.1));
     expect(DocumentPrintSupport.measurementCardPortrait.width,
         lessThan(DocumentPrintSupport.measurementCardPortrait.height));
   });
@@ -251,6 +251,7 @@ void main() {
       'Request2': 'خياطة خاصة',
       'SpecialRequest': 'حزام مزخرف',
       'MeasurementSnapshot': '{"الطول":"26","الكتف":"17"}',
+      'deliveryDate': '2026-02-15T00:00:00Z',
     };
 
     final detail = _buildDetailFromJsonForTest(json);
@@ -259,6 +260,7 @@ void main() {
     expect(detail.request1, 'تخصيص داخلي');
     expect(detail.request2, 'خياطة خاصة');
     expect(detail.specialRequest, 'حزام مزخرف');
+    expect(detail.deliveryDate, DateTime.utc(2026, 2, 15));
     expect(detail.measurements, {'الطول': '26', 'الكتف': '17'});
   });
 }
@@ -298,12 +300,15 @@ _OrderPieceDetailForTest _buildDetailFromJsonForTest(Map<String, dynamic> json) 
     measurementMap['SpecialRequest'],
   ]);
 
+  final deliveryDate = DateTime.tryParse((json['deliveryDate'] ?? '').toString());
+
   return _OrderPieceDetailForTest(
     fabricCode: fabricCode,
     fabricType: fabricType,
     request1: request1,
     request2: request2,
     specialRequest: specialRequest,
+    deliveryDate: deliveryDate,
     measurements: extractRealPieceMeasurements(measurementMap),
   );
 }
@@ -315,6 +320,7 @@ class _OrderPieceDetailForTest {
     required this.request1,
     required this.request2,
     required this.specialRequest,
+    required this.deliveryDate,
     required this.measurements,
   });
 
@@ -323,5 +329,6 @@ class _OrderPieceDetailForTest {
   final String request1;
   final String request2;
   final String specialRequest;
+  final DateTime? deliveryDate;
   final Map<String, dynamic> measurements;
 }

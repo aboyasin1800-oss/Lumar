@@ -1,4 +1,10 @@
 using LUMAR_ERP_API_V2.ErrorHandling;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Data.SqlClient;
 using System.Runtime.CompilerServices;
 using Xunit;
@@ -50,5 +56,35 @@ public sealed class ApiErrorResponseFactoryTests
         Assert.False(response.Success);
         Assert.Equal("DLV-001", response.ErrorCode);
         Assert.DoesNotContain("Controller", response.UserFriendlyMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GlobalApiErrorResultFilter_PreservesStructuredControllerErrorBody()
+    {
+        var httpContext = new DefaultHttpContext();
+        httpContext.TraceIdentifier = "corr-structured-400";
+        httpContext.Request.Path = "/auth/mobile/employee/provision";
+
+        var actionContext = new ActionContext(httpContext, new RouteData(), new ActionDescriptor());
+        var payload = new
+        {
+            message = "لدى هذا الموظف حساب مسبقاً. استخدم تسجيل الدخول.",
+            correlationId = httpContext.TraceIdentifier
+        };
+
+        var result = new BadRequestObjectResult(payload);
+        var context = new ResultExecutingContext(
+            actionContext,
+            new FilterCollection(),
+            result,
+            controller: null);
+
+        var filter = new GlobalApiErrorResultFilter();
+        ResultExecutionDelegate next = () => Task.FromResult<ResultExecutedContext>(null!);
+        await filter.OnResultExecutionAsync(context, next);
+
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(context.Result);
+        Assert.Same(payload, badRequestResult.Value);
+        Assert.Equal("corr-structured-400", httpContext.Response.Headers["X-Correlation-Id"].ToString());
     }
 }
