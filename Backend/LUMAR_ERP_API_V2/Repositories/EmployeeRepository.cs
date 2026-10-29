@@ -6,6 +6,7 @@ using LUMAR_ERP_API_V2.DTOs.Production;
 using LUMAR_ERP_API_V2.Services;
 using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
+using PayrollPieceWageRateDto = LUMAR_ERP_API_V2.DTOs.Payroll.PieceWageRateDto;
 
 namespace LUMAR_ERP_API_V2.Repositories;
 
@@ -28,12 +29,13 @@ public sealed class EmployeeRepository(ReadOnlySqlConnectionFactory connections,
     public async Task<EmployeeDetailsDto?> GetByIdAsync(int employeeId, CancellationToken ct) => (await QueryAsync("SELECT EmployeeID, EmployeeCode, EmployeeName, JobTitle, ScannerCode, PhoneNumber, BaseSalary, Notes, IsActive, SalaryType, FixedSalary, FullName, NationalId, Phone, Email, Address, HireDate, TerminationDate, Status, DepartmentId, BasicSalary, PieceWageRate, OvertimeHourlyRate, CreatedAt, UpdatedAt FROM dbo.Employees WHERE EmployeeID = @id", employeeId, reader => new EmployeeDetailsDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.NullableString("JobTitle"), reader.NullableString("ScannerCode"), reader.NullableString("PhoneNumber"), reader.NullableDecimal("BaseSalary"), reader.NullableString("Notes"), reader.NullableBoolean("IsActive"), reader.NullableString("SalaryType"), reader.NullableDecimal("FixedSalary"), reader.GetString(11), reader.NullableString("NationalId"), reader.NullableString("Phone"), reader.NullableString("Email"), reader.NullableString("Address"), reader.GetDateTime(16), reader.NullableDateTime("TerminationDate"), reader.GetString(18), reader.GetInt32(19), reader.GetDecimal(20), reader.GetDecimal(21), reader.GetDecimal(22), reader.GetDateTime(23), reader.NullableDateTime("UpdatedAt"), null, null, null, null, null, null, null, null, null, null), ct)).FirstOrDefault();
     public async Task<EmployeeDetailsDto?> CreateAsync(CreateEmployeeDto request, CancellationToken ct)
     {
-        var normalized = EmployeeWriteValidator.ValidateForCreate(request);
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
         try
         {
+            var officialRates = await LoadOfficialPieceWageRatesAsync(connection, (SqlTransaction)transaction, ct);
+            var normalized = EmployeeWriteValidator.ValidateForCreate(request, officialRates);
             var employeeCode = string.IsNullOrWhiteSpace(normalized.EmployeeCode)
                 ? await GenerateEmployeeCodeAsync(connection, (SqlTransaction)transaction, ct)
                 : normalized.EmployeeCode.Trim();
@@ -101,20 +103,19 @@ VALUES (@employeeCode, @employeeName, @fullName, @departmentId, @phoneNumber, @b
 
     public async Task<EmployeeDetailsDto?> UpdateAsync(int employeeId, UpdateEmployeeDto request, CancellationToken ct)
     {
-        var normalized = EmployeeWriteValidator.ValidateForUpdate(request);
-        var existingEmployee = await GetByIdAsync(employeeId, ct);
-        if (existingEmployee is null) return null;
-
-        var employeeCode = string.IsNullOrWhiteSpace(normalized.EmployeeCode)
-            ? existingEmployee.EmployeeCode
-            : normalized.EmployeeCode.Trim();
-
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
         try
         {
-            await EnsureDepartmentExistsAsync(connection, (SqlTransaction)transaction, normalized.DepartmentId, ct);
+            var officialRates = await LoadOfficialPieceWageRatesAsync(connection, (SqlTransaction)transaction, ct);
+            var normalized = EmployeeWriteValidator.ValidateForUpdate(request, officialRates);
+            var existingEmployee = await GetByIdAsync(employeeId, ct);
+            if (existingEmployee is null) return null;
+
+            var employeeCode = string.IsNullOrWhiteSpace(normalized.EmployeeCode)
+                ? existingEmployee.EmployeeCode
+                : normalized.EmployeeCode.Trim();
 
             await using (var duplicateCheck = new SqlCommand("SELECT TOP (1) EmployeeID FROM dbo.Employees WITH (UPDLOCK, HOLDLOCK) WHERE EmployeeCode = @code AND EmployeeID <> @id", connection, (SqlTransaction)transaction))
             {
@@ -486,6 +487,30 @@ VALUES (@employeeId, @contractTemplateId, @contractNumber, @contractType, @contr
             UpdatedAt: DateTime.UtcNow);
 
         return await UpsertContractAsync(employeeId, contract, ct);
+    }
+
+    private static async Task<IReadOnlyList<PayrollPieceWageRateDto>> LoadOfficialPieceWageRatesAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken ct)
+    {
+        var rates = new List<PayrollPieceWageRateDto>();
+        await using var command = new SqlCommand(@"SELECT PieceWageRateID, PieceType, Stage, WageRate, IsActive, Notes, CreatedAt, UpdatedAt
+FROM dbo.PieceWageRates WITH (NOLOCK)
+WHERE IsActive = 1
+ORDER BY PieceType, Stage, PieceWageRateID;", connection, transaction);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            rates.Add(new PayrollPieceWageRateDto(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetDecimal(3),
+                reader.GetBoolean(4),
+                reader.NullableString("Notes"),
+                reader.GetDateTime(6),
+                reader.NullableDateTime("UpdatedAt")));
+        }
+
+        return rates;
     }
 
     private async Task SaveEmployeeSupportingDataAsync(SqlConnection connection, SqlTransaction transaction, int employeeId, string? contractNumber, string? contractType, string? contractStatus, DateTime? contractStartDate, DateTime? contractEndDate, DateTime? contractSignedDate, string? contractNotes, string? contractFilePath, IReadOnlyList<EmployeePieceRateAssignmentInputDto>? pieceRates, CancellationToken ct)

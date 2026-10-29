@@ -72,4 +72,70 @@ public class EmployeeWriteValidatorTests
         var exception = Assert.Throws<ArgumentException>(() => EmployeeWriteValidator.ValidateForCreate(request));
         Assert.Contains("Stage", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void ValidateForCreate_AllowsZeroEmployeeExtraForPieceWage()
+    {
+        var request = new CreateEmployeeDto
+        {
+            FullName = "مستخدم قطعة",
+            DepartmentId = 1,
+            BasicSalary = 0m,
+            HireDate = DateTime.UtcNow,
+            Status = "Active",
+            SalaryType = "PieceWage",
+            PieceRates =
+            [
+                new EmployeePieceRateAssignmentInputDto("قميص", "Cutting", 0m, null, null, true)
+            ]
+        };
+
+        var validated = EmployeeWriteValidator.ValidateForCreate(request);
+
+        Assert.Equal(0m, validated.PieceRates![0].Rate);
+    }
+
+    [Fact]
+    public void ValidateForCreate_RejectsNegativeEmployeeExtraForPieceWage()
+    {
+        var request = new CreateEmployeeDto
+        {
+            FullName = "مستخدم قطعة",
+            DepartmentId = 1,
+            BasicSalary = 0m,
+            HireDate = DateTime.UtcNow,
+            Status = "Active",
+            SalaryType = "PieceWage",
+            PieceRates =
+            [
+                new EmployeePieceRateAssignmentInputDto("قميص", "Cutting", -10m, null, null, true)
+            ]
+        };
+
+        var exception = Assert.Throws<ArgumentException>(() => EmployeeWriteValidator.ValidateForCreate(request));
+        Assert.Contains("سالب", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ValidateForCreate_RejectsMissingOfficialRateWithArabicMessage()
+    {
+        var request = new CreateEmployeeDto
+        {
+            FullName = "مستخدم قطعة",
+            DepartmentId = 1,
+            BasicSalary = 0m,
+            HireDate = DateTime.UtcNow,
+            Status = "Active",
+            SalaryType = "PieceWage",
+            PieceRates =
+            [
+                new EmployeePieceRateAssignmentInputDto("قميص", "Cutting", 0m, null, null, true)
+            ]
+        };
+
+        var exception = Assert.Throws<ArgumentException>(() => EmployeeWriteValidator.ValidateForCreate(request, []));
+
+        Assert.Contains("لم يتم تعريف أجر القطعة", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("قميص", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }

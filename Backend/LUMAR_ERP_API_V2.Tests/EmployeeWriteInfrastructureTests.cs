@@ -229,7 +229,7 @@ public sealed class EmployeeWriteInfrastructureTests
     {
         var connectionString = GetConnectionString();
         var code = CreateUniqueEmployeeCode("ES7-GEN");
-        var scannerCode = $"SCN-{Guid.NewGuid():N}"[..30];
+        var scannerCode = $"SCN-{Guid.NewGuid():N}"[..20];
 
         var repository = CreateRepository(connectionString);
         var created = await repository.CreateAsync(new CreateEmployeeDto
@@ -311,6 +311,15 @@ UPDATE dbo.Employees SET ScannerCode = NULL, UpdatedAt = SYSDATETIME() WHERE Emp
     {
         var connectionString = GetConnectionString();
         var code = CreateUniqueEmployeeCode("ES7-STALE");
+
+        await using (var connection = new SqlConnection(connectionString))
+        {
+            await connection.OpenAsync();
+            await using var seed = new SqlCommand(@"INSERT INTO dbo.PieceWageRates (PieceType, Stage, WageRate, IsActive, Notes, CreatedAt, UpdatedAt)
+VALUES (N'كوت', N'Cutting', 120.00, 1, N'Test rate', SYSDATETIME(), SYSDATETIME()),
+       (N'بنطلون', N'Sewing', 140.00, 1, N'Test rate', SYSDATETIME(), SYSDATETIME());", connection);
+            await seed.ExecuteNonQueryAsync();
+        }
 
         var repository = CreateRepository(connectionString);
         var created = await repository.CreateAsync(new CreateEmployeeDto

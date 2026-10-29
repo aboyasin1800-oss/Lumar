@@ -1,10 +1,12 @@
 namespace LUMAR_ERP_API_V2.Services;
 
 using LUMAR_ERP_API_V2.DTOs.Employees;
+using LUMAR_ERP_API_V2.DTOs.Payroll;
+using PayrollPieceWageRateDto = LUMAR_ERP_API_V2.DTOs.Payroll.PieceWageRateDto;
 
 public static class EmployeeWriteValidator
 {
-    public static CreateEmployeeDto ValidateForCreate(CreateEmployeeDto request)
+    public static CreateEmployeeDto ValidateForCreate(CreateEmployeeDto request, IReadOnlyList<PayrollPieceWageRateDto>? officialRates = null)
     {
         if (request is null) throw new ArgumentException("Employee payload is required.");
 
@@ -14,7 +16,7 @@ public static class EmployeeWriteValidator
         if (string.IsNullOrWhiteSpace(request.Status)) throw new ArgumentException("Status is required.");
         var salaryType = NormalizeSalaryType(request.SalaryType);
         ValidateSalary(request.BasicSalary, salaryType);
-        ValidatePieceRates(request.PieceRates, salaryType);
+        ValidatePieceRates(request.PieceRates, salaryType, officialRates);
 
         return request with
         {
@@ -26,7 +28,7 @@ public static class EmployeeWriteValidator
         };
     }
 
-    public static UpdateEmployeeDto ValidateForUpdate(UpdateEmployeeDto request)
+    public static UpdateEmployeeDto ValidateForUpdate(UpdateEmployeeDto request, IReadOnlyList<PayrollPieceWageRateDto>? officialRates = null)
     {
         if (request is null) throw new ArgumentException("Employee payload is required.");
 
@@ -36,7 +38,7 @@ public static class EmployeeWriteValidator
         if (string.IsNullOrWhiteSpace(request.Status)) throw new ArgumentException("Status is required.");
         var salaryType = NormalizeSalaryType(request.SalaryType);
         ValidateSalary(request.BasicSalary, salaryType);
-        ValidatePieceRates(request.PieceRates, salaryType);
+        ValidatePieceRates(request.PieceRates, salaryType, officialRates);
 
         return request with
         {
@@ -78,7 +80,7 @@ public static class EmployeeWriteValidator
             throw new ArgumentException("BasicSalary must be zero for PieceWage employees.");
     }
 
-    private static void ValidatePieceRates(IReadOnlyList<EmployeePieceRateAssignmentInputDto>? pieceRates, string salaryType)
+    private static void ValidatePieceRates(IReadOnlyList<EmployeePieceRateAssignmentInputDto>? pieceRates, string salaryType, IReadOnlyList<PayrollPieceWageRateDto>? officialRates = null)
     {
         if (salaryType != "PieceWage")
             return;
@@ -94,8 +96,24 @@ public static class EmployeeWriteValidator
                 throw new ArgumentException("PieceType is required for each piece rate.");
             if (string.IsNullOrWhiteSpace(item.Stage))
                 throw new ArgumentException("Stage is required for each piece rate.");
-            if (item.Rate <= 0m)
-                throw new ArgumentException("Piece rate amount must be greater than zero.");
+
+            if (item.Rate < 0m)
+                throw new ArgumentException("الإضافي لا يمكن أن يكون سالباً.");
+
+            if (officialRates is not null)
+            {
+                var hasOfficialRate = officialRates.Any(rate =>
+                    rate.IsActive
+                    && string.Equals(rate.PieceType, item.PieceType.Trim(), StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(rate.Stage, item.Stage.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                if (!hasOfficialRate)
+                {
+                    var pieceTypeLabel = item.PieceType.Trim();
+                    var stageLabel = item.Stage.Trim();
+                    throw new ArgumentException($"لم يتم تعريف أجر القطعة لنوع القطعة {pieceTypeLabel} في المرحلة {stageLabel}. عرّف السعر أولًا من تبويب أجور القطع.");
+                }
+            }
         }
     }
 
