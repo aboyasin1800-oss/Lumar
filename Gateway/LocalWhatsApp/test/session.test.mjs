@@ -114,18 +114,83 @@ test('concurrent commands are rejected while sending, not queued', async () => {
   assert.deepEqual(await sending, { outcome: 'Sent', providerMessageId: 'provider-id', retryable: false });
 });
 
+test('web driver waits for the official message_create event when the direct send result has no trusted provider id', async () => {
+  const driver = new WebDriver('test-data');
+  const client = new EventEmitter();
+  client.sendMessage = async () => ({ id: { fromMe: true }, body: 'hello' });
+  driver.client = client;
+
+  const sendPromise = driver.send({ recipient: '967777123456', text: 'hello' });
+  client.emit('message_create', {
+    fromMe: true,
+    body: 'hello',
+    to: { _serialized: '967777123456@c.us' },
+    id: { fromMe: true, remote: { _serialized: '967777123456@c.us' }, id: 'confirmed-remote-id', _serialized: 'wamid.event.confirmed' },
+  });
+
+  assert.equal(await sendPromise, 'wamid.event.confirmed');
+});
+
+test('web driver only accepts trusted provider ids for ack mapping and ignores duplicate or wrong ack ids', async () => {
+  const driver = new WebDriver('test-data');
+  const client = new EventEmitter();
+  client.sendMessage = async () => ({
+    id: { fromMe: true, remote: { _serialized: '967777123456@c.us' }, id: 'ack-target-id', _serialized: 'wamid.ack.target' },
+    body: 'hello',
+  });
+  driver.client = client;
+
+  const sendPromise = driver.send({ recipient: '967777123456', text: 'hello' });
+  client.emit('message_create', {
+    fromMe: true,
+    body: 'hello',
+    to: { _serialized: '967777123456@c.us' },
+    id: { fromMe: true, remote: { _serialized: '967777123456@c.us' }, id: 'ack-target-id', _serialized: 'wamid.ack.target' },
+  });
+
+  const providerId = await sendPromise;
+  assert.equal(providerId, 'wamid.ack.target');
+  assert.equal(driver.knownProviderIds.has(providerId), true);
+
+  client.emit('message_ack', { id: { fromMe: true, remote: { _serialized: '967777123456@c.us' }, id: 'wrong-id', _serialized: 'wamid.wrong' } }, 3);
+  assert.equal(driver.knownProviderIds.get(providerId).ackLevel, null);
+
+  client.emit('message_ack', { id: { fromMe: true, remote: { _serialized: '967777123456@c.us' }, id: 'ack-target-id', _serialized: 'wamid.ack.target' } }, 3);
+  assert.equal(driver.knownProviderIds.get(providerId).ackLevel, 3);
+
+  client.emit('message_ack', { id: { fromMe: true, remote: { _serialized: '967777123456@c.us' }, id: 'ack-target-id', _serialized: 'wamid.ack.target' } }, 3);
+  assert.equal(driver.knownProviderIds.get(providerId).ackLevel, 3);
+});
+
+test('web driver accepts an early outgoing message_create event when it arrives before the pending confirmation request is registered', async () => {
+  const driver = new WebDriver('test-data');
+  const client = new EventEmitter();
+  client.sendMessage = async () => {
+    client.emit('message_create', {
+      fromMe: true,
+      body: 'race',
+      to: { _serialized: '967777123456@c.us' },
+      id: { fromMe: true, remote: { _serialized: '967777123456@c.us' }, id: 'race-confirmed-id', _serialized: 'wamid.race.confirmed' },
+    });
+    return { id: { fromMe: true }, body: 'race' };
+  };
+  driver.client = client;
+
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'race' }), 'wamid.race.confirmed');
+});
+
 test('web driver supports the installed whatsapp-web.js message contract and blocks unconfirmed sends', async () => {
   const driver = new WebDriver('test-data');
   driver.client = {
     sendMessage: async () => ({
-      id: { _serialized: 'wamid.1', id: 'remote-id' },
+      id: { _serialized: 'wamid.1', id: 'remote-id-valid' },
       body: 'ok',
     }),
   };
   assert.equal(await driver.send({ recipient: '967777123456', text: 'hello' }), 'wamid.1');
 
   driver.client.sendMessage = async () => ({ id: { id: 'fallback-id' } });
-  assert.equal(await driver.send({ recipient: '967777123456', text: 'hello' }), 'fallback-id');
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'hello' }), null);
 
   driver.client.sendMessage = async () => ({ id: {} });
   assert.equal(await driver.send({ recipient: '967777123456', text: 'hello' }), null);
@@ -175,4 +240,80 @@ test('web driver supports the installed whatsapp-web.js message contract and blo
   await assert.rejects(session.send({ text: 'final' }), { code: 'SEND_UNCONFIRMED' });
   assert.equal(session.status().lastError, 'SEND_UNCONFIRMED');
   assert.equal(JSON.stringify(session.status()).includes('secret'), false);
+});
+
+test('gateway send logs are tagged and safe when the send is unconfirmed', async () => {
+  const originalError = console.error;
+  const messages = [];
+  console.error = (...args) => { messages.push(args.join(' ')); };
+
+  try {
+    const manager = new SessionManager(() => ({
+      initialize: async () => {},
+      destroy: async () => {},
+      logout: async () => {},
+      send: async () => null,
+      on: () => {},
+    }), { read: () => ({ linked: true, connect: true, loggedOut: false }), write: () => {} });
+    manager.state = 'Connected';
+    manager.driver = { send: async () => null };
+
+    await assert.rejects(manager.send({ text: 'final message' }), { code: 'SEND_UNCONFIRMED' });
+    const combined = messages.join('\n');
+    assert.match(combined, /LOCAL_WA_SAFE_OBSERVABILITY/);
+    assert.doesNotMatch(combined, /final message|secret|token|password|967777123456/);
+  } finally {
+    console.error = originalError;
+  }
+});
+
+test('web driver captures safe send diagnostics for all required send outcomes', async () => {
+  const driver = new WebDriver('test-data');
+
+  driver.client = { sendMessage: async () => ({
+    id: { _serialized: 'wamid.1', id: 'remote-id-valid' },
+    body: 'ok',
+  }) };
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'hello' }), 'wamid.1');
+  assert.equal(driver.lastSendDiagnostics.SEND_MESSAGE_RETURNED, 'YES');
+  assert.equal(driver.lastSendDiagnostics.RETURN_OBJECT_TYPE, 'object');
+  assert.equal(driver.lastSendDiagnostics.MESSAGE_ID_PRESENT, 'YES');
+  assert.equal(driver.lastSendDiagnostics.MESSAGE_ID_SERIALIZED_PRESENT, 'YES');
+  assert.equal(driver.lastSendDiagnostics.MESSAGE_ID_ID_PRESENT, 'YES');
+  assert.equal(driver.lastSendDiagnostics.EXTRACTED_PROVIDER_ID_PRESENT, 'YES');
+  assert.equal(driver.lastSendDiagnostics.SEND_EXCEPTION_TYPE, null);
+
+  driver.client.sendMessage = async () => { throw new TypeError('send failed'); };
+  await assert.rejects(driver.send({ recipient: '967777123456', text: 'boom' }), /send failed/);
+  assert.equal(driver.lastSendDiagnostics.SEND_MESSAGE_RETURNED, 'NO');
+  assert.equal(driver.lastSendDiagnostics.RETURN_OBJECT_TYPE, 'null');
+  assert.equal(driver.lastSendDiagnostics.MESSAGE_ID_PRESENT, 'NO');
+  assert.equal(driver.lastSendDiagnostics.SEND_EXCEPTION_TYPE, 'TypeError');
+
+  driver.client.sendMessage = async () => ({ body: 'ok' });
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'missing' }), null);
+  assert.equal(driver.lastSendDiagnostics.MESSAGE_ID_PRESENT, 'NO');
+  assert.equal(driver.lastSendDiagnostics.EXTRACTED_PROVIDER_ID_PRESENT, 'NO');
+
+  driver.client.sendMessage = async () => ({ id: { _serialized: 'wamid.x' } });
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'serialized' }), 'wamid.x');
+  assert.equal(driver.lastSendDiagnostics.MESSAGE_ID_SERIALIZED_PRESENT, 'YES');
+
+  driver.client.sendMessage = async () => ({ id: { id: 'wamid.valid-id' } });
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'id-only' }), 'wamid.valid-id');
+  assert.equal(driver.lastSendDiagnostics.MESSAGE_ID_ID_PRESENT, 'YES');
+
+  driver.client.sendMessage = async () => ({ id: { id: 'placeholder', _serialized: 'placeholder' } });
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'placeholder' }), null);
+  assert.equal(driver.lastSendDiagnostics.EXTRACTED_PROVIDER_ID_PRESENT, 'NO');
+
+  driver.client.sendMessage = async () => ({ id: { fromMe: true, remote: { _serialized: '967777123456@c.us' }, id: 'safe-proof' } });
+  assert.equal(await driver.send({ recipient: '967777123456', text: 'proof' }), 'true_967777123456@c.us_safe-proof');
+  assert.equal(driver.lastSendDiagnostics.EXTRACTED_PROVIDER_ID_PRESENT, 'YES');
+
+  const serialized = JSON.stringify(driver.lastSendDiagnostics);
+  assert.equal(serialized.includes('967777123456'), false);
+  assert.equal(serialized.includes('secret'), false);
+  assert.equal(serialized.includes('text'), false);
+  assert.equal(serialized.includes('token'), false);
 });

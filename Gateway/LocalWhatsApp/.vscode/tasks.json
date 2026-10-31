@@ -1,0 +1,68 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "LocalWhatsApp Node Tests",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Gateway\\LocalWhatsApp && node --test test/*.test.mjs"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "LocalWhatsApp one live probe",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"D:\\YASIN\\temp\\run_local_probe.cmd"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Gateway startup probe",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Gateway\\LocalWhatsApp && set LUMAR_LOCAL_GATEWAY_PORT=5094 && set LUMAR_LOCAL_TEST_RECIPIENT=967775106545 && set LUMAR_LOCAL_MEDIA_ORIGIN=https://public-backend.example.com && node src/server.mjs"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Check port 5094 lock",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"Get-NetTCPConnection -LocalPort 5094 -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State,OwningProcess | Format-Table -AutoSize; Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -in (Get-NetTCPConnection -LocalPort 5094 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique) } | Select-Object ProcessId,Name,CommandLine | Format-Table -AutoSize"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Port 5094 binding check",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"netstat -ano | findstr :5094"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Manual gateway startup probe",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Gateway\\LocalWhatsApp && set LUMAR_LOCAL_GATEWAY_PORT=5094 && set LUMAR_LOCAL_TEST_RECIPIENT=967775106545 && set LUMAR_LOCAL_MEDIA_ORIGIN=https://public-backend.example.com && node src/server.mjs"
+			],
+			"isBackground": false
+		}
+	]
+}

@@ -52,7 +52,28 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
                 or "CONNECTION_LOST" or "SESSION_CONNECTION_FAILED" or "SEND_UNCONFIRMED" => result.LastError,
             _ => "GATEWAY_ERROR"
         };
-        return result with { CurrentNumber = number, LastError = error, OperationalActivation = false };
+
+        var connected = result.State == "Connected" && result.Linked && !string.IsNullOrWhiteSpace(number);
+        var readyToSend = connected && error is null;
+        var gatewayAvailable = result.State is not "Unavailable" and not "Error" && result.State != "NotLinked";
+        var ownerActionRequired = result.State is "NotLinked" or "LoggedOut" or "Error" || (result.State == "Disconnected" && !result.Linked);
+        var warning = readyToSend ? null
+            : result.State == "Reconnecting" ? "قناة واتساب المحلية تعيد الاتصال حاليًا. النظام يعمل بصورة طبيعية، وإرسال واتساب المحلي متوقف مؤقتًا."
+            : ownerActionRequired ? "قناة واتساب المحلية تحتاج إلى إعادة ربط الحساب."
+            : result.State == "Disconnected" ? "واتساب المحلي غير متصل حاليًا."
+            : result.State == "Connected" && result.Linked && error is not null ? "واتساب المحلي مفعل للإرسال لكنه غير جاهز حاليًا. لن يتحول الإرسال تلقائيًا إلى ميتا."
+            : null;
+
+        return result with
+        {
+            CurrentNumber = number,
+            LastError = error,
+            OperationalActivation = false,
+            ReadyToSend = readyToSend,
+            GatewayAvailable = gatewayAvailable,
+            OwnerActionRequired = ownerActionRequired,
+            Warning = warning
+        };
     }
 
     private async Task<T> RequestAsync<T>(HttpMethod method, string path, CancellationToken cancellationToken)

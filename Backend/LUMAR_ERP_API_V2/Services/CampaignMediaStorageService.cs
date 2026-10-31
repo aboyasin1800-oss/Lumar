@@ -49,6 +49,18 @@ public sealed class CampaignMediaStorageService
         if (file is null)
             throw new InvalidOperationException("Campaign image file is required.");
 
+        if (string.IsNullOrWhiteSpace(_publicBaseUrl))
+            throw new InvalidOperationException("Campaign media PublicBaseUrl is required for a trusted public image URL.");
+
+        if (!Uri.TryCreate(_publicBaseUrl, UriKind.Absolute, out var publicBaseUri)
+            || !string.Equals(publicBaseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            || publicBaseUri.IsLoopback
+            || publicBaseUri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || (IPAddress.TryParse(publicBaseUri.Host, out var ipAddress) && (ipAddress.Equals(IPAddress.Loopback) || IsPrivateAddress(ipAddress))))
+        {
+            throw new InvalidOperationException("Campaign media PublicBaseUrl must be a public HTTPS URL.");
+        }
+
         if (file.Length <= 0 || file.Length > MaxBytes)
             throw new InvalidOperationException("Campaign image file must be between 1 byte and 8 MB.");
 

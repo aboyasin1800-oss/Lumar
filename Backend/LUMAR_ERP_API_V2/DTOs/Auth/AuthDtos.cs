@@ -45,7 +45,8 @@ public sealed record RefreshTokenDto(string RefreshToken);
 public sealed record RefreshResultDto(string AccessToken, DateTime ExpiresAtUtc, string? NewRefreshToken);
 
 public sealed record RecoveryStartDto(string Username);
-public sealed record RecoveryStartResultDto(bool Success, string? Message);
+public sealed record AdminRecoveryStartDto(string Username);
+public sealed record RecoveryStartResultDto(bool Success, string? Message, string? ResetToken = null);
 
 public sealed record RecoveryVerifyDto(string Username, string Code);
 public sealed record RecoveryVerifyResultDto(bool Success, string? Message, string? ResetToken);

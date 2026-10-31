@@ -477,6 +477,83 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         }
     }
 
+    public async Task<RecoveryStartResultDto> BeginAdministrativeRecoveryAsync(string adminToken, string username, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(adminToken))
+            return new RecoveryStartResultDto(false, "جلسة الإدارة مطلوبة لبدء استعادة الحساب.");
+
+        var adminUser = await GetUserAsync(adminToken, ct);
+        if (adminUser is null || !IsAdministrativeRole(adminUser.Role))
+            return new RecoveryStartResultDto(false, "إعادة تعيين كلمة المرور مفتوحة فقط للمستخدمين الإداريين.");
+
+        if (string.IsNullOrWhiteSpace(username))
+            return new RecoveryStartResultDto(false, "اسم المستخدم المطلوب لإعادة التعيين غير موجود.");
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+
+        await using var userLookup = new SqlCommand(
+            "SELECT UserID, IsActive FROM dbo.Users WHERE Username = @username",
+            connection);
+        userLookup.Parameters.AddWithValue("@username", username.Trim());
+
+        await using var reader = await userLookup.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return new RecoveryStartResultDto(false, "المستخدم غير موجود أو غير نشط.");
+
+        var userId = reader.GetInt32(0);
+        var isActive = reader.GetBoolean(1);
+        if (!isActive)
+            return new RecoveryStartResultDto(false, "المستخدم غير موجود أو غير نشط.");
+
+        var resetToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var expiresAtUtc = DateTime.UtcNow.AddMinutes(15);
+
+        await using var writeToken = new SqlCommand(
+            "INSERT INTO dbo.UserSessions (SessionId, UserId, TokenHash, CreatedAtUtc, ExpiresAtUtc, RevocationReason) VALUES (NEWID(), @userId, @tokenHash, SYSUTCDATETIME(), @expiresAt, 'PasswordRecovery')",
+            connection);
+        writeToken.Parameters.AddWithValue("@userId", userId);
+        writeToken.Parameters.Add("@tokenHash", System.Data.SqlDbType.VarBinary, 32).Value = TokenHash(resetToken);
+        writeToken.Parameters.AddWithValue("@expiresAt", expiresAtUtc);
+        await writeToken.ExecuteNonQueryAsync(ct);
+
+        return new RecoveryStartResultDto(true, "تم تجهيز رمز استعادة الحساب الإداري. استخدمه لتحديث كلمة المرور فوراً.", resetToken);
+    }
+
+    public async Task<RecoveryCompleteResultDto> CompleteAdministrativeRecoveryAsync(string resetToken, string newPassword, string confirmPassword, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(resetToken) || string.IsNullOrWhiteSpace(newPassword))
+            return new RecoveryCompleteResultDto(false, "بيانات استعادة الحساب غير مكتملة.");
+
+        if (newPassword.Length < 8 || !string.Equals(newPassword, confirmPassword, StringComparison.Ordinal))
+            return new RecoveryCompleteResultDto(false, "كلمة المرور غير صالحة أو غير متطابقة.");
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+
+        var tokenHash = TokenHash(resetToken);
+        await using var query = new SqlCommand(
+            "SELECT UserId FROM dbo.UserSessions WHERE TokenHash = @hash AND RevokedAtUtc IS NULL AND ExpiresAtUtc > SYSUTCDATETIME() AND RevocationReason = 'PasswordRecovery'",
+            connection);
+        query.Parameters.Add("@hash", System.Data.SqlDbType.VarBinary, 32).Value = tokenHash;
+
+        await using var reader = await query.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return new RecoveryCompleteResultDto(false, "رمز استعادة الحساب غير صالح أو منتهي الصلاحية.");
+
+        var userId = reader.GetInt32(0);
+        await reader.CloseAsync();
+
+        await using var update = new SqlCommand(
+            "UPDATE dbo.Users SET PasswordHash = @hash, UserPassword = '', SecurityStamp = NEWID() WHERE UserID = @id; UPDATE dbo.UserSessions SET RevokedAtUtc = SYSUTCDATETIME(), RevocationReason = 'PasswordReset' WHERE UserId = @id AND RevokedAtUtc IS NULL",
+            connection);
+        update.Parameters.AddWithValue("@hash", HashPassword(newPassword));
+        update.Parameters.AddWithValue("@id", userId);
+        await update.ExecuteNonQueryAsync(ct);
+
+        return new RecoveryCompleteResultDto(true, "تمت استعادة كلمة المرور بنجاح.");
+    }
+
     public async Task<CurrentUserDto?> GetCurrentUserAsync(string token, CancellationToken ct)
     {
         return await GetUserAsync(token, ct);
@@ -612,74 +689,20 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
 
     public async Task<RecoveryStartResultDto> RecoveryStartAsync(string username, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(username))
-            return new RecoveryStartResultDto(false, "اسم المستخدم مطلوب.");
-
-        await using var connection = connections.Create();
-        await connection.OpenAsync(ct);
-
-        await using var command = new SqlCommand(
-            "SELECT 1 FROM dbo.Users WHERE Username = @username AND IsActive = 1",
-            connection);
-        command.Parameters.AddWithValue("@username", username.Trim());
-
-        await using var reader = await command.ExecuteReaderAsync(ct);
-        var exists = await reader.ReadAsync(ct);
-        return new RecoveryStartResultDto(exists, exists ? "إذا كان الحساب موجودًا، سيتم إرسال تعليمات الاستعادة." : "إذا كان الحساب موجودًا، سيتم إرسال تعليمات الاستعادة.");
+        return new RecoveryStartResultDto(false, "إعادة تعيين كلمة المرور الذاتية متوقفة الآن. استخدم استعادة الحساب الإدارية فقط.");
     }
 
     public async Task<RecoveryVerifyResultDto> RecoveryVerifyAsync(string username, string code, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(code))
-            return new RecoveryVerifyResultDto(false, "بيانات الاستعادة غير كاملة.", null);
-
-        await using var connection = connections.Create();
-        await connection.OpenAsync(ct);
-
-        await using var command = new SqlCommand(
-            "SELECT 1 FROM dbo.Users WHERE Username = @username AND IsActive = 1",
-            connection);
-        command.Parameters.AddWithValue("@username", username.Trim());
-
-        await using var reader = await command.ExecuteReaderAsync(ct);
-        var exists = await reader.ReadAsync(ct);
-        if (!exists)
-            return new RecoveryVerifyResultDto(false, "المستخدم غير موجود أو غير نشط.", null);
-
-        return new RecoveryVerifyResultDto(true, "تم التحقق بنجاح.", Guid.NewGuid().ToString("N"));
+        return new RecoveryVerifyResultDto(false, "إعادة تعيين كلمة المرور الذاتية متوقفة الآن. استخدم استعادة الحساب الإدارية فقط.", null);
     }
 
     public async Task<RecoveryCompleteResultDto> RecoveryCompleteAsync(string resetToken, string newPassword, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(resetToken) || string.IsNullOrWhiteSpace(newPassword))
-            return new RecoveryCompleteResultDto(false, "بيانات الاستعادة غير كاملة.");
-
-        if (newPassword.Length < 8)
-            return new RecoveryCompleteResultDto(false, "كلمة المرور قصيرة.");
-
-        await using var connection = connections.Create();
-        await connection.OpenAsync(ct);
-
-        await using var command = new SqlCommand(
-            "SELECT UserID FROM dbo.UserSessions WHERE TokenHash = @hash AND RevokedAtUtc IS NULL AND ExpiresAtUtc > SYSUTCDATETIME()",
-            connection);
-        command.Parameters.Add("@hash", System.Data.SqlDbType.VarBinary, 32).Value = TokenHash(resetToken);
-
-        await using var reader = await command.ExecuteReaderAsync(ct);
-        if (!await reader.ReadAsync(ct))
+        if (string.IsNullOrWhiteSpace(resetToken))
             return new RecoveryCompleteResultDto(false, "رمز الاستعادة غير صالح.");
 
-        var userId = reader.GetInt32(0);
-        await reader.CloseAsync();
-
-        await using var update = new SqlCommand(
-            "UPDATE dbo.Users SET PasswordHash = @hash, UserPassword = '', SecurityStamp = NEWID() WHERE UserID = @id",
-            connection);
-        update.Parameters.AddWithValue("@hash", HashPassword(newPassword));
-        update.Parameters.AddWithValue("@id", userId);
-        await update.ExecuteNonQueryAsync(ct);
-
-        return new RecoveryCompleteResultDto(true, "تمت استعادة كلمة المرور بنجاح.");
+        return await CompleteAdministrativeRecoveryAsync(resetToken, newPassword, newPassword, ct);
     }
 
     public async Task<List<SessionInfoDto>> GetSessionsAsync(string token, CancellationToken ct)
@@ -784,6 +807,11 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         {
             ManagedCustomerIds = mobileAccount?.ManagedCustomerIds ?? Array.Empty<int>()
         };
+    }
+
+    public static bool IsSelfServiceRecoveryAllowed(string? role)
+    {
+        return false;
     }
 
     internal static bool IsAdministrativeRole(string? role)

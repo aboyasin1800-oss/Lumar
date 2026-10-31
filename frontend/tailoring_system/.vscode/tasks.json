@@ -22,6 +22,70 @@
 			"problemMatcher": [
 				"$dart-analyzer"
 			]
+		},
+		{
+			"label": "LocalWhatsApp Flutter Tests",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\frontend\\tailoring_system && C:\\src\\flutter\\bin\\flutter.bat test test/whatsapp_provider_management_test.dart"
+			],
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "Targeted WhatsApp Flutter analyze",
+			"type": "shell",
+			"command": "C:\\src\\flutter\\bin\\flutter.bat",
+			"args": [
+				"analyze",
+				"lib/screens/settings/whatsapp_provider_management_screen.dart",
+				"test/whatsapp_provider_management_test.dart"
+			],
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "Flutter whatsapp provider tests",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\frontend\\tailoring_system && flutter test test/whatsapp_provider_management_test.dart --reporter expanded"
+			],
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "Flutter WhatsApp provider management test",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Set-Location 'D:\\YASIN\\frontend\\tailoring_system'; & 'C:\\src\\flutter\\bin\\flutter.bat' test test/whatsapp_provider_management_test.dart"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Flutter WhatsApp provider management analyze",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Set-Location 'D:\\YASIN\\frontend\\tailoring_system'; & 'C:\\src\\flutter\\bin\\flutter.bat' analyze lib/screens/settings/whatsapp_provider_management_screen.dart test/whatsapp_provider_management_test.dart"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
 		}
 	]
 }

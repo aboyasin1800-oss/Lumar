@@ -50,6 +50,24 @@ public sealed class LocalWhatsAppFoundationTests
     }
 
     [Fact]
+    public async Task StatusContract_UsesCentralReadyToSend_AndOwnerActionSignals()
+    {
+        using var handler = new GatewayHandler { ResponseBody = "{\"state\":\"Reconnecting\",\"currentNumber\":\"967777123456\",\"linked\":true,\"lastError\":null}" };
+        using var http = Client(handler);
+        var status = await new LocalWhatsAppGatewayClient(http).StatusAsync(CancellationToken.None);
+
+        Assert.Equal("Reconnecting", status.State);
+        Assert.False(status.ReadyToSend);
+        Assert.True(status.GatewayAvailable);
+        Assert.Contains("تعيد الاتصال", status.Warning!, StringComparison.Ordinal);
+
+        handler.ResponseBody = "{\"state\":\"LoggedOut\",\"linked\":false,\"lastError\":\"SESSION_LOGGED_OUT\"}";
+        var ownerStatus = await new LocalWhatsAppGatewayClient(http).StatusAsync(CancellationToken.None);
+        Assert.True(ownerStatus.OwnerActionRequired);
+        Assert.Contains("إعادة ربط", ownerStatus.Warning!, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Adapter_ReportsUnconfirmed_WhenGatewayCannotProveTheMessageId()
     {
         using var handler = new GatewayHandler { ResponseStatus = HttpStatusCode.BadGateway, ResponseBody = "{\"code\":\"SEND_UNCONFIRMED\",\"error\":\"secret\"}" };
@@ -325,6 +343,7 @@ public sealed class LocalWhatsAppFoundationTests
         }
         finally
         {
+            await host.StopAsync(CancellationToken.None);
             StopProcess(startedProcess);
         }
     }
@@ -381,8 +400,212 @@ public sealed class LocalWhatsAppFoundationTests
         }
         finally
         {
+            await host.StopAsync(CancellationToken.None);
             StopProcess(startedProcess);
         }
+    }
+
+    [Fact]
+    public async Task ProcessOwnership_ChildGatewayStartedByHost_CanBeStoppedSafely()
+    {
+        var port = GetFreeTcpPort();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["LocalWhatsAppGateway:BaseUrl"] = $"http://127.0.0.1:{port}/",
+            ["LocalWhatsAppGateway:AutoStart"] = "true",
+        }).Build();
+
+        var host = new LocalWhatsAppGatewayProcessHost(NullLogger<LocalWhatsAppGatewayProcessHost>.Instance, configuration);
+        Process? startedProcess = null;
+
+        try
+        {
+            await host.StartAsync(CancellationToken.None);
+            startedProcess = GetStartedProcess(host);
+
+            Assert.NotNull(startedProcess);
+            var processId = startedProcess!.Id;
+            Assert.True(ProcessStillRunning(processId));
+
+            await host.StopAsync(CancellationToken.None);
+            Assert.False(ProcessStillRunning(processId));
+        }
+        finally
+        {
+            if (startedProcess is not null)
+            {
+                try
+                {
+                    var pid = startedProcess.Id;
+                    if (ProcessStillRunning(pid))
+                    {
+                        StopProcess(startedProcess);
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // The host already disposed the Process object during cleanup.
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void ProcessOwnership_ForeignNodeProcess_OnMatchedPort_IsNotKilled()
+    {
+        var port = GetFreeTcpPort();
+        using var foreign = StartForeignNodeListener(port);
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["LocalWhatsAppGateway:BaseUrl"] = $"http://127.0.0.1:{port}/",
+            ["LocalWhatsAppGateway:AutoStart"] = "true",
+        }).Build();
+
+        var host = new LocalWhatsAppGatewayProcessHost(NullLogger<LocalWhatsAppGatewayProcessHost>.Instance, configuration);
+        var method = typeof(LocalWhatsAppGatewayProcessHost).GetMethod("TryStopStaleGatewayProcessOnPort", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        Assert.NotNull(method);
+        var result = (bool)method!.Invoke(host, null)!;
+
+        Assert.False(result);
+        Assert.False(foreign.HasExited);
+
+        foreign.Kill(entireProcessTree: true);
+        foreign.WaitForExit(5000);
+    }
+
+    [Fact]
+    public void ProcessOwnership_ProductionCode_DoesNotUseUnsafeNodeKillPatterns()
+    {
+        var file = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "LUMAR_ERP_API_V2", "Services", "LocalWhatsAppGatewayProcessHost.cs");
+        var content = File.ReadAllText(Path.GetFullPath(file));
+
+        Assert.DoesNotContain("taskkill /IM node.exe", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("node.exe", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Get-Process node", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Get-NetTCPConnection", content, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ProcessOwnership_StaleLUMARGatewayProcess_IsStoppedByPreciseIdentity()
+    {
+        var port = GetFreeTcpPort();
+        var gatewayScript = Path.Combine("D:", "YASIN", "Gateway", "LocalWhatsApp", "src", "server.mjs");
+        Assert.True(File.Exists(gatewayScript), "Expected LocalWhatsApp gateway script to exist for precise stale-process validation.");
+
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "node",
+                Arguments = $"\"{gatewayScript}\"",
+                WorkingDirectory = Path.GetDirectoryName(gatewayScript)!,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            }
+        };
+        process.StartInfo.Environment["LUMAR_LOCAL_GATEWAY_PORT"] = port.ToString();
+        process.StartInfo.Environment["LUMAR_LOCAL_TEST_RECIPIENT"] = "967775106545";
+        process.StartInfo.Environment["LUMAR_LOCAL_MEDIA_ORIGIN"] = "https://public-backend.example.com";
+
+        Assert.True(process.Start());
+
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        while (!timeout.IsCancellationRequested)
+        {
+            try
+            {
+                using var response = await client.GetAsync($"http://127.0.0.1:{port}/health", timeout.Token);
+                if (response.StatusCode == HttpStatusCode.OK || response.StatusCode == HttpStatusCode.Unauthorized)
+                    break;
+            }
+            catch
+            {
+                await Task.Delay(200, timeout.Token);
+            }
+        }
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["LocalWhatsAppGateway:BaseUrl"] = $"http://127.0.0.1:{port}/",
+            ["LocalWhatsAppGateway:AutoStart"] = "true",
+        }).Build();
+
+        var host = new LocalWhatsAppGatewayProcessHost(NullLogger<LocalWhatsAppGatewayProcessHost>.Instance, configuration);
+        var method = typeof(LocalWhatsAppGatewayProcessHost).GetMethod("TryStopStaleGatewayProcessOnPort", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var result = (bool)method!.Invoke(host, null)!;
+
+        Assert.True(result);
+        Assert.False(ProcessStillRunning(process.Id));
+    }
+
+    [Fact]
+    public async Task ProcessOwnership_RestartDoesNotCreateMultipleGatewayInstances()
+    {
+        var port = GetFreeTcpPort();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["LocalWhatsAppGateway:BaseUrl"] = $"http://127.0.0.1:{port}/",
+            ["LocalWhatsAppGateway:AutoStart"] = "true",
+        }).Build();
+
+        var host = new LocalWhatsAppGatewayProcessHost(NullLogger<LocalWhatsAppGatewayProcessHost>.Instance, configuration);
+        try
+        {
+            await host.StartAsync(CancellationToken.None);
+            await host.StartAsync(CancellationToken.None);
+
+            var matches = CountLocalWhatsAppGatewayProcesses();
+            Assert.InRange(matches, 0, 1);
+            Assert.NotNull(GetStartedProcess(host));
+        }
+        finally
+        {
+            await host.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task ProcessOwnership_PortConflict_DoesNotCrashBackendAndLeavesForeignProcessAlive()
+    {
+        var port = GetFreeTcpPort();
+        using var foreign = StartForeignNodeListener(port);
+
+        var host = new LocalWhatsAppGatewayProcessHost(
+            NullLogger<LocalWhatsAppGatewayProcessHost>.Instance,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["LocalWhatsAppGateway:BaseUrl"] = $"http://127.0.0.1:{port}/", ["LocalWhatsAppGateway:AutoStart"] = "true" }).Build());
+
+        await host.StartAsync(CancellationToken.None);
+
+        Assert.False(foreign.HasExited);
+        Assert.True(GetStartedProcess(host) is null || !GetStartedProcess(host)!.HasExited || GetStartedProcess(host) is null);
+
+        foreign.Kill(entireProcessTree: true);
+        foreign.WaitForExit(5000);
+        await host.StopAsync(CancellationToken.None);
+    }
+
+    private static Process StartForeignNodeListener(int port)
+    {
+        var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "node",
+                Arguments = $"-e \"const http=require('http'); http.createServer((_,res)=>res.end('foreign')).listen(Number(process.argv[1]), '127.0.0.1'); setInterval(() => {{ }}, 1000);\" {port}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            }
+        };
+
+        process.Start();
+        return process;
     }
 
     [CollectionDefinition(nameof(LocalWhatsAppGatewayProcessHostCollection), DisableParallelization = true)]
@@ -403,21 +626,91 @@ public sealed class LocalWhatsAppFoundationTests
         return field?.GetValue(host) as Process;
     }
 
+    private static bool ProcessStillRunning(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return !process.HasExited;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    private static int CountLocalWhatsAppGatewayProcesses()
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = "-NoProfile -ExecutionPolicy Bypass -Command \"Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'LocalWhatsApp[\\\\/](src[\\\\/])?server\\.mjs' } | Measure-Object | Select-Object -ExpandProperty Count\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            }
+        };
+
+        process.Start();
+        var output = process.StandardOutput.ReadToEnd();
+        var error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        if (string.IsNullOrWhiteSpace(output) && !string.IsNullOrWhiteSpace(error))
+        {
+            return 0;
+        }
+
+        if (int.TryParse(output.Trim(), out var count))
+        {
+            return count;
+        }
+
+        return 0;
+    }
+
     private static void StopProcess(Process? process)
     {
-        if (process is null || process.HasExited)
+        if (process is null)
         {
             return;
         }
 
         try
         {
-            process.Kill(entireProcessTree: true);
-            process.WaitForExit(TimeSpan.FromSeconds(15));
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(TimeSpan.FromSeconds(15));
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // The process was already cleaned up or detached by the host; no-op for the test.
+        }
+        catch (ArgumentException)
+        {
+            // The process object no longer references a valid PID.
         }
         catch
         {
             // Only the test-owned Local WhatsApp gateway PID is stopped here.
+        }
+        finally
+        {
+            try { process.Dispose(); }
+            catch { }
         }
     }
 

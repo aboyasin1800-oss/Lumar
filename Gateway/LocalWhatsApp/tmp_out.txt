@@ -1,0 +1,1 @@
+LUMAR Local Gateway listening at http://127.0.0.1:51003; operationalActivation=false

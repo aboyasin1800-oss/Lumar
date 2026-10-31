@@ -12,5 +12,7 @@ public interface IAuthService
     Task<bool> LogoutAsync(string token, CancellationToken ct);
     Task<SessionDto?> ChangeUsernameAsync(string token, ChangeUsernameDto request, CancellationToken ct);
     Task<bool> ChangePasswordAsync(string token, ChangePasswordDto request, CancellationToken ct);
+    Task<RecoveryStartResultDto> BeginAdministrativeRecoveryAsync(string adminToken, string username, CancellationToken ct);
+    Task<RecoveryCompleteResultDto> CompleteAdministrativeRecoveryAsync(string resetToken, string newPassword, string confirmPassword, CancellationToken ct);
     Task<AccountTypeDto?> GetAccountTypeAsync(string token, CancellationToken ct);
 }

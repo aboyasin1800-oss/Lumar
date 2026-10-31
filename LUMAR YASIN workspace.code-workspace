@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "frontend/tailoring_system"
+		},
+		{
+			"path": "Backend"
+		},
+		{
+			"path": "Gateway/LocalWhatsApp"
+		}
+	],
+	"settings": {}
+}

@@ -18,12 +18,42 @@ public sealed class LocalWhatsAppGatewayProcessHost(
 
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
+        EnsureRuntimeConfiguration();
+
         _enabled = configuration.GetValue("LocalWhatsAppGateway:AutoStart", true)
             && OperatingSystem.IsWindows();
 
         if (!_enabled)
         {
             logger.LogInformation("Local WhatsApp gateway auto-start is disabled.");
+            return;
+        }
+
+        if (_port <= 0 || string.IsNullOrWhiteSpace(_gatewayDirectory))
+        {
+            logger.LogWarning("Local WhatsApp gateway runtime configuration is invalid; skipping auto-start.");
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_approvedTestRecipient))
+        {
+            logger.LogInformation("Local WhatsApp gateway approved recipient configured: {MaskedRecipient}", MaskPhone(_approvedTestRecipient));
+        }
+
+        if (!File.Exists(_gatewayScript))
+        {
+            logger.LogWarning("Local WhatsApp gateway script not found at {ScriptPath}; skipping auto-start.", _gatewayScript);
+            return;
+        }
+
+        await EnsureRunningAsync(cancellationToken);
+        await base.StartAsync(cancellationToken);
+    }
+
+    private void EnsureRuntimeConfiguration()
+    {
+        if (_port > 0 && !string.IsNullOrWhiteSpace(_gatewayDirectory))
+        {
             return;
         }
 
@@ -41,44 +71,71 @@ public sealed class LocalWhatsAppGatewayProcessHost(
             ?? string.Empty;
         _gatewayDirectory = FindGatewayDirectory();
         _gatewayScript = Path.Combine(_gatewayDirectory, "src", "server.mjs");
-
-        if (!string.IsNullOrWhiteSpace(_approvedTestRecipient))
-        {
-            logger.LogInformation("Local WhatsApp gateway approved recipient configured: {MaskedRecipient}", MaskPhone(_approvedTestRecipient));
-        }
-
-        if (!File.Exists(_gatewayScript))
-        {
-            logger.LogWarning("Local WhatsApp gateway script not found at {ScriptPath}; skipping auto-start.", _gatewayScript);
-            return;
-        }
-
-        await EnsureRunningAsync(cancellationToken);
-        await base.StartAsync(cancellationToken);
     }
 
     private string FindGatewayDirectory()
     {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null)
+        var roots = new List<string>
         {
-            var candidate = Path.Combine(current.FullName, "Gateway", "LocalWhatsApp", "src", "server.mjs");
-            if (File.Exists(candidate))
-            {
-                var srcDirectory = Path.GetDirectoryName(candidate)!;
-                return Path.GetDirectoryName(srcDirectory)!;
-            }
+            Environment.GetEnvironmentVariable("LUMAR_LOCAL_WHATSAPP_ROOT") ?? string.Empty,
+            AppContext.BaseDirectory,
+            Environment.CurrentDirectory,
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "source", "repos", "YASIN"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "YASIN"),
+            Path.Combine("D:\\", "YASIN"),
+            Path.Combine("C:\\", "YASIN")
+        };
 
-            var rootCandidate = Path.Combine(current.FullName, "Gateway", "LocalWhatsApp");
-            if (Directory.Exists(rootCandidate) && File.Exists(Path.Combine(rootCandidate, "src", "server.mjs")))
+        foreach (var startingPoint in roots.Where(static value => !string.IsNullOrWhiteSpace(value)))
+        {
+            if (TryFindGatewayDirectory(startingPoint, out var directory))
             {
-                return rootCandidate;
+                return directory;
             }
-
-            current = current.Parent;
         }
 
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "source", "repos", "YASIN", "Gateway", "LocalWhatsApp");
+    }
+
+    private static bool TryFindGatewayDirectory(string startingPoint, out string directory)
+    {
+        directory = string.Empty;
+        if (string.IsNullOrWhiteSpace(startingPoint))
+        {
+            return false;
+        }
+
+        var probe = new DirectoryInfo(startingPoint);
+        if (!probe.Exists)
+        {
+            var parent = Directory.GetParent(startingPoint);
+            if (parent is null || !parent.Exists)
+            {
+                return false;
+            }
+
+            probe = parent;
+        }
+
+        for (var current = probe; current is not null; current = current.Parent)
+        {
+            foreach (var candidate in new[]
+                     {
+                         Path.Combine(current.FullName, "Gateway", "LocalWhatsApp"),
+                         Path.Combine(current.FullName, "LocalWhatsApp"),
+                         Path.Combine(current.FullName, "YASIN", "Gateway", "LocalWhatsApp"),
+                         Path.Combine(current.FullName, "YASIN", "LocalWhatsApp")
+                     })
+            {
+                if (Directory.Exists(candidate) && File.Exists(Path.Combine(candidate, "src", "server.mjs")))
+                {
+                    directory = candidate;
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -87,8 +144,6 @@ public sealed class LocalWhatsAppGatewayProcessHost(
         {
             return;
         }
-
-        await EnsureRunningAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -102,14 +157,43 @@ public sealed class LocalWhatsAppGatewayProcessHost(
         await _ensureLock.WaitAsync(cancellationToken);
         try
         {
-            if (_process is { HasExited: false })
+            if (_process is not null)
             {
-                return;
+                try
+                {
+                    if (!_process.HasExited)
+                    {
+                        return;
+                    }
+                }
+                catch
+                {
+                    _process = null;
+                }
+
+                if (_process is not null)
+                {
+                    try { _process.Dispose(); }
+                    catch { }
+                    _process = null;
+                }
             }
 
-            if (_process is not null && _process.HasExited)
+            var existing = TryAttachToExistingGatewayProcessOnPort();
+            if (existing is not null)
             {
-                _process.Dispose();
+                _process = existing;
+                if (await WaitForGatewayHealthAsync())
+                {
+                    logger.LogInformation("Reused Local WhatsApp gateway process PID {Pid} on port {Port}.", _process.Id, _port);
+                    return;
+                }
+
+                logger.LogWarning("Detected a Local WhatsApp gateway process PID {Pid} on port {Port}, but it did not report healthy state. Cleaning it before starting a fresh instance.", existing.Id, _port);
+                try { if (!existing.HasExited) existing.Kill(entireProcessTree: true); }
+                catch { }
+                try { existing.Dispose(); }
+                catch { }
                 _process = null;
             }
 
@@ -133,71 +217,55 @@ public sealed class LocalWhatsAppGatewayProcessHost(
                 logger.LogInformation("Removed a stale Local WhatsApp gateway instance from port {Port} before startup.", _port);
             }
 
-            var gatewayScript = Path.Combine(_gatewayDirectory, "src", "server.mjs");
-            var psi = new ProcessStartInfo
+            Process? candidate = null;
+            for (var attempt = 1; attempt <= 2; attempt++)
             {
-                FileName = "node",
-                Arguments = $"\"{gatewayScript}\"",
-                WorkingDirectory = _gatewayDirectory,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            psi.Environment["LUMAR_LOCAL_GATEWAY_PORT"] = _port.ToString();
-            psi.Environment["LUMAR_LOCAL_TEST_RECIPIENT"] = _approvedTestRecipient;
-            psi.Environment["LUMAR_LOCAL_MEDIA_ORIGIN"] = ResolveMediaOrigin(configuration);
+                candidate = StartGatewayProcess();
+                if (candidate is null)
+                {
+                    logger.LogWarning("Local WhatsApp gateway process could not be started.");
+                    return;
+                }
 
-            _process = Process.Start(psi);
-            if (_process is null)
-            {
-                logger.LogWarning("Local WhatsApp gateway process could not be started.");
+                _process = candidate;
+                logger.LogInformation("Started Local WhatsApp gateway process with PID {Pid} on port {Port} (attempt {Attempt}).", candidate.Id, _port, attempt);
+
+                var ready = await WaitForGatewayHealthAsync();
+                if (ready)
+                {
+                    _process.OutputDataReceived += (_, args) =>
+                    {
+                        if (string.IsNullOrWhiteSpace(args.Data)) return;
+                        logger.LogInformation("LOCAL_WA_SAFE_OBSERVABILITY stdout {Output}", args.Data.Trim());
+                    };
+                    _process.ErrorDataReceived += (_, args) =>
+                    {
+                        if (string.IsNullOrWhiteSpace(args.Data)) return;
+                        logger.LogWarning("LOCAL_WA_SAFE_OBSERVABILITY stderr {Output}", args.Data.Trim());
+                    };
+                    _process.BeginOutputReadLine();
+                    _process.BeginErrorReadLine();
+                    return;
+                }
+
+                var exitCode = TryGetExitCode(candidate);
+                logger.LogWarning("Local WhatsApp gateway did not become healthy on port {Port} after attempt {Attempt}. ExitCode={ExitCode}. Cleaning stale process and retrying once.", _port, attempt, exitCode);
+                TryStopStaleGatewayProcessOnPort();
+                try { if (!candidate.HasExited) candidate.Kill(entireProcessTree: true); }
+                catch { }
+                try { candidate.Dispose(); }
+                catch { }
+                _process = null;
+                candidate = null;
+
+                if (attempt == 1)
+                {
+                    await Task.Delay(250, cancellationToken);
+                    continue;
+                }
+
                 return;
             }
-
-            logger.LogInformation("Started Local WhatsApp gateway process with PID {Pid} on port {Port}.", _process.Id, _port);
-
-            using var readinessClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var deadline = DateTime.UtcNow.AddSeconds(15);
-            while (DateTime.UtcNow < deadline)
-            {
-                try
-                {
-                    using var response = await readinessClient.GetAsync($"http://127.0.0.1:{_port}/health");
-                    if (response.StatusCode == System.Net.HttpStatusCode.OK || response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                    {
-                        break;
-                    }
-                }
-                catch
-                {
-                    await Task.Delay(200);
-                }
-            }
-
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var stdout = await _process.StandardOutput.ReadToEndAsync(cancellationToken);
-                    if (!string.IsNullOrWhiteSpace(stdout)) logger.LogInformation("Gateway stdout: {Output}", stdout.Trim());
-                }
-                catch (OperationCanceledException)
-                {
-                }
-            }, cancellationToken);
-
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var stderr = await _process.StandardError.ReadToEndAsync(cancellationToken);
-                    if (!string.IsNullOrWhiteSpace(stderr)) logger.LogWarning("Gateway stderr: {Output}", stderr.Trim());
-                }
-                catch (OperationCanceledException)
-                {
-                }
-            }, cancellationToken);
         }
         finally
         {
@@ -205,14 +273,133 @@ public sealed class LocalWhatsAppGatewayProcessHost(
         }
     }
 
+    private Process? StartGatewayProcess()
+    {
+        EnsureRuntimeConfiguration();
+        var gatewayScript = Path.Combine(_gatewayDirectory, "src", "server.mjs");
+        var psi = new ProcessStartInfo
+        {
+            FileName = "node",
+            Arguments = $"\"{gatewayScript}\"",
+            WorkingDirectory = _gatewayDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        psi.Environment["LUMAR_LOCAL_GATEWAY_PORT"] = _port.ToString();
+        psi.Environment["LUMAR_LOCAL_TEST_RECIPIENT"] = _approvedTestRecipient;
+        psi.Environment["LUMAR_LOCAL_MEDIA_ORIGIN"] = ResolveMediaOrigin(configuration);
+
+        return Process.Start(psi);
+    }
+
+    private async Task<bool> WaitForGatewayHealthAsync()
+    {
+        EnsureRuntimeConfiguration();
+        using var readinessClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                using var response = await readinessClient.GetAsync($"http://127.0.0.1:{_port}/health");
+                if (response.StatusCode == System.Net.HttpStatusCode.OK || response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                await Task.Delay(200);
+            }
+        }
+
+        return false;
+    }
+
+    private Process? TryAttachToExistingGatewayProcessOnPort()
+    {
+        EnsureRuntimeConfiguration();
+        if (!OperatingSystem.IsWindows() || _port <= 0 || string.IsNullOrWhiteSpace(_gatewayScript))
+        {
+            return null;
+        }
+
+        var expectedScript = _gatewayScript.Replace("'", "''");
+        var script = "$ids = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'node' -and $_.CommandLine -and (" + Environment.NewLine +
+            "  $_.CommandLine -match [regex]::Escape('" + expectedScript + "') -or " + Environment.NewLine +
+            "  ($_.CommandLine -match [regex]::Escape('LocalWhatsApp') -and $_.CommandLine -match 'server\\.mjs')" + Environment.NewLine +
+            ") } | Select-Object -ExpandProperty ProcessId);" + Environment.NewLine +
+            "if (-not $ids) { exit 0 }" + Environment.NewLine +
+            "$ids | Sort-Object -Unique | Select-Object -First 1;";
+
+        try
+        {
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"{script}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+
+            if (!process.Start())
+            {
+                return null;
+            }
+
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                logger.LogDebug("Gateway attachment check for port {Port} reported errors: {Error}", _port, error.Trim());
+            }
+
+            if (!int.TryParse(output.Trim(), out var pid) || pid <= 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                var existing = Process.GetProcessById(pid);
+                return !existing.HasExited ? existing : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Unable to attach to an existing Local WhatsApp gateway on port {Port}.", _port);
+            return null;
+        }
+    }
+
     private bool TryStopStaleGatewayProcessOnPort()
     {
-        if (!OperatingSystem.IsWindows())
+        EnsureRuntimeConfiguration();
+        if (!OperatingSystem.IsWindows() || _port <= 0 || string.IsNullOrWhiteSpace(_gatewayScript))
         {
             return false;
         }
 
-        var script = $"$port = {_port}; $ids = @(Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique); if (-not $ids) {{ Write-Output 'NO_MATCH'; exit 0 }}; $matches = @(Get-CimInstance Win32_Process -Filter (\"ProcessId = \" + ($ids -join ' OR ProcessId = ')) | Where-Object {{ $_.CommandLine -match 'LocalWhatsApp\\\\src\\\\server.mjs|LocalWhatsApp/src/server.mjs' }} | Select-Object -ExpandProperty ProcessId); if (-not $matches) {{ Write-Output 'NO_MATCH'; exit 0 }}; foreach ($pid in $matches) {{ Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue; Write-Output \"KILL:$pid\" }}";
+        var expectedScript = _gatewayScript.Replace("'", "''");
+        var script = "$port = " + _port + ";" + Environment.NewLine +
+            "$portOwners = @(Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique);" + Environment.NewLine +
+            "$matchingPids = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -in $portOwners -and $_.CommandLine -and (" + Environment.NewLine +
+            "  $_.CommandLine -match [regex]::Escape('" + expectedScript + "') -or " + Environment.NewLine +
+            "  ($_.CommandLine -match [regex]::Escape('LocalWhatsApp') -and $_.CommandLine -match 'server\\.mjs')" + Environment.NewLine +
+            ") } | Select-Object -ExpandProperty ProcessId);" + Environment.NewLine +
+            "if (-not $matchingPids) { Write-Output 'NO_MATCH'; exit 0 }" + Environment.NewLine +
+            "$unique = $matchingPids | Sort-Object -Unique;" + Environment.NewLine +
+            "foreach ($candidatePid in $unique) { Stop-Process -Id $candidatePid -Force -ErrorAction SilentlyContinue; Write-Output \"KILL:$candidatePid\" }";
 
         try
         {
@@ -270,23 +457,59 @@ public sealed class LocalWhatsAppGatewayProcessHost(
         return $"****{digits[^4..]}";
     }
 
+    private static int TryGetExitCode(Process process)
+    {
+        try
+        {
+            return process.HasExited ? process.ExitCode : -1;
+        }
+        catch (InvalidOperationException)
+        {
+            return -1;
+        }
+    }
+
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_process is not null && !_process.HasExited)
+        Process? processToStop = null;
+
+        await _ensureLock.WaitAsync(cancellationToken);
+        try
+        {
+            processToStop = _process;
+            _process = null;
+        }
+        finally
+        {
+            _ensureLock.Release();
+        }
+
+        if (processToStop is not null)
         {
             try
             {
-                _process.Kill(entireProcessTree: true);
-                await _process.WaitForExitAsync(cancellationToken);
+                if (processToStop.HasExited)
+                {
+                    return;
+                }
+
+                processToStop.Kill(entireProcessTree: true);
+                await processToStop.WaitForExitAsync(cancellationToken);
+            }
+            catch (InvalidOperationException)
+            {
+                logger.LogDebug("Local WhatsApp gateway process was already detached or cleaned up.");
             }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Local WhatsApp gateway did not stop gracefully.");
             }
+            finally
+            {
+                try { processToStop.Dispose(); }
+                catch { }
+            }
         }
-
-        _process?.Dispose();
-        _process = null;
 
         await base.StopAsync(cancellationToken);
     }

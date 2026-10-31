@@ -23,8 +23,25 @@ export class SessionManager {
   }
 
   status() {
-    return { state: this.state, currentNumber: this.currentNumber,
-      lastError: this.lastError, linked: this.saved.linked, operationalActivation: false };
+    const readyToSend = this.state === 'Connected' && this.saved.linked && !!this.currentNumber;
+    const gatewayAvailable = this.state !== 'Unavailable' && this.state !== 'Error' && this.state !== 'NotLinked';
+    const ownerActionRequired = this.state === 'NotLinked' || this.state === 'LoggedOut' || this.state === 'Error' || (this.state === 'Disconnected' && !this.saved.linked);
+    const warning = readyToSend ? null
+      : this.state === 'Reconnecting' ? 'قناة واتساب المحلية تعيد الاتصال حاليًا. النظام يعمل بصورة طبيعية، وإرسال واتساب المحلي متوقف مؤقتًا.'
+      : ownerActionRequired ? 'قناة واتساب المحلية تحتاج إلى إعادة ربط الحساب.'
+      : this.state === 'Disconnected' ? 'واتساب المحلي غير متصل حاليًا.'
+      : null;
+    return {
+      state: this.state,
+      currentNumber: this.currentNumber,
+      lastError: this.lastError,
+      linked: this.saved.linked,
+      operationalActivation: false,
+      readyToSend,
+      gatewayAvailable,
+      ownerActionRequired,
+      warning,
+    };
   }
 
   linkMaterial() {
@@ -142,12 +159,25 @@ export class SessionManager {
       if (this.state !== 'Connected' || !this.driver) throw new GatewayError('NOT_CONNECTED', 503);
       try {
         const providerMessageId = await this.driver.send(message);
-        if (!providerMessageId) throw new GatewayError('SEND_UNCONFIRMED', 502);
+        if (!providerMessageId) {
+          this.lastError = 'SEND_UNCONFIRMED';
+          console.error(JSON.stringify({
+            marker: 'LOCAL_WA_SAFE_OBSERVABILITY',
+            stage: 'session-send-failed',
+            outcome: 'unconfirmed',
+            errorCode: 'SEND_UNCONFIRMED',
+          }));
+          throw new GatewayError('SEND_UNCONFIRMED', 502);
+        }
         return { outcome: 'Sent', providerMessageId, retryable: false };
       } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
         this.lastError = 'SEND_UNCONFIRMED';
-        console.error(JSON.stringify({ stage: 'session-send-failed', error: reason }));
+        console.error(JSON.stringify({
+          marker: 'LOCAL_WA_SAFE_OBSERVABILITY',
+          stage: 'session-send-failed',
+          outcome: 'unconfirmed',
+          errorCode: error instanceof GatewayError ? error.code : 'SEND_UNCONFIRMED',
+        }));
         throw new GatewayError('SEND_UNCONFIRMED', 502);
       }
     });

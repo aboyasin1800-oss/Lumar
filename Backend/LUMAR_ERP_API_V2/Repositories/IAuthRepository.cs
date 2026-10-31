@@ -17,6 +17,8 @@ public interface IAuthRepository
     Task<RecoveryStartResultDto> RecoveryStartAsync(string username, CancellationToken ct);
     Task<RecoveryVerifyResultDto> RecoveryVerifyAsync(string username, string code, CancellationToken ct);
     Task<RecoveryCompleteResultDto> RecoveryCompleteAsync(string resetToken, string newPassword, CancellationToken ct);
+    Task<RecoveryStartResultDto> BeginAdministrativeRecoveryAsync(string adminToken, string username, CancellationToken ct);
+    Task<RecoveryCompleteResultDto> CompleteAdministrativeRecoveryAsync(string resetToken, string newPassword, string confirmPassword, CancellationToken ct);
     Task<List<SessionInfoDto>> GetSessionsAsync(string token, CancellationToken ct);
     Task<bool> RevokeSessionAsync(string token, Guid sessionId, CancellationToken ct);
     Task<AccountTypeDto?> GetAccountTypeAsync(string token, CancellationToken ct);

@@ -27,7 +27,15 @@ class ProviderApi extends AuthenticatedApiClient {
             'state': state,
             'linked': ['Connected', 'Disconnected'].contains(state),
             'currentNumber': state == 'Connected' ? '967777123456' : null,
-            'lastError': lastError
+            'lastError': lastError,
+            'readyToSend': state == 'Connected' && healthy,
+            'gatewayAvailable': healthy,
+            'ownerActionRequired': state == 'LoggedOut' || state == 'NotLinked',
+            'warning': state == 'Reconnecting'
+                ? 'قناة واتساب المحلية تعيد الاتصال حاليًا. النظام يعمل بصورة طبيعية، وإرسال واتساب المحلي متوقف مؤقتًا.'
+                : state == 'LoggedOut'
+                    ? 'قناة واتساب المحلية تحتاج إلى إعادة ربط الحساب.'
+                    : null,
           },
         '/local-whatsapp/session/link-material' => {
             'kind': 'qr',
@@ -222,6 +230,40 @@ void main() {
         isNull);
     expect(api.writes, isEmpty);
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('reconnecting local channel shows the Arabic recovery warning',
+      (tester) async {
+    final api = ProviderApi()
+      ..provider = 'Local'
+      ..state = 'Reconnecting'
+      ..healthy = true;
+    await open(tester, api);
+    expect(find.textContaining('تعيد الاتصال حاليًا'), findsOneWidget);
+    expect(find.textContaining('إرسال واتساب المحلي متوقف مؤقتًا'), findsOneWidget);
+  });
+
+  testWidgets('owner action required shows a clear Arabic warning and ready-to-send is false',
+      (tester) async {
+    final api = ProviderApi()
+      ..provider = 'Local'
+      ..state = 'LoggedOut'
+      ..healthy = true;
+    await open(tester, api);
+    expect(find.textContaining('تحتاج إلى إعادة ربط الحساب'), findsOneWidget);
+    expect(find.textContaining('جاهز للإرسال'), findsNothing);
+  });
+
+  testWidgets('ready local channel hides warning and shows ready state',
+      (tester) async {
+    final api = ProviderApi()
+      ..provider = 'Local'
+      ..state = 'Connected'
+      ..healthy = true;
+    await open(tester, api);
+    expect(find.textContaining('جاهز للإرسال'), findsOneWidget);
+    expect(find.textContaining('تعيد الاتصال حاليًا'), findsNothing);
+    expect(find.textContaining('تحتاج إلى إعادة ربط الحساب'), findsNothing);
   });
 
   for (final brightness in Brightness.values) {

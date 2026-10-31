@@ -772,10 +772,21 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   final username = TextEditingController();
   final newPassword = TextEditingController();
   final confirmPassword = TextEditingController();
+  final adminTargetUsername = TextEditingController();
+  final adminRecoveryToken = TextEditingController();
+  final adminRecoveryPassword = TextEditingController();
+  final adminRecoveryConfirmPassword = TextEditingController();
   final currentPasswordFocus = FocusNode();
   final newPasswordFocus = FocusNode();
   final confirmPasswordFocus = FocusNode();
   String? message;
+
+  bool get _isAdministrativeUser {
+    final role = widget.auth.user?.role?.trim();
+    if (role == null || role.isEmpty) return false;
+    final normalized = role.toLowerCase();
+    return normalized == 'admin' || normalized == 'system administrator';
+  }
 
   @override
   void initState() {
@@ -789,6 +800,10 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     username.dispose();
     newPassword.dispose();
     confirmPassword.dispose();
+    adminTargetUsername.dispose();
+    adminRecoveryToken.dispose();
+    adminRecoveryPassword.dispose();
+    adminRecoveryConfirmPassword.dispose();
     currentPasswordFocus.dispose();
     newPasswordFocus.dispose();
     confirmPasswordFocus.dispose();
@@ -814,6 +829,37 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         message = result ?? 'تم تحديث كلمة المرور. يرجى تسجيل الدخول مجددًا.');
     if (result == null) {
       Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
+    }
+  }
+
+  Future<void> _startAdminRecovery() async {
+    final result = await widget.auth.beginAdministrativeRecovery(
+      adminTargetUsername.text,
+    );
+    if (!mounted) return;
+
+    setState(() {
+      message = result['message'] as String? ?? 'تعذر بدء الاستعادة.';
+      if (result['success'] == true) {
+        adminRecoveryToken.text = (result['resetToken'] as String?) ?? '';
+      }
+    });
+  }
+
+  Future<void> _completeAdminRecovery() async {
+    final result = await widget.auth.completeAdministrativeRecovery(
+      resetToken: adminRecoveryToken.text,
+      newPassword: adminRecoveryPassword.text,
+      confirmPassword: adminRecoveryConfirmPassword.text,
+    );
+    if (!mounted) return;
+
+    setState(() => message = result['message'] as String? ?? 'تعذر إكمال الاستعادة.');
+    if (result['success'] == true) {
+      adminTargetUsername.clear();
+      adminRecoveryToken.clear();
+      adminRecoveryPassword.clear();
+      adminRecoveryConfirmPassword.clear();
     }
   }
 
@@ -929,6 +975,70 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
               child: const Text('تغيير كلمة المرور'),
             ),
           ),
+          if (_isAdministrativeUser) ...[
+            const SizedBox(height: 28),
+            Text('استعادة كلمة مرور مستخدم (إداري)',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              'هذا الإجراء متاح فقط للحسابات الإدارية، ولا يوجد استعادة ذاتية للمستخدمين. يجب بدء الاستعادة من حساب إداري معتمد فقط.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: adminTargetUsername,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'اسم المستخدم المستهدف',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonal(
+                onPressed: _startAdminRecovery,
+                child: const Text('بدء استعادة الحساب'),
+              ),
+            ),
+            if (adminRecoveryToken.text.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              TextField(
+                controller: adminRecoveryToken,
+                readOnly: true,
+                decoration: const InputDecoration(
+                  labelText: 'رمز الاستعادة (Reset Token)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: adminRecoveryPassword,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'كلمة المرور الجديدة للمستخدم',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: adminRecoveryConfirmPassword,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'تأكيد كلمة المرور الجديدة',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: _completeAdminRecovery,
+                  child: const Text('تأكيد إعادة تعيين كلمة المرور'),
+                ),
+              ),
+            ],
+          ],
           if (message != null)
             Padding(
               padding: const EdgeInsets.only(top: 16),

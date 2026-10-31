@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../../Backend"
+		},
+		{
+			"path": "../../../Gateway/LocalWhatsApp"
+		}
+	],
+	"settings": {}
+}

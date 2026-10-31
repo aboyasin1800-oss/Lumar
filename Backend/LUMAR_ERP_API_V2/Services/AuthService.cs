@@ -13,5 +13,7 @@ public sealed class AuthService(IAuthRepository repository) : IAuthService
     public Task<bool> LogoutAsync(string token, CancellationToken ct) => repository.LogoutAsync(token, ct);
     public Task<SessionDto?> ChangeUsernameAsync(string token, ChangeUsernameDto request, CancellationToken ct) => repository.ChangeUsernameAsync(token, request, ct);
     public Task<bool> ChangePasswordAsync(string token, ChangePasswordDto request, CancellationToken ct) => repository.ChangePasswordAsync(token, request, ct);
+    public Task<RecoveryStartResultDto> BeginAdministrativeRecoveryAsync(string adminToken, string username, CancellationToken ct) => repository.BeginAdministrativeRecoveryAsync(adminToken, username, ct);
+    public Task<RecoveryCompleteResultDto> CompleteAdministrativeRecoveryAsync(string resetToken, string newPassword, string confirmPassword, CancellationToken ct) => repository.CompleteAdministrativeRecoveryAsync(resetToken, newPassword, confirmPassword, ct);
     public Task<AccountTypeDto?> GetAccountTypeAsync(string token, CancellationToken ct) => repository.GetAccountTypeAsync(token, ct);
 }

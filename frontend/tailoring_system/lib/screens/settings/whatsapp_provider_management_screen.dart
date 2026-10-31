@@ -34,6 +34,9 @@ class _WhatsAppProviderManagementScreenState
   bool? _healthy;
   bool? _metaReady;
   bool _linked = false;
+  bool _readyToSend = false;
+  bool _ownerActionRequired = false;
+  bool _gatewayAvailable = false;
   String? _provider;
   String _session = 'Unavailable';
   String? _number;
@@ -63,8 +66,24 @@ class _WhatsAppProviderManagementScreenState
     'GATEWAY_ERROR': 'تعذر تنفيذ العملية في خدمة واتساب المحلي.',
   };
 
-  bool get _localReady =>
-      _healthy == true && _session == 'Connected' && _linked && _number != null;
+  bool get _localReady => _readyToSend;
+
+  String? get _localWarning {
+    if (_provider != 'Local') return null;
+    if (_ownerActionRequired) {
+      return 'قناة واتساب المحلية تحتاج إلى إعادة ربط الحساب.';
+    }
+    if (_session == 'Reconnecting') {
+      return 'قناة واتساب المحلية تعيد الاتصال حاليًا. النظام يعمل بصورة طبيعية، وإرسال واتساب المحلي متوقف مؤقتًا.';
+    }
+    if (!_readyToSend && ['Connected', 'Disconnected', 'NotLinked', 'LoggedOut'].contains(_session)) {
+      return 'واتساب المحلي مفعل للإرسال لكنه غير جاهز حاليًا. لن يتحول الإرسال تلقائيًا إلى ميتا.';
+    }
+    if (_healthy == false) {
+      return 'خدمة واتساب المحلي غير متاحة حاليًا.';
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -160,6 +179,9 @@ class _WhatsAppProviderManagementScreenState
         final state = value['state']?.toString();
         _session = _sessionNames.containsKey(state) ? state! : 'Unavailable';
         _linked = value['linked'] == true;
+        _readyToSend = value['readyToSend'] == true;
+        _ownerActionRequired = value['ownerActionRequired'] == true;
+        _gatewayAvailable = value['gatewayAvailable'] != false;
         final number = value['currentNumber']?.toString();
         _number = _session == 'Connected' &&
                 number != null &&
@@ -177,6 +199,9 @@ class _WhatsAppProviderManagementScreenState
       }, () {
         _session = 'Unavailable';
         _number = null;
+        _readyToSend = false;
+        _ownerActionRequired = true;
+        _gatewayAvailable = false;
         _localError = 'تعذر الوصول إلى خدمة واتساب المحلي.';
         _clearQr();
       }),
@@ -392,9 +417,6 @@ class _WhatsAppProviderManagementScreenState
             _warning(_providerError),
             if (_provider == 'None')
               _status('إرسال واتساب', 'غير مفعل؛ إشعارات التطبيق مستقلة'),
-            if (_provider == 'Local' && !_localReady)
-              _warning(
-                  'واتساب المحلي مفعل للإرسال لكنه غير جاهز حاليًا. لن يتحول الإرسال تلقائيًا إلى ميتا.'),
             const SizedBox(height: 16),
             const Text('واتساب الرسمي عبر ميتا',
                 style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700)),
@@ -438,9 +460,13 @@ class _WhatsAppProviderManagementScreenState
                         ? 'تعمل'
                         : 'غير متاحة'),
             _status('حالة الجلسة', _sessionNames[_session]!),
+            _status('الحساب مرتبط', _linked ? 'نعم' : 'لا'),
+            if (!(_provider == 'Local' && _ownerActionRequired))
+              _status('جاهز للإرسال', _readyToSend ? 'نعم' : 'لا'),
+            _status('Gateway', _gatewayAvailable ? 'تعمل' : 'لا تعمل'),
             _status('الرقم الحالي', _number ?? 'غير مؤكد',
                 key: const ValueKey('current-number')),
-            _warning(_localError),
+            _warning(_localWarning ?? _localError),
             _activation('Local', canActivate: _localReady),
             Wrap(spacing: 10, runSpacing: 10, children: [
               _command(

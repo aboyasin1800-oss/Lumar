@@ -24,6 +24,18 @@ public sealed class AuthRepositoryAuthContractTests
     }
 
     [Theory]
+    [InlineData("Admin", false)]
+    [InlineData("System Administrator", false)]
+    [InlineData("Customer", false)]
+    [InlineData("Employee", false)]
+    [InlineData("Supplier", false)]
+    [InlineData(null, false)]
+    public void IsSelfServiceRecoveryAllowed_Requires_Admin_Context(string? role, bool expected)
+    {
+        Assert.Equal(expected, AuthRepository.IsSelfServiceRecoveryAllowed(role));
+    }
+
+    [Theory]
     [InlineData("  user@example.com  ", "USER@EXAMPLE.COM")]
     [InlineData("  ali  ", "ALI")]
     public void NormalizeUsername_Uses_Trim_And_Uppercase(string input, string expected)

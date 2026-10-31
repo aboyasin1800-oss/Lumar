@@ -323,6 +323,97 @@ class AuthState extends ChangeNotifier {
     return 'تعذر تغيير كلمة المرور.';
   }
 
+  Future<Map<String, dynamic>> beginAdministrativeRecovery(
+    String username,
+  ) async {
+    if (_disposed || _token == null || username.trim().isEmpty) {
+      return {'success': false, 'message': 'بيانات الاستعادة غير مكتملة.'};
+    }
+
+    try {
+      final response = await _request(
+        'POST',
+        '/auth/admin/recovery/start',
+        token: _token,
+        body: {'username': username.trim()},
+      ).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        final resetToken = json['resetToken'] as String?;
+        return {
+          'success': true,
+          'message': json['message'] as String? ?? 'تم تجهيز استعادة الحساب.',
+          'resetToken': resetToken,
+        };
+      }
+
+      final message = _extractErrorMessage(response.body);
+      return {'success': false, 'message': message};
+    } on TimeoutException {
+      return {'success': false, 'message': 'انتهت مهلة طلب استعادة الحساب.'};
+    } on SocketException {
+      return {'success': false, 'message': 'تعذر الاتصال بالخادم أثناء استعادة الحساب.'};
+    } catch (_) {
+      return {'success': false, 'message': 'تعذر بدء استعادة الحساب.'};
+    }
+  }
+
+  Future<Map<String, dynamic>> completeAdministrativeRecovery({
+    required String resetToken,
+    required String newPassword,
+    required String confirmPassword,
+  }) async {
+    if (_disposed || _token == null) {
+      return {'success': false, 'message': 'جلسة الإدارة مطلوبة لإكمال الاستعادة.'};
+    }
+
+    try {
+      final response = await _request(
+        'POST',
+        '/auth/admin/recovery/complete',
+        token: _token,
+        body: {
+          'resetToken': resetToken.trim(),
+          'newPassword': newPassword,
+          'confirmPassword': confirmPassword,
+        },
+      ).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return {'success': true, 'message': 'تمت استعادة كلمة المرور بنجاح.'};
+      }
+
+      final message = _extractErrorMessage(response.body);
+      return {'success': false, 'message': message};
+    } on TimeoutException {
+      return {'success': false, 'message': 'انتهت مهلة إكمال استعادة الحساب.'};
+    } on SocketException {
+      return {'success': false, 'message': 'تعذر الاتصال بالخادم أثناء إكمال الاستعادة.'};
+    } catch (_) {
+      return {'success': false, 'message': 'تعذر إكمال استعادة الحساب.'};
+    }
+  }
+
+  String _extractErrorMessage(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        final message = decoded['message'];
+        if (message is String && message.trim().isNotEmpty) {
+          return message;
+        }
+      }
+      if (decoded is Map) {
+        final message = decoded['message'];
+        if (message is String && message.trim().isNotEmpty) {
+          return message;
+        }
+      }
+    } catch (_) {}
+    return 'تعذر تنفيذ العملية.';
+  }
+
   Future<AuthUser?> _me(String token) async {
     final response = await _request('GET', '/auth/me', token: token);
     return response.statusCode == 200

@@ -102,6 +102,164 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task BusinessIsolation_C1_LocalWhatsAppFailure_DoesNotBlock_OrderCreated()
+    {
+        var repo = new FakeMessageRepository();
+        var store = new WhatsAppProviderIntegrationTests.MemoryProviderStore(ActiveWhatsAppProvider.Local);
+        var local = new ProviderRecordingChannel("LocalWhatsApp") { Succeed = false };
+        var dispatcher = new OutboundMessageDispatcher(repo, [local], NullLogger<OutboundMessageDispatcher>.Instance,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["OutboundMessaging:MaxAttempts"] = "1" }).Build(), store);
+
+        await repo.CreateCustomerMessageAsync(7, 99, "OrderCreated", "OrderCreated", "LocalWhatsApp", "Title", "Body", "967770000000", "ORD-99", "Order", "idempotency-created", default);
+        var result = await dispatcher.DispatchNextAsync(default);
+
+        Assert.NotNull(result);
+        Assert.Equal("Failed", repo.Messages.Single(x => x.Channel == "LocalWhatsApp").DeliveryStatus);
+        Assert.Single(repo.Notifications);
+        Assert.Equal("OrderCreated", repo.Notifications[0].EventType);
+        Assert.Equal(1, local.Calls);
+    }
+
+    [Fact]
+    public async Task BusinessIsolation_C2_LocalWhatsAppFailure_DoesNotBlock_OrderReady()
+    {
+        var repo = new FakeMessageRepository();
+        var store = new WhatsAppProviderIntegrationTests.MemoryProviderStore(ActiveWhatsAppProvider.Local);
+        var local = new ProviderRecordingChannel("LocalWhatsApp") { Succeed = false };
+        var dispatcher = new OutboundMessageDispatcher(repo, [local], NullLogger<OutboundMessageDispatcher>.Instance,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["OutboundMessaging:MaxAttempts"] = "1" }).Build(), store);
+
+        await repo.CreateCustomerMessageAsync(7, 99, "OrderReady", "OrderReady", "LocalWhatsApp", "Title", "Body", "967770000000", "ORD-99", "Order", "idempotency-ready", default);
+        var result = await dispatcher.DispatchNextAsync(default);
+
+        Assert.NotNull(result);
+        Assert.Equal("Failed", repo.Messages.Single(x => x.Channel == "LocalWhatsApp").DeliveryStatus);
+        Assert.Equal("OrderReady", repo.Notifications.Single().EventType);
+    }
+
+    [Fact]
+    public async Task BusinessIsolation_C3_LocalWhatsAppFailure_DoesNotBlock_OrderDelivered()
+    {
+        var repo = new FakeMessageRepository();
+        var store = new WhatsAppProviderIntegrationTests.MemoryProviderStore(ActiveWhatsAppProvider.Local);
+        var local = new ProviderRecordingChannel("LocalWhatsApp") { Succeed = false };
+        var dispatcher = new OutboundMessageDispatcher(repo, [local], NullLogger<OutboundMessageDispatcher>.Instance,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["OutboundMessaging:MaxAttempts"] = "1" }).Build(), store);
+
+        await repo.CreateCustomerMessageAsync(7, 99, "OrderDelivered", "OrderDelivered", "LocalWhatsApp", "Title", "Body", "967770000000", "ORD-99", "Order", "idempotency-delivered", default);
+        var result = await dispatcher.DispatchNextAsync(default);
+
+        Assert.NotNull(result);
+        Assert.Equal("Failed", repo.Messages.Single(x => x.Channel == "LocalWhatsApp").DeliveryStatus);
+        Assert.Equal("OrderDelivered", repo.Notifications.Single().EventType);
+    }
+
+    [Fact]
+    public async Task BusinessIsolation_C4_LocalWhatsAppFailure_DoesNotMutate_OrderPersistence()
+    {
+        var repo = new FakeMessageRepository();
+        var store = new WhatsAppProviderIntegrationTests.MemoryProviderStore(ActiveWhatsAppProvider.Local);
+        var local = new ProviderRecordingChannel("LocalWhatsApp") { Succeed = false };
+        var dispatcher = new OutboundMessageDispatcher(repo, [local], NullLogger<OutboundMessageDispatcher>.Instance,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["OutboundMessaging:MaxAttempts"] = "1" }).Build(), store);
+
+        await repo.CreateCustomerMessageAsync(7, 99, "OrderCreated", "OrderCreated", "LocalWhatsApp", "Title", "Body", "967770000000", "ORD-99", "Order", "idempotency-persistence", default);
+        await dispatcher.DispatchNextAsync(default);
+
+        Assert.Equal(1, repo.Messages.Count);
+        Assert.Equal(1, repo.Notifications.Count);
+        Assert.Equal("ORD-99", repo.Messages[0].ReferenceId);
+        Assert.Equal("Order", repo.Messages[0].ReferenceType);
+    }
+
+    [Fact]
+    public async Task BusinessIsolation_C5_LocalWhatsAppFailure_DoesNotBreak_ProductionLifecycle()
+    {
+        var repo = new FakeMessageRepository();
+        var store = new WhatsAppProviderIntegrationTests.MemoryProviderStore(ActiveWhatsAppProvider.Local);
+        var local = new ProviderRecordingChannel("LocalWhatsApp") { Succeed = false };
+        var dispatcher = new OutboundMessageDispatcher(repo, [local], NullLogger<OutboundMessageDispatcher>.Instance,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["OutboundMessaging:MaxAttempts"] = "1" }).Build(), store);
+
+        await repo.CreateCustomerMessageAsync(7, 99, "OrderReady", "OrderReady", "LocalWhatsApp", "Title", "Body", "967770000000", "ORD-99", "Order", "idempotency-lifecycle", default);
+        var result = await dispatcher.DispatchNextAsync(default);
+
+        Assert.NotNull(result);
+        Assert.Equal("Failed", repo.Messages[0].DeliveryStatus);
+        Assert.Equal("OrderReady", repo.Notifications[0].EventType);
+        Assert.Equal("Title", repo.Notifications[0].Title);
+    }
+
+    [Fact]
+    public async Task BusinessIsolation_C6_LocalWhatsAppFailure_Preserves_CustomerRouting()
+    {
+        var repo = new FakeMessageRepository();
+        var store = new WhatsAppProviderIntegrationTests.MemoryProviderStore(ActiveWhatsAppProvider.Local);
+        var local = new ProviderRecordingChannel("LocalWhatsApp") { Succeed = false };
+        var dispatcher = new OutboundMessageDispatcher(repo, [local], NullLogger<OutboundMessageDispatcher>.Instance,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["OutboundMessaging:MaxAttempts"] = "1" }).Build(), store);
+
+        await repo.CreateCustomerMessageAsync(7, 99, "OrderCreated", "OrderCreated", "LocalWhatsApp", "Title", "Body", "967770000000", "ORD-99", "Order", "idempotency-routing", default);
+        await dispatcher.DispatchNextAsync(default);
+
+        Assert.Equal(7, repo.Messages[0].CustomerId);
+        Assert.Equal("967770000000", repo.Messages[0].PhoneNumber);
+        Assert.Equal("LocalWhatsApp", repo.Messages[0].Channel);
+    }
+
+    [Fact]
+    public async Task BusinessIsolation_C7_LocalWhatsAppFailure_Preserves_TemplateRendering()
+    {
+        var repo = new FakeMessageRepository();
+        var store = new WhatsAppProviderIntegrationTests.MemoryProviderStore(ActiveWhatsAppProvider.Local);
+        var local = new ProviderRecordingChannel("LocalWhatsApp") { Succeed = false };
+        var dispatcher = new OutboundMessageDispatcher(repo, [local], NullLogger<OutboundMessageDispatcher>.Instance,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["OutboundMessaging:MaxAttempts"] = "1" }).Build(), store);
+
+        await repo.CreateCustomerMessageAsync(7, 99, "OrderCreated", "OrderCreated", "LocalWhatsApp", "Rendered title", "Final rendered body", "967770000000", "ORD-99", "Order", "idempotency-template", default);
+        await dispatcher.DispatchNextAsync(default);
+
+        Assert.Equal("Rendered title", repo.Notifications[0].Title);
+        Assert.Equal("Final rendered body", repo.Notifications[0].Body);
+        Assert.Equal("OrderCreated", repo.Messages[0].EventType);
+    }
+
+    [Fact]
+    public async Task BusinessIsolation_C8_LocalWhatsAppFailure_Preserves_AppNotificationContract()
+    {
+        var repo = new FakeMessageRepository();
+        var store = new WhatsAppProviderIntegrationTests.MemoryProviderStore(ActiveWhatsAppProvider.Local);
+        var local = new ProviderRecordingChannel("LocalWhatsApp") { Succeed = false };
+        var dispatcher = new OutboundMessageDispatcher(repo, [local], NullLogger<OutboundMessageDispatcher>.Instance,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["OutboundMessaging:MaxAttempts"] = "1" }).Build(), store);
+
+        await repo.CreateCustomerMessageAsync(7, 99, "OrderDelivered", "OrderDelivered", "LocalWhatsApp", "Title", "Body", "967770000000", "ORD-99", "Order", "idempotency-notification", default);
+        await dispatcher.DispatchNextAsync(default);
+
+        Assert.Single(repo.Notifications);
+        Assert.Equal("Unread", repo.Notifications[0].Status);
+        Assert.Equal("OrderDelivered", repo.Notifications[0].EventType);
+    }
+
+    [Fact]
+    public async Task BusinessIsolation_C9_LocalWhatsAppFailure_DoesNotChange_MetaOrTemplateMeaning()
+    {
+        var repo = new FakeMessageRepository();
+        var store = new WhatsAppProviderIntegrationTests.MemoryProviderStore(ActiveWhatsAppProvider.Local);
+        var local = new ProviderRecordingChannel("LocalWhatsApp") { Succeed = false };
+        var dispatcher = new OutboundMessageDispatcher(repo, [local], NullLogger<OutboundMessageDispatcher>.Instance,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["OutboundMessaging:MaxAttempts"] = "1" }).Build(), store);
+
+        await repo.CreateCustomerMessageAsync(7, 99, "OrderCreated", "OrderCreated", "LocalWhatsApp", "Title", "Body", "967770000000", "ORD-99", "Order", "idempotency-meta", default);
+        await dispatcher.DispatchNextAsync(default);
+
+        Assert.Equal("OrderCreated", repo.Messages[0].EventType);
+        Assert.Equal("OrderCreated", repo.Notifications[0].EventType);
+        Assert.Equal("LocalWhatsApp", repo.Messages[0].Channel);
+        Assert.DoesNotContain("Meta", repo.Messages[0].Channel, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ProviderRouting_SwitchWaitsForInFlightSend()
     {
         var repo = new FakeMessageRepository();
@@ -3490,9 +3648,14 @@ public sealed class MessageWriteServiceTests
 
         public Task<int?> CreateCustomerMessageAsync(int customerId, int? orderId, string eventType, string templateKey, string channel, string title, string body, string phoneNumber, string referenceId, string referenceType, string idempotencyKey, CancellationToken c)
         {
+            if (FailNotificationCreation)
+                throw new InvalidOperationException("Notification write failed.");
+
             var id = Messages.Count + 1;
             ProcessedKeys.Add(idempotencyKey);
             Messages.Add(new CustomerMessageDto(id, customerId, orderId, eventType, templateKey, channel, title, body, "Pending", DateTime.UtcNow, null, null, 0, null, null, null, null, phoneNumber, referenceId, referenceType, idempotencyKey));
+            var notificationId = Notifications.Count + 1;
+            Notifications.Add(new CustomerNotificationDto(notificationId, customerId, orderId, eventType, title, body, "Unread", false, DateTime.UtcNow, null, id));
             return Task.FromResult<int?>(id);
         }
         public Task<int> CreateCustomerNotificationAsync(int customerId, int? orderId, string eventType, string title, string body, int? customerMessageId, CancellationToken c)

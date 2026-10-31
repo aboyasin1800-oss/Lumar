@@ -1,0 +1,497 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Backend LocalWhatsAppFoundationTests",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests && dotnet test \"LUMAR_ERP_API_V2.Tests.csproj\" --filter LocalWhatsAppFoundationTests"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Clean LocalWhatsApp stale nodes",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"taskkill /F /IM node.exe /T"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Stop old LUMAR runtime",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$p = Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'dotnet|node' -and $_.CommandLine -match 'LUMAR_ERP_API_V2|LocalWhatsApp|local-whatsapp' }; foreach($x in $p){ Stop-Process -Id $x.ProcessId -Force -ErrorAction SilentlyContinue; Write-Output \"KILL:$($x.ProcessId):$($x.Name):$($x.CommandLine)\" }"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Stop old LUMAR runtime cleanup",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\temp\\stop_localwhatsapp.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Start Backend 5093",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend\\LUMAR_ERP_API_V2 && dotnet run --project .\\LUMAR_ERP_API_V2.csproj --urls http://127.0.0.1:5093"
+			],
+			"isBackground": true
+		},
+		{
+			"label": "Probe Backend Gateway runtime",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\temp\\probe_runtime.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Monitor current gateway session",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"powershell -NoProfile -ExecutionPolicy Bypass -Command \"$tokenPath = Join-Path $env:LOCALAPPDATA 'LUMAR\\\\LocalWhatsAppGateway\\\\gateway-token'; $token = (Get-Content $tokenPath -Raw).Trim(); for ($i = 1; $i -le 4; $i++) { try { $s = Invoke-RestMethod -Uri 'http://127.0.0.1:5094/session/status' -Headers @{ Authorization = \\\"Bearer $token\\\" } -Method Get; $backend = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq 5093 } | Select-Object -First 1; $gateway = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq 5094 } | Select-Object -First 1; Write-Output \\\"POLL:$i STATE:$($s.state) LINKED:$($s.linked) CURRENT:$($s.currentNumber) LASTERROR:$($s.lastError) BACKENDPID:$($backend.OwningProcess) GATEWAYPID:$($gateway.OwningProcess)\\\" } catch { Write-Output \\\"POLL:$i ERROR:AUTH_OR_STATUS_FAILED\\\" }; Start-Sleep -Seconds 8 }\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Backend LocalWhatsApp proof summary",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests && dotnet test \"LUMAR_ERP_API_V2.Tests.csproj\" --filter LocalWhatsAppFoundationTests --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "List node processes",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"wmic process where \"name='node.exe'\" get ProcessId,CommandLine"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "List node processes via tasklist",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"tasklist /FI \"IMAGENAME eq node.exe\" /FO LIST"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Find stale node listeners",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"tasklist | findstr /I node && echo --- && netstat -ano | findstr :5094"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Inspect node cmdlines",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' } | Select-Object ProcessId,Name,CommandLine | Format-Table -AutoSize"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Inspect node.exe commandlines",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$procs = Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' }; $procs | Select-Object ProcessId,CommandLine | Format-Table -AutoSize"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Inspect running Node command lines",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$procs = Get-CimInstance Win32_Process; $procs | Where-Object { $_.Name -eq 'node.exe' } | Select-Object ProcessId,CommandLine | Format-Table -AutoSize\"",
+			"isBackground": false
+		},
+		{
+			"label": "Inspect node processes with PowerShell",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"powershell -NoProfile -ExecutionPolicy Bypass -Command \"Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' } | Select-Object ProcessId,CommandLine | Format-Table -AutoSize\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Show node command lines",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$procs = Get-CimInstance Win32_Process; $procs | Where-Object { $_.Name -eq 'node.exe' } | Select-Object ProcessId,Name,CommandLine | Format-Table -AutoSize"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Inspect node processes directly",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\temp\\show_node.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Git status audit",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-C",
+				"D:/YASIN/Backend",
+				"status",
+				"--short"
+			]
+		},
+		{
+			"label": "Git diff names",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-C",
+				"D:/YASIN/Backend",
+				"diff",
+				"--name-only"
+			]
+		},
+		{
+			"label": "Git diff check",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-C",
+				"D:/YASIN/Backend",
+				"diff",
+				"--check"
+			]
+		},
+		{
+			"label": "Backend full LocalWhatsApp proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests && dotnet test \"LUMAR_ERP_API_V2.Tests.csproj\" --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "Backend message isolation proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests && dotnet test \"LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~MessageWriteServiceTests\" --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "Backend LocalWhatsApp exact proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && dotnet test \".\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"LocalWhatsAppFoundationTests\" --nologo --logger \"trx;LogFileName=localwa_foundation_exact.trx\""
+			],
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "Backend LocalWhatsApp final proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && dotnet test \".\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"LocalWhatsAppFoundationTests\" --nologo --logger \"trx;LogFileName=localwa_after_fix.trx\""
+			],
+			"isBackground": false,
+			"group": "test"
+		},
+		{
+			"label": "Clear stale LUMAR apphost lock",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"tasklist | findstr /I \"LUMAR_ERP_API_V2\" || echo NO_LUMAR_PROCESS && taskkill /F /FI \"IMAGENAME eq LUMAR_ERP_API_V2.exe\" 2>nul || echo NO_LUMAR_APPHOST"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Check stale backend lock process",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"tasklist | findstr /I \"LUMAR_ERP_API_V2\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Kill stale LUMAR apphost",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"taskkill /F /IM LUMAR_ERP_API_V2.exe >nul 2>&1 & echo KILLED"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Backend restart isolation proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests && dotnet test \"LUMAR_ERP_API_V2.Tests.csproj\" --filter \"ProcessOwnership_RestartDoesNotCreateMultipleGatewayInstances\" --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Clean LUMAR project-owned locks and run LocalWhatsAppFoundationTests",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"powershell -NoProfile -Command \"$procs = Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'LUMAR_ERP_API_V2.exe' -or $_.Name -eq 'testhost.exe') -and $_.CommandLine -match 'LUMAR_ERP_API_V2.Tests|LUMAR_ERP_API_V2' }; if ($procs) { $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Write-Host \\\"KILL:$($_.ProcessId):$($_.Name)\\\" } } else { Write-Host 'NO_PROJECT_MATCHES' };\" && cd /d D:\\YASIN\\Backend && dotnet test \".\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"LocalWhatsAppFoundationTests\" --nologo --logger \"trx;LogFileName=localwa_foundation_exact.trx\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Detailed restart isolation proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests && dotnet test \"LUMAR_ERP_API_V2.Tests.csproj\" --filter \"ProcessOwnership_RestartDoesNotCreateMultipleGatewayInstances\" --logger \"console;verbosity=detailed\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "LocalWhatsApp foundation proof",
+			"type": "shell",
+			"command": "D:\\YASIN\\Backend\\run_localwa_foundation.cmd",
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Diag LocalWhatsApp exact match",
+			"type": "shell",
+			"command": "powershell -NoProfile -File D:\\YASIN\\Backend\\diag_localwa.ps1",
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Probe LocalWhatsApp match sets",
+			"type": "shell",
+			"command": "powershell -ExecutionPolicy Bypass -NoProfile -File D:\\YASIN\\Backend\\diag_localwa_match.ps1",
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Probe direct match",
+			"type": "shell",
+			"command": "powershell -ExecutionPolicy Bypass -NoProfile -File D:\\YASIN\\Backend\\probe_match_direct.ps1",
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Probe foreign port match",
+			"type": "shell",
+			"command": "powershell -ExecutionPolicy Bypass -NoProfile -File D:\\YASIN\\Backend\\probe_foreign_script.ps1",
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Process ownership proof",
+			"type": "shell",
+			"command": "D:\\YASIN\\Backend\\run_procownership_proof.cmd",
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Full LocalWhatsApp proof v2",
+			"type": "shell",
+			"command": "D:\\YASIN\\Backend\\run_full_localwa_foundation.cmd",
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Clean stale LUMAR apphost lock and run LocalWhatsApp tests",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { ($_.Name -eq 'LUMAR_ERP_API_V2.exe' -or $_.Name -eq 'testhost.exe') -and $_.CommandLine -match 'LUMAR_ERP_API_V2.Tests|LUMAR_ERP_API_V2' }; if ($procs) { $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Write-Host \"KILL:$($_.ProcessId):$($_.Name)\" } } else { Write-Host 'NO_PROJECT_MATCHES' }; Set-Location 'D:\\YASIN\\Backend'; dotnet test '.\\LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj' --filter 'LocalWhatsAppFoundationTests' --nologo --logger 'console;verbosity=minimal'"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Run LocalWhatsApp cleanup and proof via script",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\run_localwa_cleanup_and_proof.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Run LocalWhatsApp foundation proof with TRX logs",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\run_localwa_cleanup_and_proof.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Start backend on 5093 for runtime proof",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Set-Location 'D:\\YASIN\\Backend\\LUMAR_ERP_API_V2'; $env:ASPNETCORE_ENVIRONMENT='Development'; Start-Process -FilePath 'dotnet' -ArgumentList 'run','--urls','http://127.0.0.1:5093' -NoNewWindow -PassThru | Select-Object Id,ProcessName,Path | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Verify backend and gateway runtime ownership",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Write-Host 'BACKEND_PORT_5093'; Get-NetTCPConnection -LocalPort 5093 -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State,OwningProcess | Format-Table -AutoSize; Write-Host 'GATEWAY_PORT_5094'; Get-NetTCPConnection -LocalPort 5094 -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State,OwningProcess | Format-Table -AutoSize; Write-Host 'GATEWAY_COUNT'; (Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'LocalWhatsApp[\\\\/](src[\\\\/])?server\\.mjs' } | Measure-Object).Count; Write-Host 'GATEWAY_PIDS'; Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'LocalWhatsApp[\\\\/](src[\\\\/])?server\\.mjs' } | Select-Object ProcessId,CommandLine | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Verify gateway runtime counts cleanly",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Write-Host 'BACKEND_PORT_5093'; Get-NetTCPConnection -LocalPort 5093 -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State,OwningProcess | Format-Table -AutoSize; Write-Host 'GATEWAY_PORT_5094'; Get-NetTCPConnection -LocalPort 5094 -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State,OwningProcess | Format-Table -AutoSize; Write-Host 'GATEWAY_COUNT'; (Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'LocalWhatsApp.*server\\.mjs' } | Measure-Object).Count; Write-Host 'GATEWAY_PIDS'; Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'LocalWhatsApp.*server\\.mjs' } | Select-Object ProcessId,CommandLine | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Verify backend and gateway runtime ownership via cmd",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"powershell -NoProfile -ExecutionPolicy Bypass -Command \"$procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'LocalWhatsApp.*server\\.mjs' }; Write-Host 'BACKEND_PORT_5093'; Get-NetTCPConnection -LocalPort 5093 -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State,OwningProcess | Format-Table -AutoSize; Write-Host 'GATEWAY_PORT_5094'; Get-NetTCPConnection -LocalPort 5094 -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State,OwningProcess | Format-Table -AutoSize; Write-Host 'GATEWAY_COUNT:' ($procs | Measure-Object).Count; Write-Host 'GATEWAY_PIDS:'; $procs | Select-Object ProcessId,CommandLine | Format-Table -AutoSize\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Run runtime proof script for backend and gateway",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\runtime_proof_localwa.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		}
+	]
+}
