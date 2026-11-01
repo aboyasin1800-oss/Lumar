@@ -528,6 +528,18 @@ public sealed class ReferralRepository(ReadOnlySqlConnectionFactory connections,
 
     public async Task<ReferralAccountSummaryDto> UpsertAccountAsync(ReferralAccountSummaryDto account, CancellationToken cancellationToken)
     {
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        var result = await UpsertAccountInTransactionAsync(connection, transaction, account, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return result;
+    }
+
+    public static async Task<ReferralAccountSummaryDto> UpsertAccountInTransactionAsync(
+        SqlConnection connection, SqlTransaction transaction, ReferralAccountSummaryDto account, CancellationToken cancellationToken)
+    {
+        if (transaction.Connection != connection) throw new ArgumentException("An active referral transaction is required.");
         const string sql = @"IF EXISTS (SELECT 1 FROM dbo.ReferralAccounts WHERE CustomerId = @customerId)
             BEGIN
                 UPDATE dbo.ReferralAccounts
@@ -547,16 +559,14 @@ public sealed class ReferralRepository(ReadOnlySqlConnectionFactory connections,
             ELSE
             BEGIN
                 INSERT INTO dbo.ReferralAccounts (CustomerId, ReferralCodeId, TotalReferrals, SuccessfulReferrals, TotalRewardsAmount, TotalRewardPoints, CreatedAt, UpdatedAt)
-                OUTPUT INSERTED.ReferralAccountId, INSERTED.CustomerId, INSERTED.ReferralCodeId, NULL, 1, INSERTED.TotalReferrals, INSERTED.SuccessfulReferrals, INSERTED.TotalRewardsAmount, INSERTED.TotalRewardPoints, INSERTED.CreatedAt, INSERTED.UpdatedAt
+                OUTPUT INSERTED.ReferralAccountId, INSERTED.CustomerId, INSERTED.ReferralCodeId, NULL, CAST(1 AS bit), INSERTED.TotalReferrals, INSERTED.SuccessfulReferrals, INSERTED.TotalRewardsAmount, INSERTED.TotalRewardPoints, INSERTED.CreatedAt, INSERTED.UpdatedAt
                 VALUES (@customerId, @referralCodeId, @totalReferrals, @successfulReferrals,
                     COALESCE((SELECT SUM(FixedRewardAmount) FROM dbo.ReferralTransactions WHERE ReferrerCustomerId = @customerId AND TransactionType = 'RewardGranted'), 0),
                     COALESCE((SELECT SUM(LoyaltyPoints) FROM dbo.ReferralTransactions WHERE ReferrerCustomerId = @customerId AND TransactionType = 'RewardGranted'), 0),
                     SYSUTCDATETIME(), SYSUTCDATETIME());
             END";
 
-        await using var connection = operationalConnections.Create();
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new SqlCommand(sql, connection);
+        await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@customerId", account.CustomerId);
         command.Parameters.AddWithValue("@referralCodeId", (object?)account.ReferralCodeId ?? DBNull.Value);
         command.Parameters.AddWithValue("@totalReferrals", account.TotalReferrals);
@@ -606,20 +616,35 @@ public sealed class ReferralRepository(ReadOnlySqlConnectionFactory connections,
 
     public async Task<ReferralTransactionDto> CreateRewardGrantedAsync(int referrerCustomerId, int referredCustomerId, int? referralCodeId, int orderId, decimal fixedRewardAmount, decimal loyaltyPoints, string notes, CancellationToken cancellationToken)
     {
-        const string sql = @"INSERT INTO dbo.ReferralTransactions (ReferrerCustomerId, ReferredCustomerId, ReferralCodeId, OrderId, TransactionType, FixedRewardAmount, LoyaltyPoints, Notes, CreatedAt)
-            OUTPUT INSERTED.ReferralTransactionId, INSERTED.ReferrerCustomerId, INSERTED.ReferredCustomerId, INSERTED.ReferralCodeId, INSERTED.OrderId, INSERTED.ReferralRewardId, INSERTED.TransactionType, INSERTED.FixedRewardAmount, INSERTED.LoyaltyPoints, INSERTED.Notes, INSERTED.CreatedAt
-            VALUES (@referrerCustomerId, @referredCustomerId, @referralCodeId, @orderId, 'RewardGranted', @fixedRewardAmount, @loyaltyPoints, @notes, SYSUTCDATETIME());";
-
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(cancellationToken);
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.AddWithValue("@referrerCustomerId", referrerCustomerId);
-        command.Parameters.AddWithValue("@referredCustomerId", referredCustomerId);
-        command.Parameters.AddWithValue("@referralCodeId", (object?)referralCodeId ?? DBNull.Value);
-        command.Parameters.AddWithValue("@orderId", orderId);
-        command.Parameters.AddWithValue("@fixedRewardAmount", fixedRewardAmount);
-        command.Parameters.AddWithValue("@loyaltyPoints", loyaltyPoints);
-        command.Parameters.AddWithValue("@notes", notes);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        var result = await CreateRewardInTransactionAsync(connection, transaction,
+            new ReferralRewardMutation(referrerCustomerId, referredCustomerId, referralCodeId, orderId,
+                "RewardGranted", fixedRewardAmount, loyaltyPoints, notes), cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return result;
+    }
+
+    public static async Task<ReferralTransactionDto> CreateRewardInTransactionAsync(
+        SqlConnection connection, SqlTransaction transaction, ReferralRewardMutation mutation, CancellationToken cancellationToken)
+    {
+        if (transaction.Connection != connection || mutation.ReferrerCustomerId <= 0 || mutation.ReferredCustomerId <= 0 ||
+            mutation.TransactionType is not ("RewardGranted" or "RewardReversal") || mutation.LoyaltyPoints < 0 || mutation.FixedRewardAmount < 0)
+            throw new ArgumentException("The referral delta is invalid.");
+        const string sql = @"INSERT INTO dbo.ReferralTransactions (ReferrerCustomerId, ReferredCustomerId, ReferralCodeId, OrderId, TransactionType, FixedRewardAmount, LoyaltyPoints, Notes, CreatedAt)
+            OUTPUT INSERTED.ReferralTransactionId, INSERTED.ReferrerCustomerId, INSERTED.ReferredCustomerId, INSERTED.ReferralCodeId, INSERTED.OrderId, INSERTED.ReferralRewardId, INSERTED.TransactionType, INSERTED.FixedRewardAmount, INSERTED.LoyaltyPoints, INSERTED.Notes, INSERTED.CreatedAt
+            VALUES (@referrerCustomerId, @referredCustomerId, @referralCodeId, @orderId, @transactionType, @fixedRewardAmount, @loyaltyPoints, @notes, SYSUTCDATETIME());";
+
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@referrerCustomerId", mutation.ReferrerCustomerId);
+        command.Parameters.AddWithValue("@referredCustomerId", mutation.ReferredCustomerId);
+        command.Parameters.AddWithValue("@referralCodeId", (object?)mutation.ReferralCodeId ?? DBNull.Value);
+        command.Parameters.AddWithValue("@orderId", mutation.OrderId);
+        command.Parameters.AddWithValue("@transactionType", mutation.TransactionType);
+        command.Parameters.AddWithValue("@fixedRewardAmount", mutation.FixedRewardAmount);
+        command.Parameters.AddWithValue("@loyaltyPoints", mutation.LoyaltyPoints);
+        command.Parameters.AddWithValue("@notes", mutation.Notes);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException("Unable to create referral reward record.");

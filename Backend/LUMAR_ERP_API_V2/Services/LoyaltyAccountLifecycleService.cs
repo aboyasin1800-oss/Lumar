@@ -169,7 +169,19 @@ public sealed class LoyaltyAccountLifecycleService(
         if (account.LoyaltyAccountStatus.Equals("Frozen", StringComparison.OrdinalIgnoreCase)) return account;
 
         var settings = loadedSettings ?? await GetSettingsAsync(cancellationToken);
-        if (settings?.LoyaltyFreezeEnabled != true) return account;
+        var evaluated = EvaluateAccountState(account, settings, now);
+        if (ReferenceEquals(evaluated, account)) return account;
+        return await loyaltyRepository.UpdateAccountLifecycleAsync(
+            account.CustomerId, evaluated.LoyaltyAccountStatus, evaluated.WarningStartedAtUtc,
+            evaluated.FrozenAtUtc, evaluated.ReactivatedAtUtc, evaluated.FreezeReason,
+            evaluated.LastQualifyingActivityAtUtc, cancellationToken) ?? account;
+    }
+
+    public static LoyaltyAccountDto EvaluateAccountState(
+        LoyaltyAccountDto account, LoyaltyProgramSettingsDto? settings, DateTime now)
+    {
+        if (account.LoyaltyAccountStatus.Equals("Frozen", StringComparison.OrdinalIgnoreCase) ||
+            settings?.LoyaltyFreezeEnabled != true) return account;
 
         var baseline = account.LastQualifyingActivityAtUtc;
         if (account.ReactivatedAtUtc is DateTime reactivated && (baseline is null || reactivated > baseline))
@@ -180,41 +192,31 @@ public sealed class LoyaltyAccountLifecycleService(
         var warningStartsAt = freezeDueAt.AddDays(-settings.WarningPeriodDays);
         if (now >= freezeDueAt)
         {
-            return await loyaltyRepository.UpdateAccountLifecycleAsync(
-                account.CustomerId,
-                "Frozen",
-                account.WarningStartedAtUtc ?? warningStartsAt,
-                now,
-                account.ReactivatedAtUtc,
-                "Grace period expired without a qualifying purchase.",
-                account.LastQualifyingActivityAtUtc,
-                cancellationToken) ?? account;
+            return account with
+            {
+                LoyaltyAccountStatus = "Frozen",
+                WarningStartedAtUtc = account.WarningStartedAtUtc ?? warningStartsAt,
+                FrozenAtUtc = now,
+                FreezeReason = "Grace period expired without a qualifying purchase."
+            };
         }
 
         if (settings.WarningPeriodDays > 0 && now >= warningStartsAt)
         {
-            return await loyaltyRepository.UpdateAccountLifecycleAsync(
-                account.CustomerId,
-                "Warning",
-                account.WarningStartedAtUtc ?? now,
-                null,
-                account.ReactivatedAtUtc,
-                null,
-                account.LastQualifyingActivityAtUtc,
-                cancellationToken) ?? account;
+            return account with
+            {
+                LoyaltyAccountStatus = "Warning", WarningStartedAtUtc = account.WarningStartedAtUtc ?? now,
+                FrozenAtUtc = null, FreezeReason = null
+            };
         }
 
         if (!account.LoyaltyAccountStatus.Equals("Active", StringComparison.OrdinalIgnoreCase) || account.WarningStartedAtUtc is not null)
         {
-            return await loyaltyRepository.UpdateAccountLifecycleAsync(
-                account.CustomerId,
-                "Active",
-                null,
-                null,
-                account.ReactivatedAtUtc,
-                null,
-                account.LastQualifyingActivityAtUtc,
-                cancellationToken) ?? account;
+            return account with
+            {
+                LoyaltyAccountStatus = "Active", WarningStartedAtUtc = null,
+                FrozenAtUtc = null, FreezeReason = null
+            };
         }
 
         return account;

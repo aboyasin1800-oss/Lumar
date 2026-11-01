@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 namespace LUMAR_ERP_API_V2.Repositories;
 
-public sealed class InventoryRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections) : IInventoryRepository, IGoodsReceiptTransactionRuntime
+public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections) : IInventoryRepository, IGoodsReceiptTransactionRuntime
 {
     private static readonly ILogger<InventoryRepository>? _logger = null;
 

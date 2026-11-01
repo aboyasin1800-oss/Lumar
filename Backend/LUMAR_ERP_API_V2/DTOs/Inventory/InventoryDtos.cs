@@ -390,6 +390,14 @@ public sealed class ConsumeFabricCodeInventoryDto
     public Guid SourceOperationId { get; init; }
 }
 
+public sealed record ReverseFabricConsumptionDto(
+    long FabricConsumptionSourceId,
+    int PieceId,
+    decimal QuantityInches,
+    Guid SourceOperationId,
+    string Reason,
+    string ReversedBy);
+
 public sealed class ConsumeConsumableInventoryDto
 {
     [Range(1, int.MaxValue)]

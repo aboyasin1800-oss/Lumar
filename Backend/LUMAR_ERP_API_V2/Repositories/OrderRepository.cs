@@ -4,12 +4,14 @@ using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Consumption;
 using LUMAR_ERP_API_V2.DTOs.Inventory;
 using LUMAR_ERP_API_V2.DTOs.Orders;
+using LUMAR_ERP_API_V2.DTOs.Pricing;
+using LUMAR_ERP_API_V2.Services;
 using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
 
 namespace LUMAR_ERP_API_V2.Repositories;
 
-public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections, IConsumptionRulesRepository? consumptionRules = null) : IOrderRepository
+public sealed partial class OrderRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections, IConsumptionRulesRepository? consumptionRules = null, IPricingEngineService? pricingEngine = null, IPiecePointSettingsRepository? pointSettings = null, ILoyaltyManagementSettingsRepository? loyaltySettings = null) : IOrderRepository, ITailoringOrderEditRepository
 {
     public Task<IReadOnlyList<OrderListDto>> GetListAsync(CancellationToken cancellationToken) => QueryAsync("SELECT o.OrderID, o.OrderNumber, o.CustomerID, c.CustomerCode, c.CustomerName, c.PhoneNumber, o.OrderDate, o.DeliveryDate, o.TotalAmount, o.PaidAmount, o.RemainingAmount, o.UrgencyStatus, o.OrderStatus, o.SaleCategory FROM dbo.Orders o LEFT JOIN dbo.Customers c ON c.CustomerID = o.CustomerID ORDER BY o.OrderDate DESC, o.OrderID DESC", reader => new OrderListDto(reader.GetInt32(0), reader.GetString(1), reader.GetInt32(2), reader.NullableString("CustomerCode"), reader.NullableString("CustomerName"), reader.NullableString("PhoneNumber"), reader.GetDateTime(6), reader.NullableDateTime("DeliveryDate"), reader.GetDecimal(8), reader.GetDecimal(9), reader.GetDecimal(10), reader.GetString(11), reader.GetString(12), reader.GetString(13)), null, cancellationToken);
 
@@ -84,16 +86,45 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                     throw new ArgumentException($"نوع المنتج الرسمي رقم {productTypeId} غير موجود أو غير فعال.");
             }
 
+            if (pricingEngine is null)
+                throw new InvalidOperationException("محرك التسعير الرسمي مطلوب لحفظ سعر القطعة الأصلي.");
+            var quotes = new List<PricingEngineResponseDto>(order.Items.Count);
+            var pointBases = new List<decimal>(order.Items.Count);
+            var pointsEnabled = pointSettings is not null && (await pointSettings.GetProgramSettingsAsync(cancellationToken))?.IsEnabled == true;
+            var piecePrices = new List<decimal>();
+            for (var itemIndex = 0; itemIndex < order.Items.Count; itemIndex++)
+            {
+                var item = order.Items[itemIndex];
+                var quote = await pricingEngine.CalculateAsync(new PricingEngineRequestDto
+                {
+                    ProductTypeId = item.ProductTypeId,
+                    FabricCode = fabricLines[itemIndex].FabricCode,
+                    Consumption = fabricLines[itemIndex].RequiredInches / item.Quantity,
+                    ConsumptionUnit = "Inch",
+                    Quantity = item.Quantity
+                }, cancellationToken);
+                if (!quote.IsReady || quote.FinalPricePerPiece is null)
+                    throw new ArgumentException(string.Join(" ", quote.Reasons));
+                quotes.Add(quote);
+                var pointSetting = pointSettings is null ? null : await pointSettings.GetActiveProductPointSettingAsync(item.ProductTypeId, cancellationToken);
+                pointBases.Add(PiecePointsEngine.CalculateForItem(pointSetting, 1m, 0m, pointsEnabled));
+                piecePrices.AddRange(Enumerable.Repeat(quote.FinalPricePerPiece.Value, item.Quantity));
+            }
+            var pieceValues = PricingEngineCalculator.AllocatePieceValues(piecePrices, order.DiscountAmount);
+            var officialTotal = pieceValues.Sum(value => value.SalePrice);
+            if (order.AdvancePayment < 0 || order.AdvancePayment + order.DiscountAmount > officialTotal)
+                throw new ArgumentException("الدفعة المقدمة والخصم يتجاوزان الإجمالي الرسمي.");
+
             var orderPrefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "OrderCodePrefix", "ORD-", cancellationToken);
             var orderNumber = $"{orderPrefix}{await NextNumberAsync("dbo.Orders", "OrderNumber", orderPrefix, connection, transaction, cancellationToken):D6}";
-            var remainingAmount = order.TotalAmount - order.DiscountAmount - order.AdvancePayment;
+            var remainingAmount = officialTotal - order.DiscountAmount - order.AdvancePayment;
             const string orderSql = "INSERT INTO dbo.Orders (OrderNumber,CustomerID,OrderDate,DeliveryDate,TotalAmount,DiscountAmount,PaidAmount,RemainingAmount,UrgencyStatus,OrderStatus,Notes,CreatedDate,SaleCategory,SaleReference) OUTPUT INSERTED.OrderID VALUES (@number,@customerId,@orderDate,@deliveryDate,@total,@discount,@paid,@remaining,@urgency,N'New',@notes,@created,@category,@requestReference)";
             await using var orderCommand = new SqlCommand(orderSql, connection, transaction);
             orderCommand.Parameters.AddWithValue("@number", orderNumber);
             orderCommand.Parameters.AddWithValue("@customerId", order.CustomerId);
             orderCommand.Parameters.AddWithValue("@orderDate", order.OrderDate ?? now);
             AddNullable(orderCommand, "@deliveryDate", order.DeliveryDate);
-            orderCommand.Parameters.AddWithValue("@total", order.TotalAmount);
+            orderCommand.Parameters.AddWithValue("@total", officialTotal);
             orderCommand.Parameters.AddWithValue("@discount", order.DiscountAmount);
             orderCommand.Parameters.AddWithValue("@paid", order.AdvancePayment);
             orderCommand.Parameters.AddWithValue("@remaining", remainingAmount);
@@ -106,6 +137,7 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
 
             var trackingPrefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "PieceTrackingPrefix", "TRK-", cancellationToken);
             var nextTracking = await NextNumberAsync("dbo.Pieces", "TrackingCode", trackingPrefix, connection, transaction, cancellationToken);
+            var pieceValueIndex = 0;
             for (var itemIndex = 0; itemIndex < order.Items.Count; itemIndex++)
             {
                 var item = order.Items[itemIndex];
@@ -113,7 +145,10 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
                 var itemTracking = $"{trackingPrefix}{nextTracking++:D6}";
                 var orderItemId = await InsertOrderItemAsync(orderId, item, fabricLine, itemTracking, now, connection, transaction, cancellationToken);
                 for (var pieceNumber = 1; pieceNumber <= item.Quantity; pieceNumber++)
-                    await InsertPieceAsync(orderItemId, $"{trackingPrefix}{nextTracking++:D6}", pieceNumber, now, connection, transaction, cancellationToken);
+                {
+                    var pieceId = await InsertPieceAsync(orderItemId, $"{trackingPrefix}{nextTracking++:D6}", pieceNumber, now, connection, transaction, cancellationToken);
+                    await InsertPieceSaleValueAsync(connection, transaction, pieceId, pieceValues[pieceValueIndex++], quotes[itemIndex], pointBases[itemIndex], now, cancellationToken);
+                }
                 await InsertFabricAsync(orderItemId, item, fabricLine, now, connection, transaction, cancellationToken);
                 var consumption = await InventoryRepository.ConsumeFabricCodeInventoryAsync(
                     connection, transaction, new ConsumeFabricCodeInventoryDto
@@ -1378,13 +1413,31 @@ public sealed class OrderRepository(ReadOnlySqlConnectionFactory connections, Op
         return merged.Count == 0 ? originalSnapshot : JsonSerializer.Serialize(merged);
     }
 
-    private static async Task InsertPieceAsync(int orderItemId, string trackingCode, int pieceNumber, DateTime now, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
+    private static async Task<int> InsertPieceAsync(int orderItemId, string trackingCode, int pieceNumber, DateTime now, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
     {
-        await using var command = new SqlCommand("INSERT INTO dbo.Pieces (OrderItemID,TrackingCode,PieceStatus,PieceNumber,CreatedDate) VALUES (@itemId,@tracking,N'New',@number,@created)", connection, transaction);
+        await using var command = new SqlCommand("INSERT INTO dbo.Pieces (OrderItemID,TrackingCode,PieceStatus,PieceNumber,CreatedDate) OUTPUT INSERTED.PieceID VALUES (@itemId,@tracking,N'New',@number,@created)", connection, transaction);
         command.Parameters.AddWithValue("@itemId", orderItemId);
         command.Parameters.AddWithValue("@tracking", trackingCode);
         command.Parameters.AddWithValue("@number", pieceNumber);
         command.Parameters.AddWithValue("@created", now);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private static async Task InsertPieceSaleValueAsync(SqlConnection connection, SqlTransaction transaction,
+        int pieceId, PieceSaleValue value, PricingEngineResponseDto quote, decimal basePoints, DateTime now, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand("""
+            INSERT INTO dbo.TailoringPieceSaleValues
+              (PieceID, OriginalSalePrice, ApprovedSalePrice, OriginalDiscountShare, DiscountShare,
+                    OriginalPricingSnapshot, ApprovedPricingSnapshot, OriginalBasePoints, CreatedAt, UpdatedAt)
+                VALUES (@pieceId,@price,@price,@discount,@discount,@quote,@quote,@basePoints,@now,@now)
+            """, connection, transaction);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        command.Parameters.AddWithValue("@price", value.SalePrice);
+        command.Parameters.AddWithValue("@discount", value.DiscountShare);
+        command.Parameters.AddWithValue("@quote", JsonSerializer.Serialize(quote));
+        command.Parameters.AddWithValue("@basePoints", basePoints);
+        command.Parameters.AddWithValue("@now", now);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 

@@ -13,18 +13,26 @@ public sealed class OrderAddPieceGuardTests
         Assert.True(result);
     }
 
-    [Fact]
-    public void BlocksAddPiece_WhenAnyProductionTrackingExists()
+    [Theory]
+    [InlineData("New")]
+    [InlineData("InProduction")]
+    [InlineData("Confirmed")]
+    public void AllowsIndependentNewPiece_BeforeReadiness_EvenWhenOtherPiecesHaveTracking(string status)
     {
-        var result = OrderAddPieceGuard.CanAddPiece("New", hasAnyTrackingEvent: true);
+        var result = OrderAddPieceGuard.CanAddPiece(status, hasAnyTrackingEvent: true);
 
-        Assert.False(result);
+        Assert.True(result);
     }
 
-    [Fact]
-    public void BlocksAddPiece_WhenOrderIsNotNew()
+    [Theory]
+    [InlineData("ReadyForDelivery")]
+    [InlineData("Delivered")]
+    [InlineData("Cancelled")]
+    [InlineData("Canceled")]
+    [InlineData("Unknown")]
+    public void BlocksAddPiece_WhenOrderCannotAcceptNewWork(string status)
     {
-        var result = OrderAddPieceGuard.CanAddPiece("InProduction", hasAnyTrackingEvent: false);
+        var result = OrderAddPieceGuard.CanAddPiece(status, hasAnyTrackingEvent: false);
 
         Assert.False(result);
     }

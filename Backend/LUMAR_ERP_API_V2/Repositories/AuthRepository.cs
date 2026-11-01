@@ -105,7 +105,8 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
                 userId = (int)(await createUser.ExecuteScalarAsync(ct))!;
             }
 
-            const string createMobileAccountSql = "INSERT INTO dbo.MobileAccounts (AccountType, CustomerId, EmployeeId, SupplierId, Username, NormalizedUsername, PasswordHash, IsActive, FailedLoginAttempts, LockoutEndUtc, SecurityStamp, TokenVersion, CreatedAtUtc, UpdatedAtUtc) VALUES (@accountType, @customerId, NULL, NULL, @username, @normalizedUsername, @passwordHash, 1, 0, NULL, CAST(NEWID() AS nvarchar(128)), 0, SYSUTCDATETIME(), SYSUTCDATETIME())";
+            int mobileAccountId;
+            const string createMobileAccountSql = "INSERT INTO dbo.MobileAccounts (AccountType, CustomerId, EmployeeId, SupplierId, Username, NormalizedUsername, PasswordHash, IsActive, FailedLoginAttempts, LockoutEndUtc, SecurityStamp, TokenVersion, CreatedAtUtc, UpdatedAtUtc) OUTPUT INSERTED.MobileAccountId VALUES (@accountType, @customerId, NULL, NULL, @username, @normalizedUsername, @passwordHash, 1, 0, NULL, CAST(NEWID() AS nvarchar(128)), 0, SYSUTCDATETIME(), SYSUTCDATETIME())";
             await using (var createMobileAccount = new SqlCommand(createMobileAccountSql, connection, transaction))
             {
                 createMobileAccount.Parameters.AddWithValue("@accountType", "Customer");
@@ -113,7 +114,27 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
                 createMobileAccount.Parameters.AddWithValue("@username", username);
                 createMobileAccount.Parameters.AddWithValue("@normalizedUsername", normalizedUsername);
                 createMobileAccount.Parameters.AddWithValue("@passwordHash", passwordHash);
-                await createMobileAccount.ExecuteNonQueryAsync(ct);
+                mobileAccountId = (int)(await createMobileAccount.ExecuteScalarAsync(ct))!;
+            }
+
+            const string createPrimaryAccessSql = @"
+                INSERT INTO dbo.MobileAccountCustomerAccess (MobileAccountId, CustomerId, AccessRole, IsActive, RelationshipType, CreatedAtUtc)
+                SELECT ma.MobileAccountId, ma.CustomerId, N'Primary', 1, NULL, SYSUTCDATETIME()
+                FROM dbo.MobileAccounts ma WITH (UPDLOCK, HOLDLOCK)
+                WHERE ma.MobileAccountId = @mobileAccountId
+                  AND ma.AccountType = N'Customer'
+                  AND ma.CustomerId = @customerId
+                  AND ma.IsActive = 1
+                  AND NOT EXISTS (
+                      SELECT 1 FROM dbo.MobileAccountCustomerAccess accessRow WITH (UPDLOCK, HOLDLOCK)
+                      WHERE accessRow.MobileAccountId = ma.MobileAccountId AND accessRow.AccessRole = N'Primary'
+                  );";
+            await using (var createPrimaryAccess = new SqlCommand(createPrimaryAccessSql, connection, transaction))
+            {
+                createPrimaryAccess.Parameters.AddWithValue("@mobileAccountId", mobileAccountId);
+                createPrimaryAccess.Parameters.AddWithValue("@customerId", customerId);
+                if (await createPrimaryAccess.ExecuteNonQueryAsync(ct) != 1)
+                    throw new InvalidOperationException("Unable to create the customer's primary access.");
             }
 
             var currentUser = new CurrentUserDto(userId, username, fullName, "Customer", true, DateTime.UtcNow, "Customer", customerId, null, null);

@@ -335,16 +335,32 @@ public sealed class LoyaltyRepository(ReadOnlySqlConnectionFactory connections, 
 
     public async Task<LoyaltyAccountDto> EnsureAccountAsync(int customerId, CancellationToken cancellationToken)
     {
-        var existing = await GetAccountByCustomerAsync(customerId, cancellationToken);
-        if (existing is not null) return existing;
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        var account = await EnsureAccountInTransactionAsync(connection, transaction, customerId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return account;
+    }
+
+    public static async Task<LoyaltyAccountDto> EnsureAccountInTransactionAsync(
+        SqlConnection connection, SqlTransaction transaction, int customerId, CancellationToken cancellationToken)
+    {
+        if (transaction.Connection != connection)
+            throw new ArgumentException("Loyalty writes require the caller's active transaction.");
+        const string selectSql = "SELECT LoyaltyAccountId, CustomerId, CurrentPoints, LifetimeEarnedPoints, LifetimeRedeemedPoints, PendingExpirePoints, VipLevelId, CreatedAt, UpdatedAt, LastActivityAt, LoyaltyAccountStatus, WarningStartedAtUtc, FrozenAtUtc, ReactivatedAtUtc, FreezeReason, LastQualifyingActivityAtUtc FROM dbo.LoyaltyAccounts WITH (UPDLOCK,HOLDLOCK) WHERE CustomerId=@customerId";
+        await using (var existingCommand = new SqlCommand(selectSql, connection, transaction))
+        {
+            existingCommand.Parameters.AddWithValue("@customerId", customerId);
+            await using var existingReader = await existingCommand.ExecuteReaderAsync(cancellationToken);
+            if (await existingReader.ReadAsync(cancellationToken)) return MapAccount(existingReader);
+        }
 
         const string sql = @"INSERT INTO dbo.LoyaltyAccounts (CustomerId, CurrentPoints, LifetimeEarnedPoints, LifetimeRedeemedPoints, PendingExpirePoints, VipLevelId, CreatedAt, UpdatedAt, LastActivityAt, LoyaltyAccountStatus)
             OUTPUT INSERTED.LoyaltyAccountId, INSERTED.CustomerId, INSERTED.CurrentPoints, INSERTED.LifetimeEarnedPoints, INSERTED.LifetimeRedeemedPoints, INSERTED.PendingExpirePoints, INSERTED.VipLevelId, INSERTED.CreatedAt, INSERTED.UpdatedAt, INSERTED.LastActivityAt, INSERTED.LoyaltyAccountStatus, INSERTED.WarningStartedAtUtc, INSERTED.FrozenAtUtc, INSERTED.ReactivatedAtUtc, INSERTED.FreezeReason, INSERTED.LastQualifyingActivityAtUtc
             VALUES (@customerId, 0, 0, 0, 0, NULL, SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME(), N'Active');";
 
-        await using var connection = operationalConnections.Create();
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new SqlCommand(sql, connection);
+        await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@customerId", customerId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException("Unable to create loyalty account.");
@@ -442,7 +458,21 @@ WHERE CustomerId = @customerId;";
 
     public async Task<LoyaltyTransactionResultDto> CreateTransactionAsync(int customerId, string transactionType, decimal points, int? orderId, int? rewardId, string source, string? notes, CancellationToken cancellationToken, bool allowFrozenQualifyingPurchase = false)
     {
-        var account = await EnsureAccountAsync(customerId, cancellationToken);
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        var result = await CreateTransactionInTransactionAsync(connection, transaction, customerId,
+            transactionType, points, orderId, rewardId, source, notes, cancellationToken, allowFrozenQualifyingPurchase);
+        await transaction.CommitAsync(cancellationToken);
+        return result;
+    }
+
+    public static async Task<LoyaltyTransactionResultDto> CreateTransactionInTransactionAsync(
+        SqlConnection connection, SqlTransaction transaction, int customerId, string transactionType,
+        decimal points, int? orderId, int? rewardId, string source, string? notes,
+        CancellationToken cancellationToken, bool allowFrozenQualifyingPurchase = false)
+    {
+        var account = await EnsureAccountInTransactionAsync(connection, transaction, customerId, cancellationToken);
         var isQualifyingPurchase = allowFrozenQualifyingPurchase &&
             transactionType.Equals("Earn", StringComparison.OrdinalIgnoreCase) &&
             orderId.HasValue &&
@@ -458,9 +488,7 @@ WHERE CustomerId = @customerId;";
             OUTPUT INSERTED.LoyaltyTransactionId, INSERTED.LoyaltyAccountId, INSERTED.CustomerId, INSERTED.OrderId, INSERTED.RewardId, INSERTED.TransactionType, INSERTED.Points, INSERTED.BalanceBefore, INSERTED.BalanceAfter, INSERTED.Source, INSERTED.Notes, INSERTED.CreatedAt
             VALUES (@loyaltyAccountId, @customerId, @orderId, @rewardId, @transactionType, @points, @balanceBefore, @balanceAfter, @source, @notes, SYSUTCDATETIME());";
 
-        await using var connection = operationalConnections.Create();
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new SqlCommand(insertSql, connection);
+        await using var command = new SqlCommand(insertSql, connection, transaction);
         command.Parameters.AddWithValue("@loyaltyAccountId", account.LoyaltyAccountId);
         command.Parameters.AddWithValue("@customerId", customerId);
         command.Parameters.AddWithValue("@orderId", (object?)orderId ?? DBNull.Value);
@@ -488,11 +516,12 @@ WHERE CustomerId = @customerId;";
             reader.GetString(9),
             reader[10] is DBNull ? null : reader.GetString(10),
             reader.GetDateTime(11));
+        await reader.DisposeAsync();
 
         var updated = account with { CurrentPoints = result.BalanceAfter, LifetimeEarnedPoints = result.Account.LifetimeEarnedPoints, LifetimeRedeemedPoints = result.Account.LifetimeRedeemedPoints, PendingExpirePoints = result.Account.PendingExpirePoints, UpdatedAt = DateTime.UtcNow, LastActivityAt = DateTime.UtcNow };
 
         const string updateSql = @"UPDATE dbo.LoyaltyAccounts SET CurrentPoints = @currentPoints, LifetimeEarnedPoints = @lifetimeEarnedPoints, LifetimeRedeemedPoints = @lifetimeRedeemedPoints, PendingExpirePoints = @pendingExpirePoints, UpdatedAt = SYSUTCDATETIME(), LastActivityAt = SYSUTCDATETIME() WHERE LoyaltyAccountId = @loyaltyAccountId";
-        await using var updateCommand = new SqlCommand(updateSql, connection);
+        await using var updateCommand = new SqlCommand(updateSql, connection, transaction);
         updateCommand.Parameters.AddWithValue("@currentPoints", updated.CurrentPoints);
         updateCommand.Parameters.AddWithValue("@lifetimeEarnedPoints", updated.LifetimeEarnedPoints);
         updateCommand.Parameters.AddWithValue("@lifetimeRedeemedPoints", updated.LifetimeRedeemedPoints);
@@ -501,6 +530,28 @@ WHERE CustomerId = @customerId;";
         await updateCommand.ExecuteNonQueryAsync(cancellationToken);
 
         return new LoyaltyTransactionResultDto(inserted, updated, result.BalanceBefore, result.BalanceAfter);
+    }
+
+    public static async Task UpdateLifecycleInTransactionAsync(SqlConnection connection, SqlTransaction transaction,
+        LoyaltyAccountDto account, CancellationToken cancellationToken)
+    {
+        if (transaction.Connection != connection) throw new ArgumentException("An active loyalty transaction is required.");
+        await using var command = new SqlCommand("""
+            UPDATE dbo.LoyaltyAccounts SET LoyaltyAccountStatus=@status,WarningStartedAtUtc=@warning,
+              FrozenAtUtc=@frozen,ReactivatedAtUtc=@reactivated,FreezeReason=@reason,
+              LastQualifyingActivityAtUtc=@activity,UpdatedAt=SYSUTCDATETIME()
+            WHERE LoyaltyAccountId=@id AND CustomerId=@customerId
+            """, connection, transaction);
+        command.Parameters.AddWithValue("@id", account.LoyaltyAccountId);
+        command.Parameters.AddWithValue("@customerId", account.CustomerId);
+        command.Parameters.AddWithValue("@status", account.LoyaltyAccountStatus);
+        command.Parameters.AddWithValue("@warning", (object?)account.WarningStartedAtUtc ?? DBNull.Value);
+        command.Parameters.AddWithValue("@frozen", (object?)account.FrozenAtUtc ?? DBNull.Value);
+        command.Parameters.AddWithValue("@reactivated", (object?)account.ReactivatedAtUtc ?? DBNull.Value);
+        command.Parameters.AddWithValue("@reason", (object?)account.FreezeReason ?? DBNull.Value);
+        command.Parameters.AddWithValue("@activity", (object?)account.LastQualifyingActivityAtUtc ?? DBNull.Value);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            throw new InvalidOperationException("The loyalty account changed before the lifecycle update.");
     }
 
     private static LoyaltyAccountDto MapAccount(SqlDataReader reader) => new(

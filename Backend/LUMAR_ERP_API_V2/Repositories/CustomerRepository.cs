@@ -10,6 +10,8 @@ namespace LUMAR_ERP_API_V2.Repositories;
 
 public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections, OperationalSqlConnectionFactory operationalConnections) : ICustomerRepository
 {
+    private static readonly CustomerIdentityGenerator IdentityGenerator = new();
+
     public Task<IReadOnlyList<CustomerListDto>> GetListAsync(CancellationToken cancellationToken) => QueryAsync("SELECT CustomerID, CustomerCode, CustomerName, PhoneNumber, TotalPoints, TotalPieces, TotalDebts, RelationshipType FROM dbo.Customers ORDER BY CustomerName, CustomerID", reader => new CustomerListDto(reader.GetInt32(0), reader.NullableString("CustomerCode"), reader.NullableString("CustomerName"), reader.NullableString("PhoneNumber"), reader.NullableDecimal("TotalPoints"), reader.NullableInt32("TotalPieces"), reader.NullableDecimal("TotalDebts"), reader.NullableString("RelationshipType")), null, cancellationToken);
 
     public async Task<CustomerDetailsDto?> GetByIdAsync(int customerId, CancellationToken cancellationToken)
@@ -86,6 +88,9 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
 
     public async Task<CustomerDetailsDto> CreateAsync(CreateCustomerDto customer, CancellationToken cancellationToken)
     {
+        var customerCode = customer.CustomerCode ?? IdentityGenerator.GenerateCustomerCode();
+        if (!IdentityGenerator.ValidateNewCustomerCode(customerCode))
+            throw new ArgumentException("كود العميل الجديد يجب أن يطابق الصيغة C-XXXXX-XXXXX-XXXX بأحرف كبيرة معتمدة.");
         var parentId = await ResolveParentIdAsync(customer.ParentCustomerId, customer.ReferralCode, cancellationToken);
         await using var connection = operationalConnections.Create();
         await connection.OpenAsync(cancellationToken);
@@ -96,9 +101,10 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
             var name = NormalizeCustomerName(customer.CustomerName!);
             var phone = NormalizeCustomerPhone(customer.PhoneNumber);
             await EnsureNoDuplicateCustomerAsync(name, phone, connection, (SqlTransaction)transaction, cancellationToken);
-            const string sql = "INSERT INTO dbo.Customers (CustomerCode, CustomerName, PhoneNumber, Address, Notes, IsActive, ParentCustomerId, RelationshipType) OUTPUT INSERTED.CustomerID VALUES (@code, @name, @phone, @address, @notes, @isActive, @parentId, @relationshipType)";
+            const string sql = "INSERT INTO dbo.Customers (GlobalCustomerUid, CustomerCode, CustomerName, PhoneNumber, Address, Notes, IsActive, ParentCustomerId, RelationshipType) OUTPUT INSERTED.CustomerID VALUES (@uid, @code, @name, @phone, @address, @notes, @isActive, @parentId, @relationshipType)";
             await using var command = new SqlCommand(sql, connection, (SqlTransaction)transaction);
-            command.Parameters.AddWithValue("@code", customer.CustomerCode!.Trim());
+            command.Parameters.AddWithValue("@uid", IdentityGenerator.GenerateGlobalCustomerUid());
+            command.Parameters.AddWithValue("@code", customerCode);
             command.Parameters.AddWithValue("@name", name);
             AddNullable(command, "@phone", phone);
             AddNullable(command, "@address", customer.Address);
@@ -179,27 +185,14 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
             referrer = referrer with { ReferralCode = referrerCode.Code };
         }
 
-        var customerPrefix = await SystemCodeGenerator.ResolvePrefixAsync(
-            connection,
-            transaction,
-            "CustomerCodePrefix",
-            "C",
-            cancellationToken);
-        var customerNumber = await SystemCodeGenerator.GetNextNumberAsync(
-            connection,
-            transaction,
-            "dbo.Customers",
-            "CustomerCode",
-            "CustomerCodePrefix",
-            "C",
-            cancellationToken);
-        var customerCode = customerPrefix + customerNumber.ToString(CultureInfo.InvariantCulture);
+        var customerCode = IdentityGenerator.GenerateCustomerCode();
 
         const string customerSql = @"INSERT INTO dbo.Customers
-                (CustomerCode, CustomerName, PhoneNumber, Address, Notes, IsActive, ParentCustomerId, RelationshipType)
+            (GlobalCustomerUid, CustomerCode, CustomerName, PhoneNumber, Address, Notes, IsActive, ParentCustomerId, RelationshipType)
                 OUTPUT INSERTED.CustomerID
-                VALUES (@customerCode, @customerName, @phoneNumber, @address, @notes, 1, @parentCustomerId, @relationshipType);";
+            VALUES (@uid, @customerCode, @customerName, @phoneNumber, @address, @notes, 1, @parentCustomerId, @relationshipType);";
         await using var customerCommand = new SqlCommand(customerSql, connection, transaction);
+        customerCommand.Parameters.AddWithValue("@uid", IdentityGenerator.GenerateGlobalCustomerUid());
         customerCommand.Parameters.AddWithValue("@customerCode", customerCode);
         customerCommand.Parameters.AddWithValue("@customerName", name);
         customerCommand.Parameters.AddWithValue("@phoneNumber", phone);
@@ -249,14 +242,20 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
 
     public async Task<CustomerDetailsDto?> UpdateAsync(int customerId, UpdateCustomerDto customer, CancellationToken cancellationToken)
     {
-        if (await GetByIdAsync(customerId, cancellationToken) is null) return null;
+        var existing = await GetByIdAsync(customerId, cancellationToken);
+        if (existing is null) return null;
+        if (IdentityGenerator.ValidateNewCustomerCode(existing.CustomerCode)
+            && !string.Equals(customer.CustomerCode, existing.CustomerCode, StringComparison.Ordinal))
+            throw new ArgumentException("كود العميل الرسمي ثابت ولا يمكن تغييره من شاشة التعديل.");
         if (customer.ParentCustomerId == customerId) throw new ArgumentException("A customer cannot refer to itself.");
         if (customer.ParentCustomerId.HasValue && await WouldCreateCycleAsync(customerId, customer.ParentCustomerId.Value, cancellationToken)) throw new ArgumentException("The referral parent would create a cycle.");
         if (customer.ParentCustomerId.HasValue && await GetByIdAsync(customer.ParentCustomerId.Value, cancellationToken) is null) throw new ArgumentException("The referral parent does not exist.");
-        const string sql = "UPDATE dbo.Customers SET CustomerCode=@code, CustomerName=@name, PhoneNumber=@phone, Address=@address, Notes=@notes, IsActive=@isActive, ParentCustomerId=@parentId, RelationshipType=@relationshipType WHERE CustomerID=@id";
+        const string sql = "UPDATE dbo.Customers SET CustomerCode=@code, CustomerName=@name, PhoneNumber=@phone, Address=@address, Notes=@notes, IsActive=@isActive, ParentCustomerId=@parentId, RelationshipType=@relationshipType WHERE CustomerID=@id AND ((CustomerCode IS NULL AND @originalCode IS NULL) OR (CustomerCode COLLATE Latin1_General_100_BIN2=@originalCode COLLATE Latin1_General_100_BIN2 AND DATALENGTH(CustomerCode)=DATALENGTH(@originalCode)))";
         await using var connection = operationalConnections.Create(); await connection.OpenAsync(cancellationToken); await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@originalCode", System.Data.SqlDbType.NVarChar, 20).Value = (object?)existing.CustomerCode ?? DBNull.Value;
         command.Parameters.AddWithValue("@id", customerId); command.Parameters.AddWithValue("@code", customer.CustomerCode!.Trim()); command.Parameters.AddWithValue("@name", customer.CustomerName!.Trim()); AddNullable(command, "@phone", customer.PhoneNumber); AddNullable(command, "@address", customer.Address); AddNullable(command, "@notes", customer.Notes); command.Parameters.AddWithValue("@isActive", customer.IsActive); AddNullable(command, "@parentId", customer.ParentCustomerId); AddNullable(command, "@relationshipType", customer.RelationshipType);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+            throw new ArgumentException("تغيرت بيانات العميل أثناء الحفظ. أعد تحميل العميل ثم حاول مجددًا.");
         return await GetByIdAsync(customerId, cancellationToken);
     }
 
@@ -480,15 +479,14 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
                     return new LinkedCustomerAccessDto(existingCustomer.CustomerId, existingCustomer.CustomerCode, existingCustomer.CustomerName, relationshipType, "Managed", true);
                 }
 
-                var customerPrefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "CustomerCodePrefix", "C", cancellationToken);
-                var customerNumber = await SystemCodeGenerator.GetNextNumberAsync(connection, transaction, "dbo.Customers", "CustomerCode", "CustomerCodePrefix", "C", cancellationToken);
-                var customerCode = customerPrefix + customerNumber.ToString(CultureInfo.InvariantCulture);
+                var customerCode = IdentityGenerator.GenerateCustomerCode();
 
-                const string insertCustomerSql = @"INSERT INTO dbo.Customers (CustomerCode, CustomerName, PhoneNumber, Address, Notes, IsActive, ParentCustomerId, RelationshipType)
+                const string insertCustomerSql = @"INSERT INTO dbo.Customers (GlobalCustomerUid, CustomerCode, CustomerName, PhoneNumber, Address, Notes, IsActive, ParentCustomerId, RelationshipType)
                     OUTPUT INSERTED.CustomerID, INSERTED.CustomerCode, INSERTED.CustomerName, INSERTED.PhoneNumber, INSERTED.RelationshipType
-                    VALUES (@customerCode, @customerName, @phoneNumber, @address, @notes, 1, @parentCustomerId, @relationshipType);";
+                    VALUES (@uid, @customerCode, @customerName, @phoneNumber, @address, @notes, 1, @parentCustomerId, @relationshipType);";
 
                 await using var createCustomer = new SqlCommand(insertCustomerSql, connection, transaction);
+                createCustomer.Parameters.AddWithValue("@uid", IdentityGenerator.GenerateGlobalCustomerUid());
                 createCustomer.Parameters.AddWithValue("@customerCode", customerCode);
                 createCustomer.Parameters.AddWithValue("@customerName", customerName);
                 AddNullable(createCustomer, "@phoneNumber", phoneNumber);

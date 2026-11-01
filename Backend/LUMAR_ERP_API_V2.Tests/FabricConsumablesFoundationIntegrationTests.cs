@@ -14,7 +14,7 @@ using Xunit.Abstractions;
 
 namespace LUMAR_ERP_API_V2.Tests;
 
-public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelper output)
+public sealed partial class FabricConsumablesFoundationIntegrationTests(ITestOutputHelper output)
 {
     [Fact]
     public async Task OfficialFabricBatch_CreatesPurchaseReceiptFoundationAndBalancedEntry()
@@ -1176,6 +1176,7 @@ public sealed class FabricConsumablesFoundationIntegrationTests(ITestOutputHelpe
         if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_FOUNDATION_GAP_TEST", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(builder.InitialCatalog, "LUMAR_TAILORING_EDIT_TEST_20261101", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_CUSTOMERS_ONLY_VALIDATION", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Fabric foundation tests are restricted to the approved test databases.");
         return builder.ConnectionString;

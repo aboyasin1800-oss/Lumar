@@ -29,6 +29,9 @@ public sealed class OrderService(
             if (orderLoyaltyIntegrationService is not null)
                 loyaltyResult = await orderLoyaltyIntegrationService.ProcessIfEligibleAsync(created.OrderId, cancellationToken);
 
+            if (repository is ITailoringOrderEditRepository editableRepository)
+                await editableRepository.CaptureCreationBenefitsAsync(created.OrderId, cancellationToken);
+
             if (messageWriteService is not null)
             {
                 try

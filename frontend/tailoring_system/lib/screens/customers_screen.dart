@@ -161,6 +161,9 @@ class _CustomerPageState extends State<CustomerPage> {
   Future<void> _form(Map<String, dynamic> customer) async {
     final formKey = GlobalKey<FormState>();
     final code = TextEditingController(text: customer['customerCode']);
+    final fixedCode = code.text.length == 18 &&
+      RegExp(r'^C-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{5}-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{5}-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{4}$')
+        .hasMatch(code.text);
     final name = TextEditingController(text: customer['customerName']);
     final phone = TextEditingController(text: customer['phoneNumber']);
     final address = TextEditingController(text: customer['address']);
@@ -205,7 +208,8 @@ class _CustomerPageState extends State<CustomerPage> {
                               child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                _field(code, 'رمز العميل', required: true),
+                                _field(code, 'رمز العميل',
+                                  required: true, readOnly: fixedCode),
                                 _field(name, 'اسم العميل', required: true),
                                 _field(phone, 'رقم الهاتف'),
                                 _field(address, 'العنوان'),
@@ -229,11 +233,15 @@ class _CustomerPageState extends State<CustomerPage> {
   }
 
   Widget _field(TextEditingController controller, String label,
-          {bool required = false, int lines = 1, VoidCallback? onSubmitted}) =>
+      {bool required = false,
+      bool readOnly = false,
+      int lines = 1,
+      VoidCallback? onSubmitted}) =>
       Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: TextFormField(
               controller: controller,
+              readOnly: readOnly,
               maxLines: lines,
               textInputAction: onSubmitted == null
                   ? TextInputAction.next

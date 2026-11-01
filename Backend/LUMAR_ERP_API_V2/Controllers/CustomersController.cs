@@ -34,7 +34,7 @@ public sealed class CustomersController(ICustomerService service, IAuthenticated
             return CreatedAtAction(nameof(GetCustomer), new { id = created.CustomerId }, created);
         }
         catch (ArgumentException exception) { return BadRequest(exception.Message); }
-        catch (Microsoft.Data.SqlClient.SqlException exception) when (exception.Number is 2601 or 2627) { return Conflict("CustomerCode already exists."); }
+        catch (Microsoft.Data.SqlClient.SqlException exception) when (exception.Number is 2601 or 2627) { return Conflict("تعذر إنشاء العميل بسبب تعارض في الهوية أو الكود. لم يتم ربطه بعميل آخر."); }
     }
 
     [HttpPost("with-referral")]
@@ -174,7 +174,11 @@ public sealed class CustomersController(ICustomerService service, IAuthenticated
         {
             return BadRequest(exception.Message);
         }
-        catch (UnauthorizedAccessException exception)
+        catch (Microsoft.Data.SqlClient.SqlException exception) when (exception.Number is 2601 or 2627)
+        {
+            return Conflict("تعذر إضافة فرد الأسرة بسبب تعارض في البيانات. لم يتم استبدال عميل موجود.");
+        }
+        catch (UnauthorizedAccessException)
         {
             return StatusCode(StatusCodes.Status403Forbidden);
         }

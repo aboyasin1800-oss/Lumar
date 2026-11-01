@@ -421,6 +421,18 @@ public sealed class OrderLoyaltyIntegrationServiceTests
         Assert.Equal(100m, reconciled.BuyerDelta);
         Assert.Equal(50m, reconciled.ReferralRewards.Single(x => x.Level == 1).Delta);
         Assert.Equal(25m, reconciled.ReferralRewards.Single(x => x.Level == 2).Delta);
+
+        orderRepository.Items = [orderRepository.Items[0] with { Quantity = 3 }];
+        var nextAddition = await service.ProcessOrderAsync(202, CancellationToken.None);
+        Assert.Equal(100m, nextAddition.BuyerDelta);
+        Assert.Equal(50m, nextAddition.ReferralRewards.Single(reward => reward.Level == 1).Delta);
+        Assert.Equal(25m, nextAddition.ReferralRewards.Single(reward => reward.Level == 2).Delta);
+
+        var replay = await service.ProcessOrderAsync(202, CancellationToken.None);
+        Assert.Equal(0m, replay.BuyerDelta);
+        Assert.Equal(300m, loyaltyRepository.Transactions
+            .Where(transaction => transaction.OrderId == 202 && transaction.Source == "PiecePurchase")
+            .Sum(transaction => transaction.Points));
     }
 
     private sealed class RecordingMessageWriteService : IMessageWriteService

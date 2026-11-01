@@ -8,7 +8,7 @@ public sealed record CustomerDetailsDto(int CustomerId, string? CustomerCode, st
 
 public sealed class CreateCustomerDto
 {
-    [Required, StringLength(20)] public string? CustomerCode { get; init; }
+    [StringLength(20)] public string? CustomerCode { get; init; }
     [Required, StringLength(100)] public string? CustomerName { get; init; }
     [StringLength(20)] public string? PhoneNumber { get; init; }
     [StringLength(250)] public string? Address { get; init; }

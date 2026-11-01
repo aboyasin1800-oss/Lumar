@@ -1,0 +1,19 @@
+{"protocolVersion":"0.1.1","runnerVersion":null,"pid":13100,"type":"start","time":0}
+{"suite":{"id":0,"platform":"vm","path":"D:/YASIN/frontend/tailoring_system/test/customer_repository_test.dart"},"type":"suite","time":1}
+{"test":{"id":1,"name":"loading D:/YASIN/frontend/tailoring_system/test/customer_repository_test.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":3}
+{"count":1,"time":23,"type":"allSuites"}
+{"testID":1,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":4465}
+{"group":{"id":2,"suiteID":0,"parentID":null,"name":"","metadata":{"skip":false,"skipReason":null},"testCount":6,"line":null,"column":null,"url":null},"type":"group","time":4476}
+{"test":{"id":3,"name":"online creation leaves identity generation to the backend","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":14,"column":3,"url":"file:///D:/YASIN/frontend/tailoring_system/test/customer_repository_test.dart"},"type":"testStart","time":4477}
+{"testID":3,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":4563}
+{"test":{"id":4,"name":"customer code search and edit Brightness.dark C10149","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":174,"column":5,"url":"package:flutter_test/src/widget_tester.dart","root_line":40,"root_column":7,"root_url":"file:///D:/YASIN/frontend/tailoring_system/test/customer_repository_test.dart"},"type":"testStart","time":4565}
+{"testID":4,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":8346}
+{"test":{"id":5,"name":"customer code search and edit Brightness.dark C-A7K3M-9Q8X2-RD4F","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":174,"column":5,"url":"package:flutter_test/src/widget_tester.dart","root_line":40,"root_column":7,"root_url":"file:///D:/YASIN/frontend/tailoring_system/test/customer_repository_test.dart"},"type":"testStart","time":8347}
+{"testID":5,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":9886}
+{"test":{"id":6,"name":"customer code search and edit Brightness.light C10149","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":174,"column":5,"url":"package:flutter_test/src/widget_tester.dart","root_line":40,"root_column":7,"root_url":"file:///D:/YASIN/frontend/tailoring_system/test/customer_repository_test.dart"},"type":"testStart","time":9887}
+{"testID":6,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":10738}
+{"test":{"id":7,"name":"customer code search and edit Brightness.light C-A7K3M-9Q8X2-RD4F","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":174,"column":5,"url":"package:flutter_test/src/widget_tester.dart","root_line":40,"root_column":7,"root_url":"file:///D:/YASIN/frontend/tailoring_system/test/customer_repository_test.dart"},"type":"testStart","time":10740}
+{"testID":7,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":11320}
+{"test":{"id":8,"name":"getDetails tolerates partial backend failures","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":71,"column":3,"url":"file:///D:/YASIN/frontend/tailoring_system/test/customer_repository_test.dart"},"type":"testStart","time":11321}
+{"testID":8,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":11342}
+{"success":true,"type":"done","time":11434}

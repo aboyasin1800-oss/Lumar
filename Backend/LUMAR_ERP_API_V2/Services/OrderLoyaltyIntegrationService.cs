@@ -56,6 +56,15 @@ public sealed class OrderLoyaltyIntegrationService(
         var order = await orderRepository.GetByIdAsync(orderId, cancellationToken)
             ?? throw new InvalidOperationException($"Order {orderId} was not found.");
 
+        var editRepository = orderRepository as ITailoringOrderEditRepository;
+        if (editRepository is not null && await editRepository.HasCompletedEditAsync(orderId, cancellationToken))
+        {
+            var account = await loyaltyRepository.EnsureAccountAsync(order.CustomerId, cancellationToken);
+            return new OrderLoyaltyProcessingResult(orderId,order.CustomerId,0m,0m,0m,[],account,[account],[],[],[]);
+        }
+        var capturedPoints = editRepository is null ? null
+            : await editRepository.GetCapturedBasePointsAsync(orderId, cancellationToken);
+
         var items = await orderRepository.GetItemsAsync(orderId, cancellationToken);
         if (items.Count == 0)
         {
@@ -68,6 +77,11 @@ public sealed class OrderLoyaltyIntegrationService(
         var basePoints = 0m;
         foreach (var item in items)
         {
+            if (capturedPoints is not null && capturedPoints.TryGetValue(item.OrderItemId, out var captured))
+            {
+                basePoints += captured;
+                continue;
+            }
             var setting = item.ImportedReadyMadeProductId is int importedProductId
                 ? await piecePointSettingsRepository.GetActiveImportedPointSettingAsync(importedProductId, cancellationToken)
                 : item.ProductTypeId is int productTypeId
@@ -81,8 +95,10 @@ public sealed class OrderLoyaltyIntegrationService(
         var buyerFingerprint = CreateBuyerFingerprint(orderId, buyerCustomerId, orderItemsFingerprint);
         var duplicateOrderNote = $"OrderId:{orderId}|Fingerprint:{buyerFingerprint}";
         var existingBuyerTransactions = await loyaltyRepository.GetTransactionsByCustomerAsync(buyerCustomerId, cancellationToken);
-        var priorBuyerOrderTransaction = existingBuyerTransactions
+        var priorBuyerOrderTransactions = existingBuyerTransactions
             .Where(x => x.OrderId == orderId && x.Source == "PiecePurchase")
+            .ToList();
+        var priorBuyerOrderTransaction = priorBuyerOrderTransactions
             .OrderByDescending(x => x.CreatedAt)
             .FirstOrDefault();
 
@@ -108,7 +124,7 @@ public sealed class OrderLoyaltyIntegrationService(
         }
 
         var buyerEarn = PiecePointsEngine.CalculateBuyerEarn(basePoints, "official-source", items.Sum(x => x.Quantity), 0m);
-        var priorBuyerEarn = priorBuyerOrderTransaction?.Points ?? 0m;
+        var priorBuyerEarn = priorBuyerOrderTransactions.Sum(transaction => transaction.Points);
         var buyerDelta = Math.Max(0m, buyerEarn - priorBuyerEarn);
         var buyerAccount = await loyaltyRepository.EnsureAccountAsync(buyerCustomerId, cancellationToken);
         var buyerWasFrozen = buyerAccount.LoyaltyAccountStatus.Equals("Frozen", StringComparison.OrdinalIgnoreCase);
@@ -207,8 +223,10 @@ public sealed class OrderLoyaltyIntegrationService(
                 orderItemsFingerprint);
 
             var previousRewards = await referralRepository.GetTransactionsByCustomerAsync(levelEntry.ReferrerCustomerId, cancellationToken);
-            var priorRewardForOrder = previousRewards
+            var priorOrderRewards = previousRewards
                 .Where(x => x.TransactionType == "RewardGranted" && x.OrderId == orderId && x.ReferrerCustomerId == levelEntry.ReferrerCustomerId)
+                .ToList();
+            var priorRewardForOrder = priorOrderRewards
                 .OrderByDescending(x => x.CreatedAt)
                 .FirstOrDefault();
             var isDuplicate = priorRewardForOrder is not null &&
@@ -221,7 +239,7 @@ public sealed class OrderLoyaltyIntegrationService(
                 continue;
             }
 
-            var deltaPoints = priorRewardForOrder is null ? points : Math.Max(0m, points - priorRewardForOrder.LoyaltyPoints);
+            var deltaPoints = Math.Max(0m, points - priorOrderRewards.Sum(reward => reward.LoyaltyPoints));
             if (deltaPoints <= 0m)
             {
                 rewards.Add(new OrderReferralRewardResult(levelEntry.Level, levelEntry.ReferrerCustomerId, buyerCustomerId, percentage, 0m, 0m, true, fingerprint));

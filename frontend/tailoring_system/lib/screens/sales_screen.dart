@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +30,8 @@ enum SalesViewMode {
   all,
   fullscreen,
 }
+
+enum SalesSaveState { draft, saving, savedLocked }
 
 DateTime calculateDeliveryDateFromDays(int days, {DateTime? base}) {
   final anchor = (base ?? DateTime.now()).toLocal();
@@ -104,8 +107,22 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   String activeOrdersCount = '3';
   String totalOrdersCount = '1200';
   String todayOrdersCount = '24';
-  bool _savingOrder = false;
+  SalesSaveState saveState = SalesSaveState.draft;
+  int? savedOrderId;
+  String? savedOrderNumber;
+  int? savedCustomerId;
+  String? savedRequestReference;
+  bool get _savingOrder => saveState == SalesSaveState.saving;
+  bool get _draftEditable => saveState == SalesSaveState.draft &&
+      _pendingCreatePayload == null;
+  Map<String, dynamic>? _pendingCreatePayload;
+  static Future<void>? _sessionStorageQueue;
   String? _orderRequestReference;
+  int _draftEpoch = 0;
+  int _customerSearchVersion = 0;
+  int _measurementRequestVersion = 0;
+  final Map<int, int> _measurementRequests = {};
+  final Map<int, int> _consumptionRequests = {};
   int? _cashAccountId;
   CashAccountAvailability _cashAccountAvailability =
       CashAccountAvailability.loading;
@@ -207,8 +224,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
 
   Future<void> _runInitializationCoordinator() async {
     final snapshot = await _referenceCache.load();
-    _applyReferenceSnapshot(snapshot);
     if (!mounted) return;
+    _applyReferenceSnapshot(snapshot);
     setState(() => _isInitialLoading = false);
     await _restorePersistedSession();
     if (!mounted) return;
@@ -219,44 +236,43 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       searchCustomerByTerm(phoneController.text.trim());
 
   Future<void> _openCustomerCreation() async {
+    if (!_draftEditable) return;
+    final epoch = _draftEpoch;
     final created = await AppNavigation.push<CustomerCreationResult>(
       context,
       (_) => CustomerCreateScreen(initialPhone: phoneController.text.trim()),
     );
-    if (!mounted || created == null) return;
-    setState(() {
-      customerFound = true;
-      currentCustomerId = created.customerId;
-      currentCustomerName = created.customerName;
-      currentCustomerCode = created.customerCode;
-      currentCustomerPhone = created.phoneNumber;
-      currentPoints = '0';
-      accumulatedPoints = _formatCustomerNumber(created.totalPoints);
-      treeCustomerCount = '${created.referralCount}';
-      referrerController.text = created.referrerCustomerName ?? '';
-      relationshipController.text = created.relationshipType ?? '';
-    });
-    _fillCustomerControllers();
-    await _loadCustomerSummary(created.customerId);
-    await loadSelectedCustomer();
+    if (!mounted || created == null || epoch != _draftEpoch) return;
+    if (await _applySelectedCustomer({
+      'customerId': created.customerId,
+      'customerName': created.customerName,
+      'customerCode': created.customerCode,
+      'phoneNumber': created.phoneNumber,
+    }, ++_customerSearchVersion)) {
+      await Future.wait([
+        _loadCustomerSummary(created.customerId),
+        loadMeasurementPreview(preserveExisting: false),
+      ]);
+    }
   }
 
   String _formatCustomerNumber(num value) =>
       value % 1 == 0 ? value.toInt().toString() : value.toStringAsFixed(2);
 
   Future<void> searchCustomerByTerm(String term) async {
-    if (term.isEmpty) {
-      _clearCustomer();
-      await loadSelectedCustomer();
-      return;
-    }
+    if (!_draftEditable || !mounted) return;
+    final version = ++_customerSearchVersion;
+    final epoch = _draftEpoch;
+    bool isCurrent() => mounted && _draftEditable &&
+        version == _customerSearchVersion && epoch == _draftEpoch;
+    if (term.isEmpty) return;
     try {
       final uri = Uri.parse('$_baseUrl/customers/search')
           .replace(queryParameters: {'term': term});
       final response = await http.get(uri);
+      if (!isCurrent()) return;
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        _clearCustomer();
-        await loadSelectedCustomer();
+        _showMessage('تعذر التحقق من العميل. أعد البحث قبل الحفظ.');
         return;
       }
       final decoded = jsonDecode(response.body);
@@ -264,67 +280,86 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           ? decoded.whereType<Map<String, dynamic>>().toList()
           : <Map<String, dynamic>>[];
       if (customers.isEmpty) {
-        _clearCustomer();
-      } else if (customers.length == 1) {
-        _applySelectedCustomer(customers.first);
-      } else {
-        final selected = await _pickCustomerFromPhoneMatches(customers);
-        if (selected == null) return;
-        _applySelectedCustomer(selected);
+        _showMessage('لم يتم العثور على العميل.');
+        return;
       }
-      await _loadCustomerSummary(currentCustomerId);
-      await loadSelectedCustomer();
+      final selected = customers.length == 1
+          ? customers.first
+          : await _pickCustomerFromPhoneMatches(customers);
+      if (!isCurrent()) return;
+      if (selected == null) {
+        _fillCustomerControllers();
+        return;
+      }
+      final previousId = currentCustomerId;
+      if (!await _applySelectedCustomer(selected, version)) return;
+      await Future.wait([
+        _loadCustomerSummary(currentCustomerId),
+        loadMeasurementPreview(preserveExisting: previousId == currentCustomerId),
+      ]);
     } catch (error) {
       debugPrint('Customer search failed: $error');
-      _clearCustomer();
-      await loadSelectedCustomer();
+      if (isCurrent()) _showMessage('تعذر التحقق من العميل. أعد البحث قبل الحفظ.');
     }
   }
 
-  void _clearCustomer() {
-    if (!mounted) return;
-    setState(() {
-      customerFound = false;
-      currentCustomerId = 0;
-      currentCustomerCode = '';
-      currentCustomerName = '';
-      currentCustomerPhone = '';
-      currentPoints = '0';
-      accumulatedPoints = '0';
-      treeCustomerCount = '0';
-      referrerController.clear();
-      relationshipController.clear();
-    });
-    _updateCurrentOrderPoints();
-  }
-
-  void _applySelectedCustomer(Map<String, dynamic> customer) {
+  Future<bool> _applySelectedCustomer(
+      Map<String, dynamic> customer, int searchVersion) async {
     final id = int.tryParse(customer['customerId']?.toString() ?? '') ?? 0;
+    if (id <= 0 || !mounted || !_draftEditable) return false;
+    final epoch = _draftEpoch;
+    if (id != currentCustomerId && _hasCustomerDependentData()) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('تغيير العميل'),
+          content: const Text('تغيير العميل سيؤدي إلى مسح القطع والمقاسات والبيانات المدخلة للعميل الحالي. هل تريد المتابعة؟'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('متابعة')),
+          ],
+        ),
+      );
+      if (!mounted || !_draftEditable || epoch != _draftEpoch ||
+          searchVersion != _customerSearchVersion) {
+        return false;
+      }
+      if (confirmed != true) {
+        _fillCustomerControllers();
+        return false;
+      }
+    }
     setState(() {
+      if (id != currentCustomerId) _clearCurrentSession();
       customerFound = id > 0;
       currentCustomerId = id;
       currentCustomerCode = customer['customerCode']?.toString() ?? '';
       currentCustomerName = customer['customerName']?.toString() ?? '';
       currentCustomerPhone =
-          customer['phoneNumber']?.toString() ?? currentCustomerPhone;
+          customer['phoneNumber']?.toString() ?? '';
       referrerController.clear();
       relationshipController.clear();
       accumulatedPoints = '0';
       treeCustomerCount = '0';
       currentPoints = '0';
     });
+    _fillCustomerControllers();
     _updateCurrentOrderPoints();
+    return true;
   }
 
   Future<void> _loadCustomerSummary(int customerId) {
     if (customerId <= 0) return Future.value();
+    final epoch = _draftEpoch;
     return _customerSummaryLoads.putIfAbsent(
       customerId,
       () async {
         try {
           await _loadCustomerSummaryOnce(customerId);
         } finally {
-          _customerSummaryLoads.remove(customerId);
+          if (epoch == _draftEpoch) _customerSummaryLoads.remove(customerId);
         }
       },
     );
@@ -332,6 +367,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
 
   Future<void> _loadCustomerSummaryOnce(int customerId) async {
     if (customerId <= 0) return;
+    final epoch = _draftEpoch;
     try {
       final responses = await Future.wait([
         http.get(Uri.parse('$_baseUrl/customers/$customerId')),
@@ -365,7 +401,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
               0;
       final descendantsCount =
           (tree['totalDescendantsCount'] as num?)?.toInt() ?? 0;
-      if (!mounted || currentCustomerId != customerId) return;
+      if (!mounted || !_draftEditable || epoch != _draftEpoch ||
+          currentCustomerId != customerId) {
+        return;
+      }
       setState(() {
         referrerController.text =
             details['parentCustomerName']?.toString() ?? '';
@@ -376,7 +415,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         currentPoints = '0';
       });
       _updateCurrentOrderPoints();
-      _fillCustomerControllers();
+      accumulatedPointsController.text = accumulatedPoints;
+      treeCustomerCountController.text = treeCustomerCount;
     } catch (error) {
       debugPrint('Failed to load customer sales summary: $error');
     }
@@ -425,7 +465,59 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
 
   Future<void> saveOrder() async {
     if (_savingOrder) return;
-    currentCustomerPhone = phoneController.text.trim();
+    if (saveState == SalesSaveState.savedLocked) {
+      _showMessage('هذا الطلب محفوظ بالفعل برقم $savedOrderNumber. لإنشاء طلب آخر استخدم زر طلب جديد.');
+      return;
+    }
+    setState(() => saveState = SalesSaveState.saving);
+    FocusScope.of(context).unfocus();
+    _invalidateDraftWork();
+    try {
+      if (_pendingCreatePayload == null) {
+        await _prepareOrder();
+      }
+      if (_pendingCreatePayload == null || !mounted) return;
+      await _saveCurrentSessionToStorage(includeSaving: true);
+      final decoded = await _api.postObject('/orders', _pendingCreatePayload!);
+      final orderId = int.tryParse(decoded['orderId']?.toString() ?? '');
+      final orderNumber = decoded['orderNumber']?.toString();
+      if (orderId == null || orderId <= 0 || orderNumber == null ||
+          orderNumber.trim().isEmpty) {
+        throw const FormatException('Missing saved order identity');
+      }
+      savedOrderId = orderId;
+      savedOrderNumber = orderNumber;
+      savedCustomerId = _pendingCreatePayload!['customerId'] as int;
+      savedRequestReference = _orderRequestReference;
+      saveState = SalesSaveState.savedLocked;
+      if (mounted) setState(() {});
+      try {
+        await _writeSavedMarker();
+      } catch (error) {
+        debugPrint('Failed to persist saved order marker: $error');
+      }
+      _showMessage('تم حفظ الطلب $savedOrderNumber بنجاح.');
+    } on ApiClientException catch (error) {
+      _showMessage(error.message);
+    } catch (error) {
+      debugPrint('Order creation failed: $error');
+      _showMessage('تعذر تأكيد الحفظ. أعد المحاولة بنفس الطلب.');
+    } finally {
+      if (saveState == SalesSaveState.saving) {
+        saveState = SalesSaveState.draft;
+      }
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _prepareOrder() async {
+    if (!customerFound || currentCustomerId <= 0 ||
+        phoneController.text.trim() != currentCustomerPhone ||
+        customerNameController.text.trim() != currentCustomerName ||
+        customerCodeController.text.trim() != currentCustomerCode) {
+      _showMessage('تحقق من اختيار العميل وبياناته قبل حفظ الطلب.');
+      return;
+    }
     if (currentCustomerPhone.isEmpty) {
       _showMessage('الرجاء إدخال رقم الهاتف');
       return;
@@ -452,6 +544,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     }
     if (advance > 0 && _cashAccountId == null) {
       final defaultCashAccount = await _resolveOfficialAdvanceCashAccount();
+      if (!mounted) return;
       if (defaultCashAccount == null) {
         _showMessage(switch (_cashAccountAvailability) {
           CashAccountAvailability.failed =>
@@ -566,10 +659,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           },
       });
     }
-    setState(() => _savingOrder = true);
-    try {
-      _orderRequestReference ??=
-          'ORD-UI-${DateTime.now().microsecondsSinceEpoch}';
+      _ensureRequestReference();
       final delivery = deliveryDateController.text.trim();
       final payload = {
         'customerId': currentCustomerId,
@@ -588,19 +678,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         'items': items,
       };
 
-      final decoded = await _api.postObject('/orders', payload);
-      await _clearPersistedSession();
-      _orderRequestReference = null;
-      _showMessage('تم حفظ الطلب ${decoded['orderNumber'] ?? ''} بنجاح.');
-    } on ApiClientException catch (error) {
-      debugPrint('Order creation failed: ${error.message}');
-      _showMessage(error.message);
-    } catch (error) {
-      debugPrint('Order creation failed: $error');
-      _showMessage('تعذر الاتصال بالخادم لحفظ الطلب.');
-    } finally {
-      if (mounted) setState(() => _savingOrder = false);
-    }
+      _pendingCreatePayload = payload;
   }
 
   Future<int?> _resolveOfficialAdvanceCashAccount() async {
@@ -717,17 +795,21 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _schedulePricing(int pieceIndex) async {
-    if (pieceIndex >= _pricingVersions.length) return;
+    final epoch = _draftEpoch;
+    if (!_isCurrentDraft(epoch, pieceIndex)) return;
     final version = ++_pricingVersions[pieceIndex];
     _pricingQuotes[pieceIndex] = null;
     _recalculateOrderTotal();
     _notifyPieceChanged(pieceIndex);
     await Future<void>.delayed(const Duration(milliseconds: 300));
-    if (!mounted || version != _pricingVersions[pieceIndex]) return;
-    await _requestPricing(pieceIndex, version);
+    if (!_isCurrentDraft(epoch, pieceIndex) ||
+        version != _pricingVersions[pieceIndex]) {
+      return;
+    }
+    await _requestPricing(pieceIndex, version, epoch);
   }
 
-  Future<void> _requestPricing(int pieceIndex, int version) async {
+  Future<void> _requestPricing(int pieceIndex, int version, int epoch) async {
     final productTypeId =
         _productTypeIdsByType[_normalizePieceTypeKey(pieceTypes[pieceIndex])];
     final fabricCode = fabricCodeControllers[pieceIndex].text.trim();
@@ -754,7 +836,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         'globalProfitPercentage': 0,
       }),
     );
-    if (!mounted || version != _pricingVersions[pieceIndex]) return;
+    if (!_isCurrentDraft(epoch, pieceIndex) ||
+        version != _pricingVersions[pieceIndex]) {
+      return;
+    }
     final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
     _updatePieceViewState(pieceIndex, () {
       _pricingQuotes[pieceIndex] = response.statusCode >= 200 &&
@@ -769,26 +854,9 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   void _showMessage(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
     }
-  }
-
-  String _apiErrorMessage(String body, String fallback) {
-    if (body.trim().isEmpty) return fallback;
-    try {
-      final decoded = jsonDecode(body);
-      if (decoded is String && decoded.trim().isNotEmpty) return decoded;
-      if (decoded is Map<String, dynamic>) {
-        for (final key in ['message', 'detail', 'title']) {
-          final value = decoded[key]?.toString().trim();
-          if (value != null && value.isNotEmpty) return value;
-        }
-      }
-    } catch (_) {
-      final value = body.trim();
-      if (value.isNotEmpty) return value;
-    }
-    return fallback;
   }
 
   void _fillCustomerControllers() {
@@ -800,12 +868,6 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     currentPointsController.text = currentPoints;
     accumulatedPointsController.text = accumulatedPoints;
     treeCustomerCountController.text = treeCustomerCount;
-    totalAmountController.text = totalAmount;
-    paidAmountController.text = paidAmount;
-    discountAmountController.text = discountAmount;
-    remainingAmountController.text = remainingAmount;
-    deliveryDateController.text = deliveryDate;
-    _syncDeliveryDaysFromDate(deliveryDateController.text);
   }
 
   void _updateCurrentOrderPoints() {
@@ -832,39 +894,101 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       _persistedSessionRestoreFuture ??= _restorePersistedSessionOnce();
 
   Future<void> _restorePersistedSessionOnce() async {
-    final raw = await _sessionStorage.read(key: _activeSessionStorageKey);
+    final epoch = _draftEpoch;
+    final raw = await _queueSessionStorage(
+        () => _sessionStorage.read(key: _activeSessionStorageKey));
+    if (!mounted || epoch != _draftEpoch || !_draftEditable) return;
     if (raw == null || raw.trim().isEmpty) return;
 
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return;
+      if (decoded['saveState'] == SalesSaveState.savedLocked.name) {
+        await _clearPersistedSession();
+        return;
+      }
+      if (decoded['schemaVersion'] != 2) {
+        await _clearPersistedSession();
+        return;
+      }
       final draft = _SalesDraft.fromJson(decoded);
       if (!mounted) return;
       setState(() {
         _applyDraftToCurrentState(draft);
       });
-      await _runInitialSessionRefresh();
+      if (_pendingCreatePayload == null) await _runInitialSessionRefresh();
     } catch (_) {
-      await _sessionStorage.delete(key: _activeSessionStorageKey);
+      await _clearPersistedSession();
     }
   }
 
-  Future<void> _saveCurrentSessionToStorage() async {
+  Future<void> _saveCurrentSessionToStorage({bool includeSaving = false}) async {
+    if (saveState == SalesSaveState.savedLocked) {
+      await _writeSavedMarker();
+      return;
+    }
+    if (_savingOrder && !includeSaving) return;
     if (!_hasMeaningfulSessionData()) {
-      await _sessionStorage.delete(key: _activeSessionStorageKey);
+      await _clearPersistedSession();
       return;
     }
 
     final draft = _captureDraft(_nextSessionNumber);
     final payload = jsonEncode(draft.toJson());
-    await _sessionStorage.write(key: _activeSessionStorageKey, value: payload);
+    await _queueSessionStorage(() =>
+        _sessionStorage.write(key: _activeSessionStorageKey, value: payload));
   }
 
-  Future<void> _clearPersistedSession() async {
-    await _sessionStorage.delete(key: _activeSessionStorageKey);
+  Future<void> _clearPersistedSession() => _queueSessionStorage(
+      () => _sessionStorage.delete(key: _activeSessionStorageKey));
+
+  Future<void> _persistSessionQuietly() async {
+    try {
+      await _saveCurrentSessionToStorage();
+    } catch (error) {
+      debugPrint('Failed to persist sales session: $error');
+    }
+  }
+
+  bool _isCurrentDraft(int epoch, [int? pieceIndex]) =>
+      mounted && _draftEditable && epoch == _draftEpoch &&
+      (pieceIndex == null || (pieceIndex >= 0 && pieceIndex < pieceTypes.length));
+
+  Future<T> _queueSessionStorage<T>(Future<T> Function() operation) {
+    final previous = _sessionStorageQueue;
+    final result = previous == null
+        ? Future<T>.sync(operation)
+        : previous.then((_) => operation());
+    late final Future<void> tail;
+    tail = result.then<void>((_) {},
+        onError: (Object error, StackTrace stack) {}).whenComplete(() {
+      if (identical(_sessionStorageQueue, tail)) _sessionStorageQueue = null;
+    });
+    _sessionStorageQueue = tail;
+    return result;
+  }
+
+  Future<void> _writeSavedMarker() {
+    final payload = jsonEncode({
+      'saveState': SalesSaveState.savedLocked.name,
+      'orderId': savedOrderId,
+      'orderNumber': savedOrderNumber,
+      'customerId': savedCustomerId,
+      'requestReference': savedRequestReference,
+    });
+    return _queueSessionStorage(() => _sessionStorage.write(
+        key: _activeSessionStorageKey, value: payload));
+  }
+
+  void _ensureRequestReference() {
+    _orderRequestReference ??= 'ORD-UI-${base64Url.encode(
+        List<int>.generate(24, (_) => Random.secure().nextInt(256)))}';
   }
 
   void _applyDraftToCurrentState(_SalesDraft draft) {
+    _clearCurrentSession();
+    _orderRequestReference = draft.requestReference;
+    _pendingCreatePayload = draft.createPayload;
     currentCustomerId = draft.customerId;
     customerFound = draft.customerFound;
     currentCustomerName = draft.customerName;
@@ -897,6 +1021,11 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     accumulatedPointsController.text = accumulatedPoints;
     treeCustomerCountController.text = treeCustomerCount;
     totalAmountController.text = draft.total;
+    totalAmount = draft.total;
+    paidAmount = draft.paid;
+    discountAmount = draft.discount;
+    remainingAmount = draft.remaining;
+    deliveryDate = draft.deliveryDate;
     paidAmountController.text = draft.paid;
     discountAmountController.text = draft.discount;
     remainingAmountController.text = draft.remaining;
@@ -997,6 +1126,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadExpectedLoyaltyPoints(int pieceIndex) async {
+    final epoch = _draftEpoch;
+    if (!_isCurrentDraft(epoch, pieceIndex)) return;
     if (pieceIndex >= pieceTypes.length ||
         pieceIndex >= _expectedLoyaltyPoints.length) {
       return;
@@ -1026,7 +1157,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           productTypeId: productTypeId,
         ),
       );
-      if (!mounted ||
+      if (!_isCurrentDraft(epoch, pieceIndex) ||
           pieceIndex >= pieceTypes.length ||
           version != _expectedLoyaltyPointVersions[pieceIndex] ||
           _productTypeIdsByType[
@@ -1041,7 +1172,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     } catch (error) {
       _loyaltyPointRequests.remove(productTypeId);
       debugPrint('Failed to load expected loyalty points: $error');
-      if (mounted &&
+      if (_isCurrentDraft(epoch, pieceIndex) &&
           pieceIndex < _expectedLoyaltyPoints.length &&
           version == _expectedLoyaltyPointVersions[pieceIndex]) {
         _updatePieceViewState(pieceIndex, () {
@@ -1060,6 +1191,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadFabricStockData() async {
+    final epoch = _draftEpoch;
     try {
       final response = await http.get(Uri.parse('$_baseUrl/inventory/fabrics'));
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1111,7 +1243,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           availableInches: quantityInch,
         );
       }
-      if (!mounted) return;
+      if (!_isCurrentDraft(epoch)) return;
       _fabricStockByCode
         ..clear()
         ..addAll(nextStock);
@@ -1124,6 +1256,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _syncFabricDataForPiece(int pieceIndex) async {
+    final epoch = _draftEpoch;
+    if (!_isCurrentDraft(epoch, pieceIndex)) return;
     final code = fabricCodeControllers[pieceIndex].text.trim();
     final fabricTypeController = fabricTypeControllers[pieceIndex];
     final fabricColorController = fabricColorControllers[pieceIndex];
@@ -1143,6 +1277,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     if (snapshot == null) {
       if (_fabricStockByCode.isEmpty) {
         await _loadFabricStockData();
+      }
+      if (!_isCurrentDraft(epoch, pieceIndex) ||
+          code != fabricCodeControllers[pieceIndex].text.trim()) {
+        return;
       }
       final refreshed = _fabricStockByCode[normalizedCode];
       if (refreshed == null) {
@@ -1184,6 +1322,12 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _calculateConsumption(int pieceIndex) async {
+    final epoch = _draftEpoch;
+    if (!_isCurrentDraft(epoch, pieceIndex)) return;
+    final version = ++_measurementRequestVersion;
+    _consumptionRequests[pieceIndex] = version;
+    bool isCurrent() => _isCurrentDraft(epoch, pieceIndex) &&
+      _consumptionRequests[pieceIndex] == version;
     final pieceType = pieceTypes[pieceIndex];
     final productTypeId =
         _productTypeIdsByType[_normalizePieceTypeKey(pieceType)];
@@ -1220,7 +1364,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         body: jsonEncode(
             {'productTypeId': productTypeId, 'measurements': values}),
       );
-      if (!mounted) return;
+      if (!isCurrent()) return;
       final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
@@ -1245,14 +1389,14 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         _invalidatePricing(pieceIndex);
       }
     } catch (_) {
-      if (mounted) {
+      if (isCurrent()) {
         _updatePieceViewState(pieceIndex, () {
           _calculatedConsumptions[pieceIndex] = null;
           _consumptionMessages[pieceIndex] =
               'تعذر الاتصال بخدمة قواعد الاستهلاك.';
         });
       }
-      _invalidatePricing(pieceIndex);
+      if (isCurrent()) _invalidatePricing(pieceIndex);
     }
   }
 
@@ -1321,7 +1465,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _refreshOfficialCatalog() async {
-    if (_isRefreshingOfficialCatalog) return;
+    if (!_draftEditable || _isRefreshingOfficialCatalog) return;
     setState(() => _isRefreshingOfficialCatalog = true);
     try {
       await _loadOfficialMeasurementFields(forceRefresh: true);
@@ -1342,11 +1486,13 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _refreshReferenceInBackground() async {
+    final epoch = _draftEpoch;
     try {
       final snapshot = await _referenceCache.refreshIfChanged();
-      if (snapshot == null || !mounted) return;
+      if (snapshot == null || !_isCurrentDraft(epoch)) return;
       setState(() => _applyReferenceSnapshot(snapshot));
       for (var index = 0; index < pieceTypes.length; index++) {
+        if (!_isCurrentDraft(epoch)) return;
         await _loadExpectedLoyaltyPoints(index);
         await _calculateConsumption(index);
       }
@@ -1390,11 +1536,22 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     bool recalculatePieces = true,
     bool preserveExisting = true,
   }) async {
+    final epoch = _draftEpoch;
+    final customerId = currentCustomerId;
+    if (!_isCurrentDraft(epoch)) return;
+    final requestVersion = ++_measurementRequestVersion;
     final indexes = pieceIndex == null
         ? List<int>.generate(pieceTypes.length, (index) => index)
         : <int>[pieceIndex];
+    final types = {for (final index in indexes)
+      if (index >= 0 && index < pieceTypes.length) index: pieceTypes[index]};
+    bool isCurrent(int index) => _isCurrentDraft(epoch, index) &&
+        customerId == currentCustomerId &&
+        _measurementRequests[index] == requestVersion &&
+        types[index] == pieceTypes[index];
     for (final index in indexes) {
       if (index < 0 || index >= pieceTypes.length) continue;
+      _measurementRequests[index] = requestVersion;
       final fields = {
         for (final field in _measurementFieldsForPiece(pieceTypes[index]))
           field: '---',
@@ -1407,10 +1564,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       }
       measurementValuesByType[_pieceMeasurementKey(index)] = fields;
     }
-    if (currentCustomerId > 0) {
+    if (customerId > 0) {
       try {
         final response = await http.get(
-          Uri.parse('$_baseUrl/customers/$currentCustomerId/measurements'),
+          Uri.parse('$_baseUrl/customers/$customerId/measurements'),
         );
         if (response.statusCode >= 200 && response.statusCode < 300) {
           final decoded = jsonDecode(response.body);
@@ -1421,7 +1578,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
               final value = item['measurementValue']?.toString() ?? '';
               if (type != null && name != null) {
                 for (final index in indexes) {
-                  if (pieceTypes[index] == type &&
+                  if (isCurrent(index) && pieceTypes[index] == type &&
                       measurementValuesByType[_pieceMeasurementKey(index)]
                               ?[name] ==
                           '---') {
@@ -1438,11 +1595,11 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       }
     }
     for (final index in indexes) {
-      _notifyPieceChanged(index);
+      if (isCurrent(index)) _notifyPieceChanged(index);
     }
     if (recalculatePieces) {
       for (final index in indexes) {
-        await _calculateConsumption(index);
+        if (isCurrent(index)) await _calculateConsumption(index);
       }
     }
   }
@@ -1513,7 +1670,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(_saveCurrentSessionToStorage());
+    unawaited(_persistSessionQuietly());
     ScreenChromeState.instance.setHideTopChrome(false);
     _cancelQuantityDebounces();
     for (final revision in _pieceRevisions) {
@@ -1564,7 +1721,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      unawaited(_saveCurrentSessionToStorage());
+      unawaited(_persistSessionQuietly());
     }
   }
 
@@ -1728,11 +1885,12 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
               borderRadius: BorderRadius.circular(5),
             ),
           ),
-          onPressed: _startNewSession,
+            onPressed: _draftEditable || saveState == SalesSaveState.savedLocked
+              ? _startNewSession : null,
           iconAlignment: IconAlignment.end,
           icon: const Icon(Icons.add,
               size: 20, color: Color.fromARGB(255, 23, 22, 37)),
-          label: const Text('جلسة جديدة'),
+          label: Text(saveState == SalesSaveState.savedLocked ? 'طلب جديد' : 'جلسة جديدة'),
         ),
         const SizedBox(width: 8),
         Text(
@@ -1817,7 +1975,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     final colorScheme = Theme.of(context).colorScheme;
     return Expanded(
       child: InkWell(
-        onTap: () => setState(() => _selectedTab = index),
+        onTap: _savingOrder ? null : () => setState(() => _selectedTab = index),
         child: Container(
           height: 40,
           alignment: Alignment.center,
@@ -1861,7 +2019,29 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       child: Column(children: [
         _buildDashboardCards(context),
         const SizedBox(height: 8),
-        _buildMainTopSection(context),
+        if (saveState == SalesSaveState.savedLocked)
+          ListTile(
+            leading: const Icon(Icons.lock_outline),
+            title: Text('الطلب $savedOrderNumber محفوظ ومقفل'),
+            trailing: FilledButton.icon(
+              onPressed: _startNewSession,
+              icon: const Icon(Icons.add),
+              label: const Text('طلب جديد'),
+            ),
+          ),
+        if (_pendingCreatePayload != null && saveState == SalesSaveState.draft)
+          const ListTile(
+            leading: Icon(Icons.pending_outlined),
+            title: Text('بانتظار تأكيد الحفظ'),
+          ),
+        AbsorbPointer(
+          key: const ValueKey('sales-draft-fields'),
+          absorbing: !_draftEditable,
+          child: ExcludeFocus(
+            excluding: !_draftEditable,
+            child: _buildMainTopSection(context),
+          ),
+        ),
         const SizedBox(height: 10),
         SizedBox(
           width: double.infinity,
@@ -1882,7 +2062,9 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: theme.colorScheme.onPrimary),
                   )
-                : const Text('حفظ الطلب'),
+                : Text(saveState == SalesSaveState.savedLocked
+                  ? 'الطلب محفوظ' : _pendingCreatePayload != null
+                  ? 'إعادة محاولة الحفظ' : 'حفظ الطلب'),
           ),
         ),
       ]),
@@ -1890,22 +2072,33 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   void _startNewSession() {
+    if (_savingOrder || (_pendingCreatePayload != null &&
+        saveState != SalesSaveState.savedLocked)) {
+      return;
+    }
     FocusScope.of(context).unfocus();
-    final draft = _captureDraft(_nextSessionNumber);
-    _drafts.add(draft);
+    final archived = saveState == SalesSaveState.draft && _hasMeaningfulSessionData();
+    if (archived) _drafts.add(_captureDraft(_nextSessionNumber));
     _nextSessionNumber++;
     unawaited(_clearPersistedSession());
     setState(() {
       _clearCurrentSession();
     });
     loadMeasurementPreview();
-    _showMessage('حُفظت الجلسة الحالية كمسودة محلية.');
+    _showMessage(archived ? 'حُفظت الجلسة الحالية كمسودة محلية.' : 'طلب جديد.');
   }
 
-  _SalesDraft _captureDraft(int number) => _SalesDraft(
+  _SalesDraft _captureDraft(int number) {
+    _ensureRequestReference();
+    return _SalesDraft(
+        requestReference: _orderRequestReference,
+        createPayload: _pendingCreatePayload,
         number: number,
         customerId: currentCustomerId,
-        customerFound: customerFound,
+        customerFound: customerFound &&
+          phoneController.text.trim() == currentCustomerPhone &&
+          customerNameController.text.trim() == currentCustomerName &&
+          customerCodeController.text.trim() == currentCustomerCode,
         customerName: customerNameController.text,
         customerCode: customerCodeController.text,
         phone: phoneController.text,
@@ -1934,8 +2127,32 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
             entry.key: Map<String, String>.from(entry.value)
         },
       );
+  }
+
+  void _invalidateDraftWork() {
+    _draftEpoch++;
+    _customerSearchVersion++;
+    _measurementRequests.clear();
+    _consumptionRequests.clear();
+    _cancelQuantityDebounces();
+    _customerSummaryLoads.clear();
+    _initialPieceEvaluations.clear();
+    _successfulConsumptionInputs.clear();
+    _hiddenMeasurementRows.clear();
+  }
 
   void _clearCurrentSession() {
+    _invalidateDraftWork();
+    saveState = SalesSaveState.draft;
+    savedOrderId = null;
+    savedOrderNumber = null;
+    savedCustomerId = null;
+    savedRequestReference = null;
+    _pendingCreatePayload = null;
+    _orderRequestReference = null;
+    _cashAccountId = null;
+    totalAmount = paidAmount = discountAmount = remainingAmount = '0.00';
+    deliveryDate = '';
     currentCustomerId = 0;
     customerFound = false;
     currentCustomerName = '';
@@ -1965,6 +2182,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       controller.clear();
     }
     quantityControllers[0].text = '1';
+    totalAmountController.text = totalAmount;
+    paidAmountController.text = paidAmount;
+    discountAmountController.text = discountAmount;
+    remainingAmountController.text = remainingAmount;
     currentPoints = '0';
     accumulatedPoints = '0';
     treeCustomerCount = '0';
@@ -1994,11 +2215,12 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _restoreDraft(int index) async {
+    if (!_draftEditable) return;
     final draft = _drafts.removeAt(index);
     setState(() {
       _applyDraftToCurrentState(draft);
     });
-    await _refreshRestoredSessionData();
+    if (_pendingCreatePayload == null) await _refreshRestoredSessionData();
   }
 
   Future<void> _runInitialSessionRefresh() =>
@@ -2011,16 +2233,19 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     bool loadMeasurements = false,
     bool useInitialPieceEvaluationGuard = false,
   }) async {
+    final epoch = _draftEpoch;
     if (currentCustomerId > 0) {
       await _loadCustomerSummary(currentCustomerId);
     } else {
       _updateCurrentOrderPoints();
       _fillCustomerControllers();
     }
+    if (!_isCurrentDraft(epoch)) return;
     if (loadMeasurements) {
       await loadMeasurementPreview(recalculatePieces: false);
     }
     for (var pieceIndex = 0; pieceIndex < piecesCount; pieceIndex++) {
+      if (!_isCurrentDraft(epoch)) return;
       if (useInitialPieceEvaluationGuard) {
         await _initialPieceEvaluations.putIfAbsent(
           pieceIndex,
@@ -2036,16 +2261,15 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     }
   }
 
-  bool _hasMeaningfulSessionData() {
-    if (customerNameController.text.trim().isNotEmpty ||
-        customerCodeController.text.trim().isNotEmpty ||
-        phoneController.text.trim().isNotEmpty ||
-        referrerController.text.trim().isNotEmpty ||
-        deliveryDateController.text.trim().isNotEmpty ||
-        totalAmountController.text.trim() != '0.00' ||
-        paidAmountController.text.trim() != '0.00' ||
-        discountAmountController.text.trim() != '0.00' ||
-        remainingAmountController.text.trim() != '0.00') {
+  bool _hasMeaningfulSessionData() => currentCustomerId > 0 ||
+      phoneController.text.trim().isNotEmpty || _hasCustomerDependentData();
+
+  bool _hasCustomerDependentData() {
+    if (deliveryDateController.text.trim().isNotEmpty ||
+        [totalAmountController, paidAmountController, discountAmountController,
+          remainingAmountController].any((controller) =>
+          (double.tryParse(controller.text.replaceAll(',', '.')) ?? 0) != 0) ||
+        quantityControllers.any((controller) => controller.text.trim() != '1')) {
       return true;
     }
 
@@ -2054,7 +2278,6 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     }
 
     for (final controller in [
-      ...quantityControllers,
       ...fabricCodeControllers,
       ...fabricTypeControllers,
       ...fabricColorControllers,
@@ -2080,6 +2303,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   void _cancelDraft(int index) {
+    if (!_draftEditable) return;
     if (index < 0 || index >= _drafts.length) return;
     _drafts.removeAt(index);
     setState(() {});
@@ -2278,7 +2502,6 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
             ]),
             const SizedBox(height: 8),
             _customerField(context, 'رقم الهاتف', phoneController,
-                onChanged: (value) => currentCustomerPhone = value,
                 onEditingComplete: () =>
                     _searchCustomerAndNextFocus(phoneController.text.trim())),
             _customerField(context, 'اسم العميل', customerNameController,
@@ -2352,7 +2575,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       padding: const EdgeInsets.only(bottom: 4),
       child: TextFormField(
         controller: controller,
-        readOnly: readOnly,
+        readOnly: readOnly || !_draftEditable,
         onChanged: onChanged,
         onEditingComplete:
             onEditingComplete ?? () => FocusScope.of(context).nextFocus(),
@@ -2403,6 +2626,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _addPiece() async {
+    if (!_draftEditable) return;
     setState(() {
       piecesCount++;
       _syncPieceTypesWithCount();
@@ -2412,7 +2636,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _removePiece(int pieceIndex) async {
-    if (piecesCount == 1) return;
+    if (!_draftEditable || piecesCount == 1) return;
+    final epoch = _draftEpoch;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -2428,16 +2653,28 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
-    _cancelQuantityDebounces();
-    _successfulConsumptionInputs.clear();
+    if (confirmed != true || !_isCurrentDraft(epoch, pieceIndex)) return;
+    final retainedMeasurements = <String, Map<String, String>>{};
+    for (var index = 0; index < piecesCount; index++) {
+      if (index == pieceIndex) continue;
+      final values = measurementValuesByType[_pieceMeasurementKey(index)];
+      if (values != null) {
+        retainedMeasurements[_pieceMeasurementKey(index > pieceIndex ? index - 1 : index)] = values;
+      }
+    }
+    _invalidateDraftWork();
     setState(() {
+      measurementValuesByType
+        ..clear()
+        ..addAll(retainedMeasurements);
       pieceTypes.removeAt(pieceIndex);
       for (final controllers in [
         quantityControllers,
         fabricCodeControllers,
         fabricTypeControllers,
         fabricColorControllers,
+        catalogNumberControllers,
+        availableInchesControllers,
         notes1Controllers,
         notes2Controllers,
         specialRequestsControllers
@@ -2456,9 +2693,19 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       _selectedPieceIndex = null;
     });
     _updateCurrentOrderPoints();
+    _recalculateOrderTotal();
+    final nextEpoch = _draftEpoch;
+    for (var index = 0; index < piecesCount; index++) {
+      if (!_isCurrentDraft(nextEpoch)) return;
+      await _calculateConsumption(index);
+      await _loadExpectedLoyaltyPoints(index);
+    }
   }
 
   Future<void> _openMeasurements(int pieceIndex) async {
+    final epoch = _draftEpoch;
+    final customerId = currentCustomerId;
+    if (!_isCurrentDraft(epoch, pieceIndex)) return;
     final pieceType = pieceTypes[pieceIndex];
     if (pieceType.isEmpty) return;
     final fields = _measurementFieldsForPiece(pieceType);
@@ -2470,13 +2717,20 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         initialValues:
             measurementValuesByType[_pieceMeasurementKey(pieceIndex)] ??
                 const {},
-        onSave: currentCustomerId > 0
-            ? (values) => MeasurementsApi(baseUrl: _baseUrl)
-                .upsert(currentCustomerId, pieceType, values)
+        onSave: customerId > 0
+          ? (values) {
+            if (!_isCurrentDraft(epoch, pieceIndex) ||
+              currentCustomerId != customerId) {
+              throw StateError('تغيرت جلسة العميل. أعد فتح المقاسات.');
+            }
+            return MeasurementsApi(baseUrl: _baseUrl)
+              .upsert(customerId, pieceType, values);
+            }
             : null,
       ),
     );
-    if (values != null && mounted) {
+    if (values != null && _isCurrentDraft(epoch, pieceIndex) &&
+      customerId == currentCustomerId) {
       _updatePieceViewState(
         pieceIndex,
         () =>
@@ -2576,7 +2830,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(5)),
                           ),
-                          onPressed: _addPiece,
+                          key: const ValueKey('sales-add-piece'),
+                          onPressed: _draftEditable ? _addPiece : null,
                           icon: const Icon(Icons.add, size: 16),
                           label: const Text('إضافة قطعة',
                               style: TextStyle(fontSize: 11)),
@@ -2648,10 +2903,11 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                       color: const Color.fromARGB(255, 10, 18, 28),
                     ),
                     child: IconButton(
+                      key: ValueKey('sales-remove-piece-$pieceIndex'),
                       tooltip: 'حذف القطعة',
                       visualDensity: VisualDensity.compact,
                       color: theme.colorScheme.error,
-                      onPressed: piecesCount == 1
+                      onPressed: !_draftEditable || piecesCount == 1
                           ? null
                           : () => _removePiece(pieceIndex),
                       icon: const Icon(Icons.delete_outline, size: 18),
@@ -3209,6 +3465,8 @@ class _SalesPricingQuote {
 
 class _SalesDraft {
   const _SalesDraft({
+    this.requestReference,
+    this.createPayload,
     required this.number,
     required this.customerId,
     required this.customerFound,
@@ -3236,6 +3494,8 @@ class _SalesDraft {
   });
 
   factory _SalesDraft.fromJson(Map<String, dynamic> json) => _SalesDraft(
+      requestReference: json['requestReference'] as String?,
+      createPayload: json['createPayload'] as Map<String, dynamic>?,
         number: (json['number'] as num?)?.toInt() ?? 1,
         customerId: (json['customerId'] as num?)?.toInt() ?? 0,
         customerFound: json['customerFound'] as bool? ?? false,
@@ -3301,6 +3561,9 @@ class _SalesDraft {
       );
 
   Map<String, dynamic> toJson() => {
+      'schemaVersion': 2,
+      'requestReference': requestReference,
+      'createPayload': createPayload,
         'number': number,
         'customerId': customerId,
         'customerFound': customerFound,
@@ -3333,6 +3596,8 @@ class _SalesDraft {
       };
 
   final int number;
+  final String? requestReference;
+  final Map<String, dynamic>? createPayload;
   final int customerId;
   final bool customerFound;
   final String customerName;

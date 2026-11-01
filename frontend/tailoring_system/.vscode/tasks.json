@@ -86,6 +86,21 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "none"
+		},
+		{
+			"label": "Flutter Windows Build",
+			"type": "shell",
+			"command": "C:\\src\\flutter\\bin\\flutter.bat",
+			"args": [
+				"build",
+				"windows",
+				"--target",
+				"lib/main_windows.dart",
+				"--no-pub"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }
