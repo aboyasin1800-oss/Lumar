@@ -197,7 +197,7 @@ public sealed partial class OrderRepository(ReadOnlySqlConnectionFactory connect
     }
 
     public Task<IReadOnlyList<OrderItemDto>> GetItemsAsync(int orderId, CancellationToken cancellationToken) => QueryAsync(
-        "SELECT OrderItemID, OrderID, PieceType, Quantity, FabricCode, FabricType, FabricColor, Request1, Request2, Notes1, Notes2, MeasurementSnapshot, TrackingCode, PieceStatus, CreatedDate, ProductTypeId, ImportedReadyMadeProductId FROM dbo.OrderItems WHERE OrderID = @orderId ORDER BY OrderItemID",
+        "SELECT item.OrderItemID, item.OrderID, item.PieceType, item.Quantity, item.FabricCode, item.FabricType, item.FabricColor, item.Request1, item.Request2, item.Notes1, item.Notes2, item.MeasurementSnapshot, item.TrackingCode, item.PieceStatus, item.CreatedDate, item.ProductTypeId, item.ImportedReadyMadeProductId, officialCost.FullCost, officialCost.OperationalCost FROM dbo.OrderItems item OUTER APPLY (SELECT TOP(1) TRY_CONVERT(decimal(18,8), JSON_VALUE(value.OriginalPricingSnapshot, '$.FullCostPerPiece')) AS FullCost, TRY_CONVERT(decimal(18,8), JSON_VALUE(value.OriginalPricingSnapshot, '$.OperationalCostPerPiece')) AS OperationalCost FROM dbo.Pieces piece JOIN dbo.TailoringPieceSaleValues value ON value.PieceID=piece.PieceID WHERE piece.OrderItemID=item.OrderItemID ORDER BY piece.PieceNumber,piece.PieceID) officialCost WHERE item.OrderID = @orderId ORDER BY item.OrderItemID",
         reader =>
         {
             var measurementSnapshot = reader.NullableString("MeasurementSnapshot");
@@ -220,7 +220,11 @@ public sealed partial class OrderRepository(ReadOnlySqlConnectionFactory connect
                 reader.NullableString("PieceStatus"),
                 reader.GetDateTime(14),
                 reader.NullableInt32("ProductTypeId"),
-                reader.NullableInt32("ImportedReadyMadeProductId"));
+                reader.NullableInt32("ImportedReadyMadeProductId"))
+            {
+                FullCost = reader.NullableDecimal("FullCost"),
+                OperationalCost = reader.NullableDecimal("OperationalCost")
+            };
         },
         orderId,
         cancellationToken);

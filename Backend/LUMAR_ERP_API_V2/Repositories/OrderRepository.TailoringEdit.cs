@@ -41,19 +41,42 @@ public sealed partial class OrderRepository
                 return currentSnapshot;
             }
 
+            var requestHash = ComputeRequestHash(request);
             var sameOperation = await TryReadOperationAsync(connection, transaction, orderId, request.EditOperationId, cancellationToken);
             if (sameOperation is not null)
             {
+                if (!HashesMatch(sameOperation.RequestHash, requestHash))
+                    throw new TailoringOrderEditConflictException("تم استخدام معرف العملية نفسه مع طلب مختلف، لذلك تم رفض التكرار للحفاظ على الاتساق.");
                 var replay = await ReadEditSnapshotAsync(connection, transaction, orderId, cancellationToken)
                     ?? currentSnapshot;
                 await transaction.CommitAsync(cancellationToken);
                 return replay;
             }
 
-            var requestHash = ComputeRequestHash(request);
+            foreach (var addition in request.AddedPieces)
+            {
+                var existingAdd = await TryReadAddOperationAsync(connection, transaction, orderId, addition.AddOperationId, cancellationToken);
+                if (existingAdd is null)
+                    continue;
+
+                var expectedHash = ComputeRequestHash(new TailoringOrderEditRequest
+                {
+                    EditOperationId = request.EditOperationId,
+                    ExpectedVersion = request.ExpectedVersion,
+                    AddedPieces = [addition]
+                });
+                if (!HashesMatch(existingAdd.RequestHash, expectedHash))
+                    throw new TailoringOrderEditConflictException("تم استخدام معرف إضافة القطعة نفسه مع بيانات مختلفة، لذلك تم رفض إعادة التشغيل للحفاظ على سلامة الطلب.");
+            }
+
             var sameHash = await TryReadOperationByHashAsync(connection, transaction, orderId, requestHash, cancellationToken);
             if (sameHash is not null && sameHash.EditOperationId != request.EditOperationId)
-                throw new TailoringOrderEditConflictException("هذا التعديل تم تطبيقه سابقًا باستخدام طلب مطابق دون السماح بتكرار نفس التغييرات.");
+            {
+                var replay = await ReadEditSnapshotAsync(connection, transaction, orderId, cancellationToken)
+                    ?? currentSnapshot;
+                await transaction.CommitAsync(cancellationToken);
+                return replay;
+            }
             if (!string.Equals(request.ExpectedVersion, currentSnapshot.Version, StringComparison.Ordinal))
                 throw new TailoringOrderEditConflictException("نسخة الطلب الحالية لا تطابق رقم الإصدار المتوقع، لذلك تم رفض التعديل للحفاظ على تناسق البيانات.");
 
@@ -73,8 +96,26 @@ public sealed partial class OrderRepository
             foreach (var change in request.ChangedPieces)
                 await ApplyChangedPieceAsync(connection, transaction, orderId, change, cancellationToken);
 
+            var addedPiecePriceDelta = 0m;
             foreach (var addition in request.AddedPieces)
-                await AddNewPieceAsync(connection, transaction, orderId, addition, cancellationToken, request.EditOperationId);
+            {
+                var existingAdd = await TryReadAddOperationAsync(connection, transaction, orderId, addition.AddOperationId, cancellationToken);
+                if (existingAdd is not null)
+                {
+                    var expectedHash = ComputeRequestHash(new TailoringOrderEditRequest
+                    {
+                        EditOperationId = request.EditOperationId,
+                        ExpectedVersion = request.ExpectedVersion,
+                        AddedPieces = [addition]
+                    });
+                    if (!HashesMatch(existingAdd.RequestHash, expectedHash))
+                        throw new TailoringOrderEditConflictException("تم استخدام معرف إضافة القطعة نفسه مع بيانات مختلفة، لذلك تم رفض إعادة التشغيل للحفاظ على سلامة الطلب.");
+
+                    continue;
+                }
+
+                addedPiecePriceDelta += await AddNewPieceAsync(connection, transaction, orderId, addition, cancellationToken, request.EditOperationId);
+            }
 
             foreach (var cancellation in request.CancelledPieces)
                 await CancelPieceAsync(connection, transaction, orderId, cancellation, cancellationToken, normalizedActor, request.EditOperationId);
@@ -82,8 +123,16 @@ public sealed partial class OrderRepository
             if (request.Details is not null)
                 await ApplyOrderDetailsPatchAsync(connection, transaction, orderId, request.Details, cancellationToken);
 
-            var hadCancellation = request.CancelledPieces.Count > 0;
-            await UpdateOrderTotalsAfterEditAsync(connection, transaction, orderId, hadCancellation, cancellationToken);
+            var additionOnly = request.AddedPieces.Count > 0
+                && request.ChangedPieces.Count == 0
+                && request.CancelledPieces.Count == 0;
+            await UpdateOrderTotalsAfterEditAsync(
+                connection,
+                transaction,
+                orderId,
+                additionOnly ? currentSnapshot.Order.TotalAmount : null,
+                addedPiecePriceDelta,
+                cancellationToken);
 
             var finalSnapshot = await ReadEditSnapshotAsync(connection, transaction, orderId, cancellationToken)
                 ?? throw new InvalidOperationException("تعذر قراءة لقطة الطلب بعد تطبيق التعديل.");
@@ -137,6 +186,14 @@ public sealed partial class OrderRepository
         return Convert.ToHexString(hash);
     }
 
+    private static bool HashesMatch(byte[] first, string secondHash)
+    {
+        if (first is null || first.Length == 0)
+            return string.IsNullOrEmpty(secondHash);
+
+        return first.AsSpan().SequenceEqual(Convert.FromHexString(secondHash));
+    }
+
     private static async Task<TailoringOrderEditOperationRow?> TryReadOperationAsync(
         SqlConnection connection,
         SqlTransaction transaction,
@@ -185,6 +242,33 @@ public sealed partial class OrderRepository
             reader.GetGuid(0),
             reader.IsDBNull(1) ? Array.Empty<byte>() : (byte[])reader.GetValue(1),
             reader.IsDBNull(2) ? null : reader.GetString(2));
+    }
+
+    private static async Task<TailoringAddOperationRow?> TryReadAddOperationAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int orderId,
+        Guid addOperationId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand("""
+            SELECT TOP(1) AddOperationId, EditOperationId, OrderId, PieceId, RequestHash
+            FROM dbo.TailoringPieceAddOperations WITH (UPDLOCK,HOLDLOCK)
+            WHERE OrderId=@orderId AND AddOperationId=@addOperationId
+            ORDER BY AddOperationId DESC
+            """, connection, transaction);
+        command.Parameters.AddWithValue("@orderId", orderId);
+        command.Parameters.AddWithValue("@addOperationId", addOperationId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            return null;
+
+        return new TailoringAddOperationRow(
+            reader.GetGuid(0),
+            reader.GetGuid(1),
+            reader.GetInt32(2),
+            reader.GetInt32(3),
+            reader.IsDBNull(4) ? Array.Empty<byte>() : (byte[])reader.GetValue(4));
     }
 
     private static async Task ApplyChangedPieceAsync(
@@ -267,7 +351,7 @@ public sealed partial class OrderRepository
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private async Task AddNewPieceAsync(
+    private async Task<decimal> AddNewPieceAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         int orderId,
@@ -278,11 +362,30 @@ public sealed partial class OrderRepository
         if (addition.ProductTypeId <= 0)
             throw new ArgumentOutOfRangeException(nameof(addition), "نوع المنتج الجديد غير صالح.");
 
+        var productTypeName = await ReadOfficialProductTypeNameAsync(
+            connection, transaction, addition.ProductTypeId, cancellationToken);
+
+        var existingAdd = await TryReadAddOperationAsync(connection, transaction, orderId, addition.AddOperationId, cancellationToken);
+        if (existingAdd is not null)
+        {
+            var expectedHash = ComputeRequestHash(new TailoringOrderEditRequest
+            {
+                EditOperationId = editOperationId,
+                ExpectedVersion = string.Empty,
+                AddedPieces = [addition]
+            });
+            if (!HashesMatch(existingAdd.RequestHash, expectedHash))
+                throw new TailoringOrderEditConflictException("تم استخدام معرف إضافة القطعة نفسه مع بيانات مختلفة، لذلك تم رفض إعادة التشغيل للحفاظ على سلامة الطلب.");
+            return 0m;
+        }
+
         var item = new CreateOrderItemDto
         {
-            PieceType = "Tailoring",
+            PieceType = productTypeName,
             Quantity = 1,
             FabricCode = addition.FabricCode,
+            FabricType = addition.FabricType,
+            FabricColor = addition.FabricColor,
             ProductTypeId = addition.ProductTypeId,
             CatalogNumber = addition.CatalogNumber,
             Request1 = addition.Request1,
@@ -298,9 +401,16 @@ public sealed partial class OrderRepository
             throw new InvalidOperationException("تعذر تحديد احتياج القماش للقطعة المضافة.");
 
         var fabricLine = fabricLines[0];
-        var now = DateTime.UtcNow;
-        var orderItemId = await InsertOrderItemAsync(orderId, item, fabricLine, $"ADD-{addition.AddOperationId:N}", now, connection, transaction, cancellationToken);
-        var pieceId = await InsertPieceAsync(orderItemId, $"ADD-{addition.AddOperationId:N}", 1, now, connection, transaction, cancellationToken);
+        var fabricStock = await LoadFoundationFabricAsync(
+            connection, transaction, fabricLine.FabricCode, cancellationToken);
+        if (fabricLine.RequiredInches > fabricStock.AvailableInches)
+            throw new ArgumentException(
+                $"الكمية المتاحة للقماش {fabricLine.FabricCode} غير كافية. المتاح: {fabricStock.AvailableInches:0.######} بوصة، المطلوب: {fabricLine.RequiredInches:0.######} بوصة.");
+        fabricLine = fabricLine with
+        {
+            InventoryItemId = fabricStock.InventoryItemId,
+            InchPrice = fabricStock.InchPrice
+        };
 
         if (pricingEngine is null)
             throw new InvalidOperationException("محرك التسعير الرسمي مطلوب لإضافة قطعة جديدة.");
@@ -308,13 +418,52 @@ public sealed partial class OrderRepository
         var quote = await pricingEngine.CalculateAsync(new PricingEngineRequestDto
         {
             ProductTypeId = addition.ProductTypeId,
-            FabricCode = addition.FabricCode,
+            FabricCode = fabricLine.FabricCode,
             Consumption = fabricLine.RequiredInches,
             ConsumptionUnit = "Inch",
             Quantity = 1
         }, cancellationToken);
         if (!quote.IsReady || quote.FinalPricePerPiece is null)
             throw new InvalidOperationException(string.Join(" ", quote.Reasons));
+        var fullCost = quote.FullCostPerPiece ?? quote.FullCostTotal;
+        if (fullCost is null)
+            throw new InvalidOperationException("محرك التسعير الرسمي لم يُرجع التكلفة الكاملة للقطعة.");
+
+        var persistedMeasurements = addition.Measurements.ToDictionary(
+            entry => entry.Key,
+            entry => (object?)entry.Value,
+            StringComparer.OrdinalIgnoreCase);
+        persistedMeasurements["_fullCost"] = fullCost.Value;
+        var persistedItem = new CreateOrderItemDto
+        {
+            PieceType = productTypeName,
+            Quantity = 1,
+            FabricCode = addition.FabricCode,
+            FabricType = addition.FabricType,
+            FabricColor = addition.FabricColor,
+            ProductTypeId = addition.ProductTypeId,
+            CatalogNumber = addition.CatalogNumber,
+            Request1 = addition.Request1,
+            Request2 = addition.Request2,
+            SpecialRequest = addition.SpecialRequest,
+            Notes1 = addition.Notes1,
+            Notes2 = addition.Notes2,
+            MeasurementSnapshot = JsonSerializer.Serialize(persistedMeasurements)
+        };
+
+        var trackingPrefix = await SystemCodeGenerator.ResolvePrefixAsync(
+            connection, transaction, "PieceTrackingPrefix", "TRK-", cancellationToken);
+        var nextTracking = await NextNumberAsync(
+            "dbo.Pieces", "TrackingCode", trackingPrefix, connection, transaction, cancellationToken);
+        var itemTrackingCode = $"{trackingPrefix}{nextTracking++:D6}";
+        var pieceTrackingCode = $"{trackingPrefix}{nextTracking:D6}";
+        var now = DateTime.UtcNow;
+        var orderItemId = await InsertOrderItemAsync(
+            orderId, persistedItem, fabricLine, itemTrackingCode, now,
+            connection, transaction, cancellationToken);
+        var pieceId = await InsertPieceAsync(
+            orderItemId, pieceTrackingCode, 1, now,
+            connection, transaction, cancellationToken);
 
         var basePoints = 0m;
         if (pointSettings is not null)
@@ -324,18 +473,30 @@ public sealed partial class OrderRepository
         }
 
         await InsertPieceSaleValueAsync(connection, transaction, pieceId, new PieceSaleValue(quote.FinalPricePerPiece.Value, 0m), quote, basePoints, now, cancellationToken);
-        await InsertFabricAsync(orderItemId, item, fabricLine, now, connection, transaction, cancellationToken);
-        await InventoryRepository.ConsumeFabricCodeInventoryAsync(
+        await InsertFabricAsync(orderItemId, persistedItem, fabricLine, now, connection, transaction, cancellationToken);
+        var consumption = await InventoryRepository.ConsumeFabricCodeInventoryAsync(
             connection,
             transaction,
             new ConsumeFabricCodeInventoryDto
             {
-                FabricCode = addition.FabricCode,
+                FabricCode = fabricLine.FabricCode,
                 OrderItemId = orderItemId,
                 QuantityInches = fabricLine.RequiredInches,
                 SourceOperationId = InventoryRepository.CreateFabricConsumptionOperationId(orderItemId, false)
             },
             cancellationToken);
+        if (consumption.InventoryItemId != fabricLine.InventoryItemId)
+            throw new InvalidOperationException("مصدر صرف القماش لا يطابق مخزون بند الطلب.");
+
+        await using (var fabricCommand = new SqlCommand(
+            "UPDATE dbo.OrderItemFabrics SET ConsumedQuantity=Quantity,TotalCost=@cost WHERE OrderItemID=@itemId",
+            connection, transaction))
+        {
+            fabricCommand.Parameters.AddWithValue("@cost", consumption.OperationalAmount);
+            fabricCommand.Parameters.AddWithValue("@itemId", orderItemId);
+            if (await fabricCommand.ExecuteNonQueryAsync(cancellationToken) != 1)
+                throw new InvalidOperationException("تعذر تثبيت استهلاك القماش على بند القطعة المضافة.");
+        }
 
         await using (var addOperation = new SqlCommand("""
             INSERT INTO dbo.TailoringPieceAddOperations (AddOperationId,EditOperationId,OrderId,PieceId,RequestHash)
@@ -357,6 +518,25 @@ public sealed partial class OrderRepository
 
         var buyerCustomerId = await GetOrderCustomerIdAsync(connection, transaction, orderId, cancellationToken);
         await ApplyPieceBenefitDeltaAsync(connection, transaction, orderId, buyerCustomerId, pieceId, basePoints, "AddedPiece", cancellationToken);
+        return quote.FinalPricePerPiece.Value;
+    }
+
+    private static async Task<string> ReadOfficialProductTypeNameAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int productTypeId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand("""
+            SELECT TOP(1) NameAr
+            FROM dbo.PricingProductTypes WITH (UPDLOCK,HOLDLOCK)
+            WHERE ProductTypeId=@productTypeId AND IsActive=1
+            """, connection, transaction);
+        command.Parameters.AddWithValue("@productTypeId", productTypeId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        if (result is not string productTypeName || string.IsNullOrWhiteSpace(productTypeName))
+            throw new ArgumentException("نوع المنتج الرسمي غير موجود أو غير فعال.", nameof(productTypeId));
+        return productTypeName.Trim();
     }
 
     private async Task CancelPieceAsync(
@@ -409,6 +589,7 @@ public sealed partial class OrderRepository
         foreach (var source in sources)
         {
             var quantityInches = source.ConsumedQuantity * (source.UnitId == 1 ? 36m : 1m);
+            var reversalOperationId = CreateCancellationReversalOperationId(source.FabricConsumptionSourceId, cancellation.PieceId, editOperationId);
             await InventoryRepository.ReverseFabricConsumptionInTransactionAsync(
                 connection,
                 transaction,
@@ -416,7 +597,7 @@ public sealed partial class OrderRepository
                     source.FabricConsumptionSourceId,
                     cancellation.PieceId,
                     quantityInches,
-                    Guid.NewGuid(),
+                    reversalOperationId,
                     cancellation.Reason,
                     actor),
                 cancellationToken);
@@ -444,6 +625,12 @@ public sealed partial class OrderRepository
         var buyerCustomerId = await GetOrderCustomerIdAsync(connection, transaction, orderId, cancellationToken);
         var basePoints = await GetPieceBasePointsAsync(connection, transaction, cancellation.PieceId, cancellationToken);
         await ApplyPieceBenefitDeltaAsync(connection, transaction, orderId, buyerCustomerId, cancellation.PieceId, -basePoints, "CancelledPiece", cancellationToken);
+        await using var clearPieceBenefits = new SqlCommand(
+            "UPDATE dbo.TailoringPieceBenefitBalances SET CurrentPoints=0 WHERE PieceId=@pieceId",
+            connection,
+            transaction);
+        clearPieceBenefits.Parameters.AddWithValue("@pieceId", cancellation.PieceId);
+        await clearPieceBenefits.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task<int> GetOrderCustomerIdAsync(
@@ -605,51 +792,42 @@ public sealed partial class OrderRepository
         SqlConnection connection,
         SqlTransaction transaction,
         int orderId,
-        bool hadCancellation,
+        decimal? additionBaseTotal,
+        decimal addedPiecePriceDelta,
         CancellationToken cancellationToken)
     {
-        await using var totalCommand = new SqlCommand("""
-            SELECT ISNULL(SUM(value.ApprovedSalePrice),0)
-            FROM dbo.Pieces piece WITH (UPDLOCK,HOLDLOCK)
-            JOIN dbo.OrderItems item WITH (UPDLOCK,HOLDLOCK) ON item.OrderItemID=piece.OrderItemID
-            LEFT JOIN dbo.TailoringPieceSaleValues value WITH (UPDLOCK,HOLDLOCK) ON value.PieceID=piece.PieceID
-            WHERE item.OrderID=@orderId AND piece.PieceStatus NOT IN (N'Cancelled',N'Canceled')
-            """, connection, transaction);
-        totalCommand.Parameters.AddWithValue("@orderId", orderId);
-        await using var totalReader = await totalCommand.ExecuteReaderAsync(cancellationToken);
-        if (!await totalReader.ReadAsync(cancellationToken))
-            return;
+        decimal totalAmount;
+        if (additionBaseTotal.HasValue)
+        {
+            totalAmount = additionBaseTotal.Value + addedPiecePriceDelta;
+        }
+        else
+        {
+            await using var totalCommand = new SqlCommand("""
+                SELECT ISNULL(SUM(value.ApprovedSalePrice),0)
+                FROM dbo.Pieces piece WITH (UPDLOCK,HOLDLOCK)
+                JOIN dbo.OrderItems item WITH (UPDLOCK,HOLDLOCK) ON item.OrderItemID=piece.OrderItemID
+                LEFT JOIN dbo.TailoringPieceSaleValues value WITH (UPDLOCK,HOLDLOCK) ON value.PieceID=piece.PieceID
+                WHERE item.OrderID=@orderId AND piece.PieceStatus NOT IN (N'Cancelled',N'Canceled')
+                """, connection, transaction);
+            totalCommand.Parameters.AddWithValue("@orderId", orderId);
+            await using var totalReader = await totalCommand.ExecuteReaderAsync(cancellationToken);
+            if (!await totalReader.ReadAsync(cancellationToken))
+                return;
 
-        var totalAmount = totalReader.GetDecimal(0);
-        await totalReader.DisposeAsync();
+            totalAmount = totalReader.GetDecimal(0);
+        }
 
-        await using var paidCommand = new SqlCommand("SELECT PaidAmount FROM dbo.Orders WITH (UPDLOCK,HOLDLOCK) WHERE OrderID=@orderId", connection, transaction);
+        await using var paidCommand = new SqlCommand("SELECT PaidAmount,DiscountAmount FROM dbo.Orders WITH (UPDLOCK,HOLDLOCK) WHERE OrderID=@orderId", connection, transaction);
         paidCommand.Parameters.AddWithValue("@orderId", orderId);
         await using var paidReader = await paidCommand.ExecuteReaderAsync(cancellationToken);
         if (!await paidReader.ReadAsync(cancellationToken))
             throw new InvalidOperationException($"الطلب رقم {orderId} غير موجود أثناء إعادة حساب الإجمالي.");
 
         var currentPaid = paidReader.GetDecimal(0);
-        var nextPaid = hadCancellation ? totalAmount : currentPaid;
-        var refundAmount = Math.Max(0m, currentPaid - totalAmount);
-        if (hadCancellation && refundAmount > 0m)
-        {
-            await using var payment = new SqlCommand("""
-                INSERT INTO dbo.Payments (OrderID,PaymentDate,Amount,PaymentMethod,ReferenceNo,Notes,CreatedDate,PaymentKind)
-                VALUES (@orderId,@date,@amount,@method,@reference,@notes,@created,@kind)
-                """, connection, transaction);
-            payment.Parameters.AddWithValue("@orderId", orderId);
-            payment.Parameters.AddWithValue("@date", DateTime.UtcNow);
-            payment.Parameters.AddWithValue("@amount", refundAmount);
-            payment.Parameters.AddWithValue("@method", "Cash");
-            payment.Parameters.AddWithValue("@reference", $"EditRefund:{orderId}:{Guid.NewGuid():N}");
-            payment.Parameters.AddWithValue("@notes", "Refund for tailoring edit");
-            payment.Parameters.AddWithValue("@created", DateTime.UtcNow);
-            payment.Parameters.AddWithValue("@kind", "Refund");
-            await payment.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        var remaining = totalAmount - nextPaid;
+        var discountAmount = paidReader.GetDecimal(1);
+        var nextPaid = currentPaid;
+        var remaining = totalAmount - discountAmount - nextPaid;
         await using (var updateOrder = new SqlCommand("""
             UPDATE dbo.Orders
             SET TotalAmount=@totalAmount,
@@ -667,5 +845,13 @@ public sealed partial class OrderRepository
         }
     }
 
+    private static Guid CreateCancellationReversalOperationId(long fabricConsumptionSourceId, int pieceId, Guid editOperationId)
+    {
+        var payload = $"{fabricConsumptionSourceId}:{pieceId}:{editOperationId:N}";
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(payload));
+        return new Guid(bytes[..16]);
+    }
+
     private sealed record TailoringOrderEditOperationRow(Guid EditOperationId, byte[] RequestHash, string? ResultJson);
+    private sealed record TailoringAddOperationRow(Guid AddOperationId, Guid EditOperationId, int OrderId, int PieceId, byte[] RequestHash);
 }

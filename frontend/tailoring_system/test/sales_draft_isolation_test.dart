@@ -6,7 +6,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tailoring_system/screens/order_details_content.dart';
 import 'package:tailoring_system/screens/sales_screen.dart';
+import 'package:tailoring_system/models/order_models.dart';
 
 void main() {
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
@@ -20,6 +22,138 @@ void main() {
       expect(find.text('تحقق من اختيار العميل وبياناته قبل حفظ الطلب.'),
           findsOneWidget);
     });
+  });
+
+  testWidgets('SavedEdit without changes performs no API write', (tester) async {
+    final backend = SalesBackend();
+    await withSalesScreen(tester, (state) async {
+      expect(state.saveState, SalesSaveState.savedEdit);
+      await state.saveOrder();
+      await tester.pumpAndSettle();
+      expect(backend.editWrites, isEmpty);
+      expect(backend.requests.where((request) => request.startsWith('POST /orders')), isEmpty);
+      expect(backend.orders, isEmpty);
+      expect(state.saveState, SalesSaveState.savedLocked);
+    }, backend: backend, editOrderId: 81);
+  });
+
+  testWidgets('safe-edit add payload preserves selected fabric metadata', (tester) async {
+    final backend = SalesBackend();
+    await withSalesScreen(tester, (state) async {
+      await tester.tap(find.byKey(const ValueKey('sales-add-piece')));
+      await tester.pumpAndSettle();
+      state.pieceTypes[1] = 'ثوب';
+      state.fabricCodeControllers[1].text = 'FA0105';
+      state.fabricTypeControllers[1].text = 'الصحراء';
+      state.fabricColorControllers[1].text = 'كحلي';
+      state.catalogNumberControllers[1].text = 'CAT-ADD-1';
+      state.measurementValuesByType['piece_1'] = {'الطول': '20'};
+
+      final saving = state.saveOrder();
+      await tester.pumpAndSettle();
+      await saving;
+
+      final added = backend.editWrites.single['addedPieces'].single;
+      expect(added['productTypeId'], 10);
+      expect(added['fabricCode'], 'FA0105');
+      expect(added['fabricType'], 'الصحراء');
+      expect(added['fabricColor'], 'كحلي');
+      expect(added['catalogNumber'], 'CAT-ADD-1');
+      expect(added['measurements'], {'الطول': '20'});
+      expect(backend.orders, isEmpty);
+      expect(backend.requests.where((request) => request == 'POST /orders'), isEmpty);
+    }, backend: backend, editOrderId: 81);
+  });
+
+  test('order item reads full cost from reserved pricing metadata', () {
+    final item = OrderItem.fromJson({
+      'orderItemId': 1271,
+      'orderId': 1579,
+      'pieceType': 'قميص',
+      'quantity': 1,
+      'fabricCode': 'FA0105',
+      'fabricType': 'الصحراء',
+      'fabricColor': 'كحلي',
+      'request1': null,
+      'request2': null,
+      'specialRequest': null,
+      'notes1': null,
+      'notes2': null,
+      'trackingCode': 'TRK-000060',
+      'pieceStatus': 'New',
+      'createdDate': '2026-11-01T20:41:42Z',
+      'measurementSnapshot': jsonEncode({
+        'الطول': '20',
+        '_fullCost': 2292.22,
+      }),
+    });
+    expect(item.fullCost, 2292.22);
+    expect(item.measurements, {'الطول': '20'});
+  });
+
+  testWidgets('adding and cancelling pieces sends typed operations and no DELETE', (tester) async {
+    final backend = SalesBackend();
+    await withSalesScreen(tester, (state) async {
+      await tester.ensureVisible(find.byKey(const ValueKey('sales-add-piece')));
+      await tester.tap(find.byKey(const ValueKey('sales-add-piece')));
+      await tester.pumpAndSettle();
+      state.pieceTypes[1] = 'ثوب';
+      state.fabricCodeControllers[1].text = 'FAB';
+      state.measurementValuesByType['piece_1'] = {'الطول': '20'};
+      await tester.ensureVisible(find.byKey(const ValueKey('sales-remove-piece-0')));
+      await tester.tap(find.byKey(const ValueKey('sales-remove-piece-0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('حذف'));
+      await tester.pumpAndSettle();
+      final saving = state.saveOrder();
+      await tester.pumpAndSettle();
+      await saving;
+      final request = backend.editWrites.single;
+      expect(request['addedPieces'], hasLength(1));
+      expect(request['addedPieces'].single['addOperationId'], isNotEmpty);
+      expect(request['addedPieces'].single['productTypeId'], 10);
+      expect(request['cancelledPieces'], [
+        {'pieceId': 901, 'reason': 'إلغاء القطعة من شاشة تعديل الطلب'}
+      ]);
+      expect(backend.requests.where((entry) => entry.startsWith('DELETE ')), isEmpty);
+      expect(backend.orders, isEmpty);
+      expect(state.savedOrderId, 81);
+      expect(state.savedOrderNumber, 'ORD-81');
+      expect(state.savedCustomerId, 1);
+    }, backend: backend, editOrderId: 81);
+  });
+
+  testWidgets('double submit during edit sends one apply request', (tester) async {
+    final response = Completer<http.Response>();
+    final backend = SalesBackend()..editResponse = response;
+    await withSalesScreen(tester, (state) async {
+      state.deliveryDateController.text = '2027-02-02';
+      final saving = state.saveOrder();
+      expect(state.saveState, SalesSaveState.updating);
+      await state.saveOrder();
+      await tester.runAsync(() async => await Future<void>.delayed(Duration.zero));
+      expect(backend.editWrites, hasLength(1));
+      response.complete(jsonResponse(editSnapshot(version: 'version-2')));
+      await tester.pumpAndSettle();
+      await saving;
+      expect(backend.editWrites, hasLength(1));
+      expect(backend.orders, isEmpty);
+      expect(state.saveState, SalesSaveState.savedLocked);
+    }, backend: backend, editOrderId: 81);
+  });
+
+  testWidgets('HTTP 409 keeps edit open and offers snapshot reload', (tester) async {
+    final backend = SalesBackend()..editStatusCode = 409;
+    await withSalesScreen(tester, (state) async {
+      state.deliveryDateController.text = '2027-02-02';
+      final saving = state.saveOrder();
+      await tester.pumpAndSettle();
+      await saving;
+      expect(state.saveState, SalesSaveState.savedEdit);
+      expect(find.text('تعارض إصدار الطلب. أعد تحميل اللقطة قبل التعديل.'), findsOneWidget);
+      expect(find.text('إعادة تحميل'), findsOneWidget);
+      expect(backend.orders, isEmpty);
+    }, backend: backend, editOrderId: 81);
   });
 
   testWidgets('switching a populated customer draft requires confirmation',
@@ -161,6 +295,150 @@ void main() {
     }, backend: backend);
   });
 
+  testWidgets('saved edit mode preserves the existing order without creating duplicates', (tester) async {
+    final backend = SalesBackend();
+    await withSalesScreen(tester, (state) async {
+      expect(state.saveState, SalesSaveState.savedEdit);
+      expect(state.savedOrderId, 81);
+      expect(state.savedOrderNumber, 'ORD-81');
+      expect(state.currentCustomerId, 1);
+      expect(backend.requests, contains('GET /orders/81/tailoring-edit'));
+      state.deliveryDateController.text = '2027-02-02';
+      state.notes1Controllers[0].text = 'طلب معدل';
+      final saving = state.saveOrder();
+      expect(state.saveState, SalesSaveState.updating);
+      await tester.pumpAndSettle();
+      await saving;
+      expect(backend.editWrites, hasLength(1));
+      expect(backend.editWrites.single['expectedVersion'], 'version-1');
+      expect(backend.editWrites.single['editOperationId'], isNotEmpty);
+      expect(backend.requests, contains('POST /orders/81/tailoring-edit'));
+      expect(backend.orders, isEmpty);
+      expect(backend.editWrites.single.keys, containsAll([
+        'editOperationId',
+        'expectedVersion',
+        'details',
+        'changedPieces',
+        'addedPieces',
+        'cancelledPieces',
+      ]));
+      expect(backend.editWrites.single['changedPieces'], [
+        {
+          'pieceId': 901,
+          'patch': {'request1': 'طلب معدل'},
+        }
+      ]);
+      expect(state.saveState, SalesSaveState.savedLocked);
+      expect(state.savedOrderId, 81);
+      expect(state.savedOrderNumber, 'ORD-81');
+      expect(state.savedCustomerId, 1);
+      expect(find.text('تم تحديث الطلب ORD-81 بنجاح.'), findsOneWidget);
+      expect(backend.requests.where((request) => request == 'POST /orders'), isEmpty);
+    }, backend: backend, editOrderId: 81);
+  });
+
+  testWidgets('removing an unsaved draft piece is local only', (tester) async {
+    final backend = SalesBackend();
+    await withSalesScreen(tester, (state) async {
+      await tester.tap(find.byKey(const ValueKey('sales-add-piece')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('sales-remove-piece-1')));
+      await tester.tap(find.byKey(const ValueKey('sales-remove-piece-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('حذف'));
+      await tester.pumpAndSettle();
+      await state.saveOrder();
+      await tester.pumpAndSettle();
+      expect(backend.editWrites, isEmpty);
+      expect(backend.requests.where((request) => request.startsWith('POST /orders')), isEmpty);
+      expect(backend.requests.where((request) => request.startsWith('DELETE ')), isEmpty);
+      expect(state.piecesCount, 1);
+      expect(state.saveState, SalesSaveState.savedLocked);
+    }, backend: backend, editOrderId: 81);
+  });
+
+  testWidgets('customer and measurements follow snapshot edit capabilities', (tester) async {
+    final backend = SalesBackend()
+      ..editCanEditDetails = false
+      ..editCanEditMeasurements = false
+      ..editCanCancel = false;
+    await withSalesScreen(tester, (state) async {
+      await state.searchCustomerByTerm('B');
+      expect(state.currentCustomerId, 1);
+        final phoneField = tester.widgetList<TextField>(find.byType(TextField))
+          .firstWhere((field) => field.controller == state.phoneController);
+      expect(phoneField.readOnly, isTrue);
+      final measurementButton = tester.widget<FilledButton>(
+          find.byKey(const ValueKey('sales-edit-measurements-0')));
+      expect(measurementButton.onPressed, isNull);
+      final cancelButton = tester.widget<IconButton>(
+          find.byKey(const ValueKey('sales-remove-piece-0')));
+      expect(cancelButton.onPressed, isNull);
+      final requestField = tester.widgetList<TextField>(find.byType(TextField))
+          .firstWhere((field) => field.controller == state.notes1Controllers[0]);
+      expect(requestField.readOnly, isTrue);
+    }, backend: backend, editOrderId: 81);
+  });
+
+  testWidgets('retry reuses the same EditOperationId and exact payload', (tester) async {
+    final backend = SalesBackend()..failNextEdit = true;
+    await withSalesScreen(tester, (state) async {
+      state.deliveryDateController.text = '2027-02-02';
+      await state.saveOrder();
+      expect(state.saveState, SalesSaveState.savedEdit);
+      expect(backend.editWrites, hasLength(1));
+      final firstPayload = Map<String, dynamic>.from(backend.editWrites.single);
+      await state.saveOrder();
+      expect(backend.editWrites, hasLength(2));
+      expect(backend.editWrites[1], firstPayload);
+      expect(backend.editWrites[1]['editOperationId'], firstPayload['editOperationId']);
+      expect(state.saveState, SalesSaveState.savedLocked);
+      expect(backend.orders, isEmpty);
+    }, backend: backend, editOrderId: 81);
+  });
+
+  testWidgets('reopening an edited order loads SavedEdit and never creates it', (tester) async {
+    final backend = SalesBackend();
+    await withSalesScreen(tester, (state) async {
+      await state.saveOrder();
+      expect(state.saveState, SalesSaveState.savedLocked);
+      final reopened = await reopen(tester, editOrderId: 81);
+      expect(reopened.saveState, SalesSaveState.savedEdit);
+      expect(reopened.savedOrderId, 81);
+      expect(reopened.savedOrderNumber, 'ORD-81');
+      await reopened.saveOrder();
+      expect(backend.requests.where((request) => request == 'GET /orders/81/tailoring-edit'), hasLength(2));
+      expect(backend.orders, isEmpty);
+      expect(backend.editWrites, isEmpty);
+    }, backend: backend, editOrderId: 81);
+  });
+
+  testWidgets('order details edit button opens the official SavedEdit route', (tester) async {
+    final backend = SalesBackend();
+    tester.view.physicalSize = const Size(1600, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final client = MockClient(backend.respond);
+    await http.runWithClient(() async {
+      await tester.pumpWidget(
+          const MaterialApp(home: OrderDetailsContent(orderId: 81)));
+      await tester.pumpAndSettle();
+      expect(find.text('تعديل الطلب'), findsOneWidget);
+      await tester.tap(find.text('تعديل الطلب'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SalesScreen), findsOneWidget);
+      final dynamic state = tester.state(find.byType(SalesScreen));
+      expect(state.saveState, SalesSaveState.savedEdit);
+      expect(state.savedOrderId, 81);
+      expect(state.savedOrderNumber, 'ORD-81');
+      expect(backend.requests, contains('GET /orders/81/tailoring-edit'));
+      expect(backend.orders, isEmpty);
+      expect(backend.requests.where((request) => request == 'POST /orders'), isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }, () => client);
+  });
+
   testWidgets('saved order blocks customer and piece editing and new order resets it', (tester) async {
     final backend = SalesBackend();
     await withSalesScreen(tester, (state) async {
@@ -299,10 +577,10 @@ Future<void> confirmSwitch(WidgetTester tester, dynamic state) async {
   await tester.runAsync(() async => await selection);
 }
 
-Future<dynamic> reopen(WidgetTester tester) async {
+Future<dynamic> reopen(WidgetTester tester, {int? editOrderId}) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.runAsync(() async => await Future<void>.delayed(Duration.zero));
-  await tester.pumpWidget(const MaterialApp(home: SalesScreen()));
+  await tester.pumpWidget(MaterialApp(home: SalesScreen(editOrderId: editOrderId)));
   await tester.pumpAndSettle();
   return tester.state(find.byType(SalesScreen));
 }
@@ -330,10 +608,80 @@ class SalesBackend {
   Completer<http.Response>? cashLookup;
   bool failNextOrder = false;
   bool loseResponse = false;
+  int editStatusCode = 200;
+  Completer<http.Response>? editResponse;
+  bool failNextEdit = false;
+  bool editCanEditDetails = true;
+  bool editCanEditMeasurements = true;
+  bool editCanCancel = true;
+  final editWrites = <Map<String, dynamic>>[];
 
   Future<http.Response> respond(http.Request request) async {
     final path = request.url.path;
     requests.add('${request.method} $path');
+    if (path == '/orders/81' && request.method == 'GET') {
+      return jsonResponse({
+        'orderId': 81,
+        'orderNumber': 'ORD-81',
+        'customerId': 1,
+        'orderDate': '2027-01-01T00:00:00Z',
+        'deliveryDate': '2027-01-10T00:00:00Z',
+        'totalAmount': 36.0,
+        'discountAmount': 0.0,
+        'paidAmount': 5.0,
+        'remainingAmount': 31.0,
+        'urgencyStatus': 'Normal',
+        'orderStatus': 'New',
+        'notes': null,
+        'createdDate': '2027-01-01T00:00:00Z',
+        'updatedDate': null,
+        'cancellationReason': null,
+        'cancelledAt': null,
+        'cancelledBy': null,
+        'saleCategory': 'TailoringOrder',
+        'revenueRecognized': false,
+        'revenueRecognizedAt': null,
+        'revenueReversalCreated': false,
+        'revenueReversalCreatedAt': null,
+      });
+    }
+    if (path == '/customers/1' && request.method == 'GET') {
+      return jsonResponse({
+        'customerId': 1,
+        'customerCode': 'A',
+        'customerName': 'Customer A',
+        'phoneNumber': '111',
+      });
+    }
+    if (path == '/orders/81/items' ||
+        path == '/orders/81/pieces' ||
+        path == '/orders/81/fabrics' ||
+        path == '/orders/81/payments' ||
+        path == '/finance/transactions' ||
+        path == '/customers/1/ledger') {
+      return jsonResponse(const []);
+    }
+    if (path == '/orders/81/tailoring-edit') {
+      if (request.method == 'GET') {
+        return jsonResponse(editSnapshot(
+          canEditDetails: editCanEditDetails,
+          canEditMeasurements: editCanEditMeasurements,
+          canCancel: editCanCancel,
+        ));
+      }
+      editWrites.add(jsonDecode(request.body) as Map<String, dynamic>);
+      if (failNextEdit) {
+        failNextEdit = false;
+        throw http.ClientException('Response lost');
+      }
+      final delayed = editResponse;
+      editResponse = null;
+      if (delayed != null) return delayed.future;
+      if (editStatusCode != 200) {
+        return jsonResponse({'message': 'Version conflict'}, editStatusCode);
+      }
+      return jsonResponse(editSnapshot(version: 'version-2'));
+    }
     if (path == '/orders') {
       orders.add(jsonDecode(request.body) as Map<String, dynamic>);
       if (failNextOrder) {
@@ -378,10 +726,56 @@ class SalesBackend {
   }
 }
 
+Map<String, dynamic> editSnapshot({
+  String version = 'version-1',
+  bool canEditDetails = true,
+  bool canEditMeasurements = true,
+  bool canCancel = true,
+}) => {
+  'order': {
+    'orderId': 81,
+    'orderNumber': 'ORD-81',
+    'customerId': 1,
+    'customerName': 'Customer A',
+    'phoneNumber': '111',
+    'deliveryDate': '2027-01-01T00:00:00Z',
+    'totalAmount': 36.0,
+    'discountAmount': 0.0,
+    'paidAmount': 5.0,
+    'remainingAmount': 31.0,
+  },
+  'version': version,
+  'canEdit': true,
+  'canAddPiece': true,
+  'pieces': [
+    {
+      'pieceId': 901,
+      'orderItemId': 801,
+      'productTypeId': 10,
+      'pieceType': 'ثوب',
+      'pieceStatus': 'New',
+      'fabricCode': 'FAB',
+      'fabricType': 'قطن',
+      'fabricColor': 'أبيض',
+      'catalogNumber': null,
+      'request1': '',
+      'request2': '',
+      'specialRequest': '',
+      'notes1': '',
+      'notes2': '',
+      'measurements': {'الطول': '20'},
+      'canEditDetails': canEditDetails,
+      'canEditMeasurements': canEditMeasurements,
+      'canCancel': canCancel,
+    },
+  ],
+  'addedPieceIds': <String, int>{},
+};
+
 Future<void> withSalesScreen(
   WidgetTester tester,
   Future<void> Function(dynamic state) body,
-  {SalesBackend? backend}
+  {SalesBackend? backend, int? editOrderId}
 ) async {
   tester.view.physicalSize = const Size(1600, 1200);
   tester.view.devicePixelRatio = 1;
@@ -389,7 +783,7 @@ Future<void> withSalesScreen(
   addTearDown(tester.view.resetDevicePixelRatio);
   final client = MockClient((backend ?? SalesBackend()).respond);
   await http.runWithClient(() async {
-    await tester.pumpWidget(const MaterialApp(home: SalesScreen()));
+    await tester.pumpWidget(MaterialApp(home: SalesScreen(editOrderId: editOrderId)));
     await tester.pumpAndSettle();
     final dynamic state = tester.state(find.byType(SalesScreen));
     try {

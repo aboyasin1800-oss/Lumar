@@ -43,6 +43,8 @@ public sealed record TailoringNewPiece
     public Guid AddOperationId { get; init; }
     [Range(1, int.MaxValue)] public int ProductTypeId { get; init; }
     [Required, StringLength(50)] public string FabricCode { get; init; } = string.Empty;
+    [StringLength(100)] public string? FabricType { get; init; }
+    [StringLength(100)] public string? FabricColor { get; init; }
     public IReadOnlyDictionary<string, string> Measurements { get; init; } = new Dictionary<string, string>();
     [StringLength(100)] public string? CatalogNumber { get; init; }
     [StringLength(500)] public string? Request1 { get; init; }

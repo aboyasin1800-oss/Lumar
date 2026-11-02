@@ -1,6 +1,7 @@
 using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Orders;
+using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -23,7 +24,10 @@ public sealed class OrdersController(IOrderService service, IAuthenticatedUserCo
 
         return CustomerOrderOwnershipGuard.IsAllowed(user, orderCustomerId)
             ? null
-            : new NotFoundResult();
+            : new ObjectResult(new { message = "ليس لديك صلاحية الوصول إلى طلب هذا العميل." })
+            {
+                StatusCode = StatusCodes.Status403Forbidden
+            };
     }
 
     private static ActionResult? EnforceCustomerAccess(CurrentUserDto? user, int orderCustomerId)
@@ -75,6 +79,71 @@ public sealed class OrdersController(IOrderService service, IAuthenticatedUserCo
             return access;
 
         return Ok(order);
+    }
+
+    [HttpGet("{id:int}/tailoring-edit")]
+    [ProducesResponseType<TailoringOrderEditSnapshot>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<TailoringOrderEditSnapshot>> GetTailoringEdit(int id, CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUserAsync(cancellationToken);
+        if (user is null)
+            return Unauthorized();
+
+        var order = await service.GetByIdAsync(id, cancellationToken);
+        if (order is null)
+            return NotFound();
+
+        var access = EnforceCustomerAccess(user, order.CustomerId);
+        if (access is not null)
+            return access;
+
+        var snapshot = await service.GetTailoringEditSnapshotAsync(id, cancellationToken);
+        return snapshot is null ? NotFound() : Ok(snapshot);
+    }
+
+    [HttpPost("{id:int}/tailoring-edit")]
+    [ProducesResponseType<TailoringOrderEditSnapshot>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<TailoringOrderEditSnapshot>> ApplyTailoringEdit(int id, [FromBody] TailoringOrderEditRequest request, CancellationToken cancellationToken)
+    {
+        if (request is null)
+            return BadRequest(new { message = "محتوى طلب التعديل مطلوب." });
+
+        var user = await GetCurrentUserAsync(cancellationToken);
+        if (user is null)
+            return Unauthorized();
+
+        var order = await service.GetByIdAsync(id, cancellationToken);
+        if (order is null)
+            return NotFound();
+
+        var access = EnforceCustomerAccess(user, order.CustomerId);
+        if (access is not null)
+            return access;
+
+        try
+        {
+            var actor = string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName;
+            var snapshot = await service.ApplyTailoringEditAsync(id, request, actor, cancellationToken);
+            return Ok(snapshot);
+        }
+        catch (TailoringOrderEditConflictException exception)
+        {
+            return Conflict(new { error = "Conflict", message = exception.Message });
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
     }
 
     [HttpPost]

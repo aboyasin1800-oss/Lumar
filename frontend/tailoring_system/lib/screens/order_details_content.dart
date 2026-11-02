@@ -6,6 +6,7 @@ import '../models/order_models.dart';
 import '../repositories/order_repository.dart';
 import 'customer_details_screen.dart';
 import 'printing/work_card_screen.dart';
+import 'sales_screen.dart';
 
 final _money = NumberFormat('#,##0.00');
 final _date = DateFormat('yyyy/MM/dd');
@@ -191,6 +192,14 @@ class _OrderDetailsContentState extends State<OrderDetailsContent> {
     }
   }
 
+  Future<void> _openTailoringEdit() async {
+    await AppNavigation.push<void>(
+      context,
+      (_) => SalesScreen(editOrderId: widget.orderId),
+    );
+    if (mounted) reload();
+  }
+
   Future<void> _showDispositionDialog(
     List<_DispositionCandidate> eligiblePieces,
   ) async {
@@ -352,15 +361,21 @@ class _OrderDetailsContentState extends State<OrderDetailsContent> {
           return _DetailsBody(
             data: snapshot.data!,
             onCancelOrder: _handleCancelOrder,
+            onEditTailoringOrder: _openTailoringEdit,
           );
         },
       )));
 }
 
 class _DetailsBody extends StatelessWidget {
-  const _DetailsBody({required this.data, required this.onCancelOrder});
+  const _DetailsBody({
+    required this.data,
+    required this.onCancelOrder,
+    required this.onEditTailoringOrder,
+  });
   final OrderDetailsData data;
   final VoidCallback onCancelOrder;
+  final VoidCallback onEditTailoringOrder;
 
   @override
   Widget build(BuildContext context) {
@@ -386,6 +401,9 @@ class _DetailsBody extends StatelessWidget {
           pieceCount: data.pieces.length,
           pieceSummary: pieceSummary,
           onCancelOrder: onCancelOrder,
+          onEditTailoringOrder: order.saleCategory == 'TailoringOrder'
+              ? onEditTailoringOrder
+              : null,
           onOpenCustomer: () => AppNavigation.push(
             context,
             (_) => CustomerDetailsScreen(customerId: data.customer.id),
@@ -440,6 +458,7 @@ class _SummaryCard extends StatelessWidget {
     required this.pieceCount,
     required this.pieceSummary,
     required this.onCancelOrder,
+    required this.onEditTailoringOrder,
     required this.onOpenCustomer,
   });
 
@@ -448,6 +467,7 @@ class _SummaryCard extends StatelessWidget {
   final int pieceCount;
   final String pieceSummary;
   final VoidCallback onCancelOrder;
+  final VoidCallback? onEditTailoringOrder;
   final VoidCallback onOpenCustomer;
 
   @override
@@ -518,6 +538,16 @@ class _SummaryCard extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
+                if (onEditTailoringOrder != null) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onEditTailoringOrder,
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('تعديل الطلب'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: order.status.toLowerCase() == 'cancelled'
@@ -939,8 +969,7 @@ class _CostTable extends StatelessWidget {
           createdDate: DateTime.now(),
         ),
       );
-      final projectedCost =
-          item.fullCost ?? fabric.consumedCost ?? fabric.totalCost;
+      final operationalCost = item.operationalCost ?? 0;
       final pieceCount = pieceRow.length;
       return [
         _text(item.pieceType),
@@ -948,7 +977,7 @@ class _CostTable extends StatelessWidget {
         _text(fabric.fabricCode),
         _text(fabric.fabricType),
         _text(fabric.fabricColor),
-        projectedCost == 0 ? 'غير محسوبة' : _money.format(projectedCost),
+        operationalCost == 0 ? 'غير محسوبة' : _money.format(operationalCost),
         _money.format(fabric.consumedQuantity),
         _money.format(fabric.totalCost),
         item.fullCost == null ? 'غير محسوبة' : _money.format(item.fullCost!),

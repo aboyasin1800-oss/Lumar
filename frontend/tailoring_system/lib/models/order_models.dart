@@ -121,7 +121,9 @@ class OrderItem {
       required this.trackingCode,
       required this.pieceStatus,
       required this.createdDate,
-      required Map<String, dynamic> snapshot})
+      required Map<String, dynamic> snapshot,
+      this.pricingSnapshotFullCost,
+      this.pricingSnapshotOperationalCost})
       : snapshot = Map.unmodifiable(snapshot);
 
   factory OrderItem.fromJson(OrderJson json) {
@@ -150,6 +152,9 @@ class OrderItem {
       pieceStatus: json['pieceStatus'] as String?,
       createdDate: _date(json, 'createdDate'),
       snapshot: snapshot,
+      pricingSnapshotFullCost: _nullableAmount(json, 'fullCost'),
+      pricingSnapshotOperationalCost: _nullableAmount(json, 'operationalCost') ??
+          _nullableAmount(json, 'operationalCostPerPiece'),
     );
   }
 
@@ -169,6 +174,18 @@ class OrderItem {
   final String? pieceStatus;
   final DateTime createdDate;
   final Map<String, dynamic> snapshot;
+  final double? pricingSnapshotFullCost;
+  final double? pricingSnapshotOperationalCost;
+
+  double? get operationalCost {
+    final value = pricingSnapshotOperationalCost ??
+        snapshot['_operationalCost'] ??
+        snapshot['operationalCost'] ??
+        snapshot['operationalCostPerPiece'];
+    return value is num
+        ? value.toDouble()
+        : double.tryParse(value?.toString() ?? '');
+  }
 
   String? get catalogNumber => [
         snapshot['_catalogNumber'],
@@ -199,9 +216,14 @@ class OrderItem {
               .trim();
   double? get consumption =>
       double.tryParse(snapshot['_consumption']?.toString() ?? '');
-  double? get fullCost => snapshot['fullCost'] is num
-      ? (snapshot['fullCost'] as num).toDouble()
-      : double.tryParse(snapshot['fullCost']?.toString() ?? '');
+  double? get fullCost {
+    final value = pricingSnapshotFullCost ??
+      snapshot['_fullCost'] ??
+      snapshot['fullCost'];
+    return value is num
+        ? value.toDouble()
+        : double.tryParse(value?.toString() ?? '');
+  }
   Map<String, dynamic> get measurements =>
       Map.unmodifiable(Map.fromEntries(snapshot.entries.where((entry) =>
           !entry.key.startsWith('_') &&
@@ -299,8 +321,7 @@ class OrderFabric {
   final double? yardPrice;
   final DateTime createdDate;
 
-  double? get consumedCost =>
-      yardPrice == null ? null : consumedQuantity * yardPrice!;
+  double? get consumedCost => totalCost;
 }
 
 class OrderPayment {

@@ -20,4 +20,5 @@ public interface IOrderRepository
     Task<OrderDetailsDto?> WaiveRemainingBalanceAsync(int orderId, CancellationToken cancellationToken);
     Task<OrderDetailsDto?> RecognizeDeliveryRevenueAsync(int orderId, CancellationToken cancellationToken);
     Task<OrderDetailsDto?> CancelOrderAsync(int orderId, string? reason, string? cancelledBy, CancellationToken cancellationToken);
+    Task<TailoringOrderEditSnapshot> ApplyEditAsync(int orderId, TailoringOrderEditRequest request, string actor, CancellationToken cancellationToken);
 }

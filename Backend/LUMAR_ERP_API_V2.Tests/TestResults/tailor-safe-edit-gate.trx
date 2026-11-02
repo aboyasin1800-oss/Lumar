@@ -1,0 +1,106 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="49d4ed63-51f7-48c4-bcc3-0ab6a75d0a5b" name="LENOVO@YASIN-YASIN 2026-11-01 19:20:11" runUser="YASIN-YASIN\LENOVO" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-11-01T19:20:11.6398353+03:00" queuing="2026-11-01T19:20:11.6398363+03:00" start="2026-11-01T19:20:09.7822560+03:00" finish="2026-11-01T19:20:17.2155650+03:00" />
+  <TestSettings name="default" id="37a9321d-7b58-4a2f-976e-928012add591">
+    <Deployment runDeploymentRoot="LENOVO_YASIN-YASIN_2026-11-01_19_20_11" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="df1cbada-e9a8-4dc1-85bc-3f5fc5e92463" testId="f31cdeab-c288-c839-1381-15fd48ef4c99" testName="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Public_contract_does_not_expose_daily_order_count" computerName="YASIN-YASIN" duration="00:00:00.0091941" startTime="2026-11-01T19:20:11.5180904+03:00" endTime="2026-11-01T19:20:11.5181382+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="df1cbada-e9a8-4dc1-85bc-3f5fc5e92463" />
+    <UnitTestResult executionId="31068e0e-f967-44a7-b8a3-a4053aa1315f" testId="37e444b9-771c-c167-9eab-436ac6155fef" testName="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Daily_order_count_boundaries_are_enforced(dailyOrderCount: 26, expectedHigh: True)" computerName="YASIN-YASIN" duration="00:00:00.0004135" startTime="2026-11-01T19:20:11.5142174+03:00" endTime="2026-11-01T19:20:11.5143193+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="31068e0e-f967-44a7-b8a3-a4053aa1315f" />
+    <UnitTestResult executionId="5f0b30d5-42b4-45fa-886f-fe72ed4c53d6" testId="ce9e4fd5-1a29-b14c-afa7-ba59cfbc80f0" testName="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Authenticated_customer_request_returns_safe_contract" computerName="YASIN-YASIN" duration="00:00:00.0069544" startTime="2026-11-01T19:20:11.5174414+03:00" endTime="2026-11-01T19:20:11.5175321+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5f0b30d5-42b4-45fa-886f-fe72ed4c53d6" />
+    <UnitTestResult executionId="a88d6e38-fd6a-4aab-b782-f4d1c2dada5d" testId="fa4d1773-9147-1430-9a1d-254d30fe6ec9" testName="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Daily_order_count_boundaries_are_enforced(dailyOrderCount: 0, expectedHigh: False)" computerName="YASIN-YASIN" duration="00:00:00.0000018" startTime="2026-11-01T19:20:11.5154273+03:00" endTime="2026-11-01T19:20:11.5154952+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a88d6e38-fd6a-4aab-b782-f4d1c2dada5d" />
+    <UnitTestResult executionId="d173ee1e-f4f0-40ba-9c85-cd9d8161f007" testId="2313ec5f-142f-cbbf-d2ec-512644778583" testName="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Daily_order_count_boundaries_are_enforced(dailyOrderCount: 25, expectedHigh: True)" computerName="YASIN-YASIN" duration="00:00:00.0084501" startTime="2026-11-01T19:20:11.4716601+03:00" endTime="2026-11-01T19:20:11.4919791+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d173ee1e-f4f0-40ba-9c85-cd9d8161f007" />
+    <UnitTestResult executionId="7a059749-e7f3-463b-905f-0513365dcf83" testId="32ca64d4-c667-036a-93db-fd6edcd2e365" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_AddCancelAndReplay_PreserveIdentityAndApplyOnlyDeltas" computerName="YASIN-YASIN" duration="00:00:00.8489036" startTime="2026-11-01T19:20:15.7657151+03:00" endTime="2026-11-01T19:20:16.6145946+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7a059749-e7f3-463b-905f-0513365dcf83" />
+    <UnitTestResult executionId="82935cf7-bd2f-4c56-94eb-a6e635f26873" testId="04b5b852-5c98-fb26-d356-fffdeece1fd5" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent" computerName="YASIN-YASIN" duration="00:00:02.0895878" startTime="2026-11-01T19:20:11.5810066+03:00" endTime="2026-11-01T19:20:13.6328862+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="82935cf7-bd2f-4c56-94eb-a6e635f26873" />
+    <UnitTestResult executionId="139c3e87-108e-4323-8b27-e6dbf7e8c9a4" testId="f3c4a976-8033-2b4e-6caa-72dac85bfcf1" testName="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Tailoring_edit_rejects_cross_customer_access_and_maps_conflicts_to_http_409" computerName="YASIN-YASIN" duration="00:00:00.0073838" startTime="2026-11-01T19:20:11.5184195+03:00" endTime="2026-11-01T19:20:11.5224670+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="139c3e87-108e-4323-8b27-e6dbf7e8c9a4" />
+    <UnitTestResult executionId="e32e8271-ef44-4e1d-9501-0e57fd24df17" testId="5d8cb59e-70fa-16ae-0555-2d1f30492a4e" testName="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Tailoring_edit_requires_authenticated_user" computerName="YASIN-YASIN" duration="00:00:00.0042481" startTime="2026-11-01T19:20:11.5182517+03:00" endTime="2026-11-01T19:20:11.5183053+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e32e8271-ef44-4e1d-9501-0e57fd24df17" />
+    <UnitTestResult executionId="4e903df0-e599-4f16-bd7a-fbc6963ff094" testId="7530a34f-f977-9a5f-0557-df55c3e6b4e7" testName="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Unauthenticated_request_is_rejected" computerName="YASIN-YASIN" duration="00:00:00.0012926" startTime="2026-11-01T19:20:11.5178625+03:00" endTime="2026-11-01T19:20:11.5179397+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4e903df0-e599-4f16-bd7a-fbc6963ff094" />
+    <UnitTestResult executionId="22d7038a-17a5-4b86-baa0-7b303324db46" testId="fac471aa-ed33-800c-fad6-be8cbc220b88" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_SameAddOperationIdWithSamePayload_IsReplaySafe" computerName="YASIN-YASIN" duration="00:00:00.3045908" startTime="2026-11-01T19:20:16.6157892+03:00" endTime="2026-11-01T19:20:16.9203235+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="22d7038a-17a5-4b86-baa0-7b303324db46" />
+    <UnitTestResult executionId="b92529f5-0512-4668-b39e-0d0ea876346f" testId="9695009f-42cc-140c-39f2-07120e3b698f" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_ConflictingEditAndAddPayloads_AreRejected" computerName="YASIN-YASIN" duration="00:00:02.1202329" startTime="2026-11-01T19:20:13.6482798+03:00" endTime="2026-11-01T19:20:15.7631453+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b92529f5-0512-4668-b39e-0d0ea876346f" />
+    <UnitTestResult executionId="5587c28d-1f62-4b9b-bbac-ccf667f0dfdd" testId="64f359e8-388f-3cee-b6b9-3a156cee6e75" testName="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Daily_order_count_boundaries_are_enforced(dailyOrderCount: 24, expectedHigh: False)" computerName="YASIN-YASIN" duration="00:00:00.0000101" startTime="2026-11-01T19:20:11.5151748+03:00" endTime="2026-11-01T19:20:11.5152654+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5587c28d-1f62-4b9b-bbac-ccf667f0dfdd" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Public_contract_does_not_expose_daily_order_count" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="f31cdeab-c288-c839-1381-15fd48ef4c99">
+      <Execution id="df1cbada-e9a8-4dc1-85bc-3f5fc5e92463" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests" name="Public_contract_does_not_expose_daily_order_count" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_ConflictingEditAndAddPayloads_AreRejected" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="9695009f-42cc-140c-39f2-07120e3b698f">
+      <Execution id="b92529f5-0512-4668-b39e-0d0ea876346f" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringEdit_ConflictingEditAndAddPayloads_AreRejected" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Authenticated_customer_request_returns_safe_contract" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="ce9e4fd5-1a29-b14c-afa7-ba59cfbc80f0">
+      <Execution id="5f0b30d5-42b4-45fa-886f-fe72ed4c53d6" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests" name="Authenticated_customer_request_returns_safe_contract" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Tailoring_edit_rejects_cross_customer_access_and_maps_conflicts_to_http_409" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="f3c4a976-8033-2b4e-6caa-72dac85bfcf1">
+      <Execution id="139c3e87-108e-4323-8b27-e6dbf7e8c9a4" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests" name="Tailoring_edit_rejects_cross_customer_access_and_maps_conflicts_to_http_409" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Daily_order_count_boundaries_are_enforced(dailyOrderCount: 24, expectedHigh: False)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="64f359e8-388f-3cee-b6b9-3a156cee6e75">
+      <Execution id="5587c28d-1f62-4b9b-bbac-ccf667f0dfdd" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests" name="Daily_order_count_boundaries_are_enforced" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_SameAddOperationIdWithSamePayload_IsReplaySafe" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="fac471aa-ed33-800c-fad6-be8cbc220b88">
+      <Execution id="22d7038a-17a5-4b86-baa0-7b303324db46" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringEdit_SameAddOperationIdWithSamePayload_IsReplaySafe" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Unauthenticated_request_is_rejected" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="7530a34f-f977-9a5f-0557-df55c3e6b4e7">
+      <Execution id="4e903df0-e599-4f16-bd7a-fbc6963ff094" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests" name="Unauthenticated_request_is_rejected" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="04b5b852-5c98-fb26-d356-fffdeece1fd5">
+      <Execution id="82935cf7-bd2f-4c56-94eb-a6e635f26873" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Daily_order_count_boundaries_are_enforced(dailyOrderCount: 0, expectedHigh: False)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="fa4d1773-9147-1430-9a1d-254d30fe6ec9">
+      <Execution id="a88d6e38-fd6a-4aab-b782-f4d1c2dada5d" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests" name="Daily_order_count_boundaries_are_enforced" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Tailoring_edit_requires_authenticated_user" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="5d8cb59e-70fa-16ae-0555-2d1f30492a4e">
+      <Execution id="e32e8271-ef44-4e1d-9501-0e57fd24df17" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests" name="Tailoring_edit_requires_authenticated_user" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_AddCancelAndReplay_PreserveIdentityAndApplyOnlyDeltas" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="32ca64d4-c667-036a-93db-fd6edcd2e365">
+      <Execution id="7a059749-e7f3-463b-905f-0513365dcf83" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringEdit_AddCancelAndReplay_PreserveIdentityAndApplyOnlyDeltas" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Daily_order_count_boundaries_are_enforced(dailyOrderCount: 26, expectedHigh: True)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="37e444b9-771c-c167-9eab-436ac6155fef">
+      <Execution id="31068e0e-f967-44a7-b8a3-a4053aa1315f" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests" name="Daily_order_count_boundaries_are_enforced" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests.Daily_order_count_boundaries_are_enforced(dailyOrderCount: 25, expectedHigh: True)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="2313ec5f-142f-cbbf-d2ec-512644778583">
+      <Execution id="d173ee1e-f4f0-40ba-9c85-cd9d8161f007" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.DailyOrderWorkloadContractTests" name="Daily_order_count_boundaries_are_enforced" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="f31cdeab-c288-c839-1381-15fd48ef4c99" executionId="df1cbada-e9a8-4dc1-85bc-3f5fc5e92463" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="37e444b9-771c-c167-9eab-436ac6155fef" executionId="31068e0e-f967-44a7-b8a3-a4053aa1315f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ce9e4fd5-1a29-b14c-afa7-ba59cfbc80f0" executionId="5f0b30d5-42b4-45fa-886f-fe72ed4c53d6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="fa4d1773-9147-1430-9a1d-254d30fe6ec9" executionId="a88d6e38-fd6a-4aab-b782-f4d1c2dada5d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2313ec5f-142f-cbbf-d2ec-512644778583" executionId="d173ee1e-f4f0-40ba-9c85-cd9d8161f007" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="32ca64d4-c667-036a-93db-fd6edcd2e365" executionId="7a059749-e7f3-463b-905f-0513365dcf83" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="04b5b852-5c98-fb26-d356-fffdeece1fd5" executionId="82935cf7-bd2f-4c56-94eb-a6e635f26873" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f3c4a976-8033-2b4e-6caa-72dac85bfcf1" executionId="139c3e87-108e-4323-8b27-e6dbf7e8c9a4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="5d8cb59e-70fa-16ae-0555-2d1f30492a4e" executionId="e32e8271-ef44-4e1d-9501-0e57fd24df17" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7530a34f-f977-9a5f-0557-df55c3e6b4e7" executionId="4e903df0-e599-4f16-bd7a-fbc6963ff094" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="fac471aa-ed33-800c-fad6-be8cbc220b88" executionId="22d7038a-17a5-4b86-baa0-7b303324db46" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9695009f-42cc-140c-39f2-07120e3b698f" executionId="b92529f5-0512-4668-b39e-0d0ea876346f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="64f359e8-388f-3cee-b6b9-3a156cee6e75" executionId="5587c28d-1f62-4b9b-bbac-ccf667f0dfdd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="13" executed="13" passed="13" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.01] xUnit.net VSTest Adapter v3.0.2+dd36e86129 (64-bit .NET 10.0.12)&#xD;
+[xUnit.net 00:00:00.30]   Discovering: LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:00.58]   Discovered:  LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:00.63]   Starting:    LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:06.14]   Finished:    LUMAR_ERP_API_V2.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

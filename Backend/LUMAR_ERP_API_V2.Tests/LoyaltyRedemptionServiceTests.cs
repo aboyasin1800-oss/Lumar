@@ -177,6 +177,7 @@ public sealed class LoyaltyRedemptionServiceTests
         public Task<OrderDetailsDto?> WaiveRemainingBalanceAsync(int orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<OrderDetailsDto?> RecognizeDeliveryRevenueAsync(int orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<OrderDetailsDto?> CancelOrderAsync(int orderId, string? reason, string? cancelledBy, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TailoringOrderEditSnapshot> ApplyEditAsync(int orderId, TailoringOrderEditRequest request, string actor, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class FakeSettingsRepository(LoyaltyProgramSettingsDto settings) : ILoyaltyManagementSettingsRepository

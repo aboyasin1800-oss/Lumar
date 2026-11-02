@@ -3139,6 +3139,7 @@ public sealed class MessageWriteServiceTests
         public Task<OrderDetailsDto?> WaiveRemainingBalanceAsync(int orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<OrderDetailsDto?> RecognizeDeliveryRevenueAsync(int orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<OrderDetailsDto?> CancelOrderAsync(int orderId, string? reason, string? cancelledBy, CancellationToken cancellationToken) => Task.FromResult(cancelledOrder ?? currentOrder);
+        public Task<TailoringOrderEditSnapshot> ApplyEditAsync(int orderId, TailoringOrderEditRequest request, string actor, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class FakeCancelledPieceDispositionRepository : ICancelledPieceDispositionRepository

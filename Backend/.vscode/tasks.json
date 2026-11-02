@@ -492,6 +492,48 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "none"
+		},
+		{
+			"label": "dotnet-safe-edit-proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests && dotnet test --no-restore --logger \"trx;LogFileName=safeedit-final.trx\" --filter \"TailoringEdit|DailyOrderWorkloadContractTests|PartialReversal\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "dotnet-safe-edit-proof-fixed",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"cd D:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests; dotnet test --no-restore --logger \"trx;LogFileName=safeedit-final.trx\" --filter \"TailoringEdit|DailyOrderWorkloadContractTests|PartialReversal\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "dotnet-safe-edit-proof-corrected",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"cd D:\\YASIN\\Backend\\LUMAR_ERP_API_V2.Tests; dotnet test --no-restore --logger 'trx;LogFileName=safeedit-final.trx' --filter 'TailoringEdit|DailyOrderWorkloadContractTests|PartialReversal'"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
 		}
 	]
 }

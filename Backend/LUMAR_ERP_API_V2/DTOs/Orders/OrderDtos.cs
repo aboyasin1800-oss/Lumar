@@ -56,7 +56,11 @@ public sealed class CreateOrderFabricDto
 
 public sealed class UpdateOrderDto : CreateOrderDto;
 
-public sealed record OrderItemDto(int OrderItemId, int OrderId, string PieceType, int Quantity, string? FabricCode, string? FabricType, string? FabricColor, string? Request1, string? Request2, string? SpecialRequest, string? Notes1, string? Notes2, string? MeasurementSnapshot, string? TrackingCode, string? PieceStatus, DateTime CreatedDate, int? ProductTypeId = null, int? ImportedReadyMadeProductId = null);
+public sealed record OrderItemDto(int OrderItemId, int OrderId, string PieceType, int Quantity, string? FabricCode, string? FabricType, string? FabricColor, string? Request1, string? Request2, string? SpecialRequest, string? Notes1, string? Notes2, string? MeasurementSnapshot, string? TrackingCode, string? PieceStatus, DateTime CreatedDate, int? ProductTypeId = null, int? ImportedReadyMadeProductId = null)
+{
+    public decimal? FullCost { get; init; }
+    public decimal? OperationalCost { get; init; }
+}
 public sealed record OrderFabricDto(int OrderItemFabricId, int OrderItemId, int? InventoryItemId, string? FabricCode, string? FabricType, string? FabricColor, decimal Quantity, string Unit, decimal UnitCost, decimal TotalCost, decimal ConsumedQuantity, decimal? YardPrice, DateTime CreatedDate);
 public sealed record OrderPaymentDto(int PaymentId, int OrderId, int? InvoiceId, DateTime PaymentDate, decimal Amount, string? PaymentMethod, string? ReferenceNumber, string? Notes, DateTime CreatedDate, string PaymentKind);
 public sealed record OrderTrackingDto(

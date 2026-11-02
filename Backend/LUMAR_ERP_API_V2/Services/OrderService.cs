@@ -103,6 +103,17 @@ public sealed class OrderService(
         return settled;
     }
     public Task<OrderDeliveryDto?> GetDeliveryAsync(int orderId, CancellationToken cancellationToken) => repository.GetDeliveryAsync(orderId, cancellationToken);
+    public async Task<TailoringOrderEditSnapshot?> GetTailoringEditSnapshotAsync(int orderId, CancellationToken cancellationToken)
+    {
+        if (repository is ITailoringOrderEditRepository editableRepository)
+            return await editableRepository.GetEditSnapshotAsync(orderId, cancellationToken);
+
+        return null;
+    }
+
+    public Task<TailoringOrderEditSnapshot> ApplyTailoringEditAsync(int orderId, TailoringOrderEditRequest request, string actor, CancellationToken cancellationToken)
+        => repository.ApplyEditAsync(orderId, request, actor, cancellationToken);
+
     public async Task<OrderDetailsDto?> DeliverAsync(int orderId, CancellationToken cancellationToken)
     {
         var delivered = await repository.DeliverAsync(orderId, cancellationToken);

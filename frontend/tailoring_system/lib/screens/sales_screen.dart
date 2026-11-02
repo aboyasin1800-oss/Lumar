@@ -31,7 +31,7 @@ enum SalesViewMode {
   fullscreen,
 }
 
-enum SalesSaveState { draft, saving, savedLocked }
+enum SalesSaveState { draft, saving, savedLocked, savedEdit, updating }
 
 DateTime calculateDeliveryDateFromDays(int days, {DateTime? base}) {
   final anchor = (base ?? DateTime.now()).toLocal();
@@ -43,7 +43,9 @@ final ValueNotifier<SalesViewMode> salesViewModeNotifier =
     ValueNotifier<SalesViewMode>(SalesViewMode.all);
 
 class SalesScreen extends StatefulWidget {
-  const SalesScreen({super.key});
+  const SalesScreen({super.key, this.editOrderId});
+
+  final int? editOrderId;
 
   @override
   State<SalesScreen> createState() => _SalesScreenState();
@@ -112,10 +114,22 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   String? savedOrderNumber;
   int? savedCustomerId;
   String? savedRequestReference;
-  bool get _savingOrder => saveState == SalesSaveState.saving;
-  bool get _draftEditable => saveState == SalesSaveState.draft &&
-      _pendingCreatePayload == null;
+  bool get _savingOrder =>
+      saveState == SalesSaveState.saving ||
+      saveState == SalesSaveState.updating;
+  bool get _draftEditable =>
+      (saveState == SalesSaveState.draft && _pendingCreatePayload == null) ||
+      (saveState == SalesSaveState.savedEdit && _pendingEditPayload == null);
   Map<String, dynamic>? _pendingCreatePayload;
+    String? _editVersion;
+    String? _initialEditDeliveryDate;
+    bool _editCanAddPiece = false;
+    Map<String, dynamic>? _pendingEditPayload;
+    final List<int?> _pieceIdsByIndex = [null];
+    final List<String?> _addOperationIdsByIndex = [null];
+    final Map<int, Map<String, dynamic>> _editOriginalPiecesById = {};
+    final Map<int, Map<String, dynamic>> _editCapabilitiesByPieceId = {};
+    final Map<int, String> _cancelledEditPieces = {};
   static Future<void>? _sessionStorageQueue;
   String? _orderRequestReference;
   int _draftEpoch = 0;
@@ -227,9 +241,142 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     _applyReferenceSnapshot(snapshot);
     setState(() => _isInitialLoading = false);
-    await _restorePersistedSession();
+    if (widget.editOrderId case final orderId?) {
+      await _loadTailoringEditSnapshot(orderId);
+    } else {
+      await _restorePersistedSession();
+    }
     if (!mounted) return;
     unawaited(_refreshReferenceInBackground());
+  }
+
+  bool get _isTailoringEdit => widget.editOrderId != null;
+
+  Future<void> _loadTailoringEditSnapshot(int orderId) async {
+    try {
+      final snapshot = await _api.getObject('/orders/$orderId/tailoring-edit');
+      if (!mounted) return;
+      _installTailoringEditSnapshot(snapshot, saved: false);
+    } on ApiClientException catch (error) {
+      _showMessage(error.message);
+    } catch (error) {
+      debugPrint('Failed to load tailoring edit snapshot: $error');
+      _showMessage('تعذر تحميل لقطة التعديل الرسمية للطلب.');
+    }
+  }
+
+  void _installTailoringEditSnapshot(Map<String, dynamic> snapshot,
+      {required bool saved}) {
+    final order = Map<String, dynamic>.from(snapshot['order'] as Map);
+    final allPieces = (snapshot['pieces'] as List? ?? const [])
+        .whereType<Map>()
+        .map((piece) => Map<String, dynamic>.from(piece))
+        .toList();
+    final activePieces = allPieces.where((piece) {
+      final status = (piece['pieceStatus'] ?? '').toString().toLowerCase();
+      return status != 'cancelled' && status != 'canceled';
+    }).toList();
+    if (snapshot['canEdit'] != true || activePieces.isEmpty) {
+      saveState = SalesSaveState.savedLocked;
+      _showMessage((snapshot['lockReason'] ?? 'الطلب غير متاح للتعديل.')
+          .toString());
+      return;
+    }
+
+    _clearCurrentSession();
+    _editVersion = snapshot['version']?.toString();
+    _editCanAddPiece = snapshot['canAddPiece'] == true;
+    _initialEditDeliveryDate = _dateOnly(order['deliveryDate']?.toString());
+    _editOriginalPiecesById.clear();
+    _editCapabilitiesByPieceId.clear();
+    _cancelledEditPieces.clear();
+    _pendingEditPayload = null;
+    savedOrderId = (order['orderId'] as num).toInt();
+    savedOrderNumber = order['orderNumber']?.toString();
+    savedCustomerId = (order['customerId'] as num).toInt();
+    savedRequestReference = null;
+    currentCustomerId = savedCustomerId!;
+    currentCustomerName = order['customerName']?.toString() ?? '';
+    currentCustomerCode = '';
+    currentCustomerPhone = order['phoneNumber']?.toString() ?? '';
+    customerFound = true;
+    piecesCount = activePieces.length;
+    _resizePieceControllers(piecesCount);
+    _pieceIdsByIndex
+      ..clear()
+      ..addAll(List<int?>.filled(piecesCount, null));
+    _addOperationIdsByIndex
+      ..clear()
+      ..addAll(List<String?>.filled(piecesCount, null));
+
+    for (var index = 0; index < activePieces.length; index++) {
+      final piece = activePieces[index];
+      final pieceId = (piece['pieceId'] as num).toInt();
+      final productTypeId = (piece['productTypeId'] as num?)?.toInt() ?? 0;
+      final pieceType = piece['pieceType']?.toString() ?? '';
+      _pieceIdsByIndex[index] = pieceId;
+      _editOriginalPiecesById[pieceId] = piece;
+      _editCapabilitiesByPieceId[pieceId] = {
+        'canEditDetails': piece['canEditDetails'] == true,
+        'canEditMeasurements': piece['canEditMeasurements'] == true,
+        'canCancel': piece['canCancel'] == true,
+      };
+      if (productTypeId > 0) {
+        _productTypeIdsByType[_normalizePieceTypeKey(pieceType)] = productTypeId;
+      }
+      pieceTypes[index] = pieceType;
+      quantityControllers[index].text = '1';
+      fabricCodeControllers[index].text = piece['fabricCode']?.toString() ?? '';
+      fabricTypeControllers[index].text = piece['fabricType']?.toString() ?? '';
+      fabricColorControllers[index].text = piece['fabricColor']?.toString() ?? '';
+      catalogNumberControllers[index].text = piece['catalogNumber']?.toString() ?? '';
+      notes1Controllers[index].text = piece['request1']?.toString() ?? '';
+      notes2Controllers[index].text = piece['request2']?.toString() ?? '';
+      specialRequestsControllers[index].text =
+          piece['specialRequest']?.toString() ?? '';
+      final measurements = piece['measurements'] as Map? ?? const {};
+      measurementValuesByType[_pieceMeasurementKey(index)] = {
+        for (final entry in measurements.entries)
+          entry.key.toString(): entry.value.toString(),
+      };
+    }
+
+    totalAmount = (order['totalAmount'] ?? 0).toString();
+    paidAmount = (order['paidAmount'] ?? 0).toString();
+    discountAmount = (order['discountAmount'] ?? 0).toString();
+    remainingAmount = (order['remainingAmount'] ?? 0).toString();
+    deliveryDate = _initialEditDeliveryDate ?? '';
+    totalAmountController.text = totalAmount;
+    paidAmountController.text = paidAmount;
+    discountAmountController.text = discountAmount;
+    remainingAmountController.text = remainingAmount;
+    deliveryDateController.text = deliveryDate;
+    _syncDeliveryDaysFromDate(deliveryDate);
+    _fillCustomerControllers();
+    saveState = saved ? SalesSaveState.savedLocked : SalesSaveState.savedEdit;
+    setState(() {});
+  }
+
+  String? _dateOnly(String? value) {
+    if (value == null || value.isEmpty) return null;
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) return null;
+    return '${parsed.year.toString().padLeft(4, '0')}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
+  }
+
+  bool _pieceCanEditDetails(int index) {
+    if (!_isTailoringEdit || _pieceIdsByIndex[index] == null) return true;
+    return _editCapabilitiesByPieceId[_pieceIdsByIndex[index]]?['canEditDetails'] == true;
+  }
+
+  bool _pieceCanEditMeasurements(int index) {
+    if (!_isTailoringEdit || _pieceIdsByIndex[index] == null) return true;
+    return _editCapabilitiesByPieceId[_pieceIdsByIndex[index]]?['canEditMeasurements'] == true;
+  }
+
+  bool _pieceCanCancel(int index) {
+    if (!_isTailoringEdit || _pieceIdsByIndex[index] == null) return true;
+    return _editCapabilitiesByPieceId[_pieceIdsByIndex[index]]?['canCancel'] == true;
   }
 
   Future<void> searchCustomerByPhone() =>
@@ -260,7 +407,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       value % 1 == 0 ? value.toInt().toString() : value.toStringAsFixed(2);
 
   Future<void> searchCustomerByTerm(String term) async {
-    if (!_draftEditable || !mounted) return;
+    if (_isTailoringEdit || !_draftEditable || !mounted) return;
     final version = ++_customerSearchVersion;
     final epoch = _draftEpoch;
     bool isCurrent() => mounted && _draftEditable &&
@@ -466,7 +613,18 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   Future<void> saveOrder() async {
     if (_savingOrder) return;
     if (saveState == SalesSaveState.savedLocked) {
-      _showMessage('هذا الطلب محفوظ بالفعل برقم $savedOrderNumber. لإنشاء طلب آخر استخدم زر طلب جديد.');
+      _showMessage(_isTailoringEdit
+          ? 'تم حفظ الطلب $savedOrderNumber بالفعل.'
+          : 'هذا الطلب محفوظ بالفعل برقم $savedOrderNumber. لإنشاء طلب آخر استخدم زر طلب جديد.');
+      return;
+    }
+    if (_isTailoringEdit) {
+      await _saveTailoringEdit();
+      return;
+    }
+    if (saveState == SalesSaveState.savedEdit ||
+        saveState == SalesSaveState.updating) {
+      _showMessage('تعذر تحديد الطلب المراد تعديله. أعد فتح الطلب من تفاصيله.');
       return;
     }
     setState(() => saveState = SalesSaveState.saving);
@@ -508,6 +666,173 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       }
       if (mounted) setState(() {});
     }
+  }
+
+  Future<void> _saveTailoringEdit() async {
+    final orderId = savedOrderId;
+    final version = _editVersion;
+    if (orderId == null || version == null || version.isEmpty) {
+      _showMessage('تعذر التعديل لعدم تحميل إصدار الطلب الرسمي. أعد فتح الطلب.');
+      return;
+    }
+    if (_pendingEditPayload == null) {
+      final changedPieces = <Map<String, dynamic>>[];
+      for (var index = 0; index < piecesCount; index++) {
+        final pieceId = _pieceIdsByIndex[index];
+        if (pieceId == null) continue;
+        final original = _editOriginalPiecesById[pieceId];
+        if (original == null) continue;
+        final patch = <String, dynamic>{};
+        if (_pieceCanEditDetails(index)) {
+          final productTypeId = _productTypeIdsByType[
+              _normalizePieceTypeKey(pieceTypes[index])];
+          if (productTypeId != null &&
+              productTypeId != (original['productTypeId'] as num?)?.toInt()) {
+            patch['productTypeId'] = productTypeId;
+          }
+          final fabricCode = fabricCodeControllers[index].text.trim();
+          if (fabricCode.isNotEmpty && fabricCode != (original['fabricCode'] ?? '').toString()) {
+            patch['fabricCode'] = fabricCode;
+          }
+          final catalogNumber = catalogNumberControllers[index].text.trim();
+          if (catalogNumber.isNotEmpty && catalogNumber != (original['catalogNumber'] ?? '').toString()) {
+            patch['catalogNumber'] = catalogNumber;
+          }
+          for (final field in [
+            ('request1', notes1Controllers[index].text),
+            ('request2', notes2Controllers[index].text),
+            ('specialRequest', specialRequestsControllers[index].text),
+          ]) {
+            final value = field.$2.trim();
+            if (value.isNotEmpty && value != (original[field.$1] ?? '').toString()) {
+              patch[field.$1] = value;
+            }
+          }
+        }
+        if (_pieceCanEditMeasurements(index)) {
+          final measurements = Map<String, String>.from(
+              measurementValuesByType[_pieceMeasurementKey(index)] ?? const {});
+          final originalMeasurements = (original['measurements'] as Map? ?? const {})
+              .map((key, value) => MapEntry(key.toString(), value.toString()));
+          if (!_sameStringMap(measurements, originalMeasurements) &&
+              measurements.isNotEmpty) {
+            patch['measurements'] = measurements;
+          }
+        }
+        if (patch.isNotEmpty) {
+          changedPieces.add({'pieceId': pieceId, 'patch': patch});
+        }
+      }
+
+      final addedPieces = <Map<String, dynamic>>[];
+      for (var index = 0; index < piecesCount; index++) {
+        if (_pieceIdsByIndex[index] != null || pieceTypes[index].trim().isEmpty) {
+          continue;
+        }
+        final productTypeId = _productTypeIdsByType[
+            _normalizePieceTypeKey(pieceTypes[index])];
+        final fabricCode = fabricCodeControllers[index].text.trim();
+        if (productTypeId == null || productTypeId <= 0 || fabricCode.isEmpty) {
+          _showMessage('أكمل نوع القطعة وكود القماش للقطعة الجديدة.');
+          return;
+        }
+        _addOperationIdsByIndex[index] ??= _newOperationId();
+        addedPieces.add({
+          'addOperationId': _addOperationIdsByIndex[index],
+          'productTypeId': productTypeId,
+          'fabricCode': fabricCode,
+          'fabricType': _nullableText(fabricTypeControllers[index]),
+          'fabricColor': _nullableText(fabricColorControllers[index]),
+          'measurements': Map<String, String>.from(
+              measurementValuesByType[_pieceMeasurementKey(index)] ?? const {}),
+          'catalogNumber': _nullableText(catalogNumberControllers[index]),
+          'request1': _nullableText(notes1Controllers[index]),
+          'request2': _nullableText(notes2Controllers[index]),
+          'specialRequest': _nullableText(specialRequestsControllers[index]),
+        });
+      }
+
+      final delivery = deliveryDateController.text.trim();
+      final detailsChanged = delivery != (_initialEditDeliveryDate ?? '');
+      if (detailsChanged && delivery.isNotEmpty &&
+          DateTime.tryParse(delivery) == null) {
+        _showMessage('أدخل تاريخ استلام صحيحاً قبل الحفظ.');
+        return;
+      }
+      if (changedPieces.isEmpty && addedPieces.isEmpty &&
+          _cancelledEditPieces.isEmpty && !detailsChanged) {
+        saveState = SalesSaveState.savedLocked;
+        _showMessage('لا توجد تغييرات لحفظها.');
+        if (mounted) setState(() {});
+        return;
+      }
+
+      _pendingEditPayload = {
+        'editOperationId': _newOperationId(),
+        'expectedVersion': version,
+        if (detailsChanged)
+          'details': {
+            'setDeliveryDate': true,
+            'deliveryDate': delivery.isEmpty
+                ? null
+                : DateTime.tryParse(delivery)?.toUtc().toIso8601String(),
+          },
+        'changedPieces': changedPieces,
+        'addedPieces': addedPieces,
+        'cancelledPieces': [
+          for (final entry in _cancelledEditPieces.entries)
+            {'pieceId': entry.key, 'reason': entry.value},
+        ],
+      };
+    }
+
+    setState(() => saveState = SalesSaveState.updating);
+    FocusScope.of(context).unfocus();
+    try {
+      final updated = await _api.postObject(
+          '/orders/$orderId/tailoring-edit', _pendingEditPayload!);
+      if (!mounted) return;
+      _pendingEditPayload = null;
+      _installTailoringEditSnapshot(updated, saved: true);
+      _showMessage('تم تحديث الطلب $savedOrderNumber بنجاح.');
+    } on ApiClientException catch (error) {
+      if (error.statusCode == 409) {
+        _pendingEditPayload = null;
+        saveState = SalesSaveState.savedEdit;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+            content: const Text('تعارض إصدار الطلب. أعد تحميل اللقطة قبل التعديل.'),
+            action: SnackBarAction(
+              label: 'إعادة تحميل',
+              onPressed: () => unawaited(_loadTailoringEditSnapshot(orderId)),
+            ),
+          ));
+      } else {
+        _showMessage(error.message);
+      }
+    } catch (error) {
+      debugPrint('Tailoring order edit failed: $error');
+      _showMessage('تعذر تأكيد التعديل. أعد المحاولة بالعملية نفسها.');
+    } finally {
+      if (saveState == SalesSaveState.updating) {
+        saveState = SalesSaveState.savedEdit;
+      }
+      if (mounted) setState(() {});
+    }
+  }
+
+  bool _sameStringMap(Map<String, String> left, Map<String, String> right) {
+    if (left.length != right.length) return false;
+    return left.entries.every((entry) => right[entry.key] == entry.value);
+  }
+
+  String _newOperationId() {
+    final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
   }
 
   Future<void> _prepareOrder() async {
@@ -1049,6 +1374,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   void _syncPieceTypesWithCount() {
     while (pieceTypes.length < piecesCount) {
       pieceTypes.add(_defaultPieceType);
+      _pieceIdsByIndex.add(null);
+      _addOperationIdsByIndex.add(null);
       _pieceRevisions.add(ValueNotifier<int>(0));
       quantityControllers.add(TextEditingController(text: '1'));
       fabricCodeControllers.add(TextEditingController());
@@ -1068,6 +1395,9 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       _expectedLoyaltyPointVersions.add(0);
     }
     if (pieceTypes.length > piecesCount) {
+      _pieceIdsByIndex.removeRange(piecesCount, _pieceIdsByIndex.length);
+      _addOperationIdsByIndex.removeRange(
+          piecesCount, _addOperationIdsByIndex.length);
       for (final controllers in [
         quantityControllers,
         fabricCodeControllers,
@@ -1885,7 +2215,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
               borderRadius: BorderRadius.circular(5),
             ),
           ),
-            onPressed: _draftEditable || saveState == SalesSaveState.savedLocked
+                onPressed: !_isTailoringEdit &&
+                  (_draftEditable || saveState == SalesSaveState.savedLocked)
               ? _startNewSession : null,
           iconAlignment: IconAlignment.end,
           icon: const Icon(Icons.add,
@@ -2019,10 +2350,20 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       child: Column(children: [
         _buildDashboardCards(context),
         const SizedBox(height: 8),
-        if (saveState == SalesSaveState.savedLocked)
+        if (!_isTailoringEdit &&
+          (saveState == SalesSaveState.savedLocked ||
+            saveState == SalesSaveState.savedEdit))
           ListTile(
-            leading: const Icon(Icons.lock_outline),
-            title: Text('الطلب $savedOrderNumber محفوظ ومقفل'),
+            leading: Icon(
+              saveState == SalesSaveState.savedLocked
+                  ? Icons.lock_outline
+                  : Icons.edit_document,
+            ),
+            title: Text(
+              saveState == SalesSaveState.savedLocked
+                  ? 'الطلب $savedOrderNumber محفوظ ومقفل'
+                  : 'الطلب $savedOrderNumber قيد التعديل الآمن',
+            ),
             trailing: FilledButton.icon(
               onPressed: _startNewSession,
               icon: const Icon(Icons.add),
@@ -2036,9 +2377,9 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           ),
         AbsorbPointer(
           key: const ValueKey('sales-draft-fields'),
-          absorbing: !_draftEditable,
+          absorbing: !(_draftEditable || saveState == SalesSaveState.savedEdit),
           child: ExcludeFocus(
-            excluding: !_draftEditable,
+            excluding: !(_draftEditable || saveState == SalesSaveState.savedEdit),
             child: _buildMainTopSection(context),
           ),
         ),
@@ -2063,8 +2404,12 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                         strokeWidth: 2, color: theme.colorScheme.onPrimary),
                   )
                 : Text(saveState == SalesSaveState.savedLocked
-                  ? 'الطلب محفوظ' : _pendingCreatePayload != null
-                  ? 'إعادة محاولة الحفظ' : 'حفظ الطلب'),
+                  ? 'الطلب محفوظ'
+                  : saveState == SalesSaveState.savedEdit
+                      ? 'تحديث الطلب'
+                      : _pendingCreatePayload != null
+                          ? 'إعادة محاولة الحفظ'
+                          : 'حفظ الطلب'),
           ),
         ),
       ]),
@@ -2072,9 +2417,12 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   void _startNewSession() {
-    if (_savingOrder || (_pendingCreatePayload != null &&
+    if (_isTailoringEdit || _savingOrder || (_pendingCreatePayload != null &&
         saveState != SalesSaveState.savedLocked)) {
       return;
+    }
+    if (saveState == SalesSaveState.savedEdit) {
+      saveState = SalesSaveState.savedLocked;
     }
     FocusScope.of(context).unfocus();
     final archived = saveState == SalesSaveState.draft && _hasMeaningfulSessionData();
@@ -2159,6 +2507,19 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     currentCustomerCode = '';
     currentCustomerPhone = '';
     piecesCount = 1;
+    _pieceIdsByIndex
+      ..clear()
+      ..add(null);
+    _addOperationIdsByIndex
+      ..clear()
+      ..add(null);
+    _editVersion = null;
+    _initialEditDeliveryDate = null;
+    _editCanAddPiece = false;
+    _pendingEditPayload = null;
+    _editOriginalPiecesById.clear();
+    _editCapabilitiesByPieceId.clear();
+    _cancelledEditPieces.clear();
     _selectedPieceIndex = null;
     _resizePieceControllers(1);
     pieceTypes[0] = _defaultPieceType;
@@ -2479,7 +2840,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
               Expanded(
                   child: Text('معلومات العميل',
                       style: _sectionTitleStyle(context))),
-              SizedBox(
+              if (!_isTailoringEdit) SizedBox(
                 height: 32,
                 child: FilledButton.icon(
                   style: FilledButton.styleFrom(
@@ -2502,12 +2863,15 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
             ]),
             const SizedBox(height: 8),
             _customerField(context, 'رقم الهاتف', phoneController,
+              readOnly: _isTailoringEdit,
                 onEditingComplete: () =>
                     _searchCustomerAndNextFocus(phoneController.text.trim())),
             _customerField(context, 'اسم العميل', customerNameController,
+              readOnly: _isTailoringEdit,
                 onEditingComplete: () => _searchCustomerAndNextFocus(
                     customerNameController.text.trim())),
             _customerField(context, 'كود العميل', customerCodeController,
+              readOnly: _isTailoringEdit,
                 onEditingComplete: () => _searchCustomerAndNextFocus(
                     customerCodeController.text.trim())),
             _customerField(context, 'اسم العميل المحيل', referrerController,
@@ -2529,8 +2893,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
             _customerField(context, 'القيمة الإجمالية', totalAmountController,
                 readOnly: true),
             _customerField(context, 'المدفوع مقدماً', paidAmountController,
+              readOnly: _isTailoringEdit,
                 onChanged: _updateRemainingAmount),
             _customerField(context, 'الخصم', discountAmountController,
+              readOnly: _isTailoringEdit,
                 onChanged: _updateRemainingAmount),
             _customerField(
                 context, 'المتبقي بعد الخصم', remainingAmountController,
@@ -2626,7 +2992,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _addPiece() async {
-    if (!_draftEditable) return;
+    if (!_draftEditable || (_isTailoringEdit && !_editCanAddPiece)) return;
     setState(() {
       piecesCount++;
       _syncPieceTypesWithCount();
@@ -2636,7 +3002,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _removePiece(int pieceIndex) async {
-    if (!_draftEditable || piecesCount == 1) return;
+    if (!_draftEditable || piecesCount == 1 || !_pieceCanCancel(pieceIndex)) return;
     final epoch = _draftEpoch;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -2654,6 +3020,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       ),
     );
     if (confirmed != true || !_isCurrentDraft(epoch, pieceIndex)) return;
+    final pieceId = _pieceIdsByIndex[pieceIndex];
+    if (pieceId != null && _isTailoringEdit) {
+      _cancelledEditPieces[pieceId] = 'إلغاء القطعة من شاشة تعديل الطلب';
+    }
     final retainedMeasurements = <String, Map<String, String>>{};
     for (var index = 0; index < piecesCount; index++) {
       if (index == pieceIndex) continue;
@@ -2668,6 +3038,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         ..clear()
         ..addAll(retainedMeasurements);
       pieceTypes.removeAt(pieceIndex);
+      _pieceIdsByIndex.removeAt(pieceIndex);
+      _addOperationIdsByIndex.removeAt(pieceIndex);
       for (final controllers in [
         quantityControllers,
         fabricCodeControllers,
@@ -2831,7 +3203,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                                 borderRadius: BorderRadius.circular(5)),
                           ),
                           key: const ValueKey('sales-add-piece'),
-                          onPressed: _draftEditable ? _addPiece : null,
+                            onPressed: _draftEditable &&
+                                (!_isTailoringEdit || _editCanAddPiece)
+                              ? _addPiece
+                              : null,
                           icon: const Icon(Icons.add, size: 16),
                           label: const Text('إضافة قطعة',
                               style: TextStyle(fontSize: 11)),
@@ -2907,7 +3282,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                       tooltip: 'حذف القطعة',
                       visualDensity: VisualDensity.compact,
                       color: theme.colorScheme.error,
-                      onPressed: !_draftEditable || piecesCount == 1
+                            onPressed: !_draftEditable || piecesCount == 1 ||
+                              !_pieceCanCancel(pieceIndex)
                           ? null
                           : () => _removePiece(pieceIndex),
                       icon: const Icon(Icons.delete_outline, size: 18),
@@ -2959,7 +3335,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis)))
                                 .toList(),
-                            onChanged: (value) async {
+                            onChanged: _pieceCanEditDetails(pieceIndex)
+                                ? (value) async {
                               if (value == null) return;
                               _invalidatePricing(pieceIndex);
                               _updatePieceViewState(pieceIndex, () {
@@ -2971,7 +3348,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                                 pieceIndex: pieceIndex,
                                 preserveExisting: false,
                               );
-                            },
+                            }
+                                : null,
                           ),
                         ),
                       ),
@@ -2999,6 +3377,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                             _scheduleQuantityConsumption(pieceIndex);
                             _notifyPieceChanged(pieceIndex);
                           },
+                          enabled: !_isTailoringEdit,
                         ),
                       ),
                       FocusTraversalOrder(
@@ -3017,6 +3396,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                             _notifyPieceChanged(pieceIndex);
                             await _schedulePricing(pieceIndex);
                           },
+                          enabled: _pieceCanEditDetails(pieceIndex),
                         ),
                       ),
                       FocusTraversalOrder(
@@ -3041,18 +3421,23 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                           order: const NumericFocusOrder(8),
                           child: _pieceField(context, 'طلب رقم 1',
                               notes1Controllers[pieceIndex],
-                              pieceIndex: pieceIndex, fieldKey: 'notes1')),
+                              pieceIndex: pieceIndex,
+                              fieldKey: 'notes1',
+                              enabled: _pieceCanEditDetails(pieceIndex))),
                       FocusTraversalOrder(
                           order: const NumericFocusOrder(9),
                           child: _pieceField(context, 'طلب رقم 2',
                               notes2Controllers[pieceIndex],
-                              pieceIndex: pieceIndex, fieldKey: 'notes2')),
+                              pieceIndex: pieceIndex,
+                              fieldKey: 'notes2',
+                              enabled: _pieceCanEditDetails(pieceIndex))),
                       FocusTraversalOrder(
                           order: const NumericFocusOrder(10),
                           child: _pieceField(context, 'طلبات خاصة',
                               specialRequestsControllers[pieceIndex],
                               pieceIndex: pieceIndex,
-                              fieldKey: 'specialRequests')),
+                              fieldKey: 'specialRequests',
+                              enabled: _pieceCanEditDetails(pieceIndex))),
                       _legacyReadOnlyField(
                         context,
                         'الاستهلاك',
@@ -3080,7 +3465,9 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                                 borderRadius: BorderRadius.circular(5),
                               ),
                             ),
-                            onPressed: pieceType.isEmpty
+                            key: ValueKey('sales-edit-measurements-$pieceIndex'),
+                                onPressed: pieceType.isEmpty ||
+                                  !_pieceCanEditMeasurements(pieceIndex)
                                 ? null
                                 : () {
                                     _selectPiece(pieceIndex);
@@ -3250,10 +3637,12 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     String? fieldKey,
     EdgeInsets? contentPadding,
     ValueChanged<String>? onChanged,
+    bool enabled = true,
   }) {
     return Focus(
       child: TextField(
         controller: controller,
+        readOnly: !enabled,
         onChanged: onChanged,
         decoration:
             _pieceDecoration(context, label, contentPadding: contentPadding),
