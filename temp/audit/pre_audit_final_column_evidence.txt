@@ -1,0 +1,9 @@
+ES_TABLES 180
+VIP_TABLES 161
+ES_COLUMNS 3200
+VIP_COLUMNS 2995
+MissingColumnsInVIP 205
+ExtraColumnsInVIP 0
+DifferentColumnDefinitions 2
+Msg 208, Level 16, State 1, Server YASIN-YASIN\SQLEXPRESS, Line 1
+Invalid object name 'MISSING'.

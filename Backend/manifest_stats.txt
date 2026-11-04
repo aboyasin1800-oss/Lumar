@@ -1,0 +1,10 @@
+ManifestPath=D:\YASIN\Backend\final_zero_baseline_manifest.sql
+ManifestLength=31140
+ManifestLineCount=638
+ManifestSHA256=528a0367c1875e0fabe8a168b9f3e29fc930e8022f6f19a75c8307cbb32ca916
+PlaceholderCounts={"TODO":0,"...":0,"placeholder":0,"remaining":0,"bulk delete":0,"according to graph":0,"cycle ids":0,"protected snapshot before":0,"reset runtime ID set creation":0,"ordered delete manifest":0,"protected comparison":0,"FK integrity verification":0}
+PlaceholderTotal=0
+PostCommitPath=D:\YASIN\Backend\verify_zero_baseline_post_commit.sql
+PostCommitLength=5006
+PostCommitSHA256=7da24d4691bd167138edfebf336d5e4e5516180551bfb6a7667f93517caf99f5
+PostCommitHasDML=false

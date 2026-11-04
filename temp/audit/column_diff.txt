@@ -1,0 +1,3 @@
+MissingColumnsInVIP 205
+Msg 208, Level 16, State 1, Server YASIN-YASIN\SQLEXPRESS, Line 70
+Invalid object name 'EXTRA'.

@@ -1,0 +1,34 @@
+
+(25 rows affected)
+
+(2 rows affected)
+
+(311 rows affected)
+
+(146 rows affected)
+
+(47 rows affected)
+
+(33 rows affected)
+
+(5 rows affected)
+
+(232 rows affected)
+
+(146 rows affected)
+
+(310 rows affected)
+
+(1 rows affected)
+GateName                 Value      
+------------------------ -----------
+ProtectedLedgerAfter              25
+ProtectedCashAfter                 2
+TargetLedgerAfter                  0
+TargetCashAfter                    0
+CashMovementsAfter               146
+JournalEntryLinesAfter          1136
+AccountRoleMappingsAfter           7
+CA1000After                        0
+
+(8 rows affected)

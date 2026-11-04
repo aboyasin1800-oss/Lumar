@@ -10,5 +10,7 @@
 			"path": "../../../Gateway/LocalWhatsApp"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"powershell.cwd": "tailoring_system"
+	}
 }

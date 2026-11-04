@@ -1,0 +1,214 @@
+Metric,Value
+MissingColumnsInVIP,205
+ExtraColumnsInVIP,0
+DifferentColumnDefinitions,2
+Schema,Table,Column,ESDefinition,VIPDefinition
+dbo,AccountingEvents,ToolIssuanceId,BIGINT NULL,NULL
+dbo,AccountingEvents,ToolIssuanceReversalId,BIGINT NULL,NULL
+dbo,CustomerMessages,CampaignImageUrl,NVARCHAR(2048) NULL,NULL
+dbo,CustomerMessages,IsRetryable,BIT NOT NULL,NULL
+dbo,CustomerMessages,RawCampaignText,NVARCHAR(MAX) NULL,NULL
+dbo,Customers,GlobalCustomerUid,UNIQUEIDENTIFIER NOT NULL,NULL
+dbo,FabricConsumptionPartialReversals,AccountingEventId,BIGINT NULL,NULL
+dbo,FabricConsumptionPartialReversals,CreatedAt,DATETIME2(7) NOT NULL,NULL
+dbo,FabricConsumptionPartialReversals,FabricConsumptionPartialReversalId,BIGINT NOT NULL,NULL
+dbo,FabricConsumptionPartialReversals,FabricConsumptionSourceId,BIGINT NOT NULL,NULL
+dbo,FabricConsumptionPartialReversals,InventoryTransactionId,INT NULL,NULL
+dbo,FabricConsumptionPartialReversals,OperationalAmount,DECIMAL(18,6) NOT NULL,NULL
+dbo,FabricConsumptionPartialReversals,PieceId,INT NOT NULL,NULL
+dbo,FabricConsumptionPartialReversals,PostingAmount,DECIMAL(18,2) NOT NULL,NULL
+dbo,FabricConsumptionPartialReversals,Reason,NVARCHAR(500) NOT NULL,NULL
+dbo,FabricConsumptionPartialReversals,ReturnedQuantity,DECIMAL(18,6) NOT NULL,NULL
+dbo,FabricConsumptionPartialReversals,ReversedBy,NVARCHAR(100) NOT NULL,NULL
+dbo,FabricConsumptionPartialReversals,SourceOperationId,UNIQUEIDENTIFIER NOT NULL,NULL
+dbo,FabricConsumptionSources,ReadyMadeProductionOrderItemId,INT NULL,NULL
+dbo,FabricConsumptionSources,ReadyMadeProductionOrderPieceInstanceId,INT NULL,NULL
+dbo,GoodsReceiptItems,ItemCount,DECIMAL(18,6) NULL,NULL
+dbo,GoodsReceiptItems,ProductType,NVARCHAR(50) NULL,NULL
+dbo,GoodsReceiptItems,ReceivedItemCount,DECIMAL(18,6) NULL,NULL
+dbo,GoodsReceiptItems,RollCount,INT NULL,NULL
+dbo,GoodsReceiptItems,UnitCode,NVARCHAR(30) NULL,NULL
+dbo,MobileAccountCustomerAccess,AccessRole,NVARCHAR(32) NOT NULL,NULL
+dbo,MobileAccountCustomerAccess,CreatedAtUtc,DATETIME2(3) NOT NULL,NULL
+dbo,MobileAccountCustomerAccess,CustomerId,INT NOT NULL,NULL
+dbo,MobileAccountCustomerAccess,IsActive,BIT NOT NULL,NULL
+dbo,MobileAccountCustomerAccess,MobileAccountCustomerAccessId,INT NOT NULL,NULL
+dbo,MobileAccountCustomerAccess,MobileAccountId,INT NOT NULL,NULL
+dbo,MobileAccountCustomerAccess,RelationshipType,NVARCHAR(100) NULL,NULL
+dbo,MobileAccountCustomerAccess,RevokedAtUtc,DATETIME2(3) NULL,NULL
+dbo,MobileAccounts,SupplierId,INT NULL,NULL
+dbo,MobilePushDevices,AppVersion,NVARCHAR(64) NULL,NULL
+dbo,MobilePushDevices,CreatedAtUtc,DATETIME2(3) NOT NULL,NULL
+dbo,MobilePushDevices,DeviceKey,NVARCHAR(128) NOT NULL,NULL
+dbo,MobilePushDevices,DeviceName,NVARCHAR(128) NULL,NULL
+dbo,MobilePushDevices,DisabledAtUtc,DATETIME2(3) NULL,NULL
+dbo,MobilePushDevices,DisabledReason,NVARCHAR(256) NULL,NULL
+dbo,MobilePushDevices,IsActive,BIT NOT NULL,NULL
+dbo,MobilePushDevices,IsDisabled,BIT NOT NULL,NULL
+dbo,MobilePushDevices,LastRegisteredAtUtc,DATETIME2(3) NULL,NULL
+dbo,MobilePushDevices,MobileAccountId,INT NOT NULL,NULL
+dbo,MobilePushDevices,MobilePushDeviceId,INT NOT NULL,NULL
+dbo,MobilePushDevices,Platform,NVARCHAR(32) NOT NULL,NULL
+dbo,MobilePushDevices,Provider,NVARCHAR(32) NOT NULL,NULL
+dbo,MobilePushDevices,PushTokenCiphertext,NVARCHAR(MAX) NOT NULL,NULL
+dbo,MobilePushDevices,TokenHash,NVARCHAR(128) NOT NULL,NULL
+dbo,MobilePushDevices,UpdatedAtUtc,DATETIME2(3) NOT NULL,NULL
+dbo,Orders,EditVersion,TIMESTAMP NOT NULL,NULL
+dbo,PaymentDisputes,CreatedAt,DATETIME2(3) NOT NULL,NULL
+dbo,PaymentDisputes,DisputedAmount,DECIMAL(18,2) NULL,NULL
+dbo,PaymentDisputes,PaymentDisputeId,INT NOT NULL,NULL
+dbo,PaymentDisputes,Reason,NVARCHAR(500) NOT NULL,NULL
+dbo,PaymentDisputes,ResolvedAt,DATETIME2(3) NULL,NULL
+dbo,PaymentDisputes,SourceOperationId,UNIQUEIDENTIFIER NULL,NULL
+dbo,PaymentDisputes,Status,NVARCHAR(32) NOT NULL,NULL
+dbo,PaymentDisputes,SupplierId,INT NOT NULL,NULL
+dbo,PaymentDisputes,SupplierPaymentId,INT NOT NULL,NULL
+dbo,ScannerStageProductPermissions,CreatedAt,DATETIME2(3) NOT NULL,NULL
+dbo,ScannerStageProductPermissions,IsActive,BIT NOT NULL,NULL
+dbo,ScannerStageProductPermissions,ProductTypeId,INT NOT NULL,NULL
+dbo,ScannerStageProductPermissions,ScannerId,INT NOT NULL,NULL
+dbo,ScannerStageProductPermissions,ScannerStageProductPermissionId,INT NOT NULL,NULL
+dbo,ScannerStageProductPermissions,Stage,NVARCHAR(100) NOT NULL,NULL
+dbo,ScannerStageProductPermissions,UpdatedAt,DATETIME2(3) NULL,NULL
+dbo,StageAttributionCorrections,AuthorizedByUserId,INT NOT NULL,NULL
+dbo,StageAttributionCorrections,CompletedAt,DATETIME2(7) NULL,NULL
+dbo,StageAttributionCorrections,CorrectEmployeeCode,NVARCHAR(80) NOT NULL,NULL
+dbo,StageAttributionCorrections,CorrectEmployeeId,INT NOT NULL,NULL
+dbo,StageAttributionCorrections,CreatedAt,DATETIME2(7) NOT NULL,NULL
+dbo,StageAttributionCorrections,IdempotencyKey,NVARCHAR(200) NOT NULL,NULL
+dbo,StageAttributionCorrections,PieceID,INT NOT NULL,NULL
+dbo,StageAttributionCorrections,PreviousEmployeeCode,NVARCHAR(80) NULL,NULL
+dbo,StageAttributionCorrections,PreviousEmployeeId,INT NULL,NULL
+dbo,StageAttributionCorrections,Reason,NVARCHAR(500) NOT NULL,NULL
+dbo,StageAttributionCorrections,Stage,NVARCHAR(120) NOT NULL,NULL
+dbo,StageAttributionCorrections,StageAttributionCorrectionId,INT NOT NULL,NULL
+dbo,StageAttributionCorrections,Status,NVARCHAR(50) NOT NULL,NULL
+dbo,StageAttributionCorrections,TrackingEventID,INT NOT NULL,NULL
+dbo,SupplierAnnouncements,Body,NVARCHAR(MAX) NOT NULL,NULL
+dbo,SupplierAnnouncements,CreatedAtUtc,DATETIME2(3) NOT NULL,NULL
+dbo,SupplierAnnouncements,EndsAtUtc,DATETIME2(3) NULL,NULL
+dbo,SupplierAnnouncements,IsActive,BIT NOT NULL,NULL
+dbo,SupplierAnnouncements,StartsAtUtc,DATETIME2(3) NOT NULL,NULL
+dbo,SupplierAnnouncements,SupplierAnnouncementId,INT NOT NULL,NULL
+dbo,SupplierAnnouncements,SupplierId,INT NOT NULL,NULL
+dbo,SupplierAnnouncements,Title,NVARCHAR(255) NOT NULL,NULL
+dbo,SupplierInvoiceLines,ItemCount,DECIMAL(18,6) NULL,NULL
+dbo,SupplierInvoiceLines,ProductType,NVARCHAR(50) NULL,NULL
+dbo,SupplierInvoiceLines,UnitCode,NVARCHAR(30) NULL,NULL
+dbo,SupplierMessages,Body,NVARCHAR(MAX) NOT NULL,NULL
+dbo,SupplierMessages,Channel,NVARCHAR(32) NOT NULL,NULL
+dbo,SupplierMessages,CreatedAtUtc,DATETIME2(3) NOT NULL,NULL
+dbo,SupplierMessages,DeliveryStatus,NVARCHAR(32) NOT NULL,NULL
+dbo,SupplierMessages,IdempotencyKey,NVARCHAR(128) NOT NULL,NULL
+dbo,SupplierMessages,IsRead,BIT NOT NULL,NULL
+dbo,SupplierMessages,MessageType,NVARCHAR(64) NOT NULL,NULL
+dbo,SupplierMessages,MobileAccountId,INT NOT NULL,NULL
+dbo,SupplierMessages,ReadAtUtc,DATETIME2(3) NULL,NULL
+dbo,SupplierMessages,RelatedEntityId,INT NULL,NULL
+dbo,SupplierMessages,RelatedEntityType,NVARCHAR(64) NULL,NULL
+dbo,SupplierMessages,SentAtUtc,DATETIME2(3) NULL,NULL
+dbo,SupplierMessages,Subject,NVARCHAR(255) NULL,NULL
+dbo,SupplierMessages,SupplierId,INT NOT NULL,NULL
+dbo,SupplierMessages,SupplierMessageId,INT NOT NULL,NULL
+dbo,SupplierNotifications,Body,NVARCHAR(MAX) NOT NULL,NULL
+dbo,SupplierNotifications,CreatedAtUtc,DATETIME2(3) NOT NULL,NULL
+dbo,SupplierNotifications,ExpiresAtUtc,DATETIME2(3) NULL,NULL
+dbo,SupplierNotifications,IsRead,BIT NOT NULL,NULL
+dbo,SupplierNotifications,MobileAccountId,INT NOT NULL,NULL
+dbo,SupplierNotifications,NotificationType,NVARCHAR(64) NOT NULL,NULL
+dbo,SupplierNotifications,ReadAtUtc,DATETIME2(3) NULL,NULL
+dbo,SupplierNotifications,ReferenceId,INT NULL,NULL
+dbo,SupplierNotifications,ReferenceType,NVARCHAR(64) NULL,NULL
+dbo,SupplierNotifications,SupplierId,INT NOT NULL,NULL
+dbo,SupplierNotifications,SupplierNotificationId,INT NOT NULL,NULL
+dbo,SupplierNotifications,Title,NVARCHAR(255) NOT NULL,NULL
+dbo,SupplierPaymentAcknowledgements,AcknowledgedAt,DATETIME2(3) NOT NULL,NULL
+dbo,SupplierPaymentAcknowledgements,CreatedAt,DATETIME2(3) NOT NULL,NULL
+dbo,SupplierPaymentAcknowledgements,Notes,NVARCHAR(500) NULL,NULL
+dbo,SupplierPaymentAcknowledgements,SourceOperationId,UNIQUEIDENTIFIER NULL,NULL
+dbo,SupplierPaymentAcknowledgements,Status,NVARCHAR(32) NOT NULL,NULL
+dbo,SupplierPaymentAcknowledgements,SupplierId,INT NOT NULL,NULL
+dbo,SupplierPaymentAcknowledgements,SupplierPaymentAcknowledgementId,INT NOT NULL,NULL
+dbo,SupplierPaymentAcknowledgements,SupplierPaymentId,INT NOT NULL,NULL
+dbo,TailoringCostPostings,AccountingEventId,BIGINT NULL,NULL
+dbo,TailoringCostPostings,CreatedAt,DATETIME2(7) NOT NULL,NULL
+dbo,TailoringCostPostings,FabricOperationalAmount,DECIMAL(18,6) NOT NULL,NULL
+dbo,TailoringCostPostings,OrderId,INT NOT NULL,NULL
+dbo,TailoringCostPostings,PostingAmount,DECIMAL(18,2) NOT NULL,NULL
+dbo,TailoringCostPostings,SourceOperationId,UNIQUEIDENTIFIER NOT NULL,NULL
+dbo,TailoringCostPostings,TailoringCostPostingId,BIGINT NOT NULL,NULL
+dbo,TailoringOrderEditOperations,CreatedAt,DATETIME2(7) NOT NULL,NULL
+dbo,TailoringOrderEditOperations,CreatedBy,NVARCHAR(100) NOT NULL,NULL
+dbo,TailoringOrderEditOperations,EditOperationId,UNIQUEIDENTIFIER NOT NULL,NULL
+dbo,TailoringOrderEditOperations,OrderId,INT NOT NULL,NULL
+dbo,TailoringOrderEditOperations,RequestHash,BINARY(16) NOT NULL,NULL
+dbo,TailoringOrderEditOperations,ResultJson,NVARCHAR(MAX) NULL,NULL
+dbo,TailoringPieceAddOperations,AddOperationId,UNIQUEIDENTIFIER NOT NULL,NULL
+dbo,TailoringPieceAddOperations,EditOperationId,UNIQUEIDENTIFIER NOT NULL,NULL
+dbo,TailoringPieceAddOperations,OrderId,INT NOT NULL,NULL
+dbo,TailoringPieceAddOperations,PieceId,INT NOT NULL,NULL
+dbo,TailoringPieceAddOperations,RequestHash,BINARY(16) NOT NULL,NULL
+dbo,TailoringPieceBenefitBalances,BenefitKind,NVARCHAR(20) NOT NULL,NULL
+dbo,TailoringPieceBenefitBalances,CurrentPoints,DECIMAL(18,4) NOT NULL,NULL
+dbo,TailoringPieceBenefitBalances,CustomerId,INT NOT NULL,NULL
+dbo,TailoringPieceBenefitBalances,OriginalLoyaltyTransactionId,BIGINT NULL,NULL
+dbo,TailoringPieceBenefitBalances,OriginalPoints,DECIMAL(18,4) NOT NULL,NULL
+dbo,TailoringPieceBenefitBalances,OriginalReferralTransactionId,BIGINT NULL,NULL
+dbo,TailoringPieceBenefitBalances,PieceId,INT NOT NULL,NULL
+dbo,TailoringPieceBenefitBalances,ReferralLevel,TINYINT NOT NULL,NULL
+dbo,TailoringPieceCancellations,CancelledAt,DATETIME2(7) NOT NULL,NULL
+dbo,TailoringPieceCancellations,EditOperationId,UNIQUEIDENTIFIER NOT NULL,NULL
+dbo,TailoringPieceCancellations,PieceId,INT NOT NULL,NULL
+dbo,TailoringPieceCancellations,Reason,NVARCHAR(500) NOT NULL,NULL
+dbo,TailoringPieceSaleValues,ApprovedPricingSnapshot,NVARCHAR(MAX) NOT NULL,NULL
+dbo,TailoringPieceSaleValues,ApprovedSalePrice,DECIMAL(18,2) NOT NULL,NULL
+dbo,TailoringPieceSaleValues,BenefitsCaptured,BIT NOT NULL,NULL
+dbo,TailoringPieceSaleValues,CreatedAt,DATETIME2(7) NOT NULL,NULL
+dbo,TailoringPieceSaleValues,DiscountShare,DECIMAL(18,2) NOT NULL,NULL
+dbo,TailoringPieceSaleValues,OriginalBasePoints,DECIMAL(18,4) NULL,NULL
+dbo,TailoringPieceSaleValues,OriginalDiscountShare,DECIMAL(18,2) NOT NULL,NULL
+dbo,TailoringPieceSaleValues,OriginalPricingSnapshot,NVARCHAR(MAX) NOT NULL,NULL
+dbo,TailoringPieceSaleValues,OriginalSalePrice,DECIMAL(18,2) NOT NULL,NULL
+dbo,TailoringPieceSaleValues,PieceID,INT NOT NULL,NULL
+dbo,TailoringPieceSaleValues,UpdatedAt,DATETIME2(7) NOT NULL,NULL
+dbo,ToolIssuanceReturns,ConfirmedByUserId,INT NULL,NULL
+dbo,ToolIssuanceReturns,CreatedAt,DATETIME2(7) NOT NULL,NULL
+dbo,ToolIssuanceReturns,InventoryTransactionId,INT NULL,NULL
+dbo,ToolIssuanceReturns,ReturnedQuantity,DECIMAL(18,3) NOT NULL,NULL
+dbo,ToolIssuanceReturns,ReturnNotes,NVARCHAR(1000) NULL,NULL
+dbo,ToolIssuanceReturns,SourceOperationId,UNIQUEIDENTIFIER NOT NULL,NULL
+dbo,ToolIssuanceReturns,ToolIssuanceId,BIGINT NOT NULL,NULL
+dbo,ToolIssuanceReturns,ToolIssuanceReturnId,BIGINT NOT NULL,NULL
+dbo,ToolIssuanceReversals,AccountingEventId,BIGINT NULL,NULL
+dbo,ToolIssuanceReversals,CreatedAt,DATETIME2(7) NOT NULL,NULL
+dbo,ToolIssuanceReversals,InventoryTransactionId,INT NULL,NULL
+dbo,ToolIssuanceReversals,Notes,NVARCHAR(1000) NOT NULL,NULL
+dbo,ToolIssuanceReversals,PostingAmount,DECIMAL(18,2) NOT NULL,NULL
+dbo,ToolIssuanceReversals,ReversalReason,NVARCHAR(500) NOT NULL,NULL
+dbo,ToolIssuanceReversals,ReversedBy,INT NULL,NULL
+dbo,ToolIssuanceReversals,SourceOperationId,UNIQUEIDENTIFIER NOT NULL,NULL
+dbo,ToolIssuanceReversals,ToolIssuanceId,BIGINT NOT NULL,NULL
+dbo,ToolIssuanceReversals,ToolIssuanceReversalId,BIGINT NOT NULL,NULL
+dbo,ToolIssuances,AccountingEventId,BIGINT NULL,NULL
+dbo,ToolIssuances,BeneficiaryName,NVARCHAR(200) NULL,NULL
+dbo,ToolIssuances,ConfirmedByUserId,INT NULL,NULL
+dbo,ToolIssuances,CreatedAt,DATETIME2(7) NOT NULL,NULL
+dbo,ToolIssuances,DestinationName,NVARCHAR(200) NULL,NULL
+dbo,ToolIssuances,DestinationType,NVARCHAR(100) NULL,NULL
+dbo,ToolIssuances,InventoryItemId,INT NOT NULL,NULL
+dbo,ToolIssuances,InventoryTransactionId,INT NULL,NULL
+dbo,ToolIssuances,IssueType,NVARCHAR(20) NOT NULL,NULL
+dbo,ToolIssuances,LoanReason,NVARCHAR(500) NULL,NULL
+dbo,ToolIssuances,Notes,NVARCHAR(1000) NULL,NULL
+dbo,ToolIssuances,OfficialUnitCost,DECIMAL(18,6) NOT NULL,NULL
+dbo,ToolIssuances,OperationalAmount,DECIMAL(18,6) NOT NULL,NULL
+dbo,ToolIssuances,OperationalReason,NVARCHAR(500) NULL,NULL
+dbo,ToolIssuances,PostingAmount,DECIMAL(18,2) NOT NULL,NULL
+dbo,ToolIssuances,Quantity,DECIMAL(18,3) NOT NULL,NULL
+dbo,ToolIssuances,SourceOperationId,UNIQUEIDENTIFIER NOT NULL,NULL
+dbo,ToolIssuances,Status,NVARCHAR(20) NOT NULL,NULL
+dbo,ToolIssuances,ToolIssuanceId,BIGINT NOT NULL,NULL
+Schema,Table,Column,ESDefinition,VIPDefinition
+Schema,Table,Column,ESDefinition,VIPDefinition
+dbo,FabricConsumptionSources,FabricRollId,BIGINT NULL,BIGINT NOT NULL
+dbo,FabricConsumptionSources,OrderItemId,INT NULL,INT NOT NULL

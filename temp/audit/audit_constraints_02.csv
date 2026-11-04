@@ -1,0 +1,42 @@
+Msg 515, Level 16, State 2, Server YASIN-YASIN\SQLEXPRESS, Line 40
+Cannot insert the value NULL into column 'schema_name', table 'tempdb.dbo.#ES_FK______________________________________________________________________________________________________________000000000787'; column does not allow nulls. INSERT fails.
+The statement has been terminated.
+Msg 515, Level 16, State 2, Server YASIN-YASIN\SQLEXPRESS, Line 55
+Cannot insert the value NULL into column 'schema_name', table 'tempdb.dbo.#VIP_FK_____________________________________________________________________________________________________________000000000788'; column does not allow nulls. INSERT fails.
+The statement has been terminated.
+Msg 2628, Level 16, State 1, Server YASIN-YASIN\SQLEXPRESS, Line 70
+String or binary data would be truncated in table 'tempdb.dbo.#ES_CHECK___________________________________________________________________________________________________________000000000789', column 'definition'. Truncated value: '(([AccountingEventType]=(2) OR [AccountingEventType]=(1)) AND [PaymentId] IS NOT NULL AND [OrderId] '.
+The statement has been terminated.
+PK_MISSING,19
+PK_EXTRA,0
+PK_DIFFERENT,0
+PK_DRAFT_LIST
+FK_MISSING,0
+FK_EXTRA,0
+FK_DIFFERENT,0
+FK_ES_DISABLED,0
+FK_VIP_DISABLED,0
+FK_ES_UNTRUSTED,0
+FK_VIP_UNTRUSTED,0
+FK_DRAFT_LIST
+CHECK_MISSING,0
+CHECK_EXTRA,78
+CHECK_DIFFERENT,0
+CHECK_ES_DISABLED,0
+CHECK_VIP_DISABLED,0
+CHECK_ES_UNTRUSTED,0
+CHECK_VIP_UNTRUSTED,0
+CHECK_DRAFT_LIST
+UNIQUE_MISSING,13
+UNIQUE_EXTRA,0
+UNIQUE_DIFFERENT,0
+UNIQUE_DRAFT_LIST
+DEFAULT_MISSING,30
+DEFAULT_EXTRA,0
+DEFAULT_DIFFERENT,0
+DEFAULT_DRAFT_LIST
+INDEX_MISSING,64
+INDEX_EXTRA,0
+INDEX_DIFFERENT,1
+INDEX_DRAFT_LIST
+dbo,AccountingEvents,UX_AccountingEvents_Original_Reversal,1,1,OriginalAccountingEventId,OriginalAccountingEventId,NULL,NULL,([AccountingEventType]=(33) AND [SourceType]<>N'FabricConsumptionPartialReversal'),([AccountingEventType]=(33)),0,0

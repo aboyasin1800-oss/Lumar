@@ -1,0 +1,888 @@
+{
+  "database": "LUMAR_ERP_VIP_1",
+  "server": "YASIN-YASIN\\SQLEXPRESS",
+  "generated_at_utc": "2026-11-04T16:28:43Z",
+  "source_database_online": "YES",
+  "target_database_name": "LUMAR_ERP_GOLDEN_CLEAN_R2",
+  "target_database_already_exists": "NO",
+  "classification_rules": [
+    "PRESERVE_SECURITY",
+    "PRESERVE_REFERENCE",
+    "PRESERVE_CONFIGURATION",
+    "PRESERVE_ADMIN_ACCESS",
+    "EMPTY_OPERATIONAL",
+    "MIXED_REQUIRES_RULE",
+    "UNCLASSIFIED"
+  ],
+  "table_classifications": [
+    {
+      "table": "AccountRoleMappings",
+      "category": "PRESERVE_SECURITY",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "AccountingEventDefinitions",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "AccountingEvents",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ApiFailureLogs",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "AuditLogs",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "BackupRecords",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "BackupTrustRecords",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "BillOfMaterials",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "CancelledPieceDisposition",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "CashAccounts",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "CashMovements",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "CustomerAdvanceApplications",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "CustomerLedgerEntries",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "CustomerMeasurements",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "CustomerMessages",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "CustomerNotifications",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Customers",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Departments",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "EmployeeAttendances",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "EmployeeContractTemplates",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "EmployeeContracts",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "EmployeeDocuments",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "EmployeeDrawSettlements",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "EmployeePieceRateAssignments",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Employee_Draws",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Employee_Workflow",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Employees",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "FabricConsumptionSources",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "FabricRolls",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Fabrics",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Fabrics_Inventory",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "FinancialTransactions",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "FinishedProductReceipts",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "GoodsReceiptItems",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "GoodsReceipts",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ImportedReadyMadeInventoryReceipts",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ImportedReadyMadeProducts",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ImportedReadyMadeSaleCostPostings",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "InventoryClassCatalog",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "InventoryFoundationProcedureBackups",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "InventoryItemFoundation",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "InventoryItems",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "InventoryReceiptLines",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "InventoryReceiptPostings",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "InventoryTransactions",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "InventoryUnitCatalog",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "InventoryValuationSnapshots",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Invoice_Details",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Invoice_Header",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "JournalEntries",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "JournalEntryLines",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "LeaveRequests",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "LedgerAccounts",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "Live_Scan",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "LoyaltyAccounts",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "LoyaltyImportedReadyMadeProductPointSettings",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "LoyaltyPiecePointSettings",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "LoyaltyProgramSettings",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "LoyaltyReadyMadeProductTypePointSettings",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "LoyaltyRedemptions",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "LoyaltyRewards",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "LoyaltyRules",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "LoyaltyTransactions",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "MeasurementCardPrintHistory",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "MessageTemplates",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "Messages_Templates",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "MobileAccounts",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "MobileRecoveryChallenges",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "MobileSessions",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "OrderItemFabrics",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "OrderItems",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Orders",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Payments",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Payments_Log",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "PayrollItems",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "PayrollPeriods",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "PayrollRecords",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "PerformanceMetricRecords",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "PieceWageRates",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "PieceWageRecords",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Piece_Measurements",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Piece_Rates",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "Pieces",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "PricingApprovalHistory",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "PricingAuditLogs",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "PricingConsumptionRules",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "PricingCostItems",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "PricingCostMatrices",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "PricingCostMatrixItems",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "PricingMarginPolicies",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "PricingMeasurementFields",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "PricingMeasurementProfiles",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "PricingProductTypes",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "PricingRules",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "PricingSimulationRuns",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "PricingSizeClasses",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "PricingWastePolicies",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "ProductMaterials",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ProductionBatches",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ProductionMaterialConsumptions",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ProductionOrders",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Production_Tracking",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Products",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "PurchaseOrderItems",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "PurchaseOrders",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ReadyMadeInventoryProducts",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ReadyMadeProductionOrderItems",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ReadyMadeProductionOrderPieceInstances",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ReadyMadeProductionOrders",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ReadyMadeSaleCostPostings",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "RecoveryRecords",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ReferralAccounts",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ReferralAnalytics",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ReferralCodes",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ReferralRewards",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ReferralTransactions",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "RestoreRecords",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "RolePermissionMappings",
+      "category": "PRESERVE_SECURITY",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "Scanners",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "SecurityDriftRecords",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "SecurityEventLogs",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "SecurityPermissions",
+      "category": "PRESERVE_SECURITY",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "SecurityRoles",
+      "category": "PRESERVE_SECURITY",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "Sent_Log",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Sent_Messages",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "ServiceAvailabilityRecords",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "SupplierInvoices",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "SupplierLedgerEntries",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "SupplierPaymentAllocations",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "SupplierPayments",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "SupplierTransactions",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Suppliers",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "SystemHealthRecords",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "System_Settings",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "TrackingEvents",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "UserActivityLogs",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "UserClaimMappings",
+      "category": "PRESERVE_SECURITY",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "UserRoleAssignments",
+      "category": "PRESERVE_SECURITY",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "UserSessions",
+      "category": "EMPTY_OPERATIONAL",
+      "notes": "Operational data intentionally excluded from clean golden copy"
+    },
+    {
+      "table": "Users",
+      "category": "PRESERVE_SECURITY",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "VipLevelEvaluationCriteria",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "VipLevels",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "__EFMigrationsHistory",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    },
+    {
+      "table": "sysdiagrams",
+      "category": "PRESERVE_REFERENCE",
+      "notes": "Protected reference or administrative metadata"
+    }
+  ],
+  "unclassified_tables": [],
+  "preserved_tables": [
+    "AccountRoleMappings",
+    "AccountingEventDefinitions",
+    "CashAccounts",
+    "EmployeeContractTemplates",
+    "InventoryClassCatalog",
+    "InventoryUnitCatalog",
+    "LedgerAccounts",
+    "LoyaltyPiecePointSettings",
+    "LoyaltyProgramSettings",
+    "LoyaltyReadyMadeProductTypePointSettings",
+    "LoyaltyRules",
+    "MessageTemplates",
+    "Messages_Templates",
+    "PieceWageRates",
+    "Piece_Rates",
+    "PricingConsumptionRules",
+    "PricingCostItems",
+    "PricingCostMatrices",
+    "PricingCostMatrixItems",
+    "PricingMarginPolicies",
+    "PricingMeasurementFields",
+    "PricingMeasurementProfiles",
+    "PricingProductTypes",
+    "PricingRules",
+    "PricingSizeClasses",
+    "PricingWastePolicies",
+    "RolePermissionMappings",
+    "Scanners",
+    "SecurityPermissions",
+    "SecurityRoles",
+    "System_Settings",
+    "UserClaimMappings",
+    "UserRoleAssignments",
+    "Users",
+    "VipLevelEvaluationCriteria",
+    "VipLevels",
+    "__EFMigrationsHistory",
+    "sysdiagrams"
+  ],
+  "operational_tables_excluded": [
+    "AccountingEvents",
+    "ApiFailureLogs",
+    "AuditLogs",
+    "BackupRecords",
+    "BackupTrustRecords",
+    "BillOfMaterials",
+    "CancelledPieceDisposition",
+    "CashMovements",
+    "CustomerAdvanceApplications",
+    "CustomerLedgerEntries",
+    "CustomerMeasurements",
+    "CustomerMessages",
+    "CustomerNotifications",
+    "Customers",
+    "Departments",
+    "EmployeeAttendances",
+    "EmployeeContracts",
+    "EmployeeDocuments",
+    "EmployeeDrawSettlements",
+    "EmployeePieceRateAssignments",
+    "Employee_Draws",
+    "Employee_Workflow",
+    "Employees",
+    "FabricConsumptionSources",
+    "FabricRolls",
+    "Fabrics",
+    "Fabrics_Inventory",
+    "FinancialTransactions",
+    "FinishedProductReceipts",
+    "GoodsReceiptItems",
+    "GoodsReceipts",
+    "ImportedReadyMadeInventoryReceipts",
+    "ImportedReadyMadeProducts",
+    "ImportedReadyMadeSaleCostPostings",
+    "InventoryFoundationProcedureBackups",
+    "InventoryItemFoundation",
+    "InventoryItems",
+    "InventoryReceiptLines",
+    "InventoryReceiptPostings",
+    "InventoryTransactions",
+    "InventoryValuationSnapshots",
+    "Invoice_Details",
+    "Invoice_Header",
+    "JournalEntries",
+    "JournalEntryLines",
+    "LeaveRequests",
+    "Live_Scan",
+    "LoyaltyAccounts",
+    "LoyaltyImportedReadyMadeProductPointSettings",
+    "LoyaltyRedemptions",
+    "LoyaltyRewards",
+    "LoyaltyTransactions",
+    "MeasurementCardPrintHistory",
+    "MobileAccounts",
+    "MobileRecoveryChallenges",
+    "MobileSessions",
+    "OrderItemFabrics",
+    "OrderItems",
+    "Orders",
+    "Payments",
+    "Payments_Log",
+    "PayrollItems",
+    "PayrollPeriods",
+    "PayrollRecords",
+    "PerformanceMetricRecords",
+    "PieceWageRecords",
+    "Piece_Measurements",
+    "Pieces",
+    "PricingApprovalHistory",
+    "PricingAuditLogs",
+    "PricingSimulationRuns",
+    "ProductMaterials",
+    "ProductionBatches",
+    "ProductionMaterialConsumptions",
+    "ProductionOrders",
+    "Production_Tracking",
+    "Products",
+    "PurchaseOrderItems",
+    "PurchaseOrders",
+    "ReadyMadeInventoryProducts",
+    "ReadyMadeProductionOrderItems",
+    "ReadyMadeProductionOrderPieceInstances",
+    "ReadyMadeProductionOrders",
+    "ReadyMadeSaleCostPostings",
+    "RecoveryRecords",
+    "ReferralAccounts",
+    "ReferralAnalytics",
+    "ReferralCodes",
+    "ReferralRewards",
+    "ReferralTransactions",
+    "RestoreRecords",
+    "SecurityDriftRecords",
+    "SecurityEventLogs",
+    "Sent_Log",
+    "Sent_Messages",
+    "ServiceAvailabilityRecords",
+    "SupplierInvoices",
+    "SupplierLedgerEntries",
+    "SupplierPaymentAllocations",
+    "SupplierPayments",
+    "SupplierTransactions",
+    "Suppliers",
+    "SystemHealthRecords",
+    "TrackingEvents",
+    "UserActivityLogs",
+    "UserSessions"
+  ]
+}

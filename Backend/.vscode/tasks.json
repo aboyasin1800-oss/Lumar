@@ -534,6 +534,391 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "none"
+		},
+		{
+			"label": "check-shell-output",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"echo hello"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "install-sqlpackage",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"winget install --id Microsoft.SqlPackage --accept-source-agreements --accept-package-agreements"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "check-dotnet",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"dotnet --version"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "search-dotnet-sqlpackage",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"dotnet tool search sqlpackage"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "verify-sqlpackage-install",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"dotnet tool list -g && where sqlpackage && sqlpackage /?"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "install-sqlpackage-log",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"dotnet tool install --global Microsoft.SqlPackage > C:\\temp\\sqlpackage_install.log 2>&1; type C:\\temp\\sqlpackage_install.log"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "install-sqlpackage-correct",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"set PATH=%PATH%;%USERPROFILE%\\.dotnet\\tools && dotnet tool install --global Microsoft.SqlPackage --verbosity normal"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "check-global-tools",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"dotnet tool list -g && echo PATH:%PATH% && where sqlpackage && sqlpackage /?"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "install-sqlpackage-diag",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"& dotnet tool install --global Microsoft.SqlPackage --verbosity diag 2>&1 | Tee-Object -FilePath 'C:\\temp\\sqlpackage_diag.txt'; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "run-sqlpackage-install-script",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\temp\\install_sqlpackage.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "verify-after-install-attempt",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"dotnet tool list -g && where sqlpackage"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "search-nuget-sqlpackage",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"dotnet tool search sqlpackage"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "check-sqlpackage-url",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Invoke-WebRequest -Uri 'https://aka.ms/sqlpackage-windows' -Method Head | Format-List *"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "check-sqlpackage-url-basic",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Invoke-WebRequest -Uri 'https://aka.ms/sqlpackage-windows' -Method Head -UseBasicParsing | Out-String"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "download-sqlpackage-zip",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$url='https://aka.ms/sqlpackage-windows'; $dest='D:\\YASIN\\Backend\\SqlPackage\\sqlpackage.zip'; $extract='D:\\YASIN\\Backend\\SqlPackage\\extract'; New-Item -ItemType Directory -Force -Path 'D:\\YASIN\\Backend\\SqlPackage' | Out-Null; Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing; Expand-Archive -Path $dest -DestinationPath $extract -Force; Get-ChildItem -Path $extract -Recurse -Filter sqlpackage.exe | Select-Object -ExpandProperty FullName"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "download-sqlpackage-direct",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\temp\\download_sqlpackage.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "sqlpackage-help",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"D:\\YASIN\\Backend\\SqlPackage\\extract\\sqlpackage.exe /Action:Script /?"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "generate-sqlpackage-artifacts",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\temp\\generate_gold_baseline_r2.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "sqlpackage-deployreport-help",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"D:\\YASIN\\Backend\\SqlPackage\\extract\\sqlpackage.exe /Action:DeployReport /?"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "generate-artifacts-final",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\temp\\generate_gold_baseline_r2_fixed.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "hash-artifacts",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-FileHash 'D:\\YASIN\\Backend\\LUMAR_ERP_ES_VALIDATION_R2.dacpac' -Algorithm SHA256 | Select-Object -ExpandProperty Hash; Get-FileHash 'D:\\YASIN\\Backend\\golden_baseline_r2_schema_deploy.sql' -Algorithm SHA256 | Select-Object -ExpandProperty Hash; Get-FileHash 'D:\\YASIN\\Backend\\golden_baseline_r2_deploy_report.xml' -Algorithm SHA256 | Select-Object -ExpandProperty Hash"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "count-script-changes",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$text = Get-Content 'D:\\YASIN\\Backend\\golden_baseline_r2_schema_deploy.sql' -Raw; $patterns = @{ 'CreateTables' = '(?is)\\bCREATE\\s+TABLE\\s+\\[(?!#)'; 'AddColumns' = '(?is)\\bALTER\\s+TABLE\\s+\\[[^\\]]+\\]\\s+ADD\\s+\\['; 'AlterColumns' = '(?is)\\bALTER\\s+TABLE\\s+\\[[^\\]]+\\]\\s+ALTER\\s+COLUMN\\s+\\['; 'PKChanges' = '(?is)\\bADD\\s+CONSTRAINT\\s+.*?\\bPRIMARY\\s+KEY\\b'; 'UniqueChanges' = '(?is)\\bADD\\s+CONSTRAINT\\s+.*?\\bUNIQUE\\b|\\bCREATE\\s+UNIQUE\\s+INDEX\\b'; 'FKChanges' = '(?is)\\bADD\\s+CONSTRAINT\\s+.*?\\bFOREIGN\\s+KEY\\b'; 'CheckChanges' = '(?is)\\bADD\\s+CONSTRAINT\\s+.*?\\bCHECK\\b'; 'DefaultChanges' = '(?is)\\bADD\\s+CONSTRAINT\\s+.*?\\bDEFAULT\\b'; 'IndexChanges' = '(?is)\\bCREATE\\s+INDEX\\b|\\bCREATE\\s+UNIQUE\\s+INDEX\\b'; 'ViewChanges' = '(?is)\\bCREATE\\s+VIEW\\b'; 'ProcedureChanges' = '(?is)\\bCREATE\\s+PROCEDURE\\b'; 'FunctionChanges' = '(?is)\\bCREATE\\s+FUNCTION\\b'; 'TriggerChanges' = '(?is)\\bCREATE\\s+TRIGGER\\b'; 'SequenceChanges' = '(?is)\\bCREATE\\s+SEQUENCE\\b'; 'DropTablePresent' = '(?is)\\bDROP\\s+TABLE\\b'; 'DropColumnPresent' = '(?is)\\bDROP\\s+COLUMN\\b'; 'DataLossWarningPresent' = '(?is)Possible\\s+data\\s+loss|data\\s+loss|BlockOnPossibleDataLoss' }; foreach ($k in $patterns.Keys) { $matches = [regex]::Matches($text, $patterns[$k]); Write-Host \"$k=$($matches.Count)\" }"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "count-script-stats",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\temp\\count_gold_baseline_stats.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "final-review-proof",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\temp\\final_review_sqlpackage.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "actual-schema-counts",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\temp\\schema_counts_actual.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "persistent-objects-actual",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\temp\\persistent_objects_actual.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "execute-golden-baseline-schema",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\temp\\execute_sqlpackage_schema.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "golden-clean-r2-republish",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$ErrorActionPreference='Stop'; $out='D:\\YASIN\\Backend\\golden_clean_r2_publish_stdout.txt'; $diag='D:\\YASIN\\Backend\\golden_clean_r2_publish_diagnostics.log'; & 'D:\\YASIN\\Backend\\SqlPackage\\extract\\sqlpackage.exe' /Action:Publish /SourceFile:'D:\\YASIN\\Backend\\LUMAR_ERP_VIP_1_CLEAN_R2_SCHEMA.dacpac' /TargetConnectionString:'Data Source=YASIN-YASIN\\SQLEXPRESS;Initial Catalog=LUMAR_ERP_GOLDEN_CLEAN_R2;Integrated Security=True;Encrypt=True;TrustServerCertificate=True' /p:DropObjectsNotInSource=False /DiagnosticsFile:'D:\\YASIN\\Backend\\golden_clean_r2_publish_diagnostics.log' 2>&1 | Tee-Object -FilePath $out; $ec = $LASTEXITCODE; Write-Host \"SQLPACKAGE_EXIT=$ec\"; exit $ec"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "golden-clean-r2-republish-script",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\retry_publish_golden_r2.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "kill-golden-r2-dacfx",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"sqlcmd -S YASIN-YASIN\\SQLEXPRESS -d master -Q \"KILL 61;\" -b"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "final-golden-r2-publish",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\final_republish_golden_r2.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "SqlPackage timeout retry publish",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\retry_publish_fixed_timeout.ps1"
+			],
+			"isBackground": false
 		}
 	]
 }

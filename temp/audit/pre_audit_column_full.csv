@@ -1,0 +1,16 @@
+Metric,Value
+MissingColumnsInVIP,205
+ExtraColumnsInVIP,0
+DifferentColumnDefinitions,2
+Msg 207, Level 16, State 1, Server YASIN-YASIN\SQLEXPRESS, Line 1
+Invalid column name 'schema_name'.
+Msg 207, Level 16, State 1, Server YASIN-YASIN\SQLEXPRESS, Line 1
+Invalid column name 'table_name'.
+Msg 207, Level 16, State 1, Server YASIN-YASIN\SQLEXPRESS, Line 1
+Invalid column name 'column_name'.
+Msg 104, Level 16, State 1, Server YASIN-YASIN\SQLEXPRESS, Line 1
+ORDER BY items must appear in the select list if the statement contains a UNION, INTERSECT or EXCEPT operator.
+Msg 104, Level 16, State 1, Server YASIN-YASIN\SQLEXPRESS, Line 1
+ORDER BY items must appear in the select list if the statement contains a UNION, INTERSECT or EXCEPT operator.
+Msg 104, Level 16, State 1, Server YASIN-YASIN\SQLEXPRESS, Line 1
+ORDER BY items must appear in the select list if the statement contains a UNION, INTERSECT or EXCEPT operator.
