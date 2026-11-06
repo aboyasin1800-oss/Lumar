@@ -6,6 +6,31 @@ namespace LUMAR_ERP_API_V2.Tests;
 
 public sealed class FinancialPostingRuntimeReliabilityTests
 {
+    [Theory]
+    [InlineData("CustomerAdvance", AccountingEventType.CustomerAdvance)]
+    [InlineData("CustomerPayment", AccountingEventType.CustomerPayment)]
+    [InlineData("CustomerAdvanceRefund", AccountingEventType.CustomerAdvance)]
+    [InlineData("CustomerPaymentRefund", AccountingEventType.CustomerPayment)]
+    [InlineData("CustomerSettlementDiscount", AccountingEventType.CustomerSettlementDiscount)]
+    [InlineData("RevenueRecognized", AccountingEventType.RevenueRecognizedOrder)]
+    [InlineData("RevenueReversal", AccountingEventType.Reversal)]
+    [InlineData("WipToFinishedGoods", AccountingEventType.WipToFinishedGoods)]
+    [InlineData("ReadyMadeCost", AccountingEventType.ReadyMadeSaleCost)]
+    [InlineData("TailoringCost", AccountingEventType.TailoringCostOfSales)]
+    [InlineData("PayrollPayment", AccountingEventType.EmployeeSalaryPayment)]
+    public void FinancialTransactionType_MapsToExpectedAccountingEventType(string transactionType, AccountingEventType expected)
+    {
+        Assert.Equal(expected, AccountingEventPostingGateway.MapFinancialTransactionTypeToAccountingEventType(transactionType));
+    }
+
+    [Fact]
+    public void Poster_DoesNotUseGenericSettlementDiscountAsDefaultMapping()
+    {
+        Assert.NotEqual((byte)AccountingEventType.CustomerSettlementDiscount, (byte)AccountingEventPostingGateway.MapFinancialTransactionTypeToAccountingEventType("RevenueReversal"));
+        Assert.NotEqual((byte)AccountingEventType.CustomerSettlementDiscount, (byte)AccountingEventPostingGateway.MapFinancialTransactionTypeToAccountingEventType("TailoringCost"));
+        Assert.NotEqual((byte)AccountingEventType.CustomerSettlementDiscount, (byte)AccountingEventPostingGateway.MapFinancialTransactionTypeToAccountingEventType("PayrollPayment"));
+    }
+
     [Fact]
     public async Task Poster_ReturnsExplicitPreInsertFailures_WithoutCreatingJournalEntry()
     {

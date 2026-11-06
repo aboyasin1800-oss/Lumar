@@ -213,6 +213,24 @@ public sealed class SettingsController(ISettingsService service, IAuthenticatedU
         }
     }
 
+    [HttpPost("test-data-reset")]
+    public async Task<ActionResult<TestDataResetExecutionResultDto>> ExecuteTestDataReset(CancellationToken cancellationToken)
+    {
+        var user = await userContext.GetCurrentUserAsync(cancellationToken);
+        if (user is null)
+        {
+            return Unauthorized();
+        }
+
+        if (!IsAdministrativeRole(user.Role))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "هذه العملية متاحة لمسؤول النظام فقط.");
+        }
+
+        var result = await service.ExecuteTestDataResetAsync(cancellationToken);
+        return result.Success ? Ok(result) : StatusCode(StatusCodes.Status500InternalServerError, result);
+    }
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<SystemSettingDetailsDto>> One(int id, CancellationToken cancellationToken)
     {

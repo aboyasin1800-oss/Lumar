@@ -2,6 +2,161 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "LUMAR: Doctor",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\tools\\dev.ps1",
+				"doctor"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "LUMAR: Restore",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\tools\\dev.ps1",
+				"restore"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "LUMAR: Build",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\tools\\dev.ps1",
+				"build"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "LUMAR: Focused Test",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\tools\\dev.ps1",
+				"test",
+				"-Filter",
+				"LocalWhatsAppFoundationTests"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "LUMAR: Start Backend 5093",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\tools\\dev.ps1",
+				"run",
+				"-Port",
+				"5093"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "LUMAR: Stop Backend 5093",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\tools\\dev.ps1",
+				"stop"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "LUMAR: Smoke",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\tools\\dev.ps1",
+				"smoke"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "LUMAR: DB Verify",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\tools\\dev.ps1",
+				"db"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "LUMAR: Fast Verify",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\tools\\dev.ps1",
+				"verify"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "LUMAR: Full Verify",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\tools\\dev.ps1",
+				"verify",
+				"full"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
 			"label": "Backend LocalWhatsAppFoundationTests",
 			"type": "shell",
 			"command": "cmd",
@@ -919,6 +1074,188 @@
 				"D:\\YASIN\\Backend\\retry_publish_fixed_timeout.ps1"
 			],
 			"isBackground": false
+		},
+		{
+			"label": "Backend startup probe",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"echo hello && cd /d D:\\YASIN\\Backend && dir /B | findstr /I \"LUMAR_ERP_API_V2\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Final Build Proof",
+			"type": "shell",
+			"command": "dotnet build LUMAR_ERP_API_V2\\LUMAR_ERP_API_V2.csproj --no-restore",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Final Financial Regression Proof",
+			"type": "shell",
+			"command": "dotnet test LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter \"FullyQualifiedName~OrderCancellationFinancialMovementIntegrationTests|FullyQualifiedName~AccountingEventFoundationIntegrationTests\" --logger \"console;verbosity=minimal\"",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Supplier financial runtime verification",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"test",
+				"LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj",
+				"--filter",
+				"SupplierFinancialRuntimeIntegrationTests",
+				"--logger",
+				"console;verbosity=minimal"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Supplier R2 build proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && mkdir .verification 2>nul && set Lumar__ConnectionString=Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION_R2;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True && dotnet build \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --nologo > .verification\\supplier_build_r2.txt 2>&1 && echo BUILD_EXIT_CODE=%ERRORLEVEL% && type .verification\\supplier_build_r2.txt"
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Supplier R2 build direct",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && set Lumar__ConnectionString=Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION_R2;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True && dotnet build \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --nologo"
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Supplier R2 tests direct",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && set Lumar__ConnectionString=Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION_R2;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter SupplierFinancialRuntimeIntegrationTests --logger \"trx;LogFileName=supplier_r2.trx\" --results-directory .verification"
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Supplier R2 tests after cleanup fix",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && set Lumar__ConnectionString=Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION_R2;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter SupplierFinancialRuntimeIntegrationTests --logger \"trx;LogFileName=supplier_r2_after_fix.trx\" --results-directory .verification"
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Employee finance R2 proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && set \"Lumar__ConnectionString=Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION_R2;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True\" && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~EmployeeAccrualRuntimeIntegrationTests|FullyQualifiedName~PieceWageEngineTests\" --logger \"trx;LogFileName=employee_finance_r2.trx\" --results-directory .verification > .verification\\employee_finance_r2.txt 2>&1 && type .verification\\employee_finance_r2.txt"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Employee finance R2 proof fixed",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && set \"Lumar__ConnectionString=Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION_R2;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True\" && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~EmployeeAccrualRuntimeIntegrationTests^|FullyQualifiedName~PieceWageEngineTests\" --logger \"trx;LogFileName=employee_finance_r2.trx\" --results-directory .verification > .verification\\employee_finance_r2.txt 2>&1 && type .verification\\employee_finance_r2.txt"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Employee finance R2 proof after fix",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && set \"Lumar__ConnectionString=Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION_R2;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True\" && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~EmployeeAccrualRuntimeIntegrationTests^|FullyQualifiedName~PieceWageEngineTests\" --logger \"trx;LogFileName=employee_finance_r2.trx\" --results-directory .verification > .verification\\employee_finance_r2_after_fix.txt 2>&1 && type .verification\\employee_finance_r2_after_fix.txt"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Employee finance full proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && set \"Lumar__ConnectionString=Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION_R2;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True\" && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~EmployeeAccrualRuntimeIntegrationTests^|FullyQualifiedName~EmployeePaymentIntegrationTests^|FullyQualifiedName~EmployeeSupplierLedgerFoundationIntegrationTests^|FullyQualifiedName~PieceWageEngineTests\" --logger \"trx;LogFileName=employee_finance_full_r2.trx\" --results-directory .verification > .verification\\employee_finance_full_r2.txt 2>&1 && type .verification\\employee_finance_full_r2.txt"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Final build proof R2",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && set \"Lumar__ConnectionString=Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION_R2;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True\" && dotnet build \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --nologo > .verification\\employee_finance_build_r2.txt 2>&1 && type .verification\\employee_finance_build_r2.txt"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Inventory cost R2 proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && set \"Lumar__ConnectionString=Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION_R2;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True\" && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~GoodsReceiptRuntimeIntegrationTests|FullyQualifiedName~FabricConsumablesFoundationIntegrationTests|FullyQualifiedName~ReadyMadeImportedAccountingGate2IntegrationTests|FullyQualifiedName~WipToFinishedGoodsFinancialTransactionPolicyTests|FullyQualifiedName~CostOfSalesFinancialTransactionPolicyTests\" --logger \"trx;LogFileName=inventory_cost_r2.trx\" --results-directory .verification"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "GoodsReceipt R2 proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && set \"Lumar__ConnectionString=Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION_R2;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True\" && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~GoodsReceiptRuntimeIntegrationTests\" --logger \"trx;LogFileName=goods_receipt_r2.trx\" --results-directory .verification"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Check inventory units",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"sqlcmd -S YASIN-YASIN\\SQLEXPRESS -d LUMAR_ERP_ES_VALIDATION_R2 -Q \"SELECT TOP 20 UnitId, UnitCode, UnitName FROM dbo.InventoryUnitCatalog ORDER BY UnitId;\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
 		}
 	]
 }

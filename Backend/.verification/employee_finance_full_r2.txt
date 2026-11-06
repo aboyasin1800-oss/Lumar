@@ -1,0 +1,13 @@
+  Determining projects to restore...
+D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\LUMAR_ERP_API_V2.Tests.csproj : warning NU1900: Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json.
+D:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1900: Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json. [D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\LUMAR_ERP_API_V2.Tests.csproj]
+  All projects are up-to-date for restore.
+D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\LUMAR_ERP_API_V2.Tests.csproj : warning NU1900: Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json.
+D:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1900: Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json.
+  LUMAR_ERP_API_V2 -> D:\YASIN\Backend\LUMAR_ERP_API_V2\bin\Debug\net10.0\LUMAR_ERP_API_V2.dll
+  LUMAR_ERP_API_V2.Tests -> D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll
+Test run for D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: D:\YASIN\Backend\.verification\employee_finance_full_r2.trx
+
+Passed!  - Failed:     0, Passed:    16, Skipped:     0, Total:    16, Duration: 7 s - LUMAR_ERP_API_V2.Tests.dll (net10.0)

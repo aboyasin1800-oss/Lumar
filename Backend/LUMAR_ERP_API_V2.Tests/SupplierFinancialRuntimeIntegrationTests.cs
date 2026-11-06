@@ -451,14 +451,14 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
                 JOIN dbo.AccountingEvents ae ON ae.AccountingEventId=je.AccountingEventId
                 WHERE ae.SourceOperationId=@operation;
 
+                DELETE f FROM dbo.SupplierFinancialInvoices f
+                WHERE f.SourceOperationId=@operation;
+
                 DELETE ae FROM dbo.AccountingEvents ae
                 WHERE ae.SourceOperationId=@operation AND ae.SourceType=N'SupplierInvoice';
 
                 DELETE sfl FROM dbo.SupplierLedgerEntries sfl
                 WHERE sfl.SupplierId=@supplierId AND sfl.SourceType=N'SupplierInvoice' AND sfl.SourceId IN (SELECT SupplierInvoiceId FROM @invoiceIds);
-
-                DELETE f FROM dbo.SupplierFinancialInvoices f
-                WHERE f.SourceOperationId=@operation;
 
                 DELETE FROM dbo.SupplierInvoices
                 WHERE SupplierId=@supplierId
@@ -861,7 +861,12 @@ public sealed class SupplierFinancialRuntimeIntegrationTests
     private static string ConnectionString()
     {
         var builder = new SqlConnectionStringBuilder(Environment.GetEnvironmentVariable("Lumar__ConnectionString") ?? "Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True");
-        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase) && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("ES-5 tests require an approved ES validation database.");
+        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION_R2", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("ES-5 tests require an approved ES validation database, including LUMAR_ERP_ES_VALIDATION_R2.");
+        }
         return builder.ConnectionString;
     }
 }

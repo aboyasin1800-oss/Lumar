@@ -1,0 +1,124 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="9027a0f8-40f2-4e4d-bcd0-3d987011f5c6" name="LENOVO@YASIN-YASIN 2026-11-05 15:03:56" runUser="YASIN-YASIN\LENOVO" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-11-05T15:03:56.2620978+03:00" queuing="2026-11-05T15:03:56.2620983+03:00" start="2026-11-05T15:03:48.3638585+03:00" finish="2026-11-05T15:04:01.7083045+03:00" />
+  <TestSettings name="default" id="151d9fc5-7934-4cfe-98a9-f652c1c2ce2e">
+    <Deployment runDeploymentRoot="LENOVO_YASIN-YASIN_2026-11-05_15_03_56" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="5aa72b5a-9493-4d37-bcdd-f0e9794d9241" testId="22ccb09f-68be-79d9-edff-d02ab2d49146" testName="LUMAR_ERP_API_V2.Tests.EmployeePaymentIntegrationTests.Payments_RejectZeroNegativeAndFutureOnlyBalances" computerName="YASIN-YASIN" duration="00:00:00.2877904" startTime="2026-11-05T15:04:00.3980266+03:00" endTime="2026-11-05T15:04:00.6801295+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5aa72b5a-9493-4d37-bcdd-f0e9794d9241" />
+    <UnitTestResult executionId="d3e31e6e-eb63-4b7a-8773-64119f1e628d" testId="f6d4b26a-c00d-95c3-d7ab-9d89df9195df" testName="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldCreatePieceWageAfterValidTrackingEvent" computerName="YASIN-YASIN" duration="00:00:00.0022944" startTime="2026-11-05T15:03:58.4933068+03:00" endTime="2026-11-05T15:03:58.4956726+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d3e31e6e-eb63-4b7a-8773-64119f1e628d" />
+    <UnitTestResult executionId="b7919188-e74a-47c7-b892-449dd1146fda" testId="a6face26-6ac9-3839-34bd-1029cea71858" testName="LUMAR_ERP_API_V2.Tests.EmployeeSupplierLedgerFoundationIntegrationTests.Foundation_WritesDerivedBalancesPreventsDuplicatesAndAllowsOneReversal" computerName="YASIN-YASIN" duration="00:00:01.0721705" startTime="2026-11-05T15:03:57.3131852+03:00" endTime="2026-11-05T15:03:58.4098743+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b7919188-e74a-47c7-b892-449dd1146fda" />
+    <UnitTestResult executionId="5696622f-52ba-4821-a983-4aadf455511f" testId="a22e6c77-a70f-db84-6209-3ff11c02193b" testName="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldRejectOnlyMissingOrNegativeRate" computerName="YASIN-YASIN" duration="00:00:00.0362382" startTime="2026-11-05T15:03:58.4147978+03:00" endTime="2026-11-05T15:03:58.4582670+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5696622f-52ba-4821-a983-4aadf455511f" />
+    <UnitTestResult executionId="de81325e-34c0-4537-8b44-5d51e76f8204" testId="3b8bea7f-fcea-a0cf-d90c-483ced6ca287" testName="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldPreventDuplicateTrackingEventRecord" computerName="YASIN-YASIN" duration="00:00:00.0127894" startTime="2026-11-05T15:03:58.4674029+03:00" endTime="2026-11-05T15:03:58.4804121+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="de81325e-34c0-4537-8b44-5d51e76f8204" />
+    <UnitTestResult executionId="f068fc2e-894f-41d6-a923-bc4973ec7271" testId="f00b5f8f-10a4-224f-52e7-792e20bb6fb1" testName="LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests.Es3_EligibilityAndEmployeeRuntimes_AreAtomicAndIdempotent" computerName="YASIN-YASIN" duration="00:00:01.1840980" startTime="2026-11-05T15:03:56.1906202+03:00" endTime="2026-11-05T15:03:57.2807963+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f068fc2e-894f-41d6-a923-bc4973ec7271" />
+    <UnitTestResult executionId="f6327013-0e34-483f-a7f7-710140a9219d" testId="035f4620-e25b-21e7-89c1-4cebaf77912c" testName="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldKeepOfficialBaseRateSeparateFromEmployeeExtra" computerName="YASIN-YASIN" duration="00:00:00.0011979" startTime="2026-11-05T15:03:58.4814441+03:00" endTime="2026-11-05T15:03:58.4817906+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f6327013-0e34-483f-a7f7-710140a9219d" />
+    <UnitTestResult executionId="81c614ad-b697-4941-87c4-83d5ead8e12e" testId="906870d5-c33a-1a31-950c-881e2e14d57f" testName="LUMAR_ERP_API_V2.Tests.EmployeePaymentIntegrationTests.Payments_ConcurrentTransactions_AllowOnlyOnePaymentAgainstOneBalance" computerName="YASIN-YASIN" duration="00:00:01.8362041" startTime="2026-11-05T15:03:58.5161108+03:00" endTime="2026-11-05T15:04:00.3887627+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="81c614ad-b697-4941-87c4-83d5ead8e12e" />
+    <UnitTestResult executionId="54189bf7-3941-475f-b99b-cda3bae7b5fb" testId="3beca10e-1f49-2ae0-61f9-ddec7c6aa851" testName="LUMAR_ERP_API_V2.Tests.EmployeePaymentIntegrationTests.Payments_RollbackLeavesNoPartialRecordsFromIndependentConnection" computerName="YASIN-YASIN" duration="00:00:00.1595314" startTime="2026-11-05T15:04:01.1531540+03:00" endTime="2026-11-05T15:04:01.3121373+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="54189bf7-3941-475f-b99b-cda3bae7b5fb" />
+    <UnitTestResult executionId="e8aac664-3a88-4750-ba48-1e958da6ad7a" testId="822a4a44-b521-ecb7-bb1c-4c71c106ce37" testName="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldValidateTotalWageFormula" computerName="YASIN-YASIN" duration="00:00:00.0036544" startTime="2026-11-05T15:03:58.4611919+03:00" endTime="2026-11-05T15:03:58.4641083+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e8aac664-3a88-4750-ba48-1e958da6ad7a" />
+    <UnitTestResult executionId="60b4d4e0-9c9d-436d-bb55-c4a77e14b6f9" testId="713b1f42-15f7-0f70-c7f7-0f29c3e63200" testName="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldUseWildcardRateWhenExactRateIsMissing" computerName="YASIN-YASIN" duration="00:00:00.0013034" startTime="2026-11-05T15:03:58.4594442+03:00" endTime="2026-11-05T15:03:58.4600923+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="60b4d4e0-9c9d-436d-bb55-c4a77e14b6f9" />
+    <UnitTestResult executionId="7074195b-d42c-425d-ab14-fe2ed01eea86" testId="9528bbd4-f197-acb9-d1df-9b05082278f9" testName="LUMAR_ERP_API_V2.Tests.EmployeePaymentIntegrationTests.Payments_ValidateBalance_PostAtomically_SettleAndReverse" computerName="YASIN-YASIN" duration="00:00:00.4690115" startTime="2026-11-05T15:04:00.6807164+03:00" endTime="2026-11-05T15:04:01.1510223+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7074195b-d42c-425d-ab14-fe2ed01eea86" />
+    <UnitTestResult executionId="15a2d852-970a-49e4-b12f-a8681f1d1ee2" testId="15e78cfe-455a-142d-8b75-9d6a53479240" testName="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldAddEmployeeExtraToGeneralRate" computerName="YASIN-YASIN" duration="00:00:00.0014095" startTime="2026-11-05T15:03:58.4827112+03:00" endTime="2026-11-05T15:03:58.4835225+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="15a2d852-970a-49e4-b12f-a8681f1d1ee2" />
+    <UnitTestResult executionId="61690646-bc83-4385-97fa-c04d3f7f51ce" testId="98a2cd24-6d99-8658-d10e-589c8fc61d4a" testName="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldResolveExactPieceTypeRateBeforeWildcard" computerName="YASIN-YASIN" duration="00:00:00.0014400" startTime="2026-11-05T15:03:58.4845071+03:00" endTime="2026-11-05T15:03:58.4853746+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="61690646-bc83-4385-97fa-c04d3f7f51ce" />
+    <UnitTestResult executionId="66e4f851-e061-41ac-b77e-992eb2811c79" testId="6201d59d-febe-313b-85f1-d05426bbf933" testName="LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests.EligibilityWriter_RollbackLeavesNoOfficialRecord" computerName="YASIN-YASIN" duration="00:00:02.0361733" startTime="2026-11-05T15:03:54.0985260+03:00" endTime="2026-11-05T15:03:56.0653642+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="66e4f851-e061-41ac-b77e-992eb2811c79" />
+    <UnitTestResult executionId="b696b6e0-492e-4a7c-818b-ad735344db17" testId="6e3019f8-f8fe-6164-e914-b68291df4d20" testName="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldRejectBlockedWageEmployees" computerName="YASIN-YASIN" duration="00:00:00.0038254" startTime="2026-11-05T15:03:58.5042825+03:00" endTime="2026-11-05T15:03:58.5046007+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b696b6e0-492e-4a7c-818b-ad735344db17" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.EmployeePaymentIntegrationTests.Payments_RejectZeroNegativeAndFutureOnlyBalances" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="22ccb09f-68be-79d9-edff-d02ab2d49146">
+      <Execution id="5aa72b5a-9493-4d37-bcdd-f0e9794d9241" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.EmployeePaymentIntegrationTests" name="Payments_RejectZeroNegativeAndFutureOnlyBalances" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldCreatePieceWageAfterValidTrackingEvent" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="f6d4b26a-c00d-95c3-d7ab-9d89df9195df">
+      <Execution id="d3e31e6e-eb63-4b7a-8773-64119f1e628d" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests" name="ShouldCreatePieceWageAfterValidTrackingEvent" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldRejectOnlyMissingOrNegativeRate" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="a22e6c77-a70f-db84-6209-3ff11c02193b">
+      <Execution id="5696622f-52ba-4821-a983-4aadf455511f" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests" name="ShouldRejectOnlyMissingOrNegativeRate" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.EmployeeSupplierLedgerFoundationIntegrationTests.Foundation_WritesDerivedBalancesPreventsDuplicatesAndAllowsOneReversal" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="a6face26-6ac9-3839-34bd-1029cea71858">
+      <Execution id="b7919188-e74a-47c7-b892-449dd1146fda" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.EmployeeSupplierLedgerFoundationIntegrationTests" name="Foundation_WritesDerivedBalancesPreventsDuplicatesAndAllowsOneReversal" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldResolveExactPieceTypeRateBeforeWildcard" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="98a2cd24-6d99-8658-d10e-589c8fc61d4a">
+      <Execution id="61690646-bc83-4385-97fa-c04d3f7f51ce" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests" name="ShouldResolveExactPieceTypeRateBeforeWildcard" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests.EligibilityWriter_RollbackLeavesNoOfficialRecord" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="6201d59d-febe-313b-85f1-d05426bbf933">
+      <Execution id="66e4f851-e061-41ac-b77e-992eb2811c79" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests" name="EligibilityWriter_RollbackLeavesNoOfficialRecord" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.EmployeePaymentIntegrationTests.Payments_ValidateBalance_PostAtomically_SettleAndReverse" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="9528bbd4-f197-acb9-d1df-9b05082278f9">
+      <Execution id="7074195b-d42c-425d-ab14-fe2ed01eea86" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.EmployeePaymentIntegrationTests" name="Payments_ValidateBalance_PostAtomically_SettleAndReverse" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldRejectBlockedWageEmployees" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="6e3019f8-f8fe-6164-e914-b68291df4d20">
+      <Execution id="b696b6e0-492e-4a7c-818b-ad735344db17" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests" name="ShouldRejectBlockedWageEmployees" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldKeepOfficialBaseRateSeparateFromEmployeeExtra" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="035f4620-e25b-21e7-89c1-4cebaf77912c">
+      <Execution id="f6327013-0e34-483f-a7f7-710140a9219d" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests" name="ShouldKeepOfficialBaseRateSeparateFromEmployeeExtra" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldAddEmployeeExtraToGeneralRate" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="15e78cfe-455a-142d-8b75-9d6a53479240">
+      <Execution id="15a2d852-970a-49e4-b12f-a8681f1d1ee2" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests" name="ShouldAddEmployeeExtraToGeneralRate" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldValidateTotalWageFormula" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="822a4a44-b521-ecb7-bb1c-4c71c106ce37">
+      <Execution id="e8aac664-3a88-4750-ba48-1e958da6ad7a" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests" name="ShouldValidateTotalWageFormula" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests.Es3_EligibilityAndEmployeeRuntimes_AreAtomicAndIdempotent" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="f00b5f8f-10a4-224f-52e7-792e20bb6fb1">
+      <Execution id="f068fc2e-894f-41d6-a923-bc4973ec7271" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests" name="Es3_EligibilityAndEmployeeRuntimes_AreAtomicAndIdempotent" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.EmployeePaymentIntegrationTests.Payments_RollbackLeavesNoPartialRecordsFromIndependentConnection" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="3beca10e-1f49-2ae0-61f9-ddec7c6aa851">
+      <Execution id="54189bf7-3941-475f-b99b-cda3bae7b5fb" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.EmployeePaymentIntegrationTests" name="Payments_RollbackLeavesNoPartialRecordsFromIndependentConnection" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldPreventDuplicateTrackingEventRecord" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="3b8bea7f-fcea-a0cf-d90c-483ced6ca287">
+      <Execution id="de81325e-34c0-4537-8b44-5d51e76f8204" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests" name="ShouldPreventDuplicateTrackingEventRecord" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests.ShouldUseWildcardRateWhenExactRateIsMissing" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="713b1f42-15f7-0f70-c7f7-0f29c3e63200">
+      <Execution id="60b4d4e0-9c9d-436d-bb55-c4a77e14b6f9" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.PieceWageEngineTests" name="ShouldUseWildcardRateWhenExactRateIsMissing" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.EmployeePaymentIntegrationTests.Payments_ConcurrentTransactions_AllowOnlyOnePaymentAgainstOneBalance" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="906870d5-c33a-1a31-950c-881e2e14d57f">
+      <Execution id="81c614ad-b697-4941-87c4-83d5ead8e12e" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.EmployeePaymentIntegrationTests" name="Payments_ConcurrentTransactions_AllowOnlyOnePaymentAgainstOneBalance" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="22ccb09f-68be-79d9-edff-d02ab2d49146" executionId="5aa72b5a-9493-4d37-bcdd-f0e9794d9241" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f6d4b26a-c00d-95c3-d7ab-9d89df9195df" executionId="d3e31e6e-eb63-4b7a-8773-64119f1e628d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a6face26-6ac9-3839-34bd-1029cea71858" executionId="b7919188-e74a-47c7-b892-449dd1146fda" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a22e6c77-a70f-db84-6209-3ff11c02193b" executionId="5696622f-52ba-4821-a983-4aadf455511f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3b8bea7f-fcea-a0cf-d90c-483ced6ca287" executionId="de81325e-34c0-4537-8b44-5d51e76f8204" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f00b5f8f-10a4-224f-52e7-792e20bb6fb1" executionId="f068fc2e-894f-41d6-a923-bc4973ec7271" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="035f4620-e25b-21e7-89c1-4cebaf77912c" executionId="f6327013-0e34-483f-a7f7-710140a9219d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="906870d5-c33a-1a31-950c-881e2e14d57f" executionId="81c614ad-b697-4941-87c4-83d5ead8e12e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3beca10e-1f49-2ae0-61f9-ddec7c6aa851" executionId="54189bf7-3941-475f-b99b-cda3bae7b5fb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="822a4a44-b521-ecb7-bb1c-4c71c106ce37" executionId="e8aac664-3a88-4750-ba48-1e958da6ad7a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="713b1f42-15f7-0f70-c7f7-0f29c3e63200" executionId="60b4d4e0-9c9d-436d-bb55-c4a77e14b6f9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9528bbd4-f197-acb9-d1df-9b05082278f9" executionId="7074195b-d42c-425d-ab14-fe2ed01eea86" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="15e78cfe-455a-142d-8b75-9d6a53479240" executionId="15a2d852-970a-49e4-b12f-a8681f1d1ee2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="98a2cd24-6d99-8658-d10e-589c8fc61d4a" executionId="61690646-bc83-4385-97fa-c04d3f7f51ce" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6201d59d-febe-313b-85f1-d05426bbf933" executionId="66e4f851-e061-41ac-b77e-992eb2811c79" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6e3019f8-f8fe-6164-e914-b68291df4d20" executionId="b696b6e0-492e-4a7c-818b-ad735344db17" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="16" executed="16" passed="16" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.01] xUnit.net VSTest Adapter v3.0.2+dd36e86129 (64-bit .NET 10.0.12)&#xD;
+[xUnit.net 00:00:00.99]   Discovering: LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:02.47]   Discovered:  LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:02.65]   Starting:    LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:10.18]   Finished:    LUMAR_ERP_API_V2.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

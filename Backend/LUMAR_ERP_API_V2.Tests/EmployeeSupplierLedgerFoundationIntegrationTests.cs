@@ -91,8 +91,9 @@ public sealed class EmployeeSupplierLedgerFoundationIntegrationTests
             ?? "Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_TEST;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True";
         var builder = new SqlConnectionStringBuilder(value);
         if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_TEST", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Phase ES-1 tests require an approved ES validation database.");
+            && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION_R2", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Phase ES-1 tests require an approved ES validation database including LUMAR_ERP_ES_VALIDATION_R2.");
         return builder.ConnectionString;
     }
 

@@ -20,6 +20,7 @@ import 'settings/print_settings_screen.dart';
 import 'settings/production_routes_screen.dart';
 import 'settings/piece_cost_management_screen.dart';
 import 'settings/scanner_management_screen.dart';
+import 'settings/test_data_reset_screen.dart';
 import 'settings/whatsapp_provider_management_screen.dart';
 
 const Color _settingsAccent = UiPalette.primaryBorder;
@@ -299,6 +300,14 @@ class _SettingsHomeScreenState extends State<SettingsHomeScreen> {
           ],
           icon: Icons.qr_code_scanner_outlined,
           builder: (_) => const ScannerManagementScreen(),
+        ),
+        _SettingsSection(
+          title: 'تنظيف بيانات الاختبار',
+          description:
+              'إعادة بيانات الاختبار التشغيلية إلى الحالة النظيفة المعتمدة مع الحفاظ على إعدادات وتعريفات النظام.',
+          keywords: const ['تنظيف بيانات الاختبار', 'بيانات الاختبار', 'أدوات التطوير'],
+          icon: Icons.cleaning_services_outlined,
+          builder: (_) => const TestDataResetScreen(),
         ),
         _SettingsSection(
           title: 'إعدادات النظام',

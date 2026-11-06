@@ -20,13 +20,50 @@ public enum AccountingEventType : byte
     ImportedReadyMadeSaleCost = 13,
     ToolOperationalIssue = 14,
     ToolOperationalReversal = 15,
-    CustomerSettlementDiscount = 34
+    SalaryAccrual = 20,
+    SeasonalBonus = 21,
+    PieceWageAccrual = 22,
+    EmployeeAdvance = 23,
+    SalariedEmployeeDailyExpense = 24,
+    PieceWorkerDailyExpense = 25,
+    EmployeeSalaryPayment = 26,
+    PieceWorkerPayment = 27,
+    SupplierInvoice = 28,
+    SupplierInvoiceImmediatePayment = 29,
+    SupplierAdvancePayment = 30,
+    SupplierPayment = 31,
+    SupplierPaymentAllocation = 32,
+    Reversal = 33,
+    CustomerSettlementDiscount = 34,
+    TailoringCostOfSales = 35
 }
 
 public sealed record AccountingEventPostingResult(long AccountingEventId, int FinancialTransactionId, int JournalEntryId, bool IsExisting);
 
 public static class AccountingEventPostingGateway
 {
+    public static AccountingEventType MapFinancialTransactionTypeToAccountingEventType(string transactionType)
+    {
+        if (string.IsNullOrWhiteSpace(transactionType))
+            throw new ArgumentException("Transaction type is required.", nameof(transactionType));
+
+        return transactionType switch
+        {
+            "CustomerAdvance" => AccountingEventType.CustomerAdvance,
+            "CustomerPayment" => AccountingEventType.CustomerPayment,
+            "CustomerAdvanceRefund" => AccountingEventType.CustomerAdvance,
+            "CustomerPaymentRefund" => AccountingEventType.CustomerPayment,
+            "CustomerSettlementDiscount" => AccountingEventType.CustomerSettlementDiscount,
+            "RevenueRecognized" => AccountingEventType.RevenueRecognizedOrder,
+            "RevenueReversal" => AccountingEventType.Reversal,
+            "WipToFinishedGoods" => AccountingEventType.WipToFinishedGoods,
+            "ReadyMadeCost" => AccountingEventType.ReadyMadeSaleCost,
+            "TailoringCost" => AccountingEventType.TailoringCostOfSales,
+            "PayrollPayment" => AccountingEventType.EmployeeSalaryPayment,
+            _ => throw new InvalidOperationException($"Unsupported accounting event mapping for financial transaction type: {transactionType}")
+        };
+    }
+
     public static async Task<AccountingEventPostingResult> PostAsync(
         SqlConnection connection,
         SqlTransaction transaction,

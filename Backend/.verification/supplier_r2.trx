@@ -1,0 +1,269 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="43c07713-e3dc-47c7-97f6-70247887cae4" name="LENOVO@YASIN-YASIN 2026-11-05 14:41:51" runUser="YASIN-YASIN\LENOVO" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-11-05T14:41:51.2586484+03:00" queuing="2026-11-05T14:41:51.2586506+03:00" start="2026-11-05T14:41:26.6690314+03:00" finish="2026-11-05T14:42:13.4175850+03:00" />
+  <TestSettings name="default" id="0afd5197-a301-4649-baa7-81032adcfd94">
+    <Deployment runDeploymentRoot="LENOVO_YASIN-YASIN_2026-11-05_14_41_51" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="69da5018-a755-4751-83fd-dbba93c79c13" testId="c5929c7f-fea3-cbd3-9047-082e6d1164a9" testName="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.AllocationRetry_FromAnIndependentConnection_ReturnsTheOriginalAllocation" computerName="YASIN-YASIN" duration="00:00:00.4825683" startTime="2026-11-05T14:42:12.5027641+03:00" endTime="2026-11-05T14:42:12.9861867+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="69da5018-a755-4751-83fd-dbba93c79c13" />
+    <UnitTestResult executionId="eefd7487-5ccc-4009-bb37-454bfbeb7207" testId="7ddadf2e-5e4e-c15d-55df-3b8a306dca40" testName="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceWorkflow_CreatesSingleSupplierNotificationAndRetryDoesNotDuplicate" computerName="YASIN-YASIN" duration="00:00:05.7314390" startTime="2026-11-05T14:41:55.5294097+03:00" endTime="2026-11-05T14:42:01.3697317+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="eefd7487-5ccc-4009-bb37-454bfbeb7207">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Data.SqlClient.SqlException : The DELETE statement conflicted with the REFERENCE constraint "FK_SupplierFinancialInvoices_Event". The conflict occurred in database "LUMAR_ERP_ES_VALIDATION_R2", table "dbo.SupplierFinancialInvoices", column 'AccountingEventId'.&#xD;
+The statement has been terminated.</Message>
+          <StackTrace>   at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.&lt;&gt;c.&lt;InternalExecuteNonQueryAsync&gt;b__193_1(IAsyncResult asyncResult)&#xD;
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+--- End of stack trace from previous location ---&#xD;
+   at LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.CleanupInvoiceOnlyFixtureAsync(InvoiceOnlyFixture fixture, Guid sourceOperationId) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\SupplierFinancialRuntimeIntegrationTests.cs:line 474&#xD;
+   at LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.CleanupInvoiceOnlyFixtureAsync(InvoiceOnlyFixture fixture, Guid sourceOperationId) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\SupplierFinancialRuntimeIntegrationTests.cs:line 475&#xD;
+   at LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.CleanupInvoiceOnlyFixtureAsync(InvoiceOnlyFixture fixture, Guid sourceOperationId) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\SupplierFinancialRuntimeIntegrationTests.cs:line 491&#xD;
+   at LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.CleanupInvoiceOnlyFixtureAsync(InvoiceOnlyFixture fixture, Guid sourceOperationId) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\SupplierFinancialRuntimeIntegrationTests.cs:line 492&#xD;
+   at LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.CleanupInvoiceOnlyFixtureAsync(InvoiceOnlyFixture fixture, Guid sourceOperationId) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\SupplierFinancialRuntimeIntegrationTests.cs:line 492&#xD;
+   at LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceWorkflow_CreatesSingleSupplierNotificationAndRetryDoesNotDuplicate() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\SupplierFinancialRuntimeIntegrationTests.cs:line 156&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="6a5e4515-74eb-41f7-a02b-3bfac125df37" testId="6bfdc9ad-99a9-290c-ebf7-691e5eab43b4" testName="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceWorkflow_CreatesReadsRetriesAndReversesMultipleLinesAtomically" computerName="YASIN-YASIN" duration="00:00:01.5425018" startTime="2026-11-05T14:42:10.9587032+03:00" endTime="2026-11-05T14:42:12.5020570+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6a5e4515-74eb-41f7-a02b-3bfac125df37" />
+    <UnitTestResult executionId="1d64372b-4a32-402c-89a7-95c931d06b10" testId="66958702-75d1-95a9-51a5-e9ab2a3742e4" testName="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceWorkflow_AcceptsRawLineWithoutInventoryItemUntilReceiptLinking" computerName="YASIN-YASIN" duration="00:00:00.7131936" startTime="2026-11-05T14:42:07.9034481+03:00" endTime="2026-11-05T14:42:08.6175937+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1d64372b-4a32-402c-89a7-95c931d06b10" />
+    <UnitTestResult executionId="9f3ee616-3ef2-4018-ba0e-140feef985c3" testId="9e8b84aa-0a28-edb8-6714-f90265fb0f7a" testName="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.Allocations_ConcurrentIndependentTransactions_AllowOnlyOneAllocationForTheSamePaymentAndInvoice" computerName="YASIN-YASIN" duration="00:00:15.4972406" startTime="2026-11-05T14:41:35.6729789+03:00" endTime="2026-11-05T14:41:51.0495330+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9f3ee616-3ef2-4018-ba0e-140feef985c3" />
+    <UnitTestResult executionId="1aae5ffb-9908-4885-943d-b07032c0639e" testId="4450cb8d-63dc-13c8-8aba-8ef24adfd50c" testName="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.Reversals_AllocationAdvancePaymentAndInvoice_AreIdempotentAndPreventDuplicates" computerName="YASIN-YASIN" duration="00:00:04.4373536" startTime="2026-11-05T14:41:51.1670533+03:00" endTime="2026-11-05T14:41:55.5206071+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1aae5ffb-9908-4885-943d-b07032c0639e" />
+    <UnitTestResult executionId="2f58d80e-ae8e-4ca3-b006-a110de68503e" testId="870d0dac-3336-c77c-dfea-4df7f8230605" testName="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceAndPaymentWorkflow_CreateSupplierNotificationsAndRetryWithoutDuplicates" computerName="YASIN-YASIN" duration="00:00:03.2712252" startTime="2026-11-05T14:42:01.4482213+03:00" endTime="2026-11-05T14:42:04.6825368+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2f58d80e-ae8e-4ca3-b006-a110de68503e" />
+    <UnitTestResult executionId="faf40ba5-9029-4425-8d82-30f8ca03c6dd" testId="74d68705-c5ce-e95a-481b-912366804112" testName="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceCreation_ConcurrentIndependentTransactions_AppliesOneAdvanceOnlyOnce" computerName="YASIN-YASIN" duration="00:00:01.9383925" startTime="2026-11-05T14:42:04.6852864+03:00" endTime="2026-11-05T14:42:06.6529707+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="faf40ba5-9029-4425-8d82-30f8ca03c6dd" />
+    <UnitTestResult executionId="541a83b2-69c3-4f3c-bfcc-9b4a430a7ea0" testId="4527184d-a2d1-db63-f0ff-e6f0c31c2de8" testName="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.FinancialRuntime_RollbackIsInvisibleToAnIndependentConnection" computerName="YASIN-YASIN" duration="00:00:02.2995421" startTime="2026-11-05T14:42:08.6183804+03:00" endTime="2026-11-05T14:42:10.9580084+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="541a83b2-69c3-4f3c-bfcc-9b4a430a7ea0" />
+    <UnitTestResult executionId="d5caca57-4beb-46b7-a29d-b444ec9f3cde" testId="badfd68e-8209-81da-2297-fdc3547ce0d0" testName="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.FinancialRuntime_PostsSupplierInvoicePaymentsAllocationsAndReversalsAtomically" computerName="YASIN-YASIN" duration="00:00:01.2430731" startTime="2026-11-05T14:42:06.6546270+03:00" endTime="2026-11-05T14:42:07.9028010+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d5caca57-4beb-46b7-a29d-b444ec9f3cde" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceWorkflow_AcceptsRawLineWithoutInventoryItemUntilReceiptLinking" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="66958702-75d1-95a9-51a5-e9ab2a3742e4">
+      <Execution id="1d64372b-4a32-402c-89a7-95c931d06b10" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests" name="InvoiceWorkflow_AcceptsRawLineWithoutInventoryItemUntilReceiptLinking" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceAndPaymentWorkflow_CreateSupplierNotificationsAndRetryWithoutDuplicates" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="870d0dac-3336-c77c-dfea-4df7f8230605">
+      <Execution id="2f58d80e-ae8e-4ca3-b006-a110de68503e" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests" name="InvoiceAndPaymentWorkflow_CreateSupplierNotificationsAndRetryWithoutDuplicates" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.Reversals_AllocationAdvancePaymentAndInvoice_AreIdempotentAndPreventDuplicates" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="4450cb8d-63dc-13c8-8aba-8ef24adfd50c">
+      <Execution id="1aae5ffb-9908-4885-943d-b07032c0639e" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests" name="Reversals_AllocationAdvancePaymentAndInvoice_AreIdempotentAndPreventDuplicates" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceCreation_ConcurrentIndependentTransactions_AppliesOneAdvanceOnlyOnce" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="74d68705-c5ce-e95a-481b-912366804112">
+      <Execution id="faf40ba5-9029-4425-8d82-30f8ca03c6dd" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests" name="InvoiceCreation_ConcurrentIndependentTransactions_AppliesOneAdvanceOnlyOnce" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.Allocations_ConcurrentIndependentTransactions_AllowOnlyOneAllocationForTheSamePaymentAndInvoice" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="9e8b84aa-0a28-edb8-6714-f90265fb0f7a">
+      <Execution id="9f3ee616-3ef2-4018-ba0e-140feef985c3" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests" name="Allocations_ConcurrentIndependentTransactions_AllowOnlyOneAllocationForTheSamePaymentAndInvoice" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.FinancialRuntime_RollbackIsInvisibleToAnIndependentConnection" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="4527184d-a2d1-db63-f0ff-e6f0c31c2de8">
+      <Execution id="541a83b2-69c3-4f3c-bfcc-9b4a430a7ea0" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests" name="FinancialRuntime_RollbackIsInvisibleToAnIndependentConnection" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceWorkflow_CreatesSingleSupplierNotificationAndRetryDoesNotDuplicate" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="7ddadf2e-5e4e-c15d-55df-3b8a306dca40">
+      <Execution id="eefd7487-5ccc-4009-bb37-454bfbeb7207" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests" name="InvoiceWorkflow_CreatesSingleSupplierNotificationAndRetryDoesNotDuplicate" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.AllocationRetry_FromAnIndependentConnection_ReturnsTheOriginalAllocation" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="c5929c7f-fea3-cbd3-9047-082e6d1164a9">
+      <Execution id="69da5018-a755-4751-83fd-dbba93c79c13" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests" name="AllocationRetry_FromAnIndependentConnection_ReturnsTheOriginalAllocation" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.FinancialRuntime_PostsSupplierInvoicePaymentsAllocationsAndReversalsAtomically" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="badfd68e-8209-81da-2297-fdc3547ce0d0">
+      <Execution id="d5caca57-4beb-46b7-a29d-b444ec9f3cde" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests" name="FinancialRuntime_PostsSupplierInvoicePaymentsAllocationsAndReversalsAtomically" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceWorkflow_CreatesReadsRetriesAndReversesMultipleLinesAtomically" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="6bfdc9ad-99a9-290c-ebf7-691e5eab43b4">
+      <Execution id="6a5e4515-74eb-41f7-a02b-3bfac125df37" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests" name="InvoiceWorkflow_CreatesReadsRetriesAndReversesMultipleLinesAtomically" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="c5929c7f-fea3-cbd3-9047-082e6d1164a9" executionId="69da5018-a755-4751-83fd-dbba93c79c13" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7ddadf2e-5e4e-c15d-55df-3b8a306dca40" executionId="eefd7487-5ccc-4009-bb37-454bfbeb7207" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6bfdc9ad-99a9-290c-ebf7-691e5eab43b4" executionId="6a5e4515-74eb-41f7-a02b-3bfac125df37" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="66958702-75d1-95a9-51a5-e9ab2a3742e4" executionId="1d64372b-4a32-402c-89a7-95c931d06b10" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9e8b84aa-0a28-edb8-6714-f90265fb0f7a" executionId="9f3ee616-3ef2-4018-ba0e-140feef985c3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4450cb8d-63dc-13c8-8aba-8ef24adfd50c" executionId="1aae5ffb-9908-4885-943d-b07032c0639e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="870d0dac-3336-c77c-dfea-4df7f8230605" executionId="2f58d80e-ae8e-4ca3-b006-a110de68503e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="74d68705-c5ce-e95a-481b-912366804112" executionId="faf40ba5-9029-4425-8d82-30f8ca03c6dd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4527184d-a2d1-db63-f0ff-e6f0c31c2de8" executionId="541a83b2-69c3-4f3c-bfcc-9b4a430a7ea0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="badfd68e-8209-81da-2297-fdc3547ce0d0" executionId="d5caca57-4beb-46b7-a29d-b444ec9f3cde" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="10" executed="10" passed="9" failed="1" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.06] xUnit.net VSTest Adapter v3.0.2+dd36e86129 (64-bit .NET 10.0.12)&#xD;
+[xUnit.net 00:00:01.23]   Discovering: LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:03.02]   Discovered:  LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:03.36]   Starting:    LUMAR_ERP_API_V2.Tests&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=1 invoiceNumber=ES5G-INV-88318504be614d0183d7431470298d96 sourceOperationId=a3c6c34a-4384-4809-9fd9-4a46773a5580 amount=100&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=null&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId=1&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId=1&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId=1&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId=1 invoiceId=1&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId=1 invoiceId=1&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied=0 outstanding=100&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=2 invoiceNumber=ES5G-REV-INV sourceOperationId=fa46b378-eb1a-4898-963f-a51dba9d9438 amount=100&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=null&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId=2&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId=3&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId=4&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId=2 invoiceId=2&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId=2 invoiceId=2&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied=0 outstanding=100&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync start supplierId=3 invoiceNumber=ES7-INV-NOTIFY-ONLY-d365e19878294f96b21ada0ce3d39532 amount=35 sourceOperationId=1babe914-6339-4789-8262-e7726e7cfddb correlationId=es7-invoice-notify-only&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=3 invoiceNumber=ES7-INV-NOTIFY-ONLY-d365e19878294f96b21ada0ce3d39532 sourceOperationId=1babe914-6339-4789-8262-e7726e7cfddb amount=35&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=null&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId=3&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId=9&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId=12&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId=3 invoiceId=3&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId=3 invoiceId=3&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied=0 outstanding=35&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync runtime returned invoiceId=3 accountingEventId=12&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync commit success invoiceId=3&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync start supplierId=3 invoiceNumber=ES7-INV-NOTIFY-ONLY-d365e19878294f96b21ada0ce3d39532 amount=35 sourceOperationId=1babe914-6339-4789-8262-e7726e7cfddb correlationId=es7-invoice-notify-only-retry&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=3 invoiceNumber=ES7-INV-NOTIFY-ONLY-d365e19878294f96b21ada0ce3d39532 sourceOperationId=1babe914-6339-4789-8262-e7726e7cfddb amount=35&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=3&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync runtime returned invoiceId=3 accountingEventId=12&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync commit success invoiceId=3&#xD;
+[xUnit.net 00:00:29.52]       Microsoft.Data.SqlClient.SqlException : The DELETE statement conflicted with the REFERENCE constraint "FK_SupplierFinancialInvoices_Event". The conflict occurred in database "LUMAR_ERP_ES_VALIDATION_R2", table "dbo.SupplierFinancialInvoices", column 'AccountingEventId'.&#xD;
+[xUnit.net 00:00:29.52]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.52]       Stack Trace:&#xD;
+[xUnit.net 00:00:29.54]            at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:29.54]            at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:29.54]            at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+[xUnit.net 00:00:29.54]            at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+[xUnit.net 00:00:29.54]            at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+[xUnit.net 00:00:29.54]            at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+[xUnit.net 00:00:29.54]            at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)&#xD;
+[xUnit.net 00:00:29.54]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:29.54]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:29.55]            at Microsoft.Data.SqlClient.SqlCommand.&lt;&gt;c.&lt;InternalExecuteNonQueryAsync&gt;b__193_1(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:29.55]            at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+[xUnit.net 00:00:29.55]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:29.55]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\SupplierFinancialRuntimeIntegrationTests.cs(474,0): at LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.CleanupInvoiceOnlyFixtureAsync(InvoiceOnlyFixture fixture, Guid sourceOperationId)&#xD;
+[xUnit.net 00:00:29.55]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\SupplierFinancialRuntimeIntegrationTests.cs(475,0): at LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.CleanupInvoiceOnlyFixtureAsync(InvoiceOnlyFixture fixture, Guid sourceOperationId)&#xD;
+[xUnit.net 00:00:29.55]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\SupplierFinancialRuntimeIntegrationTests.cs(491,0): at LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.CleanupInvoiceOnlyFixtureAsync(InvoiceOnlyFixture fixture, Guid sourceOperationId)&#xD;
+[xUnit.net 00:00:29.55]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\SupplierFinancialRuntimeIntegrationTests.cs(492,0): at LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.CleanupInvoiceOnlyFixtureAsync(InvoiceOnlyFixture fixture, Guid sourceOperationId)&#xD;
+[xUnit.net 00:00:29.55]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\SupplierFinancialRuntimeIntegrationTests.cs(492,0): at LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.CleanupInvoiceOnlyFixtureAsync(InvoiceOnlyFixture fixture, Guid sourceOperationId)&#xD;
+[xUnit.net 00:00:29.55]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\SupplierFinancialRuntimeIntegrationTests.cs(156,0): at LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceWorkflow_CreatesSingleSupplierNotificationAndRetryDoesNotDuplicate()&#xD;
+[xUnit.net 00:00:29.55]         --- End of stack trace from previous location ---&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync start supplierId=4 invoiceNumber=ES7-NOTIFY-INV-1644cb656af24848826761b2353a7588 amount=35 sourceOperationId=fb917942-9d52-42d7-9f4c-c1ae56c68aeb correlationId=es7-notify-invoice&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=4 invoiceNumber=ES7-NOTIFY-INV-1644cb656af24848826761b2353a7588 sourceOperationId=fb917942-9d52-42d7-9f4c-c1ae56c68aeb amount=35&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=null&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId=4&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId=10&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId=13&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId=4 invoiceId=4&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId=4 invoiceId=4&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied=0 outstanding=35&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync runtime returned invoiceId=4 accountingEventId=13&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync commit success invoiceId=4&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync start supplierId=4 invoiceNumber=ES7-NOTIFY-INV-1644cb656af24848826761b2353a7588 amount=35 sourceOperationId=fb917942-9d52-42d7-9f4c-c1ae56c68aeb correlationId=es7-notify-invoice-retry&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=4 invoiceNumber=ES7-NOTIFY-INV-1644cb656af24848826761b2353a7588 sourceOperationId=fb917942-9d52-42d7-9f4c-c1ae56c68aeb amount=35&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=4&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync runtime returned invoiceId=4 accountingEventId=13&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync commit success invoiceId=4&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=5 invoiceNumber=ES5G-AUTO-INV-2 sourceOperationId=3b77eaee-1f54-4d1a-b6d7-595138aee2b9 amount=100&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=5 invoiceNumber=ES5G-AUTO-INV-1 sourceOperationId=67fb67a0-20f5-43da-8c98-837348974f06 amount=100&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=null&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId=5&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId=13&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId=16&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId=5 invoiceId=5&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId=5 invoiceId=5&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied=100.00 outstanding=0.00&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=null&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId=6&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId=14&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId=18&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId=5 invoiceId=6&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId=5 invoiceId=6&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied=0 outstanding=100&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=6 invoiceNumber=SUP-INV-1 sourceOperationId=403d43fe-2eb5-47cf-b6d8-1a1284f0ad56 amount=100&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=null&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId=7&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId=16&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId=20&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId=6 invoiceId=7&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId=6 invoiceId=7&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied=30.00 outstanding=70.00&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=6 invoiceNumber=SUP-INV-2 sourceOperationId=500d2af0-1ed9-4420-a503-9e1e1f4cce82 amount=20&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=null&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId=8&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId=18&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId=24&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId=6 invoiceId=8&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId=6 invoiceId=8&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied=0 outstanding=20&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync start supplierId=7 invoiceNumber=ES7-RAW-7a844b9249d245c18e565637ce573157 amount=45 sourceOperationId=77b53d7c-ce86-4f0d-a795-03858d90c9e8 correlationId=es7-raw-line-create&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=7 invoiceNumber=ES7-RAW-7a844b9249d245c18e565637ce573157 sourceOperationId=77b53d7c-ce86-4f0d-a795-03858d90c9e8 amount=45&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=null&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId=9&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId=21&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId=28&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId=7 invoiceId=9&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId=7 invoiceId=9&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied=0 outstanding=45&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync runtime returned invoiceId=9 accountingEventId=28&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync commit success invoiceId=9&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=8 invoiceNumber=ES5G-ROLLBACK sourceOperationId=056e0d1b-f285-438b-a8c9-6298cf39b41c amount=50&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=null&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId=10&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId=22&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId=29&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId=8 invoiceId=10&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId=8 invoiceId=10&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied=0 outstanding=50&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync start supplierId=9 invoiceNumber=ES7-LINES-418fd792a4934f65857c3fbc3916c49e amount=44 sourceOperationId=aa2ee19a-0f3e-46ed-93d8-64eff98b3d2b correlationId=es7-lines-create&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=9 invoiceNumber=ES7-LINES-418fd792a4934f65857c3fbc3916c49e sourceOperationId=aa2ee19a-0f3e-46ed-93d8-64eff98b3d2b amount=44&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=null&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId=11&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId=24&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId=31&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId=9 invoiceId=11&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId=9 invoiceId=11&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied=0 outstanding=44&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync runtime returned invoiceId=11 accountingEventId=31&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync commit success invoiceId=11&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync start supplierId=9 invoiceNumber=ES7-LINES-418fd792a4934f65857c3fbc3916c49e amount=44 sourceOperationId=aa2ee19a-0f3e-46ed-93d8-64eff98b3d2b correlationId=es7-lines-retry&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=9 invoiceNumber=ES7-LINES-418fd792a4934f65857c3fbc3916c49e sourceOperationId=aa2ee19a-0f3e-46ed-93d8-64eff98b3d2b amount=44&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=11&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync runtime returned invoiceId=11 accountingEventId=31&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync commit success invoiceId=11&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync start supplierId=9 invoiceNumber=ES7-LINES-418fd792a4934f65857c3fbc3916c49e amount=44 sourceOperationId=aa2ee19a-0f3e-46ed-93d8-64eff98b3d2b correlationId=es7-lines-conflict&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=9 invoiceNumber=ES7-LINES-418fd792a4934f65857c3fbc3916c49e sourceOperationId=aa2ee19a-0f3e-46ed-93d8-64eff98b3d2b amount=44&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=11&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync runtime returned invoiceId=11 accountingEventId=31&#xD;
+SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync exception type=InvalidOperationException message=IDEMPOTENCY CONFLICT&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync start supplierId=10 invoiceNumber=ES5G-INV-9b27ebf0ef8a4fe08dce20887f23de12 sourceOperationId=6828f341-c592-4550-afd7-e3cc8f428493 amount=75&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync existingResult=null&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId=12&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync ledgerEntryId=26&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync postingEventId=33&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync beforeNotification supplierId=10 invoiceId=12&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync notificationCompleted supplierId=10 invoiceId=12&#xD;
+SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync autoApplied=0 outstanding=75&#xD;
+[xUnit.net 00:00:41.18]   Finished:    LUMAR_ERP_API_V2.Tests&#xD;
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="YASIN-YASIN" outcome="Error" timestamp="2026-11-05T14:42:01.4033039+03:00">
+        <Text>[xUnit.net 00:00:29.51]     LUMAR_ERP_API_V2.Tests.SupplierFinancialRuntimeIntegrationTests.InvoiceWorkflow_CreatesSingleSupplierNotificationAndRetryDoesNotDuplicate [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

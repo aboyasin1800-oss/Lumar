@@ -18,4 +18,5 @@ public interface ISettingsService
     Task<bool> UpdatePrintSettingsAsync(IReadOnlyDictionary<string, string> values, CancellationToken c);
     Task<GeneralCashAccountSettingDto> GetGeneralCashAccountSettingAsync(CancellationToken c);
     Task<GeneralCashAccountSettingDto> UpsertGeneralCashAccountSettingAsync(int? cashAccountId, CancellationToken c);
+    Task<TestDataResetExecutionResultDto> ExecuteTestDataResetAsync(CancellationToken c);
 }

@@ -1,0 +1,19 @@
+{
+  "projectId": "LUMAR",
+  "projectRoot": "D:\\YASIN\\Backend",
+  "expectedBackendRoot": "D:\\YASIN\\Backend\\LUMAR_ERP_API_V2",
+  "expectedDatabase": "LUMAR_ERP_ES_VALIDATION_R2",
+  "expectedGolden": "LUMAR_ERP_VIP_2",
+  "verificationRoot": "D:\\YASIN\\Backend\\.verification",
+  "pidStatePath": "D:\\YASIN\\Backend\\.verification\\backend_5093.pid",
+  "portConfig": {
+    "preferredBackendPort": 5093,
+    "fallbackPortRange": [5093, 5094],
+    "healthRoute": "/swagger/index.html",
+    "identityRoute": "/swagger/index.html"
+  },
+  "notes": [
+    "Golden database remains protected and must never be used as a standard development target.",
+    "YASIN_WORKSHOP is isolated from this project state and runtime identity."
+  ]
+}

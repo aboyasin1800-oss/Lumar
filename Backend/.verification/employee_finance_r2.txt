@@ -1,0 +1,29 @@
+  Determining projects to restore...
+D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\LUMAR_ERP_API_V2.Tests.csproj : warning NU1900: Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json.
+D:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1900: Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json. [D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\LUMAR_ERP_API_V2.Tests.csproj]
+  All projects are up-to-date for restore.
+D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\LUMAR_ERP_API_V2.Tests.csproj : warning NU1900: Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json.
+D:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1900: Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json.
+  LUMAR_ERP_API_V2 -> D:\YASIN\Backend\LUMAR_ERP_API_V2\bin\Debug\net10.0\LUMAR_ERP_API_V2.dll
+  LUMAR_ERP_API_V2.Tests -> D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll
+Test run for D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.35]     LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests.EligibilityWriter_RollbackLeavesNoOfficialRecord [FAIL]
+[xUnit.net 00:00:01.36]     LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests.Es3_EligibilityAndEmployeeRuntimes_AreAtomicAndIdempotent [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests.EligibilityWriter_RollbackLeavesNoOfficialRecord [31 ms]
+  Error Message:
+   System.InvalidOperationException : ES-3 tests require an approved ES validation database.
+  Stack Trace:
+     at LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests.GetConnectionString() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\EmployeeAccrualRuntimeIntegrationTests.cs:line 102
+   at LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests.EligibilityWriter_RollbackLeavesNoOfficialRecord() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\EmployeeAccrualRuntimeIntegrationTests.cs:line 13
+--- End of stack trace from previous location ---
+  Failed LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests.Es3_EligibilityAndEmployeeRuntimes_AreAtomicAndIdempotent [14 ms]
+  Error Message:
+   System.InvalidOperationException : ES-3 tests require an approved ES validation database.
+  Stack Trace:
+     at LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests.GetConnectionString() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\EmployeeAccrualRuntimeIntegrationTests.cs:line 102
+   at LUMAR_ERP_API_V2.Tests.EmployeeAccrualRuntimeIntegrationTests.Es3_EligibilityAndEmployeeRuntimes_AreAtomicAndIdempotent() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\EmployeeAccrualRuntimeIntegrationTests.cs:line 30
+--- End of stack trace from previous location ---
+Results File: D:\YASIN\Backend\.verification\employee_finance_r2.trx
+
+Failed!  - Failed:     2, Passed:     9, Skipped:     0, Total:    11, Duration: 127 ms - LUMAR_ERP_API_V2.Tests.dll (net10.0)

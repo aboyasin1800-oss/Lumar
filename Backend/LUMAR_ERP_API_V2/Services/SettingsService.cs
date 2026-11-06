@@ -1,7 +1,9 @@
-﻿using LUMAR_ERP_API_V2.Configuration;
+﻿using System.Diagnostics;
+using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.DTOs.Settings;
 using LUMAR_ERP_API_V2.Repositories;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace LUMAR_ERP_API_V2.Services;
@@ -10,8 +12,10 @@ public sealed class SettingsService(
     ISettingsRepository r,
     IConfiguration configuration,
     IOptionsMonitor<WhatsAppOptions> whatsappOptionsMonitor,
-    IWhatsAppConnectionSettingsStore whatsappSettingsStore) : ISettingsService
+    IWhatsAppConnectionSettingsStore whatsappSettingsStore,
+    ILogger<SettingsService> logger) : ISettingsService
 {
+    private const string ApprovedDatabaseName = "LUMAR_ERP_ES_VALIDATION_R3";
     private static readonly IReadOnlyDictionary<string, string> SupportedCurrencies =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -99,6 +103,112 @@ public sealed class SettingsService(
     public Task<GeneralCashAccountSettingDto> GetGeneralCashAccountSettingAsync(CancellationToken c) => r.GetGeneralCashAccountSettingAsync(c);
 
     public Task<GeneralCashAccountSettingDto> UpsertGeneralCashAccountSettingAsync(int? cashAccountId, CancellationToken c) => r.UpsertGeneralCashAccountSettingAsync(cashAccountId, c);
+
+    public async Task<TestDataResetExecutionResultDto> ExecuteTestDataResetAsync(CancellationToken c)
+    {
+        var scriptPath = ResolveResetScriptPath();
+        if (string.IsNullOrWhiteSpace(scriptPath))
+        {
+            var failure = new TestDataResetExecutionResultDto(
+                false,
+                "تعذر إكمال تنظيف بيانات الاختبار. لم يتم اعتماد العملية كمكتملة.",
+                ApprovedDatabaseName,
+                "Reset engine script was not found on the backend host.");
+            logger.LogError("{Message} {Details}", failure.Message, failure.Details);
+            return failure;
+        }
+
+        try
+        {
+            var executeSuccess = await RunResetCommandAsync(scriptPath, "Execute", true, c);
+            if (!executeSuccess)
+            {
+                return new TestDataResetExecutionResultDto(
+                    false,
+                    "تعذر إكمال تنظيف بيانات الاختبار. لم يتم اعتماد العملية كمكتملة.",
+                    ApprovedDatabaseName,
+                    "Execute stage failed. The reset engine rejected the operation or the approved database guard failed.");
+            }
+
+            var verifySuccess = await RunResetCommandAsync(scriptPath, "Verify", false, c);
+            if (!verifySuccess)
+            {
+                return new TestDataResetExecutionResultDto(
+                    false,
+                    "تعذر إكمال تنظيف بيانات الاختبار. لم يتم اعتماد العملية كمكتملة.",
+                    ApprovedDatabaseName,
+                    "Verify stage failed after execution. The reset was not accepted as complete.");
+            }
+
+            return new TestDataResetExecutionResultDto(
+                true,
+                "تم تنظيف بيانات الاختبار بنجاح.",
+                ApprovedDatabaseName,
+                "Execute + Verify completed successfully and the approved baseline guard remained active.",
+                Verified: true);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Test data reset failed for approved database {DatabaseName}.", ApprovedDatabaseName);
+            return new TestDataResetExecutionResultDto(
+                false,
+                "تعذر إكمال تنظيف بيانات الاختبار. لم يتم اعتماد العملية كمكتملة.",
+                ApprovedDatabaseName,
+                ex.Message);
+        }
+    }
+
+    private static async Task<bool> RunResetCommandAsync(string scriptPath, string mode, bool allowExecute, CancellationToken cancellationToken)
+    {
+        var arguments = allowExecute
+            ? $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\" -Database \"{ApprovedDatabaseName}\" -Mode {mode} -AllowExecute"
+            : $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\" -Database \"{ApprovedDatabaseName}\" -Mode {mode}";
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = arguments,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Unable to start the approved reset engine.");
+        var standardOutput = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var standardError = await process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken);
+
+        var output = string.IsNullOrWhiteSpace(standardOutput) ? standardError : $"{standardOutput}{Environment.NewLine}{standardError}";
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"Reset engine failed in mode '{mode}': {output}");
+        }
+
+        return true;
+    }
+
+    private static string ResolveResetScriptPath()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "R3_SAFE_ZERO_OPERATIONAL_RESET.ps1"),
+            Path.Combine(Environment.CurrentDirectory, "R3_SAFE_ZERO_OPERATIONAL_RESET.ps1"),
+            Path.Combine("D:\\YASIN\\Backend", "R3_SAFE_ZERO_OPERATIONAL_RESET.ps1"),
+            Path.Combine("D:", "YASIN", "Backend", "R3_SAFE_ZERO_OPERATIONAL_RESET.ps1")
+        };
+
+        foreach (var candidate in candidates)
+        {
+            var resolved = Path.GetFullPath(candidate);
+            if (File.Exists(resolved))
+            {
+                return resolved;
+            }
+        }
+
+        return string.Empty;
+    }
 
     private static bool HasValidProviderSetup(WhatsAppOptions options)
         => options.Enabled && !string.IsNullOrWhiteSpace(options.PhoneNumberId) && !string.IsNullOrWhiteSpace(options.AccessToken);

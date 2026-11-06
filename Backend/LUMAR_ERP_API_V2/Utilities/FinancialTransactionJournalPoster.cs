@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.Data.SqlClient;
 
 namespace LUMAR_ERP_API_V2.Utilities;
@@ -131,6 +132,7 @@ public static class FinancialTransactionJournalPoster
         var accountingEventId = await InsertAccountingEventAsync(
             connection,
             transaction,
+            transactionType,
             amount,
             sourceType,
             sourceId,
@@ -151,19 +153,100 @@ public static class FinancialTransactionJournalPoster
     private static async Task<long> InsertAccountingEventAsync(
         SqlConnection connection,
         SqlTransaction transaction,
+        string transactionType,
         decimal amount,
         string? sourceType,
         long? sourceId,
         Guid? sourceOperationId,
         CancellationToken cancellationToken)
     {
-        const string sql = "INSERT INTO dbo.AccountingEvents (AccountingEventType,PostingAmount,SourceType,SourceId,SourceOperationId,Status) OUTPUT INSERTED.AccountingEventId VALUES (34,@amount,@sourceType,@sourceId,@sourceOperationId,N'Posted')";
+        var accountingEventType = AccountingEventPostingGateway.MapFinancialTransactionTypeToAccountingEventType(transactionType);
+        var operationId = sourceOperationId ?? Guid.NewGuid();
+
+        if (transactionType is "CustomerAdvanceRefund" or "CustomerPaymentRefund")
+        {
+            var paymentId = await ResolveOriginalPaymentIdAsync(connection, transaction, sourceId, transactionType, cancellationToken);
+            const string sql = @"
+                INSERT INTO dbo.AccountingEvents (AccountingEventType, PostingAmount, PaymentId, Status)
+                OUTPUT INSERTED.AccountingEventId
+                VALUES (@accountingEventType, @amount, @paymentId, N'Posted')";
+            await using var command = new SqlCommand(sql, connection, transaction);
+            command.Parameters.Add("@accountingEventType", SqlDbType.TinyInt).Value = (byte)accountingEventType;
+            command.Parameters.AddWithValue("@amount", amount);
+            command.Parameters.AddWithValue("@paymentId", paymentId);
+            return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
+        }
+
+        if (transactionType.Equals("RevenueReversal", StringComparison.OrdinalIgnoreCase))
+        {
+            var originalAccountingEventId = await ResolveOriginalRevenueEventIdAsync(connection, transaction, sourceId, cancellationToken);
+            const string sql = @"
+                INSERT INTO dbo.AccountingEvents
+                    (AccountingEventType, PostingAmount, SourceType, SourceId, SourceOperationId, OriginalAccountingEventId, ReversalReason, ReversedBy, ReversedAt, Status)
+                OUTPUT INSERTED.AccountingEventId
+                VALUES (@accountingEventType, @amount, N'AccountingEvent', @sourceId, @sourceOperationId, @originalAccountingEventId, @reversalReason, @reversedBy, SYSUTCDATETIME(), N'Posted')";
+            await using var command = new SqlCommand(sql, connection, transaction);
+            command.Parameters.Add("@accountingEventType", SqlDbType.TinyInt).Value = (byte)accountingEventType;
+            command.Parameters.AddWithValue("@amount", amount);
+            command.Parameters.AddWithValue("@sourceId", originalAccountingEventId);
+            command.Parameters.AddWithValue("@sourceOperationId", operationId);
+            command.Parameters.AddWithValue("@originalAccountingEventId", originalAccountingEventId);
+            command.Parameters.AddWithValue("@reversalReason", "Revenue reversed on order cancellation");
+            command.Parameters.AddWithValue("@reversedBy", "System");
+            return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
+        }
+
+        var normalizedSourceType = string.IsNullOrWhiteSpace(sourceType) ? "LegacyFinancialJournal" : sourceType.Trim();
+        const string fallbackSql = @"
+            INSERT INTO dbo.AccountingEvents (AccountingEventType, PostingAmount, SourceType, SourceId, SourceOperationId, Status)
+            OUTPUT INSERTED.AccountingEventId
+            VALUES (@accountingEventType, @amount, @sourceType, @sourceId, @sourceOperationId, N'Posted')";
+        await using (var command = new SqlCommand(fallbackSql, connection, transaction))
+        {
+            command.Parameters.Add("@accountingEventType", SqlDbType.TinyInt).Value = (byte)accountingEventType;
+            command.Parameters.AddWithValue("@amount", amount);
+            command.Parameters.AddWithValue("@sourceType", normalizedSourceType);
+            command.Parameters.AddWithValue("@sourceId", sourceId ?? 0L);
+            command.Parameters.AddWithValue("@sourceOperationId", operationId);
+            return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
+        }
+    }
+
+    private static async Task<int> ResolveOriginalPaymentIdAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        long? sourceOrderId,
+        string transactionType,
+        CancellationToken cancellationToken)
+    {
+        var paymentKind = transactionType.Equals("CustomerAdvanceRefund", StringComparison.OrdinalIgnoreCase) ? "Advance" : "DebtCollection";
+        const string sql = @"
+            SELECT TOP(1) PaymentID
+            FROM dbo.Payments WITH (UPDLOCK,HOLDLOCK)
+            WHERE OrderID = @orderId AND PaymentKind = @paymentKind
+            ORDER BY PaymentDate, PaymentID;";
         await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("@amount", amount);
-        command.Parameters.AddWithValue("@sourceType", string.IsNullOrWhiteSpace(sourceType) ? "LegacyFinancialJournal" : sourceType.Trim());
-        command.Parameters.AddWithValue("@sourceId", sourceId ?? 0L);
-        command.Parameters.AddWithValue("@sourceOperationId", sourceOperationId ?? Guid.NewGuid());
-        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
+        command.Parameters.AddWithValue("@orderId", sourceOrderId ?? 0);
+        command.Parameters.AddWithValue("@paymentKind", paymentKind);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is int paymentId ? paymentId : throw new InvalidOperationException($"Original {paymentKind} payment was not found for refund posting.");
+    }
+
+    private static async Task<long> ResolveOriginalRevenueEventIdAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        long? sourceOrderId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = @"
+            SELECT TOP(1) AccountingEventId
+            FROM dbo.AccountingEvents WITH (UPDLOCK,HOLDLOCK)
+            WHERE OrderId = @orderId AND AccountingEventType IN (3, 4)
+            ORDER BY AccountingEventId DESC;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@orderId", sourceOrderId ?? 0);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is long eventId ? eventId : throw new InvalidOperationException("The original revenue accounting event for this order was not found.");
     }
 
     private static async Task<bool> HasSingleMatchingFinancialTransactionAsync(SqlConnection connection, SqlTransaction transaction, string referenceNumber, string transactionType, decimal amount, CancellationToken cancellationToken)
