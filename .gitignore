@@ -43,6 +43,28 @@ _validation_obj/
 frontend/tailoring_system/flutter_full_suite_report.txt
 **/flutter_full_suite_report.txt
 
+# Generated proof/test/log/runtime artifacts
+Backend/.verification/
+Backend/.verification/*.txt
+Backend/.verification/*.trx
+Backend/.verification/*.pid
+Backend/LUMAR_ERP_API_V2.Tests/TestResults/
+Backend/TestResults/
+Backend/logs/
+Backend/logs/*.log
+temp/
+**/*.trx
+**/*.log
+**/*_output.txt
+**/*_proof.txt
+**/*_analyze.txt
+**/*_test_output.txt
+**/*_stderr.txt
+**/*_stdout.txt
+**/build_*_proof.txt
+**/flutter_*_proof.txt
+**/probe*.txt
+
 # Campaign media uploads are runtime-only and must not be tracked
 Backend/LUMAR_ERP_API_V2/wwwroot/campaign-media/*
 !Backend/LUMAR_ERP_API_V2/wwwroot/campaign-media/.gitkeep
