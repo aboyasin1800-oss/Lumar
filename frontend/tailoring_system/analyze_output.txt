@@ -1,0 +1,6 @@
+Analyzing bulk_fabric_entry_screen.dart...                      
+
+warning - The value of the field '_hasUserEditedRollQuantities' isn't used. Try removing the field, or using it - lib\screens\inventory\bulk_fabric_entry_screen.dart:398:8 - unused_field
+warning - The '!' will have no effect because the receiver can't be null. Try removing the '!' operator - lib\screens\inventory\bulk_fabric_entry_screen.dart:884:38 - unnecessary_non_null_assertion
+
+2 issues found. (ran in 16.1s)

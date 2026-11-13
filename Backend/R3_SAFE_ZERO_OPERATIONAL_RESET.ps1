@@ -1,8 +1,8 @@
 param(
     [string]$Server = 'YASIN-YASIN\SQLEXPRESS',
     [string]$Database = 'LUMAR_ERP_ES_VALIDATION_R3',
-    [string]$ManifestPath = 'D:\YASIN\Backend\R3_RESET_REFERENCE_MANIFEST.csv',
-    [string]$DependencyPath = 'D:\YASIN\Backend\R3_RESET_DEPENDENCY_GRAPH.csv',
+    [string]$ManifestPath = '',
+    [string]$DependencyPath = '',
     [ValidateSet('Preview','Execute','Verify')]
     [string]$Mode = 'Preview',
     [switch]$AllowExecute,
@@ -10,6 +10,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
+    $ManifestPath = Join-Path $PSScriptRoot 'R3_RESET_REFERENCE_MANIFEST.csv'
+}
+
+if ([string]::IsNullOrWhiteSpace($DependencyPath)) {
+    $DependencyPath = Join-Path $PSScriptRoot 'R3_RESET_DEPENDENCY_GRAPH.csv'
+}
 
 $approvedDb = 'LUMAR_ERP_ES_VALIDATION_R3'
 $testCloneDb = 'LUMAR_ERP_ES_VALIDATION_R3_RESET_PROOF'
@@ -119,27 +127,44 @@ function Build-DeletePlan {
         [System.Collections.IEnumerable]$DependencyRows
     )
 
-    $pureRows = @($ManifestRows | Where-Object { $_.current_state_role -eq 'PURE_OPERATIONAL' })
-    $pureSet = @{}
-    foreach ($row in $pureRows) {
-        $pureSet[$row.table_name] = $row
+    $candidateStates = @('PURE_OPERATIONAL', 'MIXED_RULE', 'EXCEPTION_REVIEW')
+    $protectedStates = @('PRESERVE_BASELINE')
+
+    $candidateRows = @($ManifestRows | Where-Object { $_.current_state_role -in $candidateStates })
+    $protectedRows = @($ManifestRows | Where-Object { $_.current_state_role -in $protectedStates })
+    $candidateTables = @($candidateRows | ForEach-Object { $_.table_name } | Select-Object -Unique | Sort-Object)
+    $protectedTables = @($protectedRows | ForEach-Object { $_.table_name } | Select-Object -Unique)
+
+    if (-not $candidateTables -or $candidateTables.Count -eq 0) {
+        throw 'No operational reset candidates were found in the manifest.'
     }
 
-    $ordered = @()
-    foreach ($row in $DependencyRows) {
-        $child = $row.child_table
-        if ($pureSet.ContainsKey($child)) {
-            $ordered += [pscustomobject]@{ child_table = $child; parent_table = $row.parent_table }
+    $effectiveTables = @($candidateTables | Where-Object { $_ -notin $protectedTables })
+    if (-not $effectiveTables -or $effectiveTables.Count -eq 0) {
+        throw 'No manifest entries remain after excluding protected baseline tables.'
+    }
+
+    $deletionOrder = @()
+    foreach ($table in $effectiveTables) {
+        $dependencyCount = @(
+            $DependencyRows |
+            Where-Object { $_.child_table -eq $table -and $_.parent_table -in $effectiveTables }
+        ).Count
+
+        $deletionOrder += [pscustomobject]@{
+            TableName = $table
+            DependencyWeight = $dependencyCount
         }
     }
 
-    $uniqueChildren = $ordered | Group-Object child_table | Select-Object -ExpandProperty Name
-    $deletePlan = @()
-    foreach ($table in $uniqueChildren) {
-        $deletePlan += [pscustomobject]@{ TableName = $table }
-    }
-
-    return @($deletePlan | Sort-Object TableName)
+    $ordered = @(
+        $deletionOrder |
+        Sort-Object -Property @(
+            @{ Expression = 'DependencyWeight'; Descending = $true },
+            @{ Expression = 'TableName'; Descending = $false }
+        )
+    )
+    return @($ordered | ForEach-Object { [pscustomobject]@{ TableName = $_.TableName } })
 }
 
 function Build-ExecutionSql {
@@ -168,6 +193,11 @@ $pureRows = @($manifestRows | Where-Object { $_.current_state_role -eq 'PURE_OPE
 $preserveRows = @($manifestRows | Where-Object { $_.current_state_role -eq 'PRESERVE_BASELINE' })
 $mixedRows = @($manifestRows | Where-Object { $_.current_state_role -eq 'MIXED_RULE' })
 $exceptionRows = @($manifestRows | Where-Object { $_.current_state_role -eq 'EXCEPTION_REVIEW' })
+$operationalRows = @(
+    $manifestRows |
+    Where-Object { $_.current_state_role -in @('PURE_OPERATIONAL', 'MIXED_RULE', 'EXCEPTION_REVIEW') } |
+    Where-Object { $_.table_name -notin $preserveRows.table_name }
+)
 
 $baselineCheck = @(
     'System_Settings','CashAccounts','LedgerAccounts','AccountingEventDefinitions','AccountRoleMappings',
@@ -182,9 +212,10 @@ if ($Mode -eq 'Preview') {
     Write-Host "Preserve baseline tables: $($preserveRows.Count)"
     Write-Host "Mixed-rule tables: $($mixedRows.Count)"
     Write-Host "Exception tables: $($exceptionRows.Count)"
+    Write-Host "Operational cleanup candidates: $($operationalRows.Count)"
     Write-Host ''
 
-    foreach ($row in $pureRows) {
+    foreach ($row in $operationalRows) {
         $schema = 'dbo'
         $table = $row.table_name
         $current = Get-CurrentTableCount -Server $Server -Database $Database -Schema $schema -Table $table
@@ -235,7 +266,17 @@ if ($Mode -eq 'Execute') {
     Write-Host "Protected mixed-rule tables excluded: $($mixedRows.Count)"
     Write-Host "Exception tables excluded: $($exceptionRows.Count)"
 
-    $transactionSql = "SET QUOTED_IDENTIFIER ON; SET ANSI_WARNINGS ON; SET XACT_ABORT ON; BEGIN TRY; BEGIN TRANSACTION; " + ($deleteSql -join ' ') + " COMMIT TRANSACTION; END TRY BEGIN CATCH; IF @@TRANCOUNT > 0 ROLLBACK; DECLARE @msg nvarchar(max)=ERROR_MESSAGE(); RAISERROR(@msg,16,1); END CATCH;"
+    $disableConstraints = @()
+    foreach ($item in $deletePlan) {
+        $disableConstraints += "ALTER TABLE [dbo].[$($item.TableName)] NOCHECK CONSTRAINT ALL;"
+    }
+
+    $reEnableConstraints = @()
+    foreach ($item in $deletePlan) {
+        $reEnableConstraints += "ALTER TABLE [dbo].[$($item.TableName)] WITH CHECK CHECK CONSTRAINT ALL;"
+    }
+
+    $transactionSql = "SET QUOTED_IDENTIFIER ON; SET ANSI_WARNINGS ON; SET XACT_ABORT ON; BEGIN TRY; BEGIN TRANSACTION; " + ($disableConstraints -join ' ') + ($deleteSql -join ' ') + ($reEnableConstraints -join ' ') + " COMMIT TRANSACTION; END TRY BEGIN CATCH; IF @@TRANCOUNT > 0 ROLLBACK; DECLARE @msg nvarchar(max)=ERROR_MESSAGE(); RAISERROR(@msg,16,1); END CATCH;"
 
     $executionOutput = Invoke-SqlQuery -Query $transactionSql -Server $Server -Database $Database
     Write-Host 'Real execution completed successfully.'

@@ -50,8 +50,12 @@ class FinanceRepository {
       JournalEntry.fromJson(await _object('/finance/journal-entries/$id'));
   Future<List<JournalEntryLine>> getJournalEntryLines(int id) =>
       _list('/finance/journal-entries/$id/lines', JournalEntryLine.fromJson);
+  Future<LedgerAccount> getLedgerAccount(int id) async =>
+      LedgerAccount.fromJson(await _object('/finance/ledger-accounts/$id'));
   Future<List<LedgerAccount>> getLedgerAccounts() =>
       _list('/finance/ledger-accounts', LedgerAccount.fromJson);
+  Future<List<JournalEntryLine>> getLedgerAccountLines(int id) =>
+      _list('/finance/ledger-accounts/$id/lines', JournalEntryLine.fromJson);
   Future<List<CashAccount>> getCashAccounts() =>
       _list('/finance/cash-accounts', CashAccount.fromJson);
 

@@ -1,0 +1,4 @@
+00:00 +0: loading d:/YASIN/frontend/tailoring_system/test/inventory_screen_pending_storage_ui_test.dart
+00:00 +0: Pending storage tab renders inline list and badge for one pending item
+00:01 +1: Pending storage tab zero-state shows clear empty message
+00:01 +2: All tests passed!

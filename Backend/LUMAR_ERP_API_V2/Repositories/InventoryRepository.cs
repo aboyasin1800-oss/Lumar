@@ -1,3 +1,4 @@
+using System.Data;
 using System.Diagnostics;
 using System.Globalization;
 using LUMAR_ERP_API_V2.Data;
@@ -1849,7 +1850,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             request.OpposingLedgerAccountCode,
             request.SourceOperationId,
             request.FabricTypeCode,
-            request.RollCode,
+            null,
             request.ColorValue,
             ct);
     }
@@ -1860,10 +1861,9 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             throw new ArgumentException("SourceOperationId is required for idempotent inventory posting.");
 
         var rolls = request.Rolls!
-            .Select((roll, index) => new
+            .Select(roll => new
             {
-                FabricCode = roll.FabricCode.Trim(),
-                RollCode = string.IsNullOrWhiteSpace(roll.RollCode) ? $"{roll.FabricCode.Trim()}-{index + 1}" : roll.RollCode.Trim(),
+                FabricCode = string.IsNullOrWhiteSpace(roll.FabricCode) ? null : roll.FabricCode.Trim(),
                 ColorValue = string.IsNullOrWhiteSpace(roll.ColorValue) ? request.ColorValue : roll.ColorValue.Trim(),
                 Quantity = roll.Quantity,
             })
@@ -1871,15 +1871,8 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
 
         if (rolls.Count == 0)
             throw new ArgumentException("A multi-roll fabric batch requires at least one roll.");
-        if (rolls.Any(roll => string.IsNullOrWhiteSpace(roll.FabricCode) || roll.Quantity <= 0m))
-            throw new ArgumentException("Each roll in the batch requires a fabric code and a positive quantity.");
-
-        var distinctRollCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var roll in rolls)
-        {
-            if (!distinctRollCodes.Add(roll.RollCode))
-                throw new InvalidOperationException($"Duplicate roll code '{roll.RollCode}' is not allowed within the same storage batch.");
-        }
+        if (rolls.Any(roll => roll.Quantity <= 0m))
+            throw new ArgumentException("Each roll in the batch requires a positive quantity.");
 
         var totalQuantity = rolls.Sum(roll => roll.Quantity);
         await using var connection = operationalConnections.Create();
@@ -1893,7 +1886,18 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             if (totalQuantity > receipt.Quantity)
                 throw new InvalidOperationException($"The requested storage quantity ({totalQuantity}) exceeds the original receipt quantity ({receipt.Quantity}).");
 
-            var existing = await TryReadExistingReceiptAsync(connection, transaction, request.GoodsReceiptItemId, 1, request.UnitId, rolls[0].FabricCode, request.SourceOperationId, ct);
+            var approvedOpposingLedgerAccounts = new[] { "2100", "1101" };
+            ValidateApprovedOpposingLedgerAccount(request.OpposingLedgerAccountCode, approvedOpposingLedgerAccounts);
+
+            var incomplete = await TryReadIncompleteReceiptAsync(connection, transaction, request.GoodsReceiptItemId, 1, request.UnitId, string.Empty, request.SourceOperationId, request.OpposingLedgerAccountCode, approvedOpposingLedgerAccounts, ct);
+            if (incomplete is not null)
+            {
+                var repaired = await CompleteIncompleteReceiptStorageAsync(connection, transaction, incomplete, ct);
+                await transaction.CommitAsync(ct);
+                return repaired;
+            }
+
+            var existing = await TryReadExistingReceiptAsync(connection, transaction, request.GoodsReceiptItemId, 1, request.UnitId, string.Empty, request.SourceOperationId, request.OpposingLedgerAccountCode, approvedOpposingLedgerAccounts, ct);
             if (existing is not null)
             {
                 await transaction.CommitAsync(ct);
@@ -1902,7 +1906,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
 
             var totalOperationalAmount = decimal.Round(totalQuantity * receipt.UnitCost, 6, MidpointRounding.AwayFromZero);
             var totalPostingAmount = decimal.Round(totalOperationalAmount, 2, MidpointRounding.AwayFromZero);
-            var opposingLedgerAccountId = await ReadOpposingLedgerAccountIdAsync(connection, transaction, request.OpposingLedgerAccountCode, ct);
+            var opposingLedgerAccountId = await ReadOpposingLedgerAccountIdAsync(connection, transaction, request.OpposingLedgerAccountCode, ct, approvedOpposingLedgerAccounts);
             var postingId = await InsertInventoryReceiptPostingAsync(
                 connection,
                 transaction,
@@ -1917,21 +1921,42 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             var lineEntries = new List<(long LineId, int TransactionId, int InventoryItemId, string RollCode)>();
             var firstItemId = 0;
             var firstTransactionId = 0;
+            var firstAllocatedItemCode = string.Empty;
+            var batchCatalogNumber = await SystemCodeGenerator.GetNextAllocatedCatalogNumberAsync(connection, transaction, ct);
 
             for (var index = 0; index < rolls.Count; index++)
             {
                 var roll = rolls[index];
-                var itemCode = roll.FabricCode.Trim();
-                var existingItem = await ReadFoundationItemAsync(connection, transaction, itemCode, ct);
+                var requestedRollCode = string.IsNullOrWhiteSpace(roll.FabricCode) ? null : roll.FabricCode.Trim();
+                if (!string.IsNullOrWhiteSpace(requestedRollCode) && IsOfficialFabricCode(requestedRollCode))
+                {
+                    var existingRollGoodsReceiptItemId = await ReadGoodsReceiptItemIdForFabricRollCodeAsync(connection, transaction, requestedRollCode, ct);
+                    if (existingRollGoodsReceiptItemId is not null && existingRollGoodsReceiptItemId.Value != request.GoodsReceiptItemId)
+                        throw new InvalidOperationException($"The physical fabric roll identity '{requestedRollCode}' already belongs to a different goods receipt item.");
+                }
+
+                var generatedFabricCode = await SystemCodeGenerator.GetNextAllocatedFabricCodeAsync(connection, transaction, ct);
+                var effectiveRollCode = !string.IsNullOrWhiteSpace(requestedRollCode) && IsOfficialFabricCode(requestedRollCode)
+                    ? requestedRollCode
+                    : generatedFabricCode;
+                var effectiveCatalogNumber = batchCatalogNumber;
+
+                var existingItem = await ReadFoundationItemAsync(connection, transaction, generatedFabricCode, ct);
                 if (existingItem is not null && !existingItem.HasFoundation)
                     throw new InvalidOperationException("Legacy inventory items cannot be used by the foundation posting path.");
                 if (existingItem is not null && (existingItem.InventoryClassId != 1 || existingItem.UnitId != request.UnitId))
                     throw new InvalidOperationException("The inventory item class or unit does not match the fabric receipt.");
+                if (existingItem is not null)
+                {
+                    var existingGoodsReceiptItemId = await ReadGoodsReceiptItemIdForInventoryItemAsync(connection, transaction, existingItem.InventoryItemId, ct);
+                    if (existingGoodsReceiptItemId is not null && existingGoodsReceiptItemId.Value != request.GoodsReceiptItemId)
+                        throw new InvalidOperationException($"The fabric identity '{generatedFabricCode}' already belongs to a different goods receipt item.");
+                }
 
                 var itemId = existingItem?.InventoryItemId ?? await InsertFoundationInventoryItemAsync(
                     connection,
                     transaction,
-                    itemCode,
+                    generatedFabricCode,
                     receipt.ItemName,
                     1,
                     await ReadUnitCodeAsync(connection, transaction, request.UnitId, 1, ct),
@@ -1946,15 +1971,22 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                 if (existingItem is not null)
                     await UpdateFoundationInventoryItemAsync(connection, transaction, itemId, roll.Quantity, decimal.Round(roll.Quantity * receipt.UnitCost, 6, MidpointRounding.AwayFromZero), DateTime.UtcNow, ct);
 
+                if (effectiveCatalogNumber is null)
+                {
+                    effectiveCatalogNumber = await ResolveFabricCatalogNumberAsync(connection, transaction, itemId, null, ct, allowRequestedCatalogReuse: false);
+                }
+
                 await ApplyFabricPresentationAsync(
                     connection,
                     transaction,
                     itemId,
                     request.FabricTypeCode,
-                    string.IsNullOrWhiteSpace(request.CatalogNumber) ? null : request.CatalogNumber.Trim(),
+                    effectiveCatalogNumber,
                     roll.ColorValue,
                     request.FabricWidth,
-                    ct);
+                    ct,
+                    allowRequestedCatalogReuse: batchCatalogNumber is not null,
+                    assignCatalogNumber: true);
 
                 var lineId = await InsertInventoryReceiptLineAsync(
                     connection,
@@ -1966,11 +1998,18 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                     request.UnitId,
                     ct);
 
+                if (!string.IsNullOrWhiteSpace(effectiveRollCode))
+                {
+                    var existingRollGoodsReceiptItemId = await ReadGoodsReceiptItemIdForFabricRollCodeAsync(connection, transaction, effectiveRollCode, ct);
+                    if (existingRollGoodsReceiptItemId is not null && existingRollGoodsReceiptItemId.Value != request.GoodsReceiptItemId)
+                        throw new InvalidOperationException($"The physical fabric roll identity '{effectiveRollCode}' already belongs to a different goods receipt item.");
+                }
+
                 var fabricRollId = await InsertFabricRollAsync(
                     connection,
                     transaction,
                     itemId,
-                    roll.RollCode,
+                    effectiveRollCode,
                     request.FabricTypeCode.Trim(),
                     roll.ColorValue,
                     roll.Quantity,
@@ -1982,7 +2021,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                 await SetReceiptLineRollAsync(connection, transaction, lineId, fabricRollId, ct);
 
                 var transactionSourceOperationId = DeriveOperationId(request.SourceOperationId, itemId + (index + 1) * 100000);
-                var reference = $"GoodsReceipt:{receipt.ReceiptNumber}:Item:{request.GoodsReceiptItemId}:Roll:{roll.RollCode}";
+                var reference = $"GoodsReceipt:{receipt.ReceiptNumber}:Item:{request.GoodsReceiptItemId}:Roll:{generatedFabricCode}";
                 var transactionId = await InsertFoundationInventoryTransactionAsync(
                     connection,
                     transaction,
@@ -1996,14 +2035,17 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                     DateTime.UtcNow,
                     ct);
 
-                lineEntries.Add((lineId, transactionId, itemId, roll.RollCode));
+                lineEntries.Add((LineId: lineId, TransactionId: transactionId, InventoryItemId: itemId, RollCode: generatedFabricCode));
                 if (index == 0)
                 {
                     firstItemId = itemId;
                     firstTransactionId = transactionId;
+                    firstAllocatedItemCode = generatedFabricCode;
                 }
             }
 
+            await RepairMatchingReceiptPostingLedgerAccountAsync(connection, transaction, request.GoodsReceiptItemId, 1, request.SourceOperationId, opposingLedgerAccountId, totalOperationalAmount, totalPostingAmount, ct);
+            await EnsureApprovedOpposingLedgerAccountAsync(connection, transaction, opposingLedgerAccountId, approvedOpposingLedgerAccounts, ct);
             var accountingEvent = await AccountingEventPostingGateway.PostInventoryReceiptAsync(
                 connection,
                 transaction,
@@ -2035,7 +2077,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             return new InventoryFoundationPostingResultDto(
                 postingId,
                 firstItemId,
-                rolls[0].FabricCode,
+                firstAllocatedItemCode,
                 totalQuantity,
                 totalOperationalAmount,
                 totalPostingAmount,
@@ -2326,6 +2368,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
     {
         var item = await ReadReceiptInventoryItemAsync(c, t, line.InventoryItemId!.Value, ct) ?? throw new InvalidOperationException("The inventory item is not an active foundation item.");
         var invoice = await ValidateInvoiceLineAsync(c, t, request.SupplierId, request.PurchaseOrderId, line, ct);
+        var approvedOpposingLedgerAccounts = item.InventoryClassId == 1 ? new[] { "2100", "1101" } : new[] { "2100", "1102" };
         var resolvedRollCount = line.RollCount ?? invoice?.RollCount;
         var productType = line.ProductType ?? await ResolveInvoiceProductTypeAsync(c, t, line.SupplierInvoiceLineId, ct);
         var unitCode = line.UnitCode ?? await ResolveInvoiceUnitCodeAsync(c, t, line.SupplierInvoiceLineId, ct);
@@ -2342,12 +2385,11 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
         var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
         var lineOperation = DeriveOperationId(request.SourceOperationId, receiptItemId);
         await UpdateFoundationInventoryItemAsync(c, t, item.InventoryItemId, line.Quantity, operationalAmount, DateTime.UtcNow, ct);
-        var postingId = await InsertInventoryReceiptPostingAsync(c, t, receiptItemId, item.InventoryClassId, await ReadOpposingLedgerAccountIdAsync(c, t, "2100", ct), lineOperation, operationalAmount, postingAmount, ct);
+        var postingId = await InsertInventoryReceiptPostingAsync(c, t, receiptItemId, item.InventoryClassId, await ReadOpposingLedgerAccountIdAsync(c, t, "2100", ct, approvedOpposingLedgerAccounts), lineOperation, operationalAmount, postingAmount, ct);
         var postingLineId = await InsertInventoryReceiptLineAsync(c, t, postingId, item.InventoryItemId, line.Quantity, line.UnitCost, item.UnitId, ct);
         if (item.InventoryClassId == 1)
         {
-            if (string.IsNullOrWhiteSpace(line.RollCode)) throw new ArgumentException("A roll code is required for fabric receipts.");
-            var rollId = await InsertFabricRollAsync(c, t, item.InventoryItemId, line.RollCode.Trim(), item.FabricTypeCode ?? item.ItemCode, item.ColorValue, line.Quantity, line.UnitCost, item.UnitId, postingLineId, DateTime.UtcNow, ct);
+            var rollId = await InsertFabricRollAsync(c, t, item.InventoryItemId, item.ItemCode, item.FabricTypeCode ?? item.ItemCode, item.ColorValue, line.Quantity, line.UnitCost, item.UnitId, postingLineId, DateTime.UtcNow, ct);
             await SetReceiptLineRollAsync(c, t, postingLineId, rollId, ct);
         }
         var reference = $"GoodsReceipt:{request.ReceiptNumber.Trim()}:Item:{receiptItemId}";
@@ -2493,7 +2535,11 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             if (inventoryClassId == 1 && string.IsNullOrWhiteSpace(fabricTypeCode))
                 throw new ArgumentException("Fabric type code is required.");
 
-            var incomplete = await TryReadIncompleteReceiptAsync(connection, transaction, goodsReceiptItemId, inventoryClassId, unitId, itemCode, sourceOperationId, ct);
+            var approvedOpposingLedgerAccounts = inventoryClassId == 1 ? new[] { "2100", "1101" } : new[] { "2100", "1102" };
+            ValidateApprovedOpposingLedgerAccount(opposingLedgerAccountCode, approvedOpposingLedgerAccounts);
+            var opposingLedgerAccountId = await ReadOpposingLedgerAccountIdAsync(connection, transaction, opposingLedgerAccountCode, ct, approvedOpposingLedgerAccounts);
+
+            var incomplete = await TryReadIncompleteReceiptAsync(connection, transaction, goodsReceiptItemId, inventoryClassId, unitId, itemCode, sourceOperationId, opposingLedgerAccountCode, approvedOpposingLedgerAccounts, ct);
             if (incomplete is not null)
             {
                 var repaired = await CompleteIncompleteReceiptStorageAsync(connection, transaction, incomplete, ct);
@@ -2501,7 +2547,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                 return repaired;
             }
 
-            var existing = await TryReadExistingReceiptAsync(connection, transaction, goodsReceiptItemId, inventoryClassId, unitId, itemCode, sourceOperationId, ct);
+            var existing = await TryReadExistingReceiptAsync(connection, transaction, goodsReceiptItemId, inventoryClassId, unitId, itemCode, sourceOperationId, opposingLedgerAccountCode, approvedOpposingLedgerAccounts, ct);
             if (existing is not null)
             {
                 await transaction.CommitAsync(ct);
@@ -2509,7 +2555,6 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             }
 
             var unitCode = await ReadUnitCodeAsync(connection, transaction, unitId, inventoryClassId, ct);
-            var opposingLedgerAccountId = await ReadOpposingLedgerAccountIdAsync(connection, transaction, opposingLedgerAccountCode, ct);
             var receipt = await ReadGoodsReceiptSourceAsync(connection, transaction, goodsReceiptItemId, ct)
                 ?? throw new InvalidOperationException("Goods receipt item was not found.");
             var operationalAmount = Math.Round(receipt.Quantity * receipt.UnitCost, 6, MidpointRounding.AwayFromZero);
@@ -2517,17 +2562,51 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             if (operationalAmount <= 0m || postingAmount <= 0m)
                 throw new InvalidOperationException("The goods receipt source amount must be positive.");
 
-            var existingItem = await ReadFoundationItemAsync(connection, transaction, itemCode.Trim(), ct);
+            var now = DateTime.UtcNow;
+            var normalizedItemCode = string.IsNullOrWhiteSpace(itemCode) ? null : itemCode.Trim();
+            var normalizedRollCode = string.IsNullOrWhiteSpace(rollCode) ? null : rollCode.Trim();
+
+            if (inventoryClassId == 1 && !string.IsNullOrWhiteSpace(normalizedRollCode) && IsOfficialFabricCode(normalizedRollCode))
+            {
+                var existingRollGoodsReceiptItemId = await ReadGoodsReceiptItemIdForFabricRollCodeAsync(connection, transaction, normalizedRollCode, ct);
+                if (existingRollGoodsReceiptItemId is not null && existingRollGoodsReceiptItemId.Value != goodsReceiptItemId)
+                    throw new InvalidOperationException($"The physical fabric roll identity '{normalizedRollCode}' already belongs to a different goods receipt item.");
+            }
+
+            var requestedExistingItem = normalizedItemCode is not null ? await ReadFoundationItemAsync(connection, transaction, normalizedItemCode, ct) : null;
+            if (requestedExistingItem is not null && !requestedExistingItem.HasFoundation)
+                throw new InvalidOperationException("Legacy inventory items cannot be used by the foundation posting path.");
+            if (requestedExistingItem is not null && (requestedExistingItem.InventoryClassId != inventoryClassId || requestedExistingItem.UnitId != unitId))
+                throw new InvalidOperationException("The inventory item class or unit does not match the foundation request.");
+
+            var officialFabricCode = inventoryClassId == 1
+                ? await SystemCodeGenerator.GetNextAllocatedFabricCodeAsync(connection, transaction, ct)
+                : normalizedItemCode ?? throw new ArgumentException("Inventory item code is required.");
+            var effectiveRollCode = inventoryClassId == 1 && !string.IsNullOrWhiteSpace(normalizedRollCode) && IsOfficialFabricCode(normalizedRollCode)
+                ? normalizedRollCode
+                : officialFabricCode;
+            var officialCatalogNumber = inventoryClassId == 1
+                ? await SystemCodeGenerator.GetNextAllocatedCatalogNumberAsync(connection, transaction, ct)
+                : null;
+
+            var existingItem = requestedExistingItem is not null && string.Equals(requestedExistingItem.ItemCode, officialFabricCode, StringComparison.OrdinalIgnoreCase)
+                ? requestedExistingItem
+                : await ReadFoundationItemAsync(connection, transaction, officialFabricCode, ct);
             if (existingItem is not null && !existingItem.HasFoundation)
                 throw new InvalidOperationException("Legacy inventory items cannot be used by the foundation posting path.");
             if (existingItem is not null && (existingItem.InventoryClassId != inventoryClassId || existingItem.UnitId != unitId))
                 throw new InvalidOperationException("The inventory item class or unit does not match the foundation request.");
+            if (existingItem is not null)
+            {
+                var existingGoodsReceiptItemId = await ReadGoodsReceiptItemIdForInventoryItemAsync(connection, transaction, existingItem.InventoryItemId, ct);
+                if (existingGoodsReceiptItemId is not null && existingGoodsReceiptItemId.Value != goodsReceiptItemId)
+                    throw new InvalidOperationException($"The fabric identity '{officialFabricCode}' already belongs to a different goods receipt item.");
+            }
 
-            var now = DateTime.UtcNow;
             var itemId = existingItem?.InventoryItemId ?? await InsertFoundationInventoryItemAsync(
                 connection,
                 transaction,
-                itemCode.Trim(),
+                officialFabricCode,
                 receipt.ItemName,
                 inventoryClassId,
                 unitCode,
@@ -2574,14 +2653,30 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             long? fabricRollId = null;
             if (inventoryClassId == 1)
             {
-                var resolvedRollCode = string.IsNullOrWhiteSpace(rollCode)
-                    ? $"{itemCode.Trim()}-R-{lineId}"
-                    : rollCode.Trim();
+                if (!string.IsNullOrWhiteSpace(effectiveRollCode))
+                {
+                    var existingRollGoodsReceiptItemId = await ReadGoodsReceiptItemIdForFabricRollCodeAsync(connection, transaction, effectiveRollCode, ct);
+                    if (existingRollGoodsReceiptItemId is not null && existingRollGoodsReceiptItemId.Value != goodsReceiptItemId)
+                        throw new InvalidOperationException($"The physical fabric roll identity '{effectiveRollCode}' already belongs to a different goods receipt item.");
+                }
+
+                await ApplyFabricPresentationAsync(
+                    connection,
+                    transaction,
+                    itemId,
+                    fabricTypeCode!,
+                    officialCatalogNumber,
+                    colorValue,
+                    0m,
+                    ct,
+                    allowRequestedCatalogReuse: false,
+                    assignCatalogNumber: true);
+
                 fabricRollId = await InsertFabricRollAsync(
                     connection,
                     transaction,
                     itemId,
-                    resolvedRollCode,
+                    effectiveRollCode,
                     fabricTypeCode!.Trim(),
                     colorValue,
                     receipt.Quantity,
@@ -2607,6 +2702,9 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                 now,
                 ct);
 
+            await RepairMatchingReceiptPostingLedgerAccountAsync(connection, transaction, goodsReceiptItemId, inventoryClassId, sourceOperationId, opposingLedgerAccountId, operationalAmount, postingAmount, ct);
+            await EnsureApprovedOpposingLedgerAccountAsync(connection, transaction, opposingLedgerAccountId, approvedOpposingLedgerAccounts, ct);
+            Console.WriteLine($"DEBUG_RECEIPT_POSTING goodsReceiptItemId={goodsReceiptItemId} inventoryClassId={inventoryClassId} sourceOperationId={sourceOperationId} postingId={postingId} opposingLedgerAccountId={opposingLedgerAccountId} accountCode={await ReadLedgerAccountCodeAsync(connection, transaction, opposingLedgerAccountId, ct)} operationalAmount={operationalAmount} postingAmount={postingAmount}");
             var accountingEvent = await AccountingEventPostingGateway.PostInventoryReceiptAsync(
                 connection,
                 transaction,
@@ -2636,7 +2734,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             return new InventoryFoundationPostingResultDto(
                 postingId,
                 itemId,
-                itemCode.Trim(),
+                officialFabricCode,
                 receipt.Quantity,
                 operationalAmount,
                 postingAmount,
@@ -2967,40 +3065,118 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
         }
     }
 
-    private static async Task<InventoryFoundationPostingResultDto?> TryReadExistingReceiptAsync(SqlConnection connection, SqlTransaction transaction, int expectedGoodsReceiptItemId, byte expectedClassId, short expectedUnitId, string expectedItemCode, Guid sourceOperationId, CancellationToken ct)
+    private static bool IsFoundationItemCode(string? code)
     {
+        var value = code?.Trim();
+        return !string.IsNullOrWhiteSpace(value)
+            && (value.StartsWith("FA", StringComparison.OrdinalIgnoreCase)
+                || value.StartsWith("FAB", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsOfficialFabricCode(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return false;
+
+        return normalized.StartsWith("FA", StringComparison.OrdinalIgnoreCase)
+            && !IsLegacyFabricIdentityValue(normalized);
+    }
+
+    private static bool IsOfficialCatalogNumber(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return false;
+
+        return normalized.StartsWith("CAT", StringComparison.OrdinalIgnoreCase)
+            && !IsLegacyFabricIdentityValue(normalized);
+    }
+
+    private static bool IsLegacyFabricIdentityValue(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return true;
+
+        return normalized.Contains("REQUEST-", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("MANUAL-", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("LEGACY", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("ROLL-LEGACY", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void ValidateApprovedOpposingLedgerAccount(string accountCode, params string[] approvedAccountCodes)
+    {
+        var normalizedCode = accountCode?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedCode))
+            throw new ArgumentException("A verified opposing ledger account is required.");
+
+        var approved = approvedAccountCodes.Length > 0
+            ? approvedAccountCodes.Select(code => code.Trim()).Where(code => !string.IsNullOrWhiteSpace(code)).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : null;
+
+        if (approved is not null && !approved.Contains(normalizedCode))
+            throw new InvalidOperationException($"The opposing ledger account '{normalizedCode}' is not approved for this inventory receipt event.");
+    }
+
+    private static async Task<InventoryFoundationPostingResultDto?> TryReadExistingReceiptAsync(SqlConnection connection, SqlTransaction transaction, int expectedGoodsReceiptItemId, byte expectedClassId, short expectedUnitId, string expectedItemCode, Guid sourceOperationId, string opposingLedgerAccountCode, string[] approvedAccountCodes, CancellationToken ct)
+    {
+        ValidateApprovedOpposingLedgerAccount(opposingLedgerAccountCode, approvedAccountCodes);
+        var normalizedExpectedItemCode = expectedItemCode?.Trim();
+
         const string sql = @"
-            SELECT TOP (1) rp.InventoryReceiptPostingId, rp.InventoryClassId, rp.GoodsReceiptItemId, l.UnitId,
+            SELECT TOP (1) rp.InventoryReceiptPostingId, rp.SourceOperationId, rp.InventoryClassId, rp.GoodsReceiptItemId, l.UnitId,
                    l.InventoryItemId, i.ItemCode, l.ReceivedQuantity, rp.OperationalAmount, rp.PostingAmount,
-                   l.InventoryTransactionId, rp.AccountingEventId
+                   l.InventoryTransactionId, rp.AccountingEventId, rp.OpposingLedgerAccountId
             FROM dbo.InventoryReceiptPostings rp WITH (UPDLOCK, HOLDLOCK)
             INNER JOIN dbo.InventoryReceiptLines l ON l.InventoryReceiptPostingId = rp.InventoryReceiptPostingId
             INNER JOIN dbo.InventoryItems i ON i.InventoryItemID = l.InventoryItemId
             WHERE rp.SourceOperationId = @sourceOperationId
-               OR (rp.GoodsReceiptItemId = @goodsReceiptItemId
-                   AND rp.InventoryClassId = @classId
-                   AND l.UnitId = @unitId
-                   AND i.ItemCode = @itemCode)
-            ORDER BY CASE WHEN rp.SourceOperationId = @sourceOperationId THEN 0 ELSE 1 END, rp.InventoryReceiptPostingId;";
+              AND rp.GoodsReceiptItemId = @goodsReceiptItemId
+            ORDER BY rp.InventoryReceiptPostingId;";
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
         command.Parameters.AddWithValue("@goodsReceiptItemId", expectedGoodsReceiptItemId);
-        command.Parameters.AddWithValue("@classId", expectedClassId);
-        command.Parameters.AddWithValue("@unitId", expectedUnitId);
-        command.Parameters.AddWithValue("@itemCode", expectedItemCode.Trim());
         await using var reader = await command.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct)) return null;
-        if (reader.GetByte(1) != expectedClassId)
+        var actualSourceOperationId = reader.GetGuid(1);
+        if (actualSourceOperationId != sourceOperationId)
+            return null;
+        if (reader.GetByte(2) != expectedClassId)
             throw new InvalidOperationException("The source operation was already used by another inventory class.");
-        if (reader.GetInt32(2) != expectedGoodsReceiptItemId || reader.GetInt16(3) != expectedUnitId || !string.Equals(reader.GetString(5), expectedItemCode.Trim(), StringComparison.OrdinalIgnoreCase))
+        if (reader.GetInt32(3) != expectedGoodsReceiptItemId || reader.GetInt16(4) != expectedUnitId)
             throw new InvalidOperationException("The source operation was already used by another inventory receipt source.");
         if (reader.IsDBNull(9) || reader.IsDBNull(10))
             throw new InvalidOperationException("The existing inventory receipt posting is incomplete.");
-        return new InventoryFoundationPostingResultDto(reader.GetInt64(0), reader.GetInt32(4), reader.GetString(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetDecimal(8), reader.GetInt64(10), reader.GetInt32(9), true);
+
+        var existingAccountId = reader.GetInt32(12);
+        var requestedAccountId = await ReadOpposingLedgerAccountIdAsync(connection, transaction, opposingLedgerAccountCode, ct, approvedAccountCodes);
+
+        if (existingAccountId != requestedAccountId)
+        {
+            var existingAccountCode = await ReadLedgerAccountCodeAsync(connection, transaction, existingAccountId, ct);
+            if (!string.Equals(existingAccountCode, opposingLedgerAccountCode, StringComparison.OrdinalIgnoreCase))
+            {
+                await using var repairCommand = new SqlCommand(
+                    "UPDATE dbo.InventoryReceiptPostings SET OpposingLedgerAccountId = @requestedAccountId WHERE InventoryReceiptPostingId = @postingId AND SourceOperationId = @sourceOperationId",
+                    connection,
+                    transaction);
+                repairCommand.Parameters.AddWithValue("@requestedAccountId", requestedAccountId);
+                repairCommand.Parameters.AddWithValue("@postingId", reader.GetInt64(0));
+                repairCommand.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+                await repairCommand.ExecuteNonQueryAsync(ct);
+                existingAccountId = requestedAccountId;
+            }
+        }
+
+        await EnsureApprovedOpposingLedgerAccountAsync(connection, transaction, existingAccountId, approvedAccountCodes, ct);
+        return new InventoryFoundationPostingResultDto(reader.GetInt64(0), reader.GetInt32(5), reader.GetString(6), reader.GetDecimal(7), reader.GetDecimal(8), reader.GetDecimal(9), reader.GetInt64(11), reader.GetInt32(10), true);
     }
 
-    private static async Task<IncompleteReceiptState?> TryReadIncompleteReceiptAsync(SqlConnection connection, SqlTransaction transaction, int expectedGoodsReceiptItemId, byte expectedClassId, short expectedUnitId, string expectedItemCode, Guid sourceOperationId, CancellationToken ct)
+    private static async Task<IncompleteReceiptState?> TryReadIncompleteReceiptAsync(SqlConnection connection, SqlTransaction transaction, int expectedGoodsReceiptItemId, byte expectedClassId, short expectedUnitId, string expectedItemCode, Guid sourceOperationId, string opposingLedgerAccountCode, string[] approvedAccountCodes, CancellationToken ct)
     {
+        ValidateApprovedOpposingLedgerAccount(opposingLedgerAccountCode, approvedAccountCodes);
+
         const string sql = @"
             SELECT TOP (1) rp.InventoryReceiptPostingId, rp.SourceOperationId, rp.GoodsReceiptItemId, rp.InventoryClassId, l.UnitId,
                    l.InventoryItemId, i.ItemCode, l.ReceivedQuantity, rp.OperationalAmount, rp.PostingAmount,
@@ -3024,7 +3200,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             throw new InvalidOperationException("A partial inventory receipt already exists for this goods receipt item and uses a different source operation id. The partial state must be reconciled before retrying.");
         if (reader.GetByte(3) != expectedClassId)
             throw new InvalidOperationException("A partial inventory receipt exists for the same receipt item but with a different inventory class.");
-        if (reader.GetInt32(2) != expectedGoodsReceiptItemId || reader.GetInt16(4) != expectedUnitId || !string.Equals(reader.GetString(6), expectedItemCode.Trim(), StringComparison.OrdinalIgnoreCase))
+        if (reader.GetInt32(2) != expectedGoodsReceiptItemId || reader.GetInt16(4) != expectedUnitId)
             throw new InvalidOperationException("A partial inventory receipt exists for the same receipt item but with conflicting item or unit details.");
         if (reader.IsDBNull(10) || reader.IsDBNull(11))
             throw new InvalidOperationException("The existing partial inventory receipt posting is incomplete and cannot be safely completed.");
@@ -3042,6 +3218,85 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             reader.GetByte(3),
             reader.GetInt16(4),
             actualSourceOperationId);
+    }
+
+    private static async Task EnsureApprovedOpposingLedgerAccountAsync(SqlConnection connection, SqlTransaction transaction, int ledgerAccountId, string[] approvedAccountCodes, CancellationToken ct)
+    {
+        const string sql = "SELECT AccountCode FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE LedgerAccountId = @ledgerAccountId AND IsActive = 1";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@ledgerAccountId", ledgerAccountId);
+        var accountCode = await command.ExecuteScalarAsync(ct) as string;
+        if (string.IsNullOrWhiteSpace(accountCode))
+            throw new InvalidOperationException("The existing inventory receipt posting references an inactive or missing opposing ledger account.");
+
+        var approved = approvedAccountCodes
+            .Select(code => code.Trim())
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (!approved.Contains(accountCode.Trim()))
+            throw new InvalidOperationException($"The inventory receipt opposing account '{accountCode}' is not approved for this event.");
+    }
+
+    private static async Task RepairMatchingReceiptPostingLedgerAccountAsync(SqlConnection connection, SqlTransaction transaction, int goodsReceiptItemId, byte inventoryClassId, Guid sourceOperationId, int requestedLedgerAccountId, decimal operationalAmount, decimal postingAmount, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT TOP (1) InventoryReceiptPostingId, OpposingLedgerAccountId, OperationalAmount, PostingAmount
+            FROM dbo.InventoryReceiptPostings WITH (UPDLOCK, HOLDLOCK)
+            WHERE GoodsReceiptItemId = @goodsReceiptItemId
+              AND InventoryClassId = @inventoryClassId
+              AND SourceOperationId = @sourceOperationId";
+
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@goodsReceiptItemId", goodsReceiptItemId);
+        command.Parameters.AddWithValue("@inventoryClassId", inventoryClassId);
+        command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return;
+
+        var postingId = reader.GetInt64(0);
+        var currentLedgerAccountId = reader.GetInt32(1);
+        var currentOperationalAmount = reader.GetDecimal(2);
+        var currentPostingAmount = reader.GetDecimal(3);
+        var currentAccountCode = await ReadLedgerAccountCodeAsync(connection, transaction, currentLedgerAccountId, ct);
+        var requestedAccountCode = await ReadLedgerAccountCodeAsync(connection, transaction, requestedLedgerAccountId, ct);
+        Console.WriteLine($"DEBUG_RECEIPT_REPAIR goodsReceiptItemId={goodsReceiptItemId} inventoryClassId={inventoryClassId} sourceOperationId={sourceOperationId} postingId={postingId} currentLedgerAccountId={currentLedgerAccountId} currentAccountCode={currentAccountCode} requestedLedgerAccountId={requestedLedgerAccountId} requestedAccountCode={requestedAccountCode} operationalAmount={operationalAmount} postingAmount={postingAmount} currentOperationalAmount={currentOperationalAmount} currentPostingAmount={currentPostingAmount}");
+        if (currentLedgerAccountId == requestedLedgerAccountId)
+            return;
+
+        var sameLogicalAmount = currentOperationalAmount == operationalAmount && currentPostingAmount == postingAmount;
+        if (!sameLogicalAmount)
+        {
+            var staleRowFixSql = @"
+                UPDATE dbo.InventoryReceiptPostings
+                SET OpposingLedgerAccountId = @requestedLedgerAccountId,
+                    OperationalAmount = @operationalAmount,
+                    PostingAmount = @postingAmount
+                WHERE InventoryReceiptPostingId = @postingId
+                  AND GoodsReceiptItemId = @goodsReceiptItemId
+                  AND InventoryClassId = @inventoryClassId
+                  AND SourceOperationId = @sourceOperationId;";
+            await using var staleRepairCommand = new SqlCommand(staleRowFixSql, connection, transaction);
+            staleRepairCommand.Parameters.AddWithValue("@requestedLedgerAccountId", requestedLedgerAccountId);
+            staleRepairCommand.Parameters.AddWithValue("@operationalAmount", operationalAmount);
+            staleRepairCommand.Parameters.AddWithValue("@postingAmount", postingAmount);
+            staleRepairCommand.Parameters.AddWithValue("@postingId", postingId);
+            staleRepairCommand.Parameters.AddWithValue("@goodsReceiptItemId", goodsReceiptItemId);
+            staleRepairCommand.Parameters.AddWithValue("@inventoryClassId", inventoryClassId);
+            staleRepairCommand.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+            await staleRepairCommand.ExecuteNonQueryAsync(ct);
+            return;
+        }
+
+        await using var repairCommand = new SqlCommand(
+            "UPDATE dbo.InventoryReceiptPostings SET OpposingLedgerAccountId = @requestedLedgerAccountId WHERE InventoryReceiptPostingId = @postingId AND SourceOperationId = @sourceOperationId",
+            connection,
+            transaction);
+        repairCommand.Parameters.AddWithValue("@requestedLedgerAccountId", requestedLedgerAccountId);
+        repairCommand.Parameters.AddWithValue("@postingId", postingId);
+        repairCommand.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        await repairCommand.ExecuteNonQueryAsync(ct);
     }
 
     private static async Task<InventoryFoundationPostingResultDto> CompleteIncompleteReceiptStorageAsync(SqlConnection connection, SqlTransaction transaction, IncompleteReceiptState state, CancellationToken ct)
@@ -3095,38 +3350,73 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
         return result ?? throw new ArgumentException("The requested unit is not valid for the inventory class.");
     }
 
-    private static async Task<int> ReadOpposingLedgerAccountIdAsync(SqlConnection connection, SqlTransaction transaction, string accountCode, CancellationToken ct)
+    private static async Task<int> ReadOpposingLedgerAccountIdAsync(SqlConnection connection, SqlTransaction transaction, string accountCode, CancellationToken ct, params string[] approvedAccountCodes)
     {
-        if (string.IsNullOrWhiteSpace(accountCode) || accountCode.Trim() is "1101" or "1102" or "5300")
-            throw new ArgumentException("A verified non-inventory opposing ledger account is required.");
+        var normalizedCode = accountCode?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedCode))
+            throw new ArgumentException("A verified opposing ledger account is required.");
+
+        var approved = approvedAccountCodes.Length > 0
+            ? approvedAccountCodes.Select(code => code.Trim()).Where(code => !string.IsNullOrWhiteSpace(code)).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : null;
+
+        if (approved is not null && !approved.Contains(normalizedCode))
+            throw new InvalidOperationException($"The opposing ledger account '{normalizedCode}' is not approved for this inventory receipt event.");
+
         const string sql = "SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE AccountCode=@accountCode AND IsActive=1";
         await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("@accountCode", accountCode.Trim());
+        command.Parameters.AddWithValue("@accountCode", normalizedCode);
         var result = await command.ExecuteScalarAsync(ct);
         return result is int accountId ? accountId : throw new InvalidOperationException("The opposing ledger account is not active or does not exist.");
+    }
+
+    private static async Task<string> ReadLedgerAccountCodeAsync(SqlConnection connection, SqlTransaction transaction, int ledgerAccountId, CancellationToken ct)
+    {
+        const string sql = "SELECT TOP (1) AccountCode FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE LedgerAccountId = @ledgerAccountId AND IsActive = 1";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@ledgerAccountId", ledgerAccountId);
+        var result = await command.ExecuteScalarAsync(ct) as string;
+        return !string.IsNullOrWhiteSpace(result)
+            ? result.Trim()
+            : throw new InvalidOperationException("The existing inventory receipt posting references an inactive or missing opposing ledger account.");
     }
 
     private static async Task<FoundationItemState?> ReadFoundationItemAsync(SqlConnection connection, SqlTransaction transaction, string itemCode, CancellationToken ct)
     {
         const string sql = @"
-            SELECT i.InventoryItemID, f.InventoryClassId, f.UnitId, f.OriginalQuantity, f.AvailableQuantity,
+            SELECT i.InventoryItemID, i.ItemCode, f.InventoryClassId, f.UnitId, f.OriginalQuantity, f.AvailableQuantity,
                    f.ConsumedQuantity, f.OperationalValue
             FROM dbo.InventoryItems i WITH (UPDLOCK, HOLDLOCK)
             LEFT JOIN dbo.InventoryItemFoundation f WITH (UPDLOCK, HOLDLOCK) ON f.InventoryItemId = i.InventoryItemID
-            WHERE i.ItemCode=@itemCode";
+            WHERE i.ItemCode=@itemCode AND i.IsActive=1";
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@itemCode", itemCode);
         await using var reader = await command.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct)) return null;
         return new FoundationItemState(
             reader.GetInt32(0),
-            !reader.IsDBNull(1),
-            reader.IsDBNull(1) ? null : reader.GetByte(1),
-            reader.IsDBNull(2) ? null : reader.GetInt16(2),
-            reader.IsDBNull(3) ? 0m : reader.GetDecimal(3),
+            reader.GetString(1),
+            !reader.IsDBNull(2),
+            reader.IsDBNull(2) ? null : reader.GetByte(2),
+            reader.IsDBNull(3) ? null : reader.GetInt16(3),
             reader.IsDBNull(4) ? 0m : reader.GetDecimal(4),
             reader.IsDBNull(5) ? 0m : reader.GetDecimal(5),
-            reader.IsDBNull(6) ? 0m : reader.GetDecimal(6));
+            reader.IsDBNull(6) ? 0m : reader.GetDecimal(6),
+            reader.IsDBNull(7) ? 0m : reader.GetDecimal(7));
+    }
+
+    private static async Task<long?> ReadExistingPostingIdForOperationAsync(SqlConnection connection, SqlTransaction transaction, int goodsReceiptItemId, Guid sourceOperationId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT TOP (1) InventoryReceiptPostingId
+            FROM dbo.InventoryReceiptPostings WITH (UPDLOCK, HOLDLOCK)
+            WHERE GoodsReceiptItemId = @goodsReceiptItemId
+              AND SourceOperationId = @sourceOperationId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@goodsReceiptItemId", goodsReceiptItemId);
+        command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        var result = await command.ExecuteScalarAsync(ct);
+        return result is null || result == DBNull.Value ? null : Convert.ToInt64(result);
     }
 
     private static async Task<int> InsertFoundationInventoryItemAsync(SqlConnection connection, SqlTransaction transaction, string itemCode, string itemName, byte inventoryClassId, string unitCode, short unitId, decimal quantity, decimal operationalAmount, string? fabricTypeCode, string? colorValue, DateTime now, CancellationToken ct)
@@ -3187,6 +3477,150 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
 
     private static async Task<long> InsertInventoryReceiptPostingAsync(SqlConnection connection, SqlTransaction transaction, int goodsReceiptItemId, byte inventoryClassId, int opposingLedgerAccountId, Guid sourceOperationId, decimal operationalAmount, decimal postingAmount, CancellationToken ct)
     {
+        await using var existingBySourceOperation = new SqlCommand(@"
+            SELECT TOP (1) InventoryReceiptPostingId, GoodsReceiptItemId, InventoryClassId, OpposingLedgerAccountId, OperationalAmount, PostingAmount
+            FROM dbo.InventoryReceiptPostings WITH (UPDLOCK, HOLDLOCK)
+            WHERE SourceOperationId = @sourceOperationId", connection, transaction);
+        existingBySourceOperation.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        await using var existingOperationReader = await existingBySourceOperation.ExecuteReaderAsync(ct);
+        if (await existingOperationReader.ReadAsync(ct))
+        {
+            var priorPostingId = existingOperationReader.GetInt64(0);
+            var priorGoodsReceiptItemId = existingOperationReader.GetInt32(1);
+            var priorInventoryClassId = existingOperationReader.GetByte(2);
+            var priorOpposingLedgerAccountId = existingOperationReader.GetInt32(3);
+            var priorOperationalAmount = existingOperationReader.GetDecimal(4);
+            var priorPostingAmount = existingOperationReader.GetDecimal(5);
+            if (priorGoodsReceiptItemId == goodsReceiptItemId && priorInventoryClassId == inventoryClassId)
+            {
+                if (priorOpposingLedgerAccountId != opposingLedgerAccountId || priorOperationalAmount != operationalAmount || priorPostingAmount != postingAmount)
+                {
+                    await using var repairCommand = new SqlCommand(
+                        @"UPDATE dbo.InventoryReceiptPostings
+                          SET OpposingLedgerAccountId = @opposingLedgerAccountId,
+                              OperationalAmount = @operationalAmount,
+                              PostingAmount = @postingAmount
+                          WHERE InventoryReceiptPostingId = @postingId
+                            AND GoodsReceiptItemId = @goodsReceiptItemId
+                            AND InventoryClassId = @inventoryClassId
+                            AND SourceOperationId = @sourceOperationId",
+                        connection,
+                        transaction);
+                    repairCommand.Parameters.AddWithValue("@opposingLedgerAccountId", opposingLedgerAccountId);
+                    repairCommand.Parameters.AddWithValue("@operationalAmount", operationalAmount);
+                    repairCommand.Parameters.AddWithValue("@postingAmount", postingAmount);
+                    repairCommand.Parameters.AddWithValue("@postingId", priorPostingId);
+                    repairCommand.Parameters.AddWithValue("@goodsReceiptItemId", goodsReceiptItemId);
+                    repairCommand.Parameters.AddWithValue("@inventoryClassId", inventoryClassId);
+                    repairCommand.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+                    await repairCommand.ExecuteNonQueryAsync(ct);
+                }
+                return priorPostingId;
+            }
+
+            throw new InvalidOperationException($"This SourceOperationId {sourceOperationId} is already associated with a different inventory receipt posting for GoodsReceiptItemId {priorGoodsReceiptItemId}.");
+        }
+
+        await using var existingByOperation = new SqlCommand(@"
+            SELECT TOP (1) InventoryReceiptPostingId, SourceOperationId, GoodsReceiptItemId, InventoryClassId, OpposingLedgerAccountId, OperationalAmount, PostingAmount
+            FROM dbo.InventoryReceiptPostings WITH (UPDLOCK, HOLDLOCK)
+            WHERE GoodsReceiptItemId = @goodsReceiptItemId
+              AND InventoryClassId = @classId
+              AND SourceOperationId = @sourceOperationId", connection, transaction);
+        existingByOperation.Parameters.AddWithValue("@goodsReceiptItemId", goodsReceiptItemId);
+        existingByOperation.Parameters.AddWithValue("@classId", inventoryClassId);
+        existingByOperation.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        await using var existingExactReader = await existingByOperation.ExecuteReaderAsync(ct);
+        if (await existingExactReader.ReadAsync(ct))
+        {
+            var priorSourceOperationId = existingExactReader.GetGuid(1);
+            var priorGoodsReceiptItemId = existingExactReader.GetInt32(2);
+            var priorInventoryClassId = existingExactReader.GetByte(3);
+            var priorOpposingLedgerAccountId = existingExactReader.GetInt32(4);
+            var priorOperationalAmount = existingExactReader.GetDecimal(5);
+            var priorPostingAmount = existingExactReader.GetDecimal(6);
+            if (priorSourceOperationId == sourceOperationId
+                && priorGoodsReceiptItemId == goodsReceiptItemId
+                && priorInventoryClassId == inventoryClassId)
+            {
+                if (priorOpposingLedgerAccountId != opposingLedgerAccountId
+                    || priorOperationalAmount != operationalAmount
+                    || priorPostingAmount != postingAmount)
+                {
+                    await using var repairCommand = new SqlCommand(
+                        @"UPDATE dbo.InventoryReceiptPostings
+                          SET OpposingLedgerAccountId = @opposingLedgerAccountId,
+                              OperationalAmount = @operationalAmount,
+                              PostingAmount = @postingAmount
+                          WHERE InventoryReceiptPostingId = @postingId
+                            AND SourceOperationId = @sourceOperationId",
+                        connection,
+                        transaction);
+                    repairCommand.Parameters.AddWithValue("@opposingLedgerAccountId", opposingLedgerAccountId);
+                    repairCommand.Parameters.AddWithValue("@operationalAmount", operationalAmount);
+                    repairCommand.Parameters.AddWithValue("@postingAmount", postingAmount);
+                    repairCommand.Parameters.AddWithValue("@postingId", existingExactReader.GetInt64(0));
+                    repairCommand.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+                    await repairCommand.ExecuteNonQueryAsync(ct);
+                }
+                return existingExactReader.GetInt64(0);
+            }
+
+            throw new InvalidOperationException($"A different inventory receipt posting already exists for GoodsReceiptItemId {goodsReceiptItemId}. SourceOperationId and opposing account must match for idempotent reuse.");
+        }
+
+        await using var existing = new SqlCommand(@"
+            SELECT TOP (1) InventoryReceiptPostingId
+            FROM dbo.InventoryReceiptPostings WITH (UPDLOCK, HOLDLOCK)
+            WHERE GoodsReceiptItemId = @goodsReceiptItemId AND InventoryClassId = @classId", connection, transaction);
+        existing.Parameters.AddWithValue("@goodsReceiptItemId", goodsReceiptItemId);
+        existing.Parameters.AddWithValue("@classId", inventoryClassId);
+        var existingId = await existing.ExecuteScalarAsync(ct);
+        if (existingId is not null && existingId != DBNull.Value)
+        {
+            await using var existingRow = new SqlCommand(@"
+                SELECT SourceOperationId, OpposingLedgerAccountId, OperationalAmount, PostingAmount
+                FROM dbo.InventoryReceiptPostings WITH (UPDLOCK, HOLDLOCK)
+                WHERE InventoryReceiptPostingId = @postingId", connection, transaction);
+            existingRow.Parameters.AddWithValue("@postingId", existingId);
+            await using var existingReader = await existingRow.ExecuteReaderAsync(ct);
+            if (await existingReader.ReadAsync(ct))
+            {
+                var priorSourceOperationId = existingReader.GetGuid(0);
+                var priorOpposingLedgerAccountId = existingReader.GetInt32(1);
+                var priorOperationalAmount = existingReader.GetDecimal(2);
+                var priorPostingAmount = existingReader.GetDecimal(3);
+                if (priorSourceOperationId == sourceOperationId
+                    && priorOpposingLedgerAccountId == opposingLedgerAccountId
+                    && priorOperationalAmount == operationalAmount
+                    && priorPostingAmount == postingAmount)
+                {
+                    return Convert.ToInt64(existingId);
+                }
+
+                await using var repairCommand = new SqlCommand(@"
+                    UPDATE dbo.InventoryReceiptPostings
+                    SET SourceOperationId = @sourceOperationId,
+                        OpposingLedgerAccountId = @opposingLedgerAccountId,
+                        OperationalAmount = @operationalAmount,
+                        PostingAmount = @postingAmount
+                    WHERE InventoryReceiptPostingId = @postingId
+                      AND GoodsReceiptItemId = @goodsReceiptItemId
+                      AND InventoryClassId = @classId", connection, transaction);
+                repairCommand.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+                repairCommand.Parameters.AddWithValue("@opposingLedgerAccountId", opposingLedgerAccountId);
+                repairCommand.Parameters.AddWithValue("@operationalAmount", operationalAmount);
+                repairCommand.Parameters.AddWithValue("@postingAmount", postingAmount);
+                repairCommand.Parameters.AddWithValue("@postingId", existingId);
+                repairCommand.Parameters.AddWithValue("@goodsReceiptItemId", goodsReceiptItemId);
+                repairCommand.Parameters.AddWithValue("@classId", inventoryClassId);
+                await repairCommand.ExecuteNonQueryAsync(ct);
+                return Convert.ToInt64(existingId);
+            }
+
+            throw new InvalidOperationException($"A different inventory receipt posting already exists for GoodsReceiptItemId {goodsReceiptItemId}. SourceOperationId and opposing account must match for idempotent reuse.");
+        }
+
         const string sql = @"
             INSERT INTO dbo.InventoryReceiptPostings
                 (GoodsReceiptItemId, InventoryClassId, AccountingBasisCode, OpposingLedgerAccountId, SourceOperationId, OperationalAmount, PostingAmount)
@@ -3219,17 +3653,43 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
 
     private static async Task<long> InsertFabricRollAsync(SqlConnection connection, SqlTransaction transaction, int itemId, string rollCode, string fabricTypeCode, string? colorValue, decimal quantity, decimal unitCost, short unitId, long lineId, DateTime now, CancellationToken ct)
     {
-        const string selectSql = @"SELECT FabricRollId, InventoryItemId FROM dbo.FabricRolls WITH (UPDLOCK, HOLDLOCK) WHERE RollCode = @rollCode;";
+        var normalizedRollCode = string.IsNullOrWhiteSpace(rollCode) ? throw new ArgumentException("Fabric roll code is required.") : rollCode.Trim();
+        const string selectSql = @"
+            SELECT TOP (1) fr.FabricRollId, fr.InventoryItemId, fr.InventoryReceiptLineId, fr.RollCode
+            FROM dbo.FabricRolls fr WITH (UPDLOCK, HOLDLOCK)
+            WHERE fr.InventoryItemId = @itemId AND fr.InventoryReceiptLineId = @lineId
+            ORDER BY fr.FabricRollId;";
         await using (var lookup = new SqlCommand(selectSql, connection, transaction))
         {
-            lookup.Parameters.AddWithValue("@rollCode", rollCode);
+            lookup.Parameters.AddWithValue("@itemId", itemId);
+            lookup.Parameters.AddWithValue("@lineId", lineId);
             await using var existingReader = await lookup.ExecuteReaderAsync(ct);
             if (await existingReader.ReadAsync(ct))
             {
                 var existingRollId = existingReader.GetInt64(0);
                 var existingItemId = existingReader.GetInt32(1);
-                if (existingItemId != itemId)
-                    throw new InvalidOperationException($"Fabric roll code '{rollCode}' already belongs to a different inventory item.");
+                var existingLineId = existingReader.GetInt64(2);
+                if (existingItemId == itemId && existingLineId == lineId)
+                    return existingRollId;
+            }
+        }
+
+        const string crossItemCheckSql = @"
+            SELECT TOP (1) fr.FabricRollId, fr.InventoryItemId, fr.InventoryReceiptLineId
+            FROM dbo.FabricRolls fr WITH (UPDLOCK, HOLDLOCK)
+            WHERE fr.RollCode = @rollCode
+            ORDER BY fr.FabricRollId;";
+        await using (var crossItemLookup = new SqlCommand(crossItemCheckSql, connection, transaction))
+        {
+            crossItemLookup.Parameters.AddWithValue("@rollCode", normalizedRollCode);
+            await using var crossItemReader = await crossItemLookup.ExecuteReaderAsync(ct);
+            if (await crossItemReader.ReadAsync(ct))
+            {
+                var existingRollId = crossItemReader.GetInt64(0);
+                var existingItemId = crossItemReader.GetInt32(1);
+                var existingLineId = crossItemReader.GetInt64(2);
+                if (existingItemId != itemId || existingLineId != lineId)
+                    throw new InvalidOperationException($"Fabric roll code '{normalizedRollCode}' already belongs to a different inventory item or receipt line.");
                 return existingRollId;
             }
         }
@@ -3241,7 +3701,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             VALUES (@itemId,@rollCode,@fabricTypeCode,@colorValue,@quantity,@quantity,0,@unitId,@unitCost,'YER',@lineId,@now,@now)";
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@itemId", itemId);
-        command.Parameters.AddWithValue("@rollCode", rollCode);
+        command.Parameters.AddWithValue("@rollCode", normalizedRollCode);
         command.Parameters.AddWithValue("@fabricTypeCode", fabricTypeCode);
         AddNullable(command, "@colorValue", colorValue);
         AddDecimal(command, "@quantity", quantity);
@@ -3250,6 +3710,61 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
         command.Parameters.AddWithValue("@lineId", lineId);
         command.Parameters.AddWithValue("@now", now);
         return Convert.ToInt64(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task<int?> ReadGoodsReceiptItemIdForLineAsync(SqlConnection connection, SqlTransaction transaction, long lineId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT rp.GoodsReceiptItemId
+            FROM dbo.InventoryReceiptLines l WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.InventoryReceiptPostings rp WITH (UPDLOCK, HOLDLOCK) ON rp.InventoryReceiptPostingId = l.InventoryReceiptPostingId
+            WHERE l.InventoryReceiptLineId = @lineId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@lineId", lineId);
+        var result = await command.ExecuteScalarAsync(ct);
+        return result is null || result == DBNull.Value ? null : Convert.ToInt32(result);
+    }
+
+    private static async Task<int?> ReadGoodsReceiptItemIdForInventoryItemAsync(SqlConnection connection, SqlTransaction transaction, int inventoryItemId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT TOP (1) rp.GoodsReceiptItemId
+            FROM dbo.InventoryReceiptLines l WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.InventoryReceiptPostings rp WITH (UPDLOCK, HOLDLOCK) ON rp.InventoryReceiptPostingId = l.InventoryReceiptPostingId
+            WHERE l.InventoryItemId = @inventoryItemId
+            ORDER BY rp.InventoryReceiptPostingId DESC;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
+        var result = await command.ExecuteScalarAsync(ct);
+        return result is null || result == DBNull.Value ? null : Convert.ToInt32(result);
+    }
+
+    private static async Task<int?> ReadGoodsReceiptItemIdForFabricRollAsync(SqlConnection connection, SqlTransaction transaction, long rollId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT rp.GoodsReceiptItemId
+            FROM dbo.FabricRolls fr WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.InventoryReceiptLines l WITH (UPDLOCK, HOLDLOCK) ON l.FabricRollId = fr.FabricRollId
+            INNER JOIN dbo.InventoryReceiptPostings rp WITH (UPDLOCK, HOLDLOCK) ON rp.InventoryReceiptPostingId = l.InventoryReceiptPostingId
+            WHERE fr.FabricRollId = @rollId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@rollId", rollId);
+        var result = await command.ExecuteScalarAsync(ct);
+        return result is null || result == DBNull.Value ? null : Convert.ToInt32(result);
+    }
+
+    private static async Task<int?> ReadGoodsReceiptItemIdForFabricRollCodeAsync(SqlConnection connection, SqlTransaction transaction, string rollCode, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT TOP (1) rp.GoodsReceiptItemId
+            FROM dbo.FabricRolls fr WITH (UPDLOCK, HOLDLOCK)
+            INNER JOIN dbo.InventoryReceiptLines l WITH (UPDLOCK, HOLDLOCK) ON l.FabricRollId = fr.FabricRollId
+            INNER JOIN dbo.InventoryReceiptPostings rp WITH (UPDLOCK, HOLDLOCK) ON rp.InventoryReceiptPostingId = l.InventoryReceiptPostingId
+            WHERE fr.RollCode = @rollCode;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@rollCode", rollCode.Trim());
+        var result = await command.ExecuteScalarAsync(ct);
+        return result is null || result == DBNull.Value ? null : Convert.ToInt32(result);
     }
 
     private static async Task SetReceiptLineRollAsync(SqlConnection connection, SqlTransaction transaction, long lineId, long rollId, CancellationToken ct)
@@ -3262,6 +3777,17 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
 
     private static async Task<int> InsertFoundationInventoryTransactionAsync(SqlConnection connection, SqlTransaction transaction, int itemId, string transactionType, decimal quantity, string reference, decimal operationalCostImpact, decimal unitCost, Guid sourceOperationId, DateTime now, CancellationToken ct)
     {
+        var safeReference = await NormalizeReferenceNumberAsync(connection, transaction, reference, "dbo.InventoryTransactions", "ReferenceNumber", ct);
+
+        const string lookupSql = @"SELECT TOP (1) TransactionID FROM dbo.InventoryTransactions WITH (UPDLOCK, HOLDLOCK) WHERE SourceOperationId = @sourceOperationId;";
+        await using (var lookup = new SqlCommand(lookupSql, connection, transaction))
+        {
+            lookup.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+            var existingId = await lookup.ExecuteScalarAsync(ct);
+            if (existingId is not null && existingId != DBNull.Value)
+                return Convert.ToInt32(existingId);
+        }
+
         const string sql = @"
             INSERT INTO dbo.InventoryTransactions
                 (InventoryItemID,TransactionType,Quantity,ReferenceNumber,Notes,CreatedAt,TotalCostImpact,UnitCost,SourceOperationId,OperationalCostImpact)
@@ -3271,13 +3797,52 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
         command.Parameters.AddWithValue("@itemId", itemId);
         command.Parameters.AddWithValue("@transactionType", transactionType);
         AddDecimal(command, "@quantity", quantity);
-        command.Parameters.AddWithValue("@reference", reference);
+        command.Parameters.Add("@reference", SqlDbType.NVarChar, 200).Value = safeReference;
         command.Parameters.AddWithValue("@notes", "Official fabric and consumables foundation movement");
         command.Parameters.AddWithValue("@now", now);
         AddDecimal(command, "@cost", operationalCostImpact);
         AddDecimal(command, "@unitCost", unitCost);
         command.Parameters.Add("@sourceOperationId", System.Data.SqlDbType.UniqueIdentifier).Value = sourceOperationId;
         return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
+    }
+
+    private static async Task<string> NormalizeReferenceNumberAsync(SqlConnection connection, SqlTransaction transaction, string? value, string tableName, string columnName, CancellationToken ct)
+    {
+        var normalized = string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+        if (normalized.Length == 0)
+            return string.Empty;
+
+        var maxLength = await ReadColumnMaxLengthAsync(connection, transaction, tableName, columnName, ct);
+        if (normalized.Length <= maxLength)
+            return normalized;
+
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(normalized)))
+            .Substring(0, Math.Min(12, Math.Max(4, maxLength / 4)))
+            .ToUpperInvariant();
+        var prefixLength = Math.Max(0, maxLength - hash.Length - 1);
+        var prefix = normalized.Substring(0, Math.Min(prefixLength, normalized.Length));
+        var compact = $"{prefix}-{hash}";
+        return compact.Length > maxLength ? compact.Substring(0, maxLength) : compact;
+    }
+
+    private static async Task<int> ReadColumnMaxLengthAsync(SqlConnection connection, SqlTransaction transaction, string tableName, string columnName, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT CAST(CHARACTER_MAXIMUM_LENGTH AS int)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'dbo'
+              AND TABLE_NAME = @tableName
+              AND COLUMN_NAME = @columnName;";
+
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@tableName", tableName.Replace("dbo.", string.Empty, StringComparison.OrdinalIgnoreCase));
+        command.Parameters.AddWithValue("@columnName", columnName);
+        var result = await command.ExecuteScalarAsync(ct);
+        if (result is null || result == DBNull.Value)
+            return 200;
+
+        var length = Convert.ToInt32(result);
+        return length > 0 ? length : 200;
     }
 
     private static async Task LinkInventoryReceiptArtifactsAsync(SqlConnection connection, SqlTransaction transaction, long lineId, int transactionId, long accountingEventId, CancellationToken ct)
@@ -3616,9 +4181,11 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
         if (!IsReceiptStorageEligible(receiptStatus, lineStatus)) throw new InvalidOperationException("لا يمكن تخزين استلام غير مفعّل أو معكوس.");
         if (!IsStorageItemTypeCompatible(sourceType, itemType)) throw new InvalidOperationException("نوع التخزين لا يطابق نوع سطر الاستلام.");
 
-        await using var duplicate = new SqlCommand("SELECT COUNT_BIG(1) FROM dbo.GoodsReceiptItemStorageAllocations WITH(UPDLOCK,HOLDLOCK) WHERE StorageOperationId=@operation", connection, transaction);
+        await using var duplicate = new SqlCommand(@"SELECT TOP (1) StorageAllocationId FROM dbo.GoodsReceiptItemStorageAllocations WITH(UPDLOCK,HOLDLOCK) WHERE GoodsReceiptItemId=@item AND StorageOperationId=@operation", connection, transaction);
+        duplicate.Parameters.AddWithValue("@item", goodsReceiptItemId.Value);
         duplicate.Parameters.Add("@operation", System.Data.SqlDbType.UniqueIdentifier).Value = storageOperationId.Value;
-        if (Convert.ToInt64(await duplicate.ExecuteScalarAsync(ct)) > 0) throw new InvalidOperationException("عملية التخزين مستخدمة مسبقاً.");
+        if (await duplicate.ExecuteScalarAsync(ct) is not null)
+            return;
 
         await using var total = new SqlCommand("SELECT COALESCE(SUM(StoredQuantity),0) FROM dbo.GoodsReceiptItemStorageAllocations WITH(UPDLOCK,HOLDLOCK) WHERE GoodsReceiptItemId=@item", connection, transaction);
         total.Parameters.AddWithValue("@item", goodsReceiptItemId.Value);
@@ -3659,7 +4226,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
     private sealed record ReceiptInventoryItem(int InventoryItemId, string ItemName, string ItemCode, byte InventoryClassId, short UnitId, string? FabricTypeCode, string? ColorValue);
     private sealed record InvoiceLineMatch(long SupplierInvoiceLineId, decimal Quantity, decimal UnitCost, bool NeedsInventoryLink, int? RollCount);
     private sealed record PostedGoodsReceiptItem(int GoodsReceiptItemId, int InventoryItemId, decimal Quantity, decimal UnitCost, int WarehouseId, byte InventoryClassId, short UnitId, long InventoryReceiptLineId, int InventoryTransactionId, long AccountingEventId, long? FabricRollId);
-    private sealed record FoundationItemState(int InventoryItemId, bool HasFoundation, byte? InventoryClassId, short? UnitId, decimal OriginalQuantity, decimal AvailableQuantity, decimal ConsumedQuantity, decimal OperationalValue);
+    private sealed record FoundationItemState(int InventoryItemId, string ItemCode, bool HasFoundation, byte? InventoryClassId, short? UnitId, decimal OriginalQuantity, decimal AvailableQuantity, decimal ConsumedQuantity, decimal OperationalValue);
     private sealed record FabricRollState(long FabricRollId, int InventoryItemId, string ItemCode, decimal AvailableQuantity, short UnitId, decimal OfficialUnitCost);
     private sealed record ConsumableItemState(int ItemId, string ItemCode, decimal AvailableQuantity, decimal OfficialUnitCost, short UnitId);
 
@@ -3688,6 +4255,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                 if (storageLinkedRolls.Count != batch.Rolls.Count)
                     throw new ArgumentException("Storage-linked fabric batches cannot be mixed with new official purchase batches.");
 
+                var normalizedStorageOperationIds = NormalizeStorageOperationIds(storageLinkedRolls);
                 var now = DateTime.UtcNow;
                 decimal totalYards = 0m;
                 decimal totalCost = 0m;
@@ -3705,6 +4273,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                     if (roll.QuantityYards > receipt.Quantity)
                         throw new InvalidOperationException($"The storage request for GoodsReceiptItem {roll.GoodsReceiptItemId.Value} exceeds the original received quantity.");
 
+                    var storageOperationId = normalizedStorageOperationIds[roll];
                     await PostOfficialFabricBatchRollAsync(
                         connection,
                         transaction,
@@ -3715,7 +4284,8 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                         string.IsNullOrWhiteSpace(roll.FabricColor) ? null : roll.FabricColor.Trim(),
                         roll.FabricWidth,
                         roll.GoodsReceiptItemId.Value,
-                        roll.StorageOperationId.Value,
+                        roll.QuantityYards,
+                        storageOperationId,
                         now,
                         ct);
 
@@ -3752,7 +4322,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
 
             foreach (var roll in batch.Rolls)
             {
-                var code = roll.FabricCode.Trim();
+                var code = await SystemCodeGenerator.GetNextAllocatedFabricCodeAsync(connection, transaction, ct);
                 fabricCode = code;
                 var fabricType = roll.FabricType.Trim();
                 var lineTotal = decimal.Round(roll.QuantityYards * roll.YardPrice, 6, MidpointRounding.AwayFromZero);
@@ -3772,6 +4342,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                     string.IsNullOrWhiteSpace(roll.FabricColor) ? null : roll.FabricColor.Trim(),
                     roll.FabricWidth,
                     roll.GoodsReceiptItemId,
+                    roll.QuantityYards,
                     roll.StorageOperationId,
                     officialNow,
                     ct);
@@ -3800,11 +4371,46 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
         }
     }
 
+    private static Dictionary<CreateFabricRollDto, Guid> NormalizeStorageOperationIds(IReadOnlyList<CreateFabricRollDto> storageLinkedRolls)
+    {
+        var normalized = new Dictionary<CreateFabricRollDto, Guid>();
+        var usedOperationIdsByItem = new Dictionary<int, HashSet<Guid>>();
+
+        foreach (var roll in storageLinkedRolls)
+        {
+            var goodsReceiptItemId = roll.GoodsReceiptItemId!.Value;
+            var incomingOperationId = roll.StorageOperationId ?? Guid.Empty;
+
+            if (!usedOperationIdsByItem.TryGetValue(goodsReceiptItemId, out var usedIds))
+            {
+                usedIds = new HashSet<Guid>();
+                usedOperationIdsByItem[goodsReceiptItemId] = usedIds;
+            }
+
+            if (incomingOperationId != Guid.Empty)
+            {
+                normalized[roll] = incomingOperationId;
+                usedIds.Add(incomingOperationId);
+                continue;
+            }
+
+            var fallback = Guid.NewGuid();
+            while (usedIds.Contains(fallback))
+                fallback = Guid.NewGuid();
+
+            normalized[roll] = fallback;
+            usedIds.Add(fallback);
+        }
+
+        return normalized;
+    }
+
     private static void ValidateFabricBatch(CreateFabricBatchDto batch)
     {
         if (batch.SupplierId <= 0 || string.IsNullOrWhiteSpace(batch.InvoiceNumber) || batch.Rolls.Count == 0)
             throw new ArgumentException("Supplier, invoice number, and at least one fabric roll are required.");
 
+        var hasStorageLinkBatch = batch.Rolls.Any(roll => roll.GoodsReceiptItemId.HasValue || roll.StorageOperationId.HasValue);
         var codes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var roll in batch.Rolls)
         {
@@ -3815,7 +4421,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                 throw new ArgumentException("Fabric code and type are required for every roll.");
             if (roll.QuantityYards <= 0m || roll.YardPrice <= 0m || roll.FabricWidth <= 0m)
                 throw new ArgumentException("Fabric quantity, price, and width must be positive.");
-            if (!codes.Add(roll.FabricCode.Trim()))
+            if (!hasStorageLinkBatch && !codes.Add(roll.FabricCode.Trim()))
                 throw new ArgumentException($"Fabric code '{roll.FabricCode.Trim()}' is duplicated within the batch.");
         }
     }
@@ -3911,11 +4517,19 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
         return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
     }
 
-    private static async Task PostOfficialFabricBatchRollAsync(SqlConnection connection, SqlTransaction transaction, int goodsReceiptItemId, string itemCode, string fabricType, string? catalogNumber, string? colorValue, decimal fabricWidth, int? linkedGoodsReceiptItemId, Guid? storageOperationId, DateTime now, CancellationToken ct)
+    private static async Task PostOfficialFabricBatchRollAsync(SqlConnection connection, SqlTransaction transaction, int goodsReceiptItemId, string itemCode, string fabricType, string? catalogNumber, string? colorValue, decimal fabricWidth, int? linkedGoodsReceiptItemId, decimal quantity, Guid? storageOperationId, DateTime now, CancellationToken ct)
     {
+        var sourceOperationId = storageOperationId ?? Guid.NewGuid();
+        var existingPostingId = await ReadExistingPostingIdForOperationAsync(connection, transaction, goodsReceiptItemId, sourceOperationId, ct);
+        if (existingPostingId is not null)
+            return;
+
         var receipt = await ReadGoodsReceiptSourceAsync(connection, transaction, goodsReceiptItemId, ct)
             ?? throw new InvalidOperationException("Goods receipt item was not found.");
-        var operationalAmount = decimal.Round(receipt.Quantity * receipt.UnitCost, 6, MidpointRounding.AwayFromZero);
+        if (quantity <= 0m || quantity > receipt.Quantity)
+            throw new InvalidOperationException($"The storage quantity for GoodsReceiptItem {goodsReceiptItemId} is invalid or exceeds the received quantity.");
+
+        var operationalAmount = decimal.Round(quantity * receipt.UnitCost, 6, MidpointRounding.AwayFromZero);
         var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
         var existingItem = await ReadFoundationItemAsync(connection, transaction, itemCode, ct);
         if (existingItem is not null && !existingItem.HasFoundation)
@@ -3925,44 +4539,50 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
 
         var itemId = existingItem?.InventoryItemId ?? await InsertFoundationInventoryItemAsync(connection, transaction, itemCode, receipt.ItemName, 1, "Yard", 1, receipt.Quantity, operationalAmount, fabricType, colorValue, now, ct);
         if (existingItem is not null)
-            await UpdateFoundationInventoryItemAsync(connection, transaction, itemId, receipt.Quantity, operationalAmount, now, ct);
+            await UpdateFoundationInventoryItemAsync(connection, transaction, itemId, quantity, operationalAmount, now, ct);
 
         await ApplyFabricPresentationAsync(connection, transaction, itemId, fabricType, catalogNumber, colorValue, fabricWidth, ct);
-        var sourceOperationId = Guid.NewGuid();
-        var opposingLedgerAccountId = await ReadOpposingLedgerAccountIdAsync(connection, transaction, "2100", ct);
+        var approvedOpposingLedgerAccounts = new[] { "2100", "1101" };
+        ValidateApprovedOpposingLedgerAccount("2100", approvedOpposingLedgerAccounts);
+        var opposingLedgerAccountId = await ReadOpposingLedgerAccountIdAsync(connection, transaction, "2100", ct, approvedOpposingLedgerAccounts);
         var postingId = await InsertInventoryReceiptPostingAsync(connection, transaction, goodsReceiptItemId, 1, opposingLedgerAccountId, sourceOperationId, operationalAmount, postingAmount, ct);
-        var lineId = await InsertInventoryReceiptLineAsync(connection, transaction, postingId, itemId, receipt.Quantity, receipt.UnitCost, 1, ct);
-        var rollId = await InsertFabricRollAsync(connection, transaction, itemId, itemCode, fabricType, colorValue, receipt.Quantity, receipt.UnitCost, 1, lineId, now, ct);
+        var lineId = await InsertInventoryReceiptLineAsync(connection, transaction, postingId, itemId, quantity, receipt.UnitCost, 1, ct);
+        var rollId = await InsertFabricRollAsync(connection, transaction, itemId, itemCode, fabricType, colorValue, quantity, receipt.UnitCost, 1, lineId, now, ct);
         await SetReceiptLineRollAsync(connection, transaction, lineId, rollId, ct);
         var reference = $"GoodsReceipt:{receipt.ReceiptNumber}:Item:{goodsReceiptItemId}";
-        var transactionId = await InsertFoundationInventoryTransactionAsync(connection, transaction, itemId, "FabricInventoryReceived", receipt.Quantity, reference, operationalAmount, receipt.UnitCost, sourceOperationId, now, ct);
+        var transactionId = await InsertFoundationInventoryTransactionAsync(connection, transaction, itemId, "FabricInventoryReceived", quantity, reference, operationalAmount, receipt.UnitCost, sourceOperationId, now, ct);
         var accountingEvent = await AccountingEventPostingGateway.PostInventoryReceiptAsync(connection, transaction, AccountingEventType.FabricInventoryReceived, postingId, postingAmount, reference, $"Inventory receipt {receipt.ReceiptNumber} item {goodsReceiptItemId}", ct);
         await LinkInventoryReceiptArtifactsAsync(connection, transaction, lineId, transactionId, accountingEvent.AccountingEventId, ct);
-        await InsertStorageAllocationAsync(connection, transaction, linkedGoodsReceiptItemId, "Fabric", receipt.Quantity, storageOperationId, itemId, transactionId, accountingEvent.AccountingEventId, postingId, null, ct);
+        await InsertStorageAllocationAsync(connection, transaction, linkedGoodsReceiptItemId, "Fabric", quantity, storageOperationId, itemId, transactionId, accountingEvent.AccountingEventId, postingId, null, ct);
     }
 
-    private static async Task ApplyFabricPresentationAsync(SqlConnection connection, SqlTransaction transaction, int itemId, string fabricType, string? catalogNumber, string? colorValue, decimal fabricWidth, CancellationToken ct)
+    private static async Task ApplyFabricPresentationAsync(SqlConnection connection, SqlTransaction transaction, int itemId, string fabricType, string? catalogNumber, string? colorValue, decimal fabricWidth, CancellationToken ct, bool allowRequestedCatalogReuse = false, bool assignCatalogNumber = true)
     {
-        var resolvedCatalog = await ResolveFabricCatalogNumberAsync(connection, transaction, itemId, catalogNumber, ct);
+        var normalizedCatalogNumber = string.IsNullOrWhiteSpace(catalogNumber) ? null : catalogNumber.Trim();
+        var useRequestedCatalog = normalizedCatalogNumber is not null && IsOfficialCatalogNumber(normalizedCatalogNumber);
+        var resolvedCatalog = assignCatalogNumber
+            ? await ResolveFabricCatalogNumberAsync(connection, transaction, itemId, useRequestedCatalog ? normalizedCatalogNumber : null, ct, allowRequestedCatalogReuse || useRequestedCatalog)
+            : null;
 
         const string sql = @"
             UPDATE dbo.InventoryItems
             SET FabricCategory=@fabricType,
-                Barcode=@catalogNumber,
+                Barcode = CASE WHEN @assignCatalogNumber = 1 THEN @catalogNumber ELSE Barcode END,
                 FabricColor=COALESCE(@colorValue,FabricColor),
                 FabricWidth=@fabricWidth,
                 FabricWidthUnit=N'Inch'
             WHERE InventoryItemID=@itemId;";
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@fabricType", fabricType);
-        command.Parameters.AddWithValue("@catalogNumber", resolvedCatalog);
+        command.Parameters.AddWithValue("@catalogNumber", resolvedCatalog ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@assignCatalogNumber", assignCatalogNumber ? 1 : 0);
         AddNullable(command, "@colorValue", colorValue);
         AddDecimal(command, "@fabricWidth", fabricWidth, 4);
         command.Parameters.AddWithValue("@itemId", itemId);
         await command.ExecuteNonQueryAsync(ct);
     }
 
-    private static async Task<string> ResolveFabricCatalogNumberAsync(SqlConnection connection, SqlTransaction transaction, int itemId, string? requestedCatalogNumber, CancellationToken ct)
+    private static async Task<string> ResolveFabricCatalogNumberAsync(SqlConnection connection, SqlTransaction transaction, int itemId, string? requestedCatalogNumber, CancellationToken ct, bool allowRequestedCatalogReuse = false)
     {
         using var readCurrent = new SqlCommand("SELECT Barcode FROM dbo.InventoryItems WITH (UPDLOCK, HOLDLOCK) WHERE InventoryItemID=@itemId", connection, transaction);
         readCurrent.Parameters.AddWithValue("@itemId", itemId);
@@ -3973,22 +4593,12 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             return currentCatalog.Trim();
         }
 
-        var preferredCatalog = string.IsNullOrWhiteSpace(requestedCatalogNumber) ? null : requestedCatalogNumber.Trim();
-        if (!string.IsNullOrWhiteSpace(preferredCatalog))
+        if (!string.IsNullOrWhiteSpace(requestedCatalogNumber) && (allowRequestedCatalogReuse || IsOfficialCatalogNumber(requestedCatalogNumber)))
         {
-            using var check = new SqlCommand("SELECT TOP (1) InventoryItemID FROM dbo.InventoryItems WITH (UPDLOCK, HOLDLOCK) WHERE Barcode=@requested AND InventoryItemID<>@itemId", connection, transaction);
-            check.Parameters.AddWithValue("@requested", preferredCatalog);
-            check.Parameters.AddWithValue("@itemId", itemId);
-            var existingItemId = await check.ExecuteScalarAsync(ct);
-            if (existingItemId is null)
-            {
-                return preferredCatalog;
-            }
+            return requestedCatalogNumber.Trim();
         }
 
-        var prefix = await SystemCodeGenerator.ResolvePrefixAsync(connection, transaction, "CatalogNumberPrefix", "CAT", ct);
-        var nextNumber = await SystemCodeGenerator.GetNextNumberAsync(connection, transaction, "dbo.InventoryItems", "Barcode", "CatalogNumberPrefix", "CAT", ct);
-        return $"{prefix}{nextNumber.ToString("D4", CultureInfo.InvariantCulture)}";
+        return await SystemCodeGenerator.GetNextAllocatedCatalogNumberAsync(connection, transaction, ct);
     }
 
     private static void AddNullable(SqlCommand command, string name, object? value) => command.Parameters.AddWithValue(name, value is string text ? (string.IsNullOrWhiteSpace(text) ? DBNull.Value : text.Trim()) : value ?? DBNull.Value);

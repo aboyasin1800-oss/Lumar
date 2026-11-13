@@ -1,0 +1,7 @@
+Write-Output RESET_TEST_STDOUT; Write-Error RESET_TEST_STDERR; exit 7 : 
+RESET_TEST_STDERR
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorExcep 
+   tion
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorExceptio 
+   n
+ 

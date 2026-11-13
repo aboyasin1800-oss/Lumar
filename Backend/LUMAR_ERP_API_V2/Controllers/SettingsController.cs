@@ -2,13 +2,23 @@ using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.DTOs.Settings;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LUMAR_ERP_API_V2.Controllers;
 
 [ApiController]
 [Route("settings")]
-public sealed class SettingsController(ISettingsService service, IAuthenticatedUserContext userContext) : ControllerBase
+public sealed class SettingsController(
+    ISettingsService service,
+    IAuthenticatedUserContext userContext,
+    ILogger<SettingsController> logger) : ControllerBase
 {
+    internal SettingsController(ISettingsService service, IAuthenticatedUserContext userContext)
+        : this(service, userContext, NullLogger<SettingsController>.Instance)
+    {
+    }
+
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<SystemSettingListDto>>> All(CancellationToken cancellationToken) =>
         Ok(await service.GetAllAsync(cancellationToken));
@@ -216,6 +226,31 @@ public sealed class SettingsController(ISettingsService service, IAuthenticatedU
     [HttpPost("test-data-reset")]
     public async Task<ActionResult<TestDataResetExecutionResultDto>> ExecuteTestDataReset(CancellationToken cancellationToken)
     {
+        var correlationId = Guid.NewGuid().ToString("N");
+        var requestPath = ControllerContext?.HttpContext?.Request?.Path.Value ?? string.Empty;
+        logger.LogInformation("RESET_POST_RECEIVED CORRELATION_ID={CorrelationId} PATH={Path}", correlationId, requestPath);
+
+        var user = await userContext.GetCurrentUserAsync(cancellationToken);
+        if (user is null)
+        {
+            logger.LogWarning("RESET_POST_REJECTED CORRELATION_ID={CorrelationId} REASON=Unauthorized", correlationId);
+            return Unauthorized();
+        }
+
+        if (!IsAdministrativeRole(user.Role))
+        {
+            logger.LogWarning("RESET_POST_REJECTED CORRELATION_ID={CorrelationId} REASON=Forbidden Role={Role}", correlationId, user.Role);
+            return StatusCode(StatusCodes.Status403Forbidden, "هذه العملية متاحة لمسؤول النظام فقط.");
+        }
+
+        var result = await service.ExecuteTestDataResetAsync(cancellationToken);
+        logger.LogInformation("RESET_POST_PROCESSING CORRELATION_ID={CorrelationId} SUCCESS={Success} FAILURE_STAGE={FailureStage} FAILURE_CODE={FailureCode}", correlationId, result.Success, result.FailureStage, result.FailureCode);
+        return result.Success ? Ok(result) : StatusCode(StatusCodes.Status500InternalServerError, result);
+    }
+
+    [HttpGet("test-data-reset/readiness")]
+    public async Task<ActionResult<TestDataResetReadinessResultDto>> GetTestDataResetReadiness(CancellationToken cancellationToken)
+    {
         var user = await userContext.GetCurrentUserAsync(cancellationToken);
         if (user is null)
         {
@@ -227,7 +262,7 @@ public sealed class SettingsController(ISettingsService service, IAuthenticatedU
             return StatusCode(StatusCodes.Status403Forbidden, "هذه العملية متاحة لمسؤول النظام فقط.");
         }
 
-        var result = await service.ExecuteTestDataResetAsync(cancellationToken);
+        var result = await service.GetTestDataResetReadinessAsync(cancellationToken);
         return result.Success ? Ok(result) : StatusCode(StatusCodes.Status500InternalServerError, result);
     }
 

@@ -1,0 +1,4 @@
+00:00 +0: loading d:/YASIN/frontend/tailoring_system/test/bulk_fabric_entry_layout_test.dart
+00:00 +0: renders the compact fabric batch screen without overflow in a normal desktop viewport
+00:03 +1: All tests passed!
+0 

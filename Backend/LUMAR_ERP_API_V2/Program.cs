@@ -8,8 +8,10 @@ using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
 using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
+DatabaseStartupGuard.EnsureApprovedDevelopmentDatabase(builder.Configuration);
 
 builder.Services.AddControllers(options => options.Filters.Add<GlobalApiErrorResultFilter>());
 builder.Services.AddHttpContextAccessor();
@@ -127,7 +129,23 @@ builder.Services.AddScoped<ISupplierPaymentResponseService, SupplierPaymentRespo
 builder.Services.AddScoped<IPurchasingService, PurchasingService>();
 builder.Services.AddScoped<ISupplierInvoiceLineService, SupplierInvoiceLineService>();
 builder.Services.AddScoped<IMessageService, MessageService>();
-builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddScoped<ISettingsService>(services =>
+{
+    var config = services.GetRequiredService<IConfiguration>();
+    var httpContextAccessor = services.GetRequiredService<IHttpContextAccessor>();
+    var optionsMonitor = services.GetRequiredService<IOptionsMonitor<WhatsAppOptions>>();
+    var settingsStore = services.GetRequiredService<IWhatsAppConnectionSettingsStore>();
+    var logger = services.GetRequiredService<ILogger<SettingsService>>();
+    var repository = services.GetRequiredService<ISettingsRepository>();
+
+    return SettingsService.CreateForLive(
+        repository,
+        config,
+        optionsMonitor,
+        settingsStore,
+        logger,
+        httpContextAccessor);
+});
 builder.Services.AddScoped<IWhatsAppConnectionSettingsStore, WhatsAppConnectionSettingsStore>();
 builder.Services.AddScoped<IPrintingService, PrintingService>();
 builder.Services.AddScoped<ICodePrefixSettingsService, CodePrefixSettingsService>();

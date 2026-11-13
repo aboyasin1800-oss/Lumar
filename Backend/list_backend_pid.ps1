@@ -1,0 +1,1 @@
+Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'LUMAR_ERP_API_V2.exe' } | Select-Object ProcessId,Name,CommandLine | Format-Table -AutoSize

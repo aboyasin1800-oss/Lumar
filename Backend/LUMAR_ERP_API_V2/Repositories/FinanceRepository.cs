@@ -7,6 +7,13 @@ public sealed class FinanceRepository(ReadOnlySqlConnectionFactory connections) 
     public async Task<JournalEntryDto?> GetJournalEntryAsync(int id, CancellationToken ct) => (await QueryAsync(JournalSummarySql + " HAVING je.JournalEntryId = @id", id, MapJournal, ct)).FirstOrDefault();
     public Task<IReadOnlyList<JournalEntryLineDto>> GetJournalLinesAsync(int id, CancellationToken ct) => QueryAsync("SELECT JournalEntryLineId, JournalEntryId, LedgerAccountId, DebitAmount, CreditAmount, Description FROM dbo.JournalEntryLines WHERE JournalEntryId = @id ORDER BY JournalEntryLineId", id, r => new JournalEntryLineDto(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), r.GetDecimal(3), r.GetDecimal(4), r.NullableString("Description")), ct);
     public Task<IReadOnlyList<LedgerAccountDto>> GetLedgerAccountsAsync(CancellationToken ct) => QueryAsync("SELECT LedgerAccountId, AccountCode, AccountName, AccountType, IsActive, CreatedAt, UpdatedAt FROM dbo.LedgerAccounts ORDER BY AccountCode, LedgerAccountId", null, r => new LedgerAccountDto(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetBoolean(4), r.GetDateTime(5), r.NullableDateTime("UpdatedAt")), ct);
+    public async Task<LedgerAccountDto?> GetLedgerAccountAsync(int id, CancellationToken ct)
+    {
+        var items = await QueryAsync("SELECT LedgerAccountId, AccountCode, AccountName, AccountType, IsActive, CreatedAt, UpdatedAt FROM dbo.LedgerAccounts WHERE LedgerAccountId = @id ORDER BY LedgerAccountId", id,
+            r => new LedgerAccountDto(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetBoolean(4), r.GetDateTime(5), r.NullableDateTime("UpdatedAt")), ct);
+        return items.FirstOrDefault();
+    }
+    public Task<IReadOnlyList<JournalEntryLineDto>> GetLedgerAccountLinesAsync(int id, CancellationToken ct) => QueryAsync("SELECT JournalEntryLineId, JournalEntryId, LedgerAccountId, DebitAmount, CreditAmount, Description FROM dbo.JournalEntryLines WHERE LedgerAccountId = @id ORDER BY JournalEntryId DESC, JournalEntryLineId DESC", id, r => new JournalEntryLineDto(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), r.GetDecimal(3), r.GetDecimal(4), r.NullableString("Description")), ct);
     public Task<IReadOnlyList<CashAccountDto>> GetCashAccountsAsync(CancellationToken ct) => QueryAsync("""
         SELECT ca.CashAccountId, ca.AccountName,
                COALESCE(SUM(CASE cm.CashDirection WHEN 1 THEN cm.Amount WHEN 2 THEN -cm.Amount ELSE 0 END), 0),

@@ -1,0 +1,51 @@
+CorrelationId=655ec92a2ef441ccbfa17097336c20b1
+Stage=RECEIVED
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=RECEIVED
+FailureCode=NONE
+StartTime=2026-11-11T22:55:36.8925276+00:00
+EndTime=2026-11-11T22:55:36.8925276+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=Request received before starting approved reset process.
+---
+CorrelationId=655ec92a2ef441ccbfa17097336c20b1
+Stage=SCRIPT_RESOLVED
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=SCRIPT_RESOLVED
+FailureCode=NONE
+StartTime=2026-11-11T22:55:36.8925276+00:00
+EndTime=2026-11-11T22:55:36.9003836+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=Reset script path and artifacts are resolved.
+---
+CorrelationId=655ec92a2ef441ccbfa17097336c20b1
+Stage=CONFIGURATION
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=
+ExitCode=
+ConfiguredTimeoutSeconds=2
+FailureStage=CONFIGURATION
+FailureCode=INVALID_RESET_RUNTIME_CONFIGURATION
+StartTime=2026-11-11T22:55:36.9013904+00:00
+EndTime=2026-11-11T22:55:36.9014175+00:00
+StdOut=<empty>
+StdErr=ConfiguredTimeoutSeconds=2; minimum approved=180
+Details=ConfiguredTimeoutSeconds=2; LiveMode=False; TestOverride=True; DatabaseName=LUMAR_ERP_ES_VALIDATION_R3; SafetyFloorSeconds=180.
+---

@@ -156,6 +156,41 @@ class SupplierPurchasingOperationsScreen extends StatefulWidget {
     return parsed;
   }
 
+  static bool validateInvoiceLine({
+    required String invoiceType,
+    required String description,
+    required String quantityText,
+    required String costText,
+    required String itemCountText,
+    required String productTypeText,
+    required String unitCodeText,
+    required String rollCountText,
+    required bool Function(String) isImportedUnitApproved,
+  }) {
+    final quantity = parseOptionalDecimal(quantityText);
+    final cost = parseOptionalDecimal(costText);
+    final itemCount = parseOptionalDecimal(itemCountText);
+    final hasName = description.trim().isNotEmpty;
+    final isImported = invoiceType == 'imported';
+    final productTypeOk = !isImported || productTypeText.trim().isNotEmpty;
+    final unitOk = !isImported || isImportedUnitApproved(unitCodeText.trim());
+
+    if (!hasName || quantity == null || quantity <= 0 || cost == null || cost <= 0) {
+      return false;
+    }
+
+    if (isImported) {
+      return productTypeOk && unitOk && itemCount != null && itemCount > 0;
+    }
+
+    if (invoiceType == 'fabric') {
+      final rollCount = int.tryParse(rollCountText.trim());
+      return rollCount != null && rollCount > 0;
+    }
+
+    return true;
+  }
+
   @override
   State<SupplierPurchasingOperationsScreen> createState() =>
       _SupplierPurchasingOperationsScreenState();
@@ -328,6 +363,28 @@ class _SupplierPurchasingOperationsScreenState
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<bool> _confirmUnsavedDialog(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تغييرات غير محفوظة'),
+        content: const Text('لديك بيانات غير محفوظة. هل تريد إلغاء الإدخال؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('متابعة التحرير'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('إلغاء الإدخال'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 
   @override
@@ -636,8 +693,10 @@ class _SupplierPurchasingOperationsScreenState
     SupplierPurchasingSupplier? supplier;
     SupplierPurchasingOrder? order;
     var invoiceType = 'fabric';
-    DateTime invoiceDate = DateTime.now();
-    DateTime dueDate = DateTime.now();
+    final initialInvoiceDate = DateTime.now();
+    final initialDueDate = DateTime.now();
+    DateTime invoiceDate = initialInvoiceDate;
+    DateTime dueDate = initialDueDate;
     String currency = 'YER';
     final currencies =
         <String>{'YER', ..._cashAccounts.map((e) => e.currency)}.toList();
@@ -651,175 +710,226 @@ class _SupplierPurchasingOperationsScreenState
         .toStringAsFixed(6));
     bool validLines() =>
         lines.isNotEmpty &&
-        lines.every((line) {
-          final quantity = parseOptionalDecimal(line.quantity.text);
-          final cost = parseOptionalDecimal(line.cost.text);
-          final itemCount = parseOptionalDecimal(line.itemCount.text);
-          final hasName = line.description.text.trim().isNotEmpty;
-          final isImported = invoiceType == 'imported';
-          final productTypeOk =
-              !isImported || line.productType.text.trim().isNotEmpty;
-          final unitOk =
-              !isImported || _isApprovedImportedUnit(line.unitCode.text.trim());
-          if (!hasName || quantity == null || quantity <= 0 || cost == null || cost <= 0) return false;
-          if (isImported) return productTypeOk && unitOk && itemCount != null && itemCount > 0;
-          return line.rollCount.text.trim().isEmpty ||
-              (int.tryParse(line.rollCount.text.trim()) ?? 0) > 0;
-        });
+        lines.every((line) => SupplierPurchasingOperationsScreen.validateInvoiceLine(
+              invoiceType: invoiceType,
+              description: line.description.text,
+              quantityText: line.quantity.text,
+              costText: line.cost.text,
+              itemCountText: line.itemCount.text,
+              productTypeText: line.productType.text,
+              unitCodeText: line.unitCode.text,
+              rollCountText: line.rollCount.text,
+              isImportedUnitApproved: _isApprovedImportedUnit,
+            ));
     final save = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('فاتورة مورد جديدة'),
-          content: SizedBox(
-            width: 680,
-            child: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  DropdownButtonFormField<SupplierPurchasingSupplier>(
-                    initialValue: supplier,
-                    decoration: const InputDecoration(labelText: 'المورد'),
-                    items: _suppliers
-                        .map((item) => DropdownMenuItem(
-                            value: item,
-                            child: Text('${item.name} (${item.code})')))
-                        .toList(),
-                    onChanged: (value) => setDialogState(() {
-                      supplier = value;
-                      order = null;
-                    }),
-                    validator: (value) => value == null ? 'اختر المورد.' : null,
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<SupplierPurchasingOrder?>(
-                    key: ValueKey('invoice-order-${supplier?.id}'),
-                    initialValue: order,
-                    decoration: const InputDecoration(
-                        labelText: 'أمر الشراء (اختياري)'),
-                    items: [
-                      const DropdownMenuItem(
-                          value: null,
-                          child: Text('فاتورة مباشرة دون أمر شراء')),
-                      ..._orders
-                          .where((item) => item.supplierId == supplier?.id)
-                          .map((item) => DropdownMenuItem(
-                              value: item, child: Text(item.number)))
-                    ],
-                    onChanged: (value) => setDialogState(() => order = value),
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    initialValue: invoiceType,
-                    decoration:
-                        const InputDecoration(labelText: 'نوع الفاتورة'),
-                    items: const [
-                      DropdownMenuItem(value: 'fabric', child: Text('أقمشة')),
-                      DropdownMenuItem(
-                          value: 'tools', child: Text('أدوات مستخدمة')),
-                      DropdownMenuItem(
-                          value: 'imported', child: Text('منتجات مستوردة')),
-                    ],
-                    onChanged: (value) => setDialogState(() {
-                      invoiceType = value ?? 'fabric';
-                      for (final line in lines) {
-                        if (invoiceType == 'fabric') {
-                          line.productType.clear();
-                          line.unitCode.clear();
-                          line.itemCount.clear();
-                        } else {
-                          if (line.unitCode.text.trim().isEmpty) {
-                            line.unitCode.text =
-                                invoiceType == 'tools' ? 'قطعة' : 'حبة';
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        bool invoiceHasUnsavedData() {
+          if (supplier != null || order != null || number.text.trim().isNotEmpty ||
+              notes.text.trim().isNotEmpty || currency != 'YER' ||
+              !invoiceDate.isAtSameMomentAs(initialInvoiceDate) ||
+              !dueDate.isAtSameMomentAs(initialDueDate)) {
+            return true;
+          }
+          for (final line in lines) {
+            if (line.description.text.trim().isNotEmpty ||
+                line.quantity.text.trim().isNotEmpty ||
+                line.cost.text.trim().isNotEmpty ||
+                line.productType.text.trim().isNotEmpty ||
+                line.unitCode.text.trim().isNotEmpty ||
+                line.itemCount.text.trim().isNotEmpty ||
+                line.rollCount.text.trim().isNotEmpty ||
+                line.supplierItemCode.text.trim().isNotEmpty) {
+              return true;
+            }
+          }
+          return false;
+        }
+
+        Future<void> closeWithGuard() async {
+          if (!invoiceHasUnsavedData()) {
+            if (Navigator.of(dialogContext).mounted) {
+              Navigator.of(dialogContext).pop(false);
+            }
+            return;
+          }
+
+          final shouldDiscard = await _confirmUnsavedDialog(dialogContext);
+          if (shouldDiscard && Navigator.of(dialogContext).mounted) {
+            Navigator.of(dialogContext).pop(false);
+          }
+        }
+
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+            await closeWithGuard();
+          },
+          child: StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+              title: const Text('فاتورة مورد جديدة'),
+              content: SizedBox(
+                width: 680,
+                child: Form(
+                  key: formKey,
+                  child: SingleChildScrollView(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      DropdownButtonFormField<SupplierPurchasingSupplier>(
+                        initialValue: supplier,
+                        decoration: const InputDecoration(labelText: 'المورد'),
+                        items: _suppliers
+                            .map((item) => DropdownMenuItem(
+                                value: item,
+                                child: Text('${item.name} (${item.code})')))
+                            .toList(),
+                        onChanged: (value) => setDialogState(() {
+                          supplier = value;
+                          order = null;
+                        }),
+                        validator: (value) => value == null ? 'اختر المورد.' : null,
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<SupplierPurchasingOrder?>(
+                        key: ValueKey('invoice-order-${supplier?.id}'),
+                        initialValue: order,
+                        decoration: const InputDecoration(
+                            labelText: 'أمر الشراء (اختياري)'),
+                        items: [
+                          const DropdownMenuItem(
+                              value: null,
+                              child: Text('فاتورة مباشرة دون أمر شراء')),
+                          ..._orders
+                              .where((item) => item.supplierId == supplier?.id)
+                              .map((item) => DropdownMenuItem(
+                                  value: item, child: Text(item.number)))
+                        ],
+                        onChanged: (value) => setDialogState(() => order = value),
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String>(
+                        initialValue: invoiceType,
+                        decoration:
+                            const InputDecoration(labelText: 'نوع الفاتورة'),
+                        items: const [
+                          DropdownMenuItem(value: 'fabric', child: Text('أقمشة')),
+                          DropdownMenuItem(
+                              value: 'tools', child: Text('أدوات مستخدمة')),
+                          DropdownMenuItem(
+                              value: 'imported', child: Text('منتجات مستوردة')),
+                        ],
+                        onChanged: (value) => setDialogState(() {
+                          invoiceType = value ?? 'fabric';
+                          for (final line in lines) {
+                            if (invoiceType == 'fabric') {
+                              line.productType.clear();
+                              line.unitCode.clear();
+                              line.itemCount.clear();
+                            } else {
+                              if (line.unitCode.text.trim().isEmpty) {
+                                line.unitCode.text =
+                                    invoiceType == 'tools' ? 'قطعة' : 'حبة';
+                              }
+                              if (line.itemCount.text.trim().isEmpty) {
+                                line.itemCount.text =
+                                    line.quantity.text.trim().isEmpty
+                                        ? '1'
+                                        : line.quantity.text.trim();
+                              }
+                            }
                           }
-                          if (line.itemCount.text.trim().isEmpty) {
-                            line.itemCount.text =
-                                line.quantity.text.trim().isEmpty
-                                    ? '1'
-                                    : line.quantity.text.trim();
-                          }
+                        }),
+                      ),
+                      _field(number, 'رقم الفاتورة', required: true),
+                      _dateRow('تاريخ الفاتورة', invoiceDate, () async {
+                        final value = await _pickDate(invoiceDate);
+                        if (value != null) {
+                          setDialogState(() => invoiceDate = value);
                         }
-                      }
-                    }),
+                      }),
+                      _dateRow('تاريخ الاستحقاق', dueDate, () async {
+                        final value = await _pickDate(dueDate);
+                        if (value != null) setDialogState(() => dueDate = value);
+                      }),
+                      const Divider(),
+                      for (var index = 0; index < lines.length; index++)
+                        _invoiceLine(
+                            lines[index],
+                            index,
+                            invoiceType,
+                            lines.length == 1
+                                ? null
+                                : () => setDialogState(() {
+                                      lines.removeAt(index);
+                                    }),
+                            () => setDialogState(() {})),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                            onPressed: () => setDialogState(
+                                () => lines.add(_InvoiceDraftLine())),
+                            icon: const Icon(Icons.add),
+                            label: const Text('إضافة بند')),
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('إجمالي الفاتورة'),
+                        trailing: Text(invoiceTotal().toStringAsFixed(2)),
+                      ),
+                      DropdownButtonFormField<String>(
+                          initialValue: currency,
+                          decoration: const InputDecoration(labelText: 'العملة'),
+                          items: currencies
+                              .map((item) =>
+                                  DropdownMenuItem(value: item, child: Text(item)))
+                              .toList(),
+                          onChanged: (value) =>
+                              setDialogState(() => currency = value ?? 'YER')),
+                      _field(notes, 'الملاحظات', last: true, onSubmitted: () {
+                        if (formKey.currentState!.validate() &&
+                            validLines() &&
+                            invoiceTotal() > 0 &&
+                            !dueDate.isBefore(invoiceDate)) {
+                          Navigator.pop(dialogContext, true);
+                        }
+                      }),
+                    ]),
                   ),
-                  _field(number, 'رقم الفاتورة', required: true),
-                  _dateRow('تاريخ الفاتورة', invoiceDate, () async {
-                    final value = await _pickDate(invoiceDate);
-                    if (value != null) {
-                      setDialogState(() => invoiceDate = value);
-                    }
-                  }),
-                  _dateRow('تاريخ الاستحقاق', dueDate, () async {
-                    final value = await _pickDate(dueDate);
-                    if (value != null) setDialogState(() => dueDate = value);
-                  }),
-                  const Divider(),
-                  for (var index = 0; index < lines.length; index++)
-                    _invoiceLine(
-                        lines[index],
-                        index,
-                        invoiceType,
-                        lines.length == 1
-                            ? null
-                            : () => setDialogState(() {
-                                  lines.removeAt(index);
-                                }),
-                        () => setDialogState(() {})),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                        onPressed: () => setDialogState(
-                            () => lines.add(_InvoiceDraftLine())),
-                        icon: const Icon(Icons.add),
-                        label: const Text('إضافة بند')),
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('إجمالي الفاتورة'),
-                    trailing: Text(invoiceTotal().toStringAsFixed(2)),
-                  ),
-                  DropdownButtonFormField<String>(
-                      initialValue: currency,
-                      decoration: const InputDecoration(labelText: 'العملة'),
-                      items: currencies
-                          .map((item) =>
-                              DropdownMenuItem(value: item, child: Text(item)))
-                          .toList(),
-                      onChanged: (value) =>
-                          setDialogState(() => currency = value ?? 'YER')),
-                  _field(notes, 'الملاحظات', last: true, onSubmitted: () {
-                    if (formKey.currentState!.validate() &&
-                        validLines() &&
-                        invoiceTotal() > 0 &&
-                        !dueDate.isBefore(invoiceDate)) {
-                      Navigator.pop(dialogContext, true);
-                    }
-                  }),
-                ]),
+                ),
               ),
+              actions: [
+                TextButton(
+                    onPressed: () async {
+                      if (!invoiceHasUnsavedData()) {
+                        Navigator.of(dialogContext).pop(false);
+                        return;
+                      }
+                      final shouldDiscard = await _confirmUnsavedDialog(dialogContext);
+                      if (shouldDiscard) {
+                        Navigator.of(dialogContext).pop(false);
+                      }
+                    },
+                    child: const Text('إلغاء')),
+                FilledButton(
+                    onPressed: () {
+                      if (dueDate.isBefore(invoiceDate)) {
+                        _showMessage('تاريخ الاستحقاق لا يسبق تاريخ الفاتورة.');
+                      } else if (formKey.currentState!.validate() &&
+                          validLines() &&
+                          invoiceTotal() > 0) {
+                        Navigator.pop(dialogContext, true);
+                      } else {
+                        _showMessage(
+                            'راجع بنود الفاتورة والكميات والتكاليف وعدد اللفات.');
+                      }
+                    },
+                    child: const Text('حفظ الفاتورة'))
+              ],
             ),
           ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('إلغاء')),
-            FilledButton(
-                onPressed: () {
-                  if (dueDate.isBefore(invoiceDate)) {
-                    _showMessage('تاريخ الاستحقاق لا يسبق تاريخ الفاتورة.');
-                  } else if (formKey.currentState!.validate() &&
-                      validLines() &&
-                      invoiceTotal() > 0) {
-                    Navigator.pop(dialogContext, true);
-                  } else {
-                    _showMessage(
-                        'راجع بنود الفاتورة والكميات والتكاليف وعدد اللفات.');
-                  }
-                },
-                child: const Text('حفظ الفاتورة'))
-          ],
-        ),
-      ),
+        );
+      },
     );
     if (save == true && supplier != null) {
       final duplicate = _invoices.any((item) =>
@@ -846,6 +956,14 @@ class _SupplierPurchasingOperationsScreenState
                       if (quantity == null || cost == null) {
                         throw const FormatException(
                             'أدخل كمية وتكلفة صحيحة قبل حفظ الفاتورة.');
+                      }
+
+                      if (invoiceType == 'fabric') {
+                        final rollCount = int.tryParse(line.rollCount.text.trim());
+                        if (rollCount == null || rollCount <= 0) {
+                          throw const FormatException(
+                              'لكل بند قماش يجب إدخال عدد اللفات بشكل صحيح.');
+                        }
                       }
 
                       final isFabric = invoiceType == 'fabric';
@@ -1624,266 +1742,310 @@ class _SupplierPurchasingOperationsScreenState
     SupplierPurchasingOrder? order;
     SupplierPurchasingInvoice? invoice;
     List<SupplierPurchasingInvoiceLine> invoiceLines = const [];
-    DateTime receiptDate = DateTime.now();
+    final initialReceiptDate = DateTime.now();
+    DateTime receiptDate = initialReceiptDate;
     final save = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => StatefulBuilder(
-            builder: (context, setDialogState) => AlertDialog(
-                    title: const Text('استلام بضاعة جديد'),
-                    content: SizedBox(
-                        width: 680,
-                        child: Form(
-                            key: formKey,
-                            child: SingleChildScrollView(
-                                child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                  if (_suppliers.isEmpty)
-                                    Container(
-                                      width: double.infinity,
-                                      margin: const EdgeInsets.only(bottom: 12),
-                                      padding: const EdgeInsets.all(10),
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .surfaceContainerHighest,
-                                      child: Text(
-                                        'تنبيه: لا يمكن حفظ الاستلام قبل توفر ${[
-                                          if (_suppliers.isEmpty) 'الموردين',
-                                        ].join(' و')}.',
-                                        textAlign: TextAlign.right,
-                                      ),
-                                    ),
-                                  DropdownButtonFormField<
-                                          SupplierPurchasingSupplier>(
-                                      initialValue: supplier,
-                                      decoration: const InputDecoration(
-                                          labelText: 'المورد'),
-                                      items: _suppliers
-                                          .map((item) => DropdownMenuItem(
-                                              value: item,
-                                              child: Text(
-                                                  '${item.name} (${item.code})')))
-                                          .toList(),
-                                      onChanged: (value) => setDialogState(() {
-                                            supplier = value;
-                                            order = null;
-                                            invoice = null;
-                                            invoiceLines = const [];
-                                            for (final line in lines) {
-                                              line.invoiceLine = null;
-                                            }
-                                          }),
-                                      validator: (value) => value == null
-                                          ? 'اختر المورد.'
-                                          : null),
-                                  const SizedBox(height: 10),
-                                  DropdownButtonFormField<
-                                          SupplierPurchasingOrder?>(
-                                      key: ValueKey(
-                                          'receipt-order-${supplier?.id}'),
-                                      initialValue: order,
-                                      decoration: const InputDecoration(
-                                          labelText: 'أمر الشراء (اختياري)'),
-                                      items: [
-                                        const DropdownMenuItem(
-                                            value: null,
-                                            child: Text(
-                                                'استلام مباشر دون أمر شراء')),
-                                        ..._orders
-                                            .where((item) =>
-                                                item.supplierId == supplier?.id)
-                                            .map((item) => DropdownMenuItem(
-                                                value: item,
-                                                child: Text(item.number)))
-                                      ],
-                                      onChanged: (value) => setDialogState(() {
-                                            order = value;
-                                            invoice = null;
-                                            invoiceLines = const [];
-                                            for (final line in lines) {
-                                              line.invoiceLine = null;
-                                            }
-                                          })),
-                                  const SizedBox(height: 10),
-                                  Autocomplete<SupplierPurchasingInvoice>(
-                                    key: ValueKey(
-                                        'receipt-invoice-${supplier?.id}-${order?.id}-${invoice?.id ?? 0}'),
-                                    initialValue: TextEditingValue(
-                                        text: invoice?.number ?? ''),
-                                    displayStringForOption: (item) =>
-                                        '${item.number} - ${_supplierName(item.supplierId)}',
-                                    optionsBuilder: (value) {
-                                      final query =
-                                          value.text.trim().toLowerCase();
-                                      return _invoices.where((item) =>
-                                          item.supplierId == supplier?.id &&
-                                          item.purchaseOrderId == order?.id &&
-                                          item.status != 'Reversed' &&
-                                          (query.isEmpty ||
-                                              item.number
-                                                  .toLowerCase()
-                                                  .contains(query)));
-                                    },
-                                    onSelected: (value) async {
-                                      setDialogState(() {
-                                        invoice = value;
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          bool receiptHasUnsavedData() {
+            if (supplier != null || order != null || invoice != null ||
+                number.text.trim().isNotEmpty || notes.text.trim().isNotEmpty ||
+                !receiptDate.isAtSameMomentAs(initialReceiptDate)) {
+              return true;
+            }
+            for (final line in lines) {
+              if (line.description.text.trim().isNotEmpty ||
+                  line.quantity.text.trim().isNotEmpty ||
+                  line.cost.text.trim().isNotEmpty ||
+                  line.productType.text.trim().isNotEmpty ||
+                  line.unitCode.text.trim().isNotEmpty ||
+                  line.itemCount.text.trim().isNotEmpty ||
+                  line.rollCount.text.trim().isNotEmpty ||
+                  line.invoiceLine != null) {
+                return true;
+              }
+            }
+            return false;
+          }
+
+          Future<void> closeWithGuard() async {
+            if (!receiptHasUnsavedData()) {
+              if (Navigator.of(dialogContext).mounted) {
+                Navigator.of(dialogContext).pop(false);
+              }
+              return;
+            }
+
+            final shouldDiscard = await _confirmUnsavedDialog(dialogContext);
+            if (shouldDiscard && Navigator.of(dialogContext).mounted) {
+              Navigator.of(dialogContext).pop(false);
+            }
+          }
+
+          return PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, result) async {
+              if (didPop) return;
+              await closeWithGuard();
+            },
+            child: StatefulBuilder(
+              builder: (context, setDialogState) {
+                return AlertDialog(
+                  title: const Text('استلام بضاعة جديد'),
+                  content: SizedBox(
+                    width: 680,
+                    child: Form(
+                      key: formKey,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_suppliers.isEmpty)
+                              Container(
+                                width: double.infinity,
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.all(10),
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest,
+                                child: Text(
+                                  'تنبيه: لا يمكن حفظ الاستلام قبل توفر ${[
+                                    if (_suppliers.isEmpty) 'الموردين',
+                                  ].join(' و')}.',
+                                  textAlign: TextAlign.right,
+                                ),
+                              ),
+                            DropdownButtonFormField<SupplierPurchasingSupplier>(
+                              initialValue: supplier,
+                              decoration: const InputDecoration(
+                                labelText: 'المورد',
+                              ),
+                              items: _suppliers
+                                  .map((item) => DropdownMenuItem(
+                                      value: item,
+                                      child: Text('${item.name} (${item.code})')))
+                                  .toList(),
+                              onChanged: (value) => setDialogState(() {
+                                supplier = value;
+                                order = null;
+                                invoice = null;
+                                invoiceLines = const [];
+                                for (final line in lines) {
+                                  line.invoiceLine = null;
+                                }
+                              }),
+                              validator: (value) =>
+                                  value == null ? 'اختر المورد.' : null,
+                            ),
+                            const SizedBox(height: 10),
+                            DropdownButtonFormField<SupplierPurchasingOrder?>(
+                              key: ValueKey('receipt-order-${supplier?.id}'),
+                              initialValue: order,
+                              decoration: const InputDecoration(
+                                labelText: 'أمر الشراء (اختياري)',
+                              ),
+                              items: [
+                                const DropdownMenuItem(
+                                  value: null,
+                                  child: Text('استلام مباشر دون أمر شراء'),
+                                ),
+                                ..._orders
+                                    .where(
+                                      (item) => item.supplierId == supplier?.id,
+                                    )
+                                    .map((item) => DropdownMenuItem(
+                                          value: item,
+                                          child: Text(item.number),
+                                        ))
+                              ],
+                              onChanged: (value) => setDialogState(() {
+                                order = value;
+                                invoice = null;
+                                invoiceLines = const [];
+                                for (final line in lines) {
+                                  line.invoiceLine = null;
+                                }
+                              }),
+                            ),
+                            const SizedBox(height: 10),
+                            Autocomplete<SupplierPurchasingInvoice>(
+                              key: ValueKey(
+                                'receipt-invoice-${supplier?.id}-${order?.id}-${invoice?.id ?? 0}',
+                              ),
+                              initialValue: TextEditingValue(
+                                text: invoice?.number ?? '',
+                              ),
+                              displayStringForOption: (item) =>
+                                  '${item.number} - ${_supplierName(item.supplierId)}',
+                              optionsBuilder: (value) {
+                                final query = value.text.trim().toLowerCase();
+                                return _invoices.where((item) =>
+                                    item.supplierId == supplier?.id &&
+                                    item.purchaseOrderId == order?.id &&
+                                    item.status != 'Reversed' &&
+                                    (query.isEmpty ||
+                                        item.number
+                                            .toLowerCase()
+                                            .contains(query)));
+                              },
+                              onSelected: (value) async {
+                                setDialogState(() {
+                                  invoice = value;
+                                  invoiceLines = const [];
+                                  lines.clear();
+                                });
+                                final loaded = await _repository.getInvoiceLines(value.id);
+                                if (!dialogContext.mounted) return;
+                                setDialogState(() {
+                                  invoiceLines = loaded
+                                      .where((line) => line.status == 'Posted')
+                                      .toList();
+                                  lines.clear();
+                                  for (final invoiceLine in invoiceLines) {
+                                    final draft = _ReceiptDraftLine();
+                                    draft.invoiceLine = invoiceLine;
+                                    draft.description.text = invoiceLine.itemName;
+                                    draft.productType.text =
+                                        invoiceLine.productType?.trim().isNotEmpty ==
+                                                true
+                                            ? invoiceLine.productType!
+                                            : invoiceLine.itemType;
+                                    draft.unitCode.text =
+                                        invoiceLine.unitCode ??
+                                            _defaultUnitForType(
+                                                invoiceLine.itemType);
+                                    draft.quantity.text =
+                                        invoiceLine.quantity.toString();
+                                    draft.cost.text = invoiceLine.unitCost.toString();
+                                    draft.itemCount.text =
+                                        (invoiceLine.itemCount ??
+                                                invoiceLine.quantity)
+                                            .toString();
+                                    lines.add(draft);
+                                  }
+                                });
+                              },
+                              fieldViewBuilder:
+                                  (context, controller, focusNode, onSubmitted) =>
+                                      TextFormField(
+                                controller: controller,
+                                focusNode: focusNode,
+                                textInputAction: TextInputAction.next,
+                                decoration: const InputDecoration(
+                                  labelText: 'رقم فاتورة المورد (اختياري)',
+                                  hintText: 'اكتب رقم الفاتورة للبحث',
+                                ),
+                                onFieldSubmitted: (_) => onSubmitted(),
+                              ),
+                            ),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton.icon(
+                                onPressed: invoice == null
+                                    ? null
+                                    : () => setDialogState(() {
+                                        invoice = null;
                                         invoiceLines = const [];
-                                        lines.clear();
-                                      });
-                                      final loaded = await _repository
-                                          .getInvoiceLines(value.id);
-                                      if (!dialogContext.mounted) return;
-                                      setDialogState(() {
-                                        invoiceLines = loaded
-                                            .where((line) =>
-                                                line.status == 'Posted')
-                                            .toList();
-                                        lines.clear();
-                                        for (final invoiceLine
-                                            in invoiceLines) {
-                                          final draft = _ReceiptDraftLine();
-                                          draft.invoiceLine = invoiceLine;
-                                          draft.description.text =
-                                              invoiceLine.itemName;
-                                          draft.productType.text = invoiceLine
-                                                      .productType
-                                                      ?.trim()
-                                                      .isNotEmpty ==
-                                                  true
-                                              ? invoiceLine.productType!
-                                              : invoiceLine.itemType;
-                                          draft.unitCode.text =
-                                              invoiceLine.unitCode ??
-                                                  _defaultUnitForType(
-                                                      invoiceLine.itemType);
-                                          draft.quantity.text =
-                                              invoiceLine.quantity.toString();
-                                          draft.cost.text =
-                                              invoiceLine.unitCost.toString();
-                                          draft.itemCount.text =
-                                              (invoiceLine.itemCount ??
-                                                      invoiceLine.quantity)
-                                                  .toString();
-                                          lines.add(draft);
+                                        for (final line in lines) {
+                                          line.invoiceLine = null;
                                         }
-                                      });
-                                    },
-                                    fieldViewBuilder: (context, controller,
-                                            focusNode, onSubmitted) =>
-                                        TextFormField(
-                                      controller: controller,
-                                      focusNode: focusNode,
-                                      textInputAction: TextInputAction.next,
-                                      decoration: const InputDecoration(
-                                          labelText:
-                                              'رقم فاتورة المورد (اختياري)',
-                                          hintText: 'اكتب رقم الفاتورة للبحث'),
-                                      onFieldSubmitted: (_) => onSubmitted(),
-                                    ),
-                                  ),
-                                  Align(
-                                    alignment: Alignment.centerRight,
-                                    child: TextButton.icon(
-                                      onPressed: invoice == null
-                                          ? null
-                                          : () => setDialogState(() {
-                                                invoice = null;
-                                                invoiceLines = const [];
-                                                for (final line in lines) {
-                                                  line.invoiceLine = null;
-                                                }
-                                              }),
-                                      icon: const Icon(Icons.link_off),
-                                      label:
-                                          const Text('استلام دون ربط بفاتورة'),
-                                    ),
-                                  ),
-                                  _field(number, 'رقم الاستلام',
-                                      required: true),
-                                  _dateRow('تاريخ الاستلام', receiptDate,
-                                      () async {
-                                    final value = await _pickDate(receiptDate);
-                                    if (value != null) {
-                                      setDialogState(() => receiptDate = value);
-                                    }
-                                  }),
-                                  const Divider(),
-                                  for (var index = 0;
-                                      index < lines.length;
-                                      index++)
-                                    _receiptLine(
-                                        lines[index],
-                                        index,
-                                        invoiceLines,
-                                        () => setDialogState(() {}),
-                                        () => setDialogState(() {
-                                              lines.removeAt(index);
-                                            })),
-                                  Align(
-                                      alignment: Alignment.centerRight,
-                                      child: TextButton.icon(
-                                          onPressed: () => setDialogState(() =>
-                                              lines.add(_ReceiptDraftLine())),
-                                          icon: const Icon(Icons.add),
-                                          label: const Text('إضافة صنف'))),
-                                  _field(notes, 'الملاحظات', last: true,
-                                      onSubmitted: () {
-                                    if (formKey.currentState!.validate() &&
-                                        lines.isNotEmpty &&
-                                        lines.every((line) =>
-                                            line.description.text
-                                                .trim()
-                                                .isNotEmpty &&
-                                            (invoice == null ||
-                                                line.invoiceLine != null) &&
-                                            (double.tryParse(
-                                                        line.quantity.text) ??
-                                                    0) >
-                                                0 &&
-                                            (double.tryParse(line.cost.text) ??
-                                                    0) >
-                                                0 &&
-                                            ((line.itemType ?? '') !=
-                                                    'Fabric' ||
-                                                (int.tryParse(line
-                                                            .rollCount.text
-                                                            .trim()) ??
-                                                        0) >
-                                                    0))) {
-                                      Navigator.pop(dialogContext, true);
-                                    }
-                                  }),
-                                ])))),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(dialogContext, false),
-                          child: const Text('إلغاء')),
-                      FilledButton(
-                          onPressed: () {
-                            if (!formKey.currentState!.validate() ||
-                                lines.isEmpty ||
-                                lines.any((line) =>
-                                    line.description.text.trim().isEmpty ||
-                                    (invoice != null &&
-                                        line.invoiceLine == null) ||
-                                    (double.tryParse(line.quantity.text) ??
-                                            0) <=
-                                        0 ||
-                                    (double.tryParse(line.cost.text) ?? 0) <=
-                                        0 ||
-                                    ((line.itemType ?? '') == 'Fabric' &&
-                                        (int.tryParse(line.rollCount.text
-                                                    .trim()) ??
-                                                0) <=
-                                            0))) {
-                              _showMessage(
-                                  'راجع البنود والربط بالفاتورة والكميات والتكاليف وعدد اللفات للقماش.');
-                              return;
-                            }
-                            Navigator.pop(dialogContext, true);
-                          },
-                          child: const Text('حفظ الاستلام'))
-                    ])));
+                                      }),
+                                icon: const Icon(Icons.link_off),
+                                label: const Text('استلام دون ربط بفاتورة'),
+                              ),
+                            ),
+                            _field(number, 'رقم الاستلام', required: true),
+                            _dateRow('تاريخ الاستلام', receiptDate, () async {
+                              final value = await _pickDate(receiptDate);
+                              if (value != null) {
+                                setDialogState(() => receiptDate = value);
+                              }
+                            }),
+                            const Divider(),
+                            for (var index = 0; index < lines.length; index++)
+                              _receiptLine(
+                                lines[index],
+                                index,
+                                invoiceLines,
+                                () => setDialogState(() {}),
+                                () => setDialogState(() {
+                                  lines.removeAt(index);
+                                }),
+                              ),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton.icon(
+                                onPressed: () =>
+                                    setDialogState(() => lines.add(_ReceiptDraftLine())),
+                                icon: const Icon(Icons.add),
+                                label: const Text('إضافة صنف'),
+                              ),
+                            ),
+                            _field(notes, 'الملاحظات', last: true, onSubmitted: () {
+                              if (formKey.currentState!.validate() &&
+                                  lines.isNotEmpty &&
+                                  lines.every((line) =>
+                                      line.description.text.trim().isNotEmpty &&
+                                      (invoice == null || line.invoiceLine != null) &&
+                                      (double.tryParse(line.quantity.text) ?? 0) >
+                                          0 &&
+                                      (double.tryParse(line.cost.text) ?? 0) > 0 &&
+                                      ((line.itemType ?? '') != 'Fabric' ||
+                                          (int.tryParse(line.rollCount.text.trim()) ??
+                                                  0) >
+                                              0))) {
+                                Navigator.pop(dialogContext, true);
+                              }
+                            }),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () async {
+                        if (!receiptHasUnsavedData()) {
+                          Navigator.of(dialogContext).pop(false);
+                          return;
+                        }
+                        final shouldDiscard =
+                            await _confirmUnsavedDialog(dialogContext);
+                        if (shouldDiscard) {
+                          Navigator.of(dialogContext).pop(false);
+                        }
+                      },
+                      child: const Text('إلغاء'),
+                    ),
+                    FilledButton(
+                      onPressed: () {
+                        if (!formKey.currentState!.validate() ||
+                            lines.isEmpty ||
+                            lines.any((line) =>
+                                line.description.text.trim().isEmpty ||
+                                (invoice != null && line.invoiceLine == null) ||
+                                (double.tryParse(line.quantity.text) ?? 0) <= 0 ||
+                                (double.tryParse(line.cost.text) ?? 0) <= 0 ||
+                                ((line.itemType ?? '') == 'Fabric' &&
+                                    (int.tryParse(line.rollCount.text.trim()) ?? 0) <=
+                                        0))) {
+                          _showMessage(
+                            'راجع البنود والربط بالفاتورة والكميات والتكاليف وعدد اللفات للقماش.',
+                          );
+                          return;
+                        }
+                        Navigator.pop(dialogContext, true);
+                      },
+                      child: const Text('حفظ الاستلام'),
+                    ),
+                  ],
+                );
+              },
+            ),
+          );
+        },
+      );
     if (save == true && supplier != null) {
       final duplicate = _receipts.any((item) =>
           item.number.trim().toLowerCase() == number.text.trim().toLowerCase());

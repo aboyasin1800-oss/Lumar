@@ -1,0 +1,777 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="9baf51dd-6da5-43e4-ae15-32f1efb013ea" name="LENOVO@YASIN-YASIN 2026-11-09 01:40:44" runUser="YASIN-YASIN\LENOVO" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-11-09T01:40:44.2646022+03:00" queuing="2026-11-09T01:40:44.2646031+03:00" start="2026-11-09T01:40:29.9078043+03:00" finish="2026-11-09T01:41:23.9709563+03:00" />
+  <TestSettings name="default" id="795acf13-9269-4ee6-9c8b-d0098579cbeb">
+    <Deployment runDeploymentRoot="LENOVO_YASIN-YASIN_2026-11-09_01_40_44" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="aef2da15-7712-4a20-b764-1147161f7ecb" testId="a4985a89-0bab-10fd-f642-e80f1264479f" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_UsesApprovedOpposingAccountAndCreatesBalancedAccountingEvent" computerName="YASIN-YASIN" duration="00:00:02.8716912" startTime="2026-11-09T01:41:16.2463975+03:00" endTime="2026-11-09T01:41:19.2269546+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="aef2da15-7712-4a20-b764-1147161f7ecb" />
+    <UnitTestResult executionId="a854470a-4694-4541-94c8-87f2f27aebc2" testId="524bde53-b44e-1a76-83cd-bbdd7243cc29" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringOrderDetails_ProjectsOfficialFabricCostAndPieceFullCost" computerName="YASIN-YASIN" duration="00:00:01.1968142" startTime="2026-11-09T01:40:58.3166596+03:00" endTime="2026-11-09T01:40:59.5620797+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a854470a-4694-4541-94c8-87f2f27aebc2" />
+    <UnitTestResult executionId="99b2eaa0-fbfb-4af1-b31a-b8f2b3cb6f2f" testId="fac471aa-ed33-800c-fad6-be8cbc220b88" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_SameAddOperationIdWithSamePayload_IsReplaySafe" computerName="YASIN-YASIN" duration="00:00:00.5940938" startTime="2026-11-09T01:41:13.5471338+03:00" endTime="2026-11-09T01:41:14.1792211+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="99b2eaa0-fbfb-4af1-b31a-b8f2b3cb6f2f">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Data.SqlClient.SqlException : A required active ledger account is missing.</Message>
+          <StackTrace>   at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+   at Microsoft.Data.SqlClient.SqlDataReader.TryConsumeMetaData()&#xD;
+   at Microsoft.Data.SqlClient.SqlDataReader.get_MetaData()&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderInternal(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderAsync(IAsyncResult asyncResult)&#xD;
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+--- End of stack trace from previous location ---&#xD;
+   at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostCoreAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, Nullable`1 customerAdvanceApplicationId, Nullable`1 inventoryReceiptPostingId, Nullable`1 fabricConsumptionSourceId, Nullable`1 productionMaterialConsumptionId, Nullable`1 readyMadeSaleCostPostingId, Nullable`1 importedReadyMadeInventoryReceiptId, Nullable`1 importedReadyMadeSaleCostPostingId, Nullable`1 toolIssuanceId, Nullable`1 toolIssuanceReversalId, String referenceNumber, String description, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs:line 420&#xD;
+   at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostCoreAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, Nullable`1 customerAdvanceApplicationId, Nullable`1 inventoryReceiptPostingId, Nullable`1 fabricConsumptionSourceId, Nullable`1 productionMaterialConsumptionId, Nullable`1 readyMadeSaleCostPostingId, Nullable`1 importedReadyMadeInventoryReceiptId, Nullable`1 importedReadyMadeSaleCostPostingId, Nullable`1 toolIssuanceId, Nullable`1 toolIssuanceReversalId, String referenceNumber, String description, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs:line 449&#xD;
+   at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, String referenceNumber, String description, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs:line 79&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.InsertAdvanceAsync(Int32 orderId, String orderNumber, Int32 customerId, Decimal amount, String paymentMethod, Int32 cashAccountId, DateTime now, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 1492&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 174&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 178&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 193&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 196&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 196&#xD;
+   at LUMAR_ERP_API_V2.Services.OrderService.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Services\OrderService.cs:line 22&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_SameAddOperationIdWithSamePayload_IsReplaySafe() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.OrderEdit.cs:line 427&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="77ecbd03-eb04-44e6-81fc-fbb5ebc50086" testId="cf7fad01-89a9-2162-01e2-b5a79e818843" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_MultiFabricItemBatch_GeneratesDistinctCatalogNumbersPerDistinctFabricItem" computerName="YASIN-YASIN" duration="00:00:00.6943446" startTime="2026-11-09T01:40:59.5631886+03:00" endTime="2026-11-09T01:41:00.3617459+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="77ecbd03-eb04-44e6-81fc-fbb5ebc50086" />
+    <UnitTestResult executionId="12ac9a7d-d15b-4944-aab7-3455cb4eeee7" testId="faaab28b-8d34-b3ed-b127-3d09635b2259" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ConcurrentOrdersCannotExceedSameCodeAvailability" computerName="YASIN-YASIN" duration="00:00:02.3329106" startTime="2026-11-09T01:41:19.2283931+03:00" endTime="2026-11-09T01:41:21.5899345+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="12ac9a7d-d15b-4944-aab7-3455cb4eeee7" />
+    <UnitTestResult executionId="858680e0-4f2a-4ef8-8eda-374a9f8fcf14" testId="220dd301-3cb6-2caf-2ecf-3b35b5cca9a8" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(inchesPerPiece: 36, quantity: 2)" computerName="YASIN-YASIN" duration="00:00:01.4922875" startTime="2026-11-09T01:40:55.5174878+03:00" endTime="2026-11-09T01:40:56.9928526+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="858680e0-4f2a-4ef8-8eda-374a9f8fcf14">
+      <Output>
+        <StdOut>{"FabricCode":"FAB-FOUND-5f212abc9e56","InventoryItemId":122,"OrderId":128,"RequiredInches":72,"BeforeQuantity":6,"AfterQuantity":4,"BeforeValue":153,"AfterValue":102.0,"RetryOrderId":128}&#xD;
+{"FabricCode":"FAB-FOUND-5F212ABC9E56","InventoryItemId":122,"OrderItemId":132,"PieceId":null,"FabricConsumptionSourceId":26,"SourceOperationId":"e77d011e-6576-66ef-ac22-3c2f8e7e907f","ConsumedQuantity":2.000000,"UnitId":1,"OfficialUnitCost":25.500000,"OperationalAmount":51.000000,"PostingAmount":51.00,"InventoryTransactionId":150,"AccountingEventId":110,"FinancialTransactionId":107,"JournalEntryId":107,"AccountCode":"1101","DebitAmount":0.00,"CreditAmount":51.00}&#xD;
+{"FabricCode":"FAB-FOUND-5F212ABC9E56","InventoryItemId":122,"OrderItemId":132,"PieceId":null,"FabricConsumptionSourceId":26,"SourceOperationId":"e77d011e-6576-66ef-ac22-3c2f8e7e907f","ConsumedQuantity":2.000000,"UnitId":1,"OfficialUnitCost":25.500000,"OperationalAmount":51.000000,"PostingAmount":51.00,"InventoryTransactionId":150,"AccountingEventId":110,"FinancialTransactionId":107,"JournalEntryId":107,"AccountCode":"1130","DebitAmount":51.00,"CreditAmount":0.00}</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="5ea51b0e-bc8a-4580-8992-265ce712198b" testId="609f1f4b-1c13-6789-7e6a-45c0efcf037f" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically(secondInches: 217, shouldSucceed: False)" computerName="YASIN-YASIN" duration="00:00:01.1343407" startTime="2026-11-09T01:40:50.8298483+03:00" endTime="2026-11-09T01:40:51.9827767+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5ea51b0e-bc8a-4580-8992-265ce712198b" />
+    <UnitTestResult executionId="b49c4773-ea33-4a42-94a9-854561d3397b" testId="9695009f-42cc-140c-39f2-07120e3b698f" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_ConflictingEditAndAddPayloads_AreRejected" computerName="YASIN-YASIN" duration="00:00:01.7982423" startTime="2026-11-09T01:41:04.0686580+03:00" endTime="2026-11-09T01:41:05.8852544+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b49c4773-ea33-4a42-94a9-854561d3397b">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Data.SqlClient.SqlException : A required active ledger account is missing.</Message>
+          <StackTrace>   at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+   at Microsoft.Data.SqlClient.SqlDataReader.TryConsumeMetaData()&#xD;
+   at Microsoft.Data.SqlClient.SqlDataReader.get_MetaData()&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteReader(IAsyncResult asyncResult, Boolean isInternal, String endMethod)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderInternal(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderAsync(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.&lt;&gt;c.&lt;InternalExecuteReaderAsync&gt;b__201_1(IAsyncResult asyncResult)&#xD;
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+--- End of stack trace from previous location ---&#xD;
+   at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostCoreAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, Nullable`1 customerAdvanceApplicationId, Nullable`1 inventoryReceiptPostingId, Nullable`1 fabricConsumptionSourceId, Nullable`1 productionMaterialConsumptionId, Nullable`1 readyMadeSaleCostPostingId, Nullable`1 importedReadyMadeInventoryReceiptId, Nullable`1 importedReadyMadeSaleCostPostingId, Nullable`1 toolIssuanceId, Nullable`1 toolIssuanceReversalId, String referenceNumber, String description, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs:line 420&#xD;
+   at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostCoreAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, Nullable`1 customerAdvanceApplicationId, Nullable`1 inventoryReceiptPostingId, Nullable`1 fabricConsumptionSourceId, Nullable`1 productionMaterialConsumptionId, Nullable`1 readyMadeSaleCostPostingId, Nullable`1 importedReadyMadeInventoryReceiptId, Nullable`1 importedReadyMadeSaleCostPostingId, Nullable`1 toolIssuanceId, Nullable`1 toolIssuanceReversalId, String referenceNumber, String description, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs:line 449&#xD;
+   at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, String referenceNumber, String description, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs:line 79&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.InsertAdvanceAsync(Int32 orderId, String orderNumber, Int32 customerId, Decimal amount, String paymentMethod, Int32 cashAccountId, DateTime now, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 1492&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 174&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 178&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 193&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 196&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 196&#xD;
+   at LUMAR_ERP_API_V2.Services.OrderService.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Services\OrderService.cs:line 22&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_ConflictingEditAndAddPayloads_AreRejected() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.OrderEdit.cs:line 493&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="d4f69234-734b-4770-9fb0-ca2d7427a9d0" testId="9a770b41-ff7e-9e7c-cb18-079d2db44929" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceiptAndConsumption_AreBalancedPreciseAndIdempotent" computerName="YASIN-YASIN" duration="00:00:00.7650593" startTime="2026-11-09T01:41:21.5936890+03:00" endTime="2026-11-09T01:41:22.3740582+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d4f69234-734b-4770-9fb0-ca2d7427a9d0">
+      <Output>
+        <ErrorInfo>
+          <Message>System.InvalidOperationException : The opposing ledger account '2100' is not approved for this inventory receipt event.</Message>
+          <StackTrace>   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ValidateApprovedOpposingLedgerAccount(String accountCode, String[] approvedAccountCodes) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs:line 2993&#xD;
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFoundationInventoryAsync(Int32 goodsReceiptItemId, Byte inventoryClassId, Int16 unitId, String itemCode, String opposingLedgerAccountCode, Guid sourceOperationId, String fabricTypeCode, String rollCode, String colorValue, CancellationToken ct) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs:line 2506&#xD;
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFoundationInventoryAsync(Int32 goodsReceiptItemId, Byte inventoryClassId, Int16 unitId, String itemCode, String opposingLedgerAccountCode, Guid sourceOperationId, String fabricTypeCode, String rollCode, String colorValue, CancellationToken ct) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs:line 2662&#xD;
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFoundationInventoryAsync(Int32 goodsReceiptItemId, Byte inventoryClassId, Int16 unitId, String itemCode, String opposingLedgerAccountCode, Guid sourceOperationId, String fabricTypeCode, String rollCode, String colorValue, CancellationToken ct) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs:line 2663&#xD;
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFoundationInventoryAsync(Int32 goodsReceiptItemId, Byte inventoryClassId, Int16 unitId, String itemCode, String opposingLedgerAccountCode, Guid sourceOperationId, String fabricTypeCode, String rollCode, String colorValue, CancellationToken ct) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs:line 2663&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceiptAndConsumption_AreBalancedPreciseAndIdempotent() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 258&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceiptAndConsumption_AreBalancedPreciseAndIdempotent() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 363&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="b3ea1518-8af9-4a37-9049-851c7ad7cc7a" testId="657c2040-bdc4-f0b2-01ed-04bae246418f" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.StorageLinkedFabricBatch_ReplayWithSameOperationIsIdempotent" computerName="YASIN-YASIN" duration="00:00:00.5325683" startTime="2026-11-09T01:41:08.5260735+03:00" endTime="2026-11-09T01:41:09.0600492+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b3ea1518-8af9-4a37-9049-851c7ad7cc7a" />
+    <UnitTestResult executionId="dac6e9d4-b872-4976-956a-f6017a5cf2b1" testId="470add21-bffc-3f86-0d88-b4b0317a2539" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_MultiRollBatch_StoresEachRollWithoutDuplication" computerName="YASIN-YASIN" duration="00:00:01.0673661" startTime="2026-11-09T01:41:12.4128999+03:00" endTime="2026-11-09T01:41:13.5465056+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="dac6e9d4-b872-4976-956a-f6017a5cf2b1" />
+    <UnitTestResult executionId="a0367cc9-ffa9-490d-bb84-cf70f94b4171" testId="fb6d2ad2-02bf-278f-96d5-26a200919be3" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.StorageLinkedFabricBatch_DoesNotCreatePurchaseOrderOrGoodsReceipt" computerName="YASIN-YASIN" duration="00:00:00.5172170" startTime="2026-11-09T01:41:02.1740205+03:00" endTime="2026-11-09T01:41:02.6938641+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a0367cc9-ffa9-490d-bb84-cf70f94b4171" />
+    <UnitTestResult executionId="ba195c2b-3b21-407b-9467-06035059253d" testId="f99f7043-246f-da16-d0e1-0211747ab9c1" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems(inchesPerPiece: 108, shouldSucceed: True)" computerName="YASIN-YASIN" duration="00:00:01.6843702" startTime="2026-11-09T01:41:05.8915679+03:00" endTime="2026-11-09T01:41:07.6922015+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ba195c2b-3b21-407b-9467-06035059253d" />
+    <UnitTestResult executionId="6ff4f6b6-40ab-4f02-a5dc-b3a1c9dd4bd4" testId="e0bfcb44-0cb7-c9ae-1b96-9d4ceac6c285" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(unitId: 1)" computerName="YASIN-YASIN" duration="00:00:00.5885724" startTime="2026-11-09T01:41:02.6943832+03:00" endTime="2026-11-09T01:41:03.2943930+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6ff4f6b6-40ab-4f02-a5dc-b3a1c9dd4bd4">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Data.SqlClient.SqlException : The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_AccountingEvent". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'AccountingEventId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_InventoryTransaction". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'InventoryTransactionId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_AccountingEvents_InventoryReceiptPosting". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.AccountingEvents", column 'InventoryReceiptPostingId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_AccountingEvents_FabricConsumptionSource". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.AccountingEvents", column 'FabricConsumptionSourceId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_InventoryTransaction". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'InventoryTransactionId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_Piece". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'PieceId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_Pieces_OrderItems_OrderItemID". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.Pieces", column 'OrderItemID'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_InventoryReceiptPostings_GoodsReceiptItem". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.InventoryReceiptPostings", column 'GoodsReceiptItemId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_InventoryReceiptPostings_GoodsReceiptItem". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.InventoryReceiptPostings", column 'GoodsReceiptItemId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_GoodsReceipts_PurchaseOrders_PurchaseOrderId". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.GoodsReceipts", column 'PurchaseOrderId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_OrderItems_Orders_OrderID". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.OrderItems", column 'OrderID'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_GoodsReceipts_Suppliers_SupplierId". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.GoodsReceipts", column 'SupplierId'.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.</Message>
+          <StackTrace>   at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.&lt;&gt;c.&lt;InternalExecuteNonQueryAsync&gt;b__193_1(IAsyncResult asyncResult)&#xD;
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+--- End of stack trace from previous location ---&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1706&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1706&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1706&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(Int16 unitId) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 893&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="2ac1ec29-7c17-4b8e-93b3-63146a0b0dd1" testId="17d3ca79-6440-b9e1-cc00-d5b0aeddcb75" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_FailureAfterFirstPostingRollsBackEntireOrder" computerName="YASIN-YASIN" duration="00:00:01.5967160" startTime="2026-11-09T01:41:09.0608037+03:00" endTime="2026-11-09T01:41:10.6805674+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2ac1ec29-7c17-4b8e-93b3-63146a0b0dd1" />
+    <UnitTestResult executionId="c8b73ac7-0476-49fb-b791-b6cc7e4f0dad" testId="15abfba5-ba80-bdf5-069d-53da40262f36" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_InsufficientStockRejectsBeforeCreatingOrder" computerName="YASIN-YASIN" duration="00:00:00.5278553" startTime="2026-11-09T01:41:11.8834400+03:00" endTime="2026-11-09T01:41:12.4122925+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c8b73ac7-0476-49fb-b791-b6cc7e4f0dad" />
+    <UnitTestResult executionId="9f00fabe-9ee1-49a5-abde-2a08e1838e16" testId="34dec8f6-84c4-e39e-a4b2-e672c6d46f09" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.OfficialFabricBatch_CreatesPurchaseReceiptFoundationAndBalancedEntry" computerName="YASIN-YASIN" duration="00:00:00.6881130" startTime="2026-11-09T01:40:50.1289821+03:00" endTime="2026-11-09T01:40:50.8288717+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9f00fabe-9ee1-49a5-abde-2a08e1838e16" />
+    <UnitTestResult executionId="b2837281-0042-465e-8602-621ccdb3b9c4" testId="a89c3062-3ed5-c7d8-5708-6573b048bb15" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(unitId: 2)" computerName="YASIN-YASIN" duration="00:00:00.6917998" startTime="2026-11-09T01:41:03.3028496+03:00" endTime="2026-11-09T01:41:04.0602631+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b2837281-0042-465e-8602-621ccdb3b9c4">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Data.SqlClient.SqlException : The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_AccountingEvent". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'AccountingEventId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_InventoryTransaction". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'InventoryTransactionId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_AccountingEvents_InventoryReceiptPosting". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.AccountingEvents", column 'InventoryReceiptPostingId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_AccountingEvents_FabricConsumptionSource". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.AccountingEvents", column 'FabricConsumptionSourceId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_InventoryTransaction". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'InventoryTransactionId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_Piece". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'PieceId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_Pieces_OrderItems_OrderItemID". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.Pieces", column 'OrderItemID'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_InventoryReceiptPostings_GoodsReceiptItem". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.InventoryReceiptPostings", column 'GoodsReceiptItemId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_InventoryReceiptPostings_GoodsReceiptItem". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.InventoryReceiptPostings", column 'GoodsReceiptItemId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_GoodsReceipts_PurchaseOrders_PurchaseOrderId". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.GoodsReceipts", column 'PurchaseOrderId'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_OrderItems_Orders_OrderID". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.OrderItems", column 'OrderID'.&#xD;
+The DELETE statement conflicted with the REFERENCE constraint "FK_GoodsReceipts_Suppliers_SupplierId". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.GoodsReceipts", column 'SupplierId'.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.&#xD;
+The statement has been terminated.</Message>
+          <StackTrace>   at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.&lt;&gt;c.&lt;InternalExecuteNonQueryAsync&gt;b__193_1(IAsyncResult asyncResult)&#xD;
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+--- End of stack trace from previous location ---&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1706&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1706&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1706&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(Int16 unitId) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 893&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="471d4e90-fd4f-4f8e-bf79-ad67ae037a11" testId="04b5b852-5c98-fb26-d356-fffdeece1fd5" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent" computerName="YASIN-YASIN" duration="00:00:01.7077420" startTime="2026-11-09T01:40:44.1613691+03:00" endTime="2026-11-09T01:40:45.8997277+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="471d4e90-fd4f-4f8e-bf79-ad67ae037a11">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Data.SqlClient.SqlException : The official reversal definition is disabled.</Message>
+          <StackTrace>   at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+   at Microsoft.Data.SqlClient.SqlDataReader.TryConsumeMetaData()&#xD;
+   at Microsoft.Data.SqlClient.SqlDataReader.get_MetaData()&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteReader(IAsyncResult asyncResult, Boolean isInternal, String endMethod)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderInternal(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderAsync(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.&lt;&gt;c.&lt;InternalExecuteReaderAsync&gt;b__201_1(IAsyncResult asyncResult)&#xD;
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+--- End of stack trace from previous location ---&#xD;
+   at LUMAR_ERP_API_V2.FinancialFoundation.FoundationPostingGateway.ReverseFabricPartialAsync(SqlConnection connection, SqlTransaction transaction, Int64 reversalId, Int64 originalEventId, Guid operationId, String reference, String reason, String actor, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\FinancialFoundation\FoundationPostingGateway.cs:line 71&#xD;
+   at LUMAR_ERP_API_V2.FinancialFoundation.FoundationPostingGateway.ReverseFabricPartialAsync(SqlConnection connection, SqlTransaction transaction, Int64 reversalId, Int64 originalEventId, Guid operationId, String reference, String reason, String actor, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\FinancialFoundation\FoundationPostingGateway.cs:line 71&#xD;
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReverseFabricConsumptionInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseFabricConsumptionDto request, CancellationToken ct) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.PartialFabricReversal.cs:line 109&#xD;
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReverseFabricConsumptionInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseFabricConsumptionDto request, CancellationToken ct) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.PartialFabricReversal.cs:line 126&#xD;
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReverseFabricConsumptionInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseFabricConsumptionDto request, CancellationToken ct) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.PartialFabricReversal.cs:line 126&#xD;
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReverseFabricConsumptionInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseFabricConsumptionDto request, CancellationToken ct) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.PartialFabricReversal.cs:line 126&#xD;
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReverseFabricConsumptionInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseFabricConsumptionDto request, CancellationToken ct) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.PartialFabricReversal.cs:line 126&#xD;
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReverseFabricConsumptionInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseFabricConsumptionDto request, CancellationToken ct) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.PartialFabricReversal.cs:line 126&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.&lt;&gt;c__DisplayClass69_0.&lt;&lt;TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent&gt;g__ReverseAsync|3&gt;d.MoveNext() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.PartialReversal.cs:line 93&#xD;
+--- End of stack trace from previous location ---&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.&lt;&gt;c__DisplayClass69_0.&lt;&lt;TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent&gt;g__ReverseAsync|3&gt;d.MoveNext() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.PartialReversal.cs:line 96&#xD;
+--- End of stack trace from previous location ---&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.&lt;&gt;c__DisplayClass69_0.&lt;&lt;TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent&gt;g__ReverseAsync|3&gt;d.MoveNext() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.PartialReversal.cs:line 96&#xD;
+--- End of stack trace from previous location ---&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.PartialReversal.cs:line 41&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="e91aec73-5d1c-44a1-9cde-aa3d23c35cc5" testId="0b72a96c-b424-72c0-c0a9-4b38ef7f3f85" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_ReplayedWithSameRollCode_DoesNotCreateDuplicateFabricRoll" computerName="YASIN-YASIN" duration="00:00:05.6892049" startTime="2026-11-09T01:40:38.3238163+03:00" endTime="2026-11-09T01:40:44.0200448+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e91aec73-5d1c-44a1-9cde-aa3d23c35cc5" />
+    <UnitTestResult executionId="13e18acf-ab41-4809-bd30-14b6207639a4" testId="2eb05dde-d72a-d1c8-66ff-740f38525bd4" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_PartialPostingWithoutStorage_IsCompletedSafely" computerName="YASIN-YASIN" duration="00:00:00.5809331" startTime="2026-11-09T01:40:49.5319175+03:00" endTime="2026-11-09T01:40:50.1267940+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="13e18acf-ab41-4809-bd30-14b6207639a4" />
+    <UnitTestResult executionId="8044cb92-15e1-4739-b532-0346fa7884cb" testId="ba752f00-7891-357a-6c92-7eb48ab16568" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_AddPiece_PreservesOfficialDetailsAndOrderDetailsProjection" computerName="YASIN-YASIN" duration="00:00:01.1993703" startTime="2026-11-09T01:41:00.3625446+03:00" endTime="2026-11-09T01:41:01.5620010+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8044cb92-15e1-4739-b532-0346fa7884cb" />
+    <UnitTestResult executionId="2f80b335-a9c9-4977-b8a5-fe7038f6362d" testId="647ed682-c6da-d527-2fa5-e47c83871341" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(inchesPerPiece: 24, quantity: 9)" computerName="YASIN-YASIN" duration="00:00:00.6814102" startTime="2026-11-09T01:40:57.6318571+03:00" endTime="2026-11-09T01:40:58.3150953+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2f80b335-a9c9-4977-b8a5-fe7038f6362d">
+      <Output>
+        <StdOut>{"FabricCode":"FAB-FOUND-8e52f4a580e9","InventoryItemId":124,"OrderId":132,"RequiredInches":216,"BeforeQuantity":6,"AfterQuantity":0,"BeforeValue":153,"AfterValue":0.0,"RetryOrderId":132}&#xD;
+{"FabricCode":"FAB-FOUND-8E52F4A580E9","InventoryItemId":124,"OrderItemId":136,"PieceId":null,"FabricConsumptionSourceId":28,"SourceOperationId":"72e00dd8-ea26-f7a7-e583-2856f3a61b6e","ConsumedQuantity":6.000000,"UnitId":1,"OfficialUnitCost":25.500000,"OperationalAmount":153.000000,"PostingAmount":153.00,"InventoryTransactionId":154,"AccountingEventId":114,"FinancialTransactionId":111,"JournalEntryId":111,"AccountCode":"1101","DebitAmount":0.00,"CreditAmount":153.00}&#xD;
+{"FabricCode":"FAB-FOUND-8E52F4A580E9","InventoryItemId":124,"OrderItemId":136,"PieceId":null,"FabricConsumptionSourceId":28,"SourceOperationId":"72e00dd8-ea26-f7a7-e583-2856f3a61b6e","ConsumedQuantity":6.000000,"UnitId":1,"OfficialUnitCost":25.500000,"OperationalAmount":153.000000,"PostingAmount":153.00,"InventoryTransactionId":154,"AccountingEventId":114,"FinancialTransactionId":111,"JournalEntryId":111,"AccountCode":"1130","DebitAmount":153.00,"CreditAmount":0.00}</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="543c73af-c47e-41c3-8116-f5eb02aea716" testId="15498d3b-aaee-0e8e-8b85-b5a06368f3eb" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_AddPiece_AddsOfficialPriceToExistingTotal_WhenLegacyPieceHasNoPriceSnapshot" computerName="YASIN-YASIN" duration="00:00:02.0302820" startTime="2026-11-09T01:41:14.1854632+03:00" endTime="2026-11-09T01:41:16.2458577+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="543c73af-c47e-41c3-8116-f5eb02aea716" />
+    <UnitTestResult executionId="2c0685cb-cbf3-481f-be31-15914d492df0" testId="e8d3b314-46a6-3b32-52af-f9c4666dd95a" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationConsumption_RejectsInsufficientQuantityWithoutArtifacts" computerName="YASIN-YASIN" duration="00:00:00.2198240" startTime="2026-11-09T01:41:11.6609419+03:00" endTime="2026-11-09T01:41:11.8824867+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2c0685cb-cbf3-481f-be31-15914d492df0" />
+    <UnitTestResult executionId="aa9d4e88-1eed-40a3-9878-34a943766da1" testId="cc3ab807-6d66-68ed-0658-b327533fda68" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_SingleSupplierInvoiceLine_AssignsUniqueCatalogNumbersAcrossDistinctRollFabricCodes" computerName="YASIN-YASIN" duration="00:00:01.5455604" startTime="2026-11-09T01:40:45.9642492+03:00" endTime="2026-11-09T01:40:47.4464357+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="aa9d4e88-1eed-40a3-9878-34a943766da1" />
+    <UnitTestResult executionId="61bce3bc-b4b6-4b9e-8a76-9299594c7712" testId="6d3cf555-f313-3e22-83cb-7a154bd5d770" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems(inchesPerPiece: 109, shouldSucceed: False)" computerName="YASIN-YASIN" duration="00:00:00.8304542" startTime="2026-11-09T01:41:07.6935356+03:00" endTime="2026-11-09T01:41:08.5253690+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="61bce3bc-b4b6-4b9e-8a76-9299594c7712" />
+    <UnitTestResult executionId="e9547630-ad0b-47c7-b73a-31ad20ea650d" testId="48b06525-5330-e99d-df3c-490050b31852" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_CancelPiece_PreservesActualPaidDiscountAndRemaining" computerName="YASIN-YASIN" duration="00:00:00.2763449" startTime="2026-11-09T01:41:10.6809852+03:00" endTime="2026-11-09T01:41:10.9691988+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e9547630-ad0b-47c7-b73a-31ad20ea650d">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.Data.SqlClient.SqlException : A required active ledger account is missing.</Message>
+          <StackTrace>   at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+   at Microsoft.Data.SqlClient.SqlDataReader.TryConsumeMetaData()&#xD;
+   at Microsoft.Data.SqlClient.SqlDataReader.get_MetaData()&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteReader(IAsyncResult asyncResult, Boolean isInternal, String endMethod)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderInternal(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderAsync(IAsyncResult asyncResult)&#xD;
+   at Microsoft.Data.SqlClient.SqlCommand.&lt;&gt;c.&lt;InternalExecuteReaderAsync&gt;b__201_1(IAsyncResult asyncResult)&#xD;
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+--- End of stack trace from previous location ---&#xD;
+   at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostCoreAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, Nullable`1 customerAdvanceApplicationId, Nullable`1 inventoryReceiptPostingId, Nullable`1 fabricConsumptionSourceId, Nullable`1 productionMaterialConsumptionId, Nullable`1 readyMadeSaleCostPostingId, Nullable`1 importedReadyMadeInventoryReceiptId, Nullable`1 importedReadyMadeSaleCostPostingId, Nullable`1 toolIssuanceId, Nullable`1 toolIssuanceReversalId, String referenceNumber, String description, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs:line 420&#xD;
+   at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostCoreAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, Nullable`1 customerAdvanceApplicationId, Nullable`1 inventoryReceiptPostingId, Nullable`1 fabricConsumptionSourceId, Nullable`1 productionMaterialConsumptionId, Nullable`1 readyMadeSaleCostPostingId, Nullable`1 importedReadyMadeInventoryReceiptId, Nullable`1 importedReadyMadeSaleCostPostingId, Nullable`1 toolIssuanceId, Nullable`1 toolIssuanceReversalId, String referenceNumber, String description, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs:line 449&#xD;
+   at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, String referenceNumber, String description, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs:line 79&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.InsertAdvanceAsync(Int32 orderId, String orderNumber, Int32 customerId, Decimal amount, String paymentMethod, Int32 cashAccountId, DateTime now, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 1492&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 174&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 178&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 193&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 196&#xD;
+   at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs:line 196&#xD;
+   at LUMAR_ERP_API_V2.Services.OrderService.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken) in D:\YASIN\Backend\LUMAR_ERP_API_V2\Services\OrderService.cs:line 22&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_CancelPiece_PreservesActualPaidDiscountAndRemaining() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.OrderEdit.cs:line 119&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="d1dfcb9a-d5b9-47f6-bada-0e493f29df6c" testId="f577940c-8c4d-5e54-e1a3-ce1a9e648bf3" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ShortageReturnsJsonMessageForFlutter" computerName="YASIN-YASIN" duration="00:00:01.5912923" startTime="2026-11-09T01:40:53.7581386+03:00" endTime="2026-11-09T01:40:55.4986173+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d1dfcb9a-d5b9-47f6-bada-0e493f29df6c">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.IsType() Failure: Value is not the exact type&#xD;
+Expected: typeof(Microsoft.AspNetCore.Mvc.BadRequestObjectResult)&#xD;
+Actual:   typeof(Microsoft.AspNetCore.Mvc.NotFoundObjectResult)</Message>
+          <StackTrace>   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.&lt;&gt;c__DisplayClass23_0.&lt;&lt;TailoringFabric_ShortageReturnsJsonMessageForFlutter&gt;b__0&gt;d.MoveNext() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1238&#xD;
+--- End of stack trace from previous location ---&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.WithFabricOrderAsync(String reference, Func`3 action) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1307&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.WithFabricOrderAsync(String reference, Func`3 action) in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1313&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ShortageReturnsJsonMessageForFlutter() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1222&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="da6ab98f-2c4e-4046-85c9-e76e18beb16c" testId="ced236c2-801c-320a-156f-4d9d394834a9" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder(missingCode: False)" computerName="YASIN-YASIN" duration="00:00:01.6826519" startTime="2026-11-09T01:40:47.4505514+03:00" endTime="2026-11-09T01:40:49.1491875+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="da6ab98f-2c4e-4046-85c9-e76e18beb16c" />
+    <UnitTestResult executionId="7b569ce4-a08c-455f-916f-67904bf9ce61" testId="da8fb224-8764-633e-75ee-2e2ff47008d7" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically(secondInches: 36, shouldSucceed: True)" computerName="YASIN-YASIN" duration="00:00:01.7437098" startTime="2026-11-09T01:40:51.9911562+03:00" endTime="2026-11-09T01:40:53.7495509+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7b569ce4-a08c-455f-916f-67904bf9ce61" />
+    <UnitTestResult executionId="992a8f56-fcf4-409a-80f2-64434b2e9f7c" testId="e7f6a872-79bc-68db-7542-ee482ad64952" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OmittingNestedFabricDoesNotBypassConsumption" computerName="YASIN-YASIN" duration="00:00:00.6901842" startTime="2026-11-09T01:41:10.9751440+03:00" endTime="2026-11-09T01:41:11.6604711+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="992a8f56-fcf4-409a-80f2-64434b2e9f7c" />
+    <UnitTestResult executionId="c662f1b3-def6-4dcd-be20-87fa070ad3fe" testId="da4e17d0-a41f-5712-160e-f5e006ec3c66" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder(missingCode: True)" computerName="YASIN-YASIN" duration="00:00:00.3797606" startTime="2026-11-09T01:40:49.1521853+03:00" endTime="2026-11-09T01:40:49.5306407+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c662f1b3-def6-4dcd-be20-87fa070ad3fe" />
+    <UnitTestResult executionId="7c75b9f1-2095-46b8-94c1-a6a7fdf5bb13" testId="dc74a523-27c9-1b14-feff-c9da8215b140" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_TenRollBatch_KeepsOneSharedCatalogButUniqueFabricCodes" computerName="YASIN-YASIN" duration="00:00:00.8827088" startTime="2026-11-09T01:41:22.3805564+03:00" endTime="2026-11-09T01:41:23.3913951+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7c75b9f1-2095-46b8-94c1-a6a7fdf5bb13">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Values differ&#xD;
+Expected: 1&#xD;
+Actual:   10</Message>
+          <StackTrace>   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_TenRollBatch_KeepsOneSharedCatalogButUniqueFabricCodes() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 680&#xD;
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_TenRollBatch_KeepsOneSharedCatalogButUniqueFabricCodes() in D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 685&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="d89fa4fb-85ff-4c23-9828-0545f0aa8e65" testId="d5cb8646-c27e-111a-8048-12d270ad4858" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(inchesPerPiece: 108, quantity: 2)" computerName="YASIN-YASIN" duration="00:00:00.6340462" startTime="2026-11-09T01:40:56.9956622+03:00" endTime="2026-11-09T01:40:57.6311298+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d89fa4fb-85ff-4c23-9828-0545f0aa8e65">
+      <Output>
+        <StdOut>{"FabricCode":"FAB-FOUND-8de3e33d01d7","InventoryItemId":123,"OrderId":130,"RequiredInches":216,"BeforeQuantity":6,"AfterQuantity":0,"BeforeValue":153,"AfterValue":0.0,"RetryOrderId":130}&#xD;
+{"FabricCode":"FAB-FOUND-8DE3E33D01D7","InventoryItemId":123,"OrderItemId":134,"PieceId":null,"FabricConsumptionSourceId":27,"SourceOperationId":"e0b35dad-3de9-d8da-72e7-792551d0bd21","ConsumedQuantity":6.000000,"UnitId":1,"OfficialUnitCost":25.500000,"OperationalAmount":153.000000,"PostingAmount":153.00,"InventoryTransactionId":152,"AccountingEventId":112,"FinancialTransactionId":109,"JournalEntryId":109,"AccountCode":"1101","DebitAmount":0.00,"CreditAmount":153.00}&#xD;
+{"FabricCode":"FAB-FOUND-8DE3E33D01D7","InventoryItemId":123,"OrderItemId":134,"PieceId":null,"FabricConsumptionSourceId":27,"SourceOperationId":"e0b35dad-3de9-d8da-72e7-792551d0bd21","ConsumedQuantity":6.000000,"UnitId":1,"OfficialUnitCost":25.500000,"OperationalAmount":153.000000,"PostingAmount":153.00,"InventoryTransactionId":152,"AccountingEventId":112,"FinancialTransactionId":109,"JournalEntryId":109,"AccountCode":"1130","DebitAmount":153.00,"CreditAmount":0.00}</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="65ff866c-9a3d-4e14-998b-8f70c3f08a85" testId="f43a5e38-382e-45bd-03f2-92d56b540300" testName="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_CallerRollbackRestoresStockAndRemovesPosting" computerName="YASIN-YASIN" duration="00:00:00.6091761" startTime="2026-11-09T01:41:01.5628740+03:00" endTime="2026-11-09T01:41:02.1733877+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="65ff866c-9a3d-4e14-998b-8f70c3f08a85" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(unitId: 2)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="a89c3062-3ed5-c7d8-5708-6573b048bb15">
+      <Execution id="b2837281-0042-465e-8602-621ccdb3b9c4" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="FabricCodeConsumption_UsesOfficialStockAndPostsOnce" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_ReplayedWithSameRollCode_DoesNotCreateDuplicateFabricRoll" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="0b72a96c-b424-72c0-c0a9-4b38ef7f3f85">
+      <Execution id="e91aec73-5d1c-44a1-9cde-aa3d23c35cc5" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="FoundationReceipt_ReplayedWithSameRollCode_DoesNotCreateDuplicateFabricRoll" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_CallerRollbackRestoresStockAndRemovesPosting" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="f43a5e38-382e-45bd-03f2-92d56b540300">
+      <Execution id="65ff866c-9a3d-4e14-998b-8f70c3f08a85" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="FabricCodeConsumption_CallerRollbackRestoresStockAndRemovesPosting" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_ConflictingEditAndAddPayloads_AreRejected" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="9695009f-42cc-140c-39f2-07120e3b698f">
+      <Execution id="b49c4773-ea33-4a42-94a9-854561d3397b" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringEdit_ConflictingEditAndAddPayloads_AreRejected" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(inchesPerPiece: 36, quantity: 2)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="220dd301-3cb6-2caf-2ecf-3b35b5cca9a8">
+      <Execution id="858680e0-4f2a-4ef8-8eda-374a9f8fcf14" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically(secondInches: 36, shouldSucceed: True)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="da8fb224-8764-633e-75ee-2e2ff47008d7">
+      <Execution id="7b569ce4-a08c-455f-916f-67904bf9ce61" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_SameAddOperationIdWithSamePayload_IsReplaySafe" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="fac471aa-ed33-800c-fad6-be8cbc220b88">
+      <Execution id="99b2eaa0-fbfb-4af1-b31a-b8f2b3cb6f2f" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringEdit_SameAddOperationIdWithSamePayload_IsReplaySafe" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceiptAndConsumption_AreBalancedPreciseAndIdempotent" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="9a770b41-ff7e-9e7c-cb18-079d2db44929">
+      <Execution id="d4f69234-734b-4770-9fb0-ca2d7427a9d0" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="FoundationReceiptAndConsumption_AreBalancedPreciseAndIdempotent" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_CancelPiece_PreservesActualPaidDiscountAndRemaining" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="48b06525-5330-e99d-df3c-490050b31852">
+      <Execution id="e9547630-ad0b-47c7-b73a-31ad20ea650d" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringEdit_CancelPiece_PreservesActualPaidDiscountAndRemaining" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OmittingNestedFabricDoesNotBypassConsumption" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="e7f6a872-79bc-68db-7542-ee482ad64952">
+      <Execution id="992a8f56-fcf4-409a-80f2-64434b2e9f7c" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_OmittingNestedFabricDoesNotBypassConsumption" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems(inchesPerPiece: 109, shouldSucceed: False)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="6d3cf555-f313-3e22-83cb-7a154bd5d770">
+      <Execution id="61bce3bc-b4b6-4b9e-8a76-9299594c7712" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(inchesPerPiece: 24, quantity: 9)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="647ed682-c6da-d527-2fa5-e47c83871341">
+      <Execution id="2f80b335-a9c9-4977-b8a5-fe7038f6362d" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_FailureAfterFirstPostingRollsBackEntireOrder" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="17d3ca79-6440-b9e1-cc00-d5b0aeddcb75">
+      <Execution id="2ac1ec29-7c17-4b8e-93b3-63146a0b0dd1" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_FailureAfterFirstPostingRollsBackEntireOrder" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="04b5b852-5c98-fb26-d356-fffdeece1fd5">
+      <Execution id="471d4e90-fd4f-4f8e-bf79-ad67ae037a11" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_SingleSupplierInvoiceLine_AssignsUniqueCatalogNumbersAcrossDistinctRollFabricCodes" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="cc3ab807-6d66-68ed-0658-b327533fda68">
+      <Execution id="aa9d4e88-1eed-40a3-9878-34a943766da1" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="FoundationReceipt_SingleSupplierInvoiceLine_AssignsUniqueCatalogNumbersAcrossDistinctRollFabricCodes" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(unitId: 1)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="e0bfcb44-0cb7-c9ae-1b96-9d4ceac6c285">
+      <Execution id="6ff4f6b6-40ab-4f02-a5dc-b3a1c9dd4bd4" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="FabricCodeConsumption_UsesOfficialStockAndPostsOnce" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_InsufficientStockRejectsBeforeCreatingOrder" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="15abfba5-ba80-bdf5-069d-53da40262f36">
+      <Execution id="c8b73ac7-0476-49fb-b791-b6cc7e4f0dad" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_InsufficientStockRejectsBeforeCreatingOrder" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringOrderDetails_ProjectsOfficialFabricCostAndPieceFullCost" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="524bde53-b44e-1a76-83cd-bbdd7243cc29">
+      <Execution id="a854470a-4694-4541-94c8-87f2f27aebc2" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringOrderDetails_ProjectsOfficialFabricCostAndPieceFullCost" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationConsumption_RejectsInsufficientQuantityWithoutArtifacts" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="e8d3b314-46a6-3b32-52af-f9c4666dd95a">
+      <Execution id="2c0685cb-cbf3-481f-be31-15914d492df0" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="FoundationConsumption_RejectsInsufficientQuantityWithoutArtifacts" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder(missingCode: True)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="da4e17d0-a41f-5712-160e-f5e006ec3c66">
+      <Execution id="c662f1b3-def6-4dcd-be20-87fa070ad3fe" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_TenRollBatch_KeepsOneSharedCatalogButUniqueFabricCodes" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="dc74a523-27c9-1b14-feff-c9da8215b140">
+      <Execution id="7c75b9f1-2095-46b8-94c1-a6a7fdf5bb13" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="FoundationReceipt_TenRollBatch_KeepsOneSharedCatalogButUniqueFabricCodes" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.StorageLinkedFabricBatch_ReplayWithSameOperationIsIdempotent" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="657c2040-bdc4-f0b2-01ed-04bae246418f">
+      <Execution id="b3ea1518-8af9-4a37-9049-851c7ad7cc7a" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="StorageLinkedFabricBatch_ReplayWithSameOperationIsIdempotent" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder(missingCode: False)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="ced236c2-801c-320a-156f-4d9d394834a9">
+      <Execution id="da6ab98f-2c4e-4046-85c9-e76e18beb16c" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.StorageLinkedFabricBatch_DoesNotCreatePurchaseOrderOrGoodsReceipt" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="fb6d2ad2-02bf-278f-96d5-26a200919be3">
+      <Execution id="a0367cc9-ffa9-490d-bb84-cf70f94b4171" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="StorageLinkedFabricBatch_DoesNotCreatePurchaseOrderOrGoodsReceipt" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_AddPiece_AddsOfficialPriceToExistingTotal_WhenLegacyPieceHasNoPriceSnapshot" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="15498d3b-aaee-0e8e-8b85-b5a06368f3eb">
+      <Execution id="543c73af-c47e-41c3-8116-f5eb02aea716" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringEdit_AddPiece_AddsOfficialPriceToExistingTotal_WhenLegacyPieceHasNoPriceSnapshot" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ConcurrentOrdersCannotExceedSameCodeAvailability" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="faaab28b-8d34-b3ed-b127-3d09635b2259">
+      <Execution id="12ac9a7d-d15b-4944-aab7-3455cb4eeee7" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_ConcurrentOrdersCannotExceedSameCodeAvailability" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.OfficialFabricBatch_CreatesPurchaseReceiptFoundationAndBalancedEntry" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="34dec8f6-84c4-e39e-a4b2-e672c6d46f09">
+      <Execution id="9f00fabe-9ee1-49a5-abde-2a08e1838e16" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="OfficialFabricBatch_CreatesPurchaseReceiptFoundationAndBalancedEntry" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_UsesApprovedOpposingAccountAndCreatesBalancedAccountingEvent" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="a4985a89-0bab-10fd-f642-e80f1264479f">
+      <Execution id="aef2da15-7712-4a20-b764-1147161f7ecb" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="FoundationReceipt_UsesApprovedOpposingAccountAndCreatesBalancedAccountingEvent" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ShortageReturnsJsonMessageForFlutter" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="f577940c-8c4d-5e54-e1a3-ce1a9e648bf3">
+      <Execution id="d1dfcb9a-d5b9-47f6-bada-0e493f29df6c" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_ShortageReturnsJsonMessageForFlutter" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically(secondInches: 217, shouldSucceed: False)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="609f1f4b-1c13-6789-7e6a-45c0efcf037f">
+      <Execution id="5ea51b0e-bc8a-4580-8992-265ce712198b" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_MultiFabricItemBatch_GeneratesDistinctCatalogNumbersPerDistinctFabricItem" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="cf7fad01-89a9-2162-01e2-b5a79e818843">
+      <Execution id="77ecbd03-eb04-44e6-81fc-fbb5ebc50086" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="FoundationReceipt_MultiFabricItemBatch_GeneratesDistinctCatalogNumbersPerDistinctFabricItem" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(inchesPerPiece: 108, quantity: 2)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="d5cb8646-c27e-111a-8048-12d270ad4858">
+      <Execution id="d89fa4fb-85ff-4c23-9828-0545f0aa8e65" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems(inchesPerPiece: 108, shouldSucceed: True)" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="f99f7043-246f-da16-d0e1-0211747ab9c1">
+      <Execution id="ba195c2b-3b21-407b-9467-06035059253d" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_AddPiece_PreservesOfficialDetailsAndOrderDetailsProjection" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="ba752f00-7891-357a-6c92-7eb48ab16568">
+      <Execution id="8044cb92-15e1-4739-b532-0346fa7884cb" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="TailoringEdit_AddPiece_PreservesOfficialDetailsAndOrderDetailsProjection" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_MultiRollBatch_StoresEachRollWithoutDuplication" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="470add21-bffc-3f86-0d88-b4b0317a2539">
+      <Execution id="dac6e9d4-b872-4976-956a-f6017a5cf2b1" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="FoundationReceipt_MultiRollBatch_StoresEachRollWithoutDuplication" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_PartialPostingWithoutStorage_IsCompletedSafely" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="2eb05dde-d72a-d1c8-66ff-740f38525bd4">
+      <Execution id="13e18acf-ab41-4809-bd30-14b6207639a4" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests" name="FoundationReceipt_PartialPostingWithoutStorage_IsCompletedSafely" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="a4985a89-0bab-10fd-f642-e80f1264479f" executionId="aef2da15-7712-4a20-b764-1147161f7ecb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="524bde53-b44e-1a76-83cd-bbdd7243cc29" executionId="a854470a-4694-4541-94c8-87f2f27aebc2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="fac471aa-ed33-800c-fad6-be8cbc220b88" executionId="99b2eaa0-fbfb-4af1-b31a-b8f2b3cb6f2f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="cf7fad01-89a9-2162-01e2-b5a79e818843" executionId="77ecbd03-eb04-44e6-81fc-fbb5ebc50086" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="faaab28b-8d34-b3ed-b127-3d09635b2259" executionId="12ac9a7d-d15b-4944-aab7-3455cb4eeee7" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="220dd301-3cb6-2caf-2ecf-3b35b5cca9a8" executionId="858680e0-4f2a-4ef8-8eda-374a9f8fcf14" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="609f1f4b-1c13-6789-7e6a-45c0efcf037f" executionId="5ea51b0e-bc8a-4580-8992-265ce712198b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9695009f-42cc-140c-39f2-07120e3b698f" executionId="b49c4773-ea33-4a42-94a9-854561d3397b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9a770b41-ff7e-9e7c-cb18-079d2db44929" executionId="d4f69234-734b-4770-9fb0-ca2d7427a9d0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="657c2040-bdc4-f0b2-01ed-04bae246418f" executionId="b3ea1518-8af9-4a37-9049-851c7ad7cc7a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="470add21-bffc-3f86-0d88-b4b0317a2539" executionId="dac6e9d4-b872-4976-956a-f6017a5cf2b1" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="fb6d2ad2-02bf-278f-96d5-26a200919be3" executionId="a0367cc9-ffa9-490d-bb84-cf70f94b4171" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f99f7043-246f-da16-d0e1-0211747ab9c1" executionId="ba195c2b-3b21-407b-9467-06035059253d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e0bfcb44-0cb7-c9ae-1b96-9d4ceac6c285" executionId="6ff4f6b6-40ab-4f02-a5dc-b3a1c9dd4bd4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="17d3ca79-6440-b9e1-cc00-d5b0aeddcb75" executionId="2ac1ec29-7c17-4b8e-93b3-63146a0b0dd1" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="15abfba5-ba80-bdf5-069d-53da40262f36" executionId="c8b73ac7-0476-49fb-b791-b6cc7e4f0dad" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="34dec8f6-84c4-e39e-a4b2-e672c6d46f09" executionId="9f00fabe-9ee1-49a5-abde-2a08e1838e16" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a89c3062-3ed5-c7d8-5708-6573b048bb15" executionId="b2837281-0042-465e-8602-621ccdb3b9c4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="04b5b852-5c98-fb26-d356-fffdeece1fd5" executionId="471d4e90-fd4f-4f8e-bf79-ad67ae037a11" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0b72a96c-b424-72c0-c0a9-4b38ef7f3f85" executionId="e91aec73-5d1c-44a1-9cde-aa3d23c35cc5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2eb05dde-d72a-d1c8-66ff-740f38525bd4" executionId="13e18acf-ab41-4809-bd30-14b6207639a4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ba752f00-7891-357a-6c92-7eb48ab16568" executionId="8044cb92-15e1-4739-b532-0346fa7884cb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="647ed682-c6da-d527-2fa5-e47c83871341" executionId="2f80b335-a9c9-4977-b8a5-fe7038f6362d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="15498d3b-aaee-0e8e-8b85-b5a06368f3eb" executionId="543c73af-c47e-41c3-8116-f5eb02aea716" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e8d3b314-46a6-3b32-52af-f9c4666dd95a" executionId="2c0685cb-cbf3-481f-be31-15914d492df0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="cc3ab807-6d66-68ed-0658-b327533fda68" executionId="aa9d4e88-1eed-40a3-9878-34a943766da1" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6d3cf555-f313-3e22-83cb-7a154bd5d770" executionId="61bce3bc-b4b6-4b9e-8a76-9299594c7712" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="48b06525-5330-e99d-df3c-490050b31852" executionId="e9547630-ad0b-47c7-b73a-31ad20ea650d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f577940c-8c4d-5e54-e1a3-ce1a9e648bf3" executionId="d1dfcb9a-d5b9-47f6-bada-0e493f29df6c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ced236c2-801c-320a-156f-4d9d394834a9" executionId="da6ab98f-2c4e-4046-85c9-e76e18beb16c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="da8fb224-8764-633e-75ee-2e2ff47008d7" executionId="7b569ce4-a08c-455f-916f-67904bf9ce61" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e7f6a872-79bc-68db-7542-ee482ad64952" executionId="992a8f56-fcf4-409a-80f2-64434b2e9f7c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="da4e17d0-a41f-5712-160e-f5e006ec3c66" executionId="c662f1b3-def6-4dcd-be20-87fa070ad3fe" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="dc74a523-27c9-1b14-feff-c9da8215b140" executionId="7c75b9f1-2095-46b8-94c1-a6a7fdf5bb13" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d5cb8646-c27e-111a-8048-12d270ad4858" executionId="d89fa4fb-85ff-4c23-9828-0545f0aa8e65" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f43a5e38-382e-45bd-03f2-92d56b540300" executionId="65ff866c-9a3d-4e14-998b-8f70c3f08a85" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="36" executed="36" passed="27" failed="9" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.02] xUnit.net VSTest Adapter v3.0.2+dd36e86129 (64-bit .NET 10.0.12)&#xD;
+[xUnit.net 00:00:01.51]   Discovering: LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:03.37]   Discovered:  LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:03.69]   Starting:    LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:11.70]       Microsoft.Data.SqlClient.SqlException : The official reversal definition is disabled.&#xD;
+[xUnit.net 00:00:11.70]       Stack Trace:&#xD;
+[xUnit.net 00:00:11.71]            at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:11.71]            at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:11.71]            at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+[xUnit.net 00:00:11.71]            at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+[xUnit.net 00:00:11.71]            at Microsoft.Data.SqlClient.SqlDataReader.TryConsumeMetaData()&#xD;
+[xUnit.net 00:00:11.71]            at Microsoft.Data.SqlClient.SqlDataReader.get_MetaData()&#xD;
+[xUnit.net 00:00:11.71]            at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+[xUnit.net 00:00:11.71]            at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+[xUnit.net 00:00:11.71]            at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteReader(IAsyncResult asyncResult, Boolean isInternal, String endMethod)&#xD;
+[xUnit.net 00:00:11.71]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderInternal(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:11.71]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderAsync(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:11.71]            at Microsoft.Data.SqlClient.SqlCommand.&lt;&gt;c.&lt;InternalExecuteReaderAsync&gt;b__201_1(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:11.71]            at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+[xUnit.net 00:00:11.72]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:11.72]         D:\YASIN\Backend\LUMAR_ERP_API_V2\FinancialFoundation\FoundationPostingGateway.cs(71,0): at LUMAR_ERP_API_V2.FinancialFoundation.FoundationPostingGateway.ReverseFabricPartialAsync(SqlConnection connection, SqlTransaction transaction, Int64 reversalId, Int64 originalEventId, Guid operationId, String reference, String reason, String actor, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:11.72]         D:\YASIN\Backend\LUMAR_ERP_API_V2\FinancialFoundation\FoundationPostingGateway.cs(71,0): at LUMAR_ERP_API_V2.FinancialFoundation.FoundationPostingGateway.ReverseFabricPartialAsync(SqlConnection connection, SqlTransaction transaction, Int64 reversalId, Int64 originalEventId, Guid operationId, String reference, String reason, String actor, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:11.72]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.PartialFabricReversal.cs(109,0): at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReverseFabricConsumptionInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseFabricConsumptionDto request, CancellationToken ct)&#xD;
+[xUnit.net 00:00:11.72]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.PartialFabricReversal.cs(126,0): at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReverseFabricConsumptionInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseFabricConsumptionDto request, CancellationToken ct)&#xD;
+[xUnit.net 00:00:11.72]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.PartialFabricReversal.cs(126,0): at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReverseFabricConsumptionInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseFabricConsumptionDto request, CancellationToken ct)&#xD;
+[xUnit.net 00:00:11.72]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.PartialFabricReversal.cs(126,0): at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReverseFabricConsumptionInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseFabricConsumptionDto request, CancellationToken ct)&#xD;
+[xUnit.net 00:00:11.72]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.PartialFabricReversal.cs(126,0): at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReverseFabricConsumptionInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseFabricConsumptionDto request, CancellationToken ct)&#xD;
+[xUnit.net 00:00:11.72]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.PartialFabricReversal.cs(126,0): at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReverseFabricConsumptionInTransactionAsync(SqlConnection connection, SqlTransaction transaction, ReverseFabricConsumptionDto request, CancellationToken ct)&#xD;
+[xUnit.net 00:00:11.72]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.PartialReversal.cs(93,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.&lt;&gt;c__DisplayClass69_0.&lt;&lt;TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent&gt;g__ReverseAsync|3&gt;d.MoveNext()&#xD;
+[xUnit.net 00:00:11.72]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:11.72]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.PartialReversal.cs(96,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.&lt;&gt;c__DisplayClass69_0.&lt;&lt;TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent&gt;g__ReverseAsync|3&gt;d.MoveNext()&#xD;
+[xUnit.net 00:00:11.73]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:11.73]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.PartialReversal.cs(96,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.&lt;&gt;c__DisplayClass69_0.&lt;&lt;TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent&gt;g__ReverseAsync|3&gt;d.MoveNext()&#xD;
+[xUnit.net 00:00:11.73]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:11.73]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.PartialReversal.cs(41,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent()&#xD;
+[xUnit.net 00:00:11.73]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:21.28]       Assert.IsType() Failure: Value is not the exact type&#xD;
+[xUnit.net 00:00:21.28]       Expected: typeof(Microsoft.AspNetCore.Mvc.BadRequestObjectResult)&#xD;
+[xUnit.net 00:00:21.28]       Actual:   typeof(Microsoft.AspNetCore.Mvc.NotFoundObjectResult)&#xD;
+[xUnit.net 00:00:21.28]       Stack Trace:&#xD;
+[xUnit.net 00:00:21.29]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(1238,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.&lt;&gt;c__DisplayClass23_0.&lt;&lt;TailoringFabric_ShortageReturnsJsonMessageForFlutter&gt;b__0&gt;d.MoveNext()&#xD;
+[xUnit.net 00:00:21.29]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:21.29]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(1307,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.WithFabricOrderAsync(String reference, Func`3 action)&#xD;
+[xUnit.net 00:00:21.29]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(1313,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.WithFabricOrderAsync(String reference, Func`3 action)&#xD;
+[xUnit.net 00:00:21.29]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(1222,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ShortageReturnsJsonMessageForFlutter()&#xD;
+[xUnit.net 00:00:21.29]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:29.08]       Microsoft.Data.SqlClient.SqlException : The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_AccountingEvent". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'AccountingEventId'.&#xD;
+[xUnit.net 00:00:29.08]       The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_InventoryTransaction". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'InventoryTransactionId'.&#xD;
+[xUnit.net 00:00:29.08]       The DELETE statement conflicted with the REFERENCE constraint "FK_AccountingEvents_InventoryReceiptPosting". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.AccountingEvents", column 'InventoryReceiptPostingId'.&#xD;
+[xUnit.net 00:00:29.08]       The DELETE statement conflicted with the REFERENCE constraint "FK_AccountingEvents_FabricConsumptionSource". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.AccountingEvents", column 'FabricConsumptionSourceId'.&#xD;
+[xUnit.net 00:00:29.08]       The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_InventoryTransaction". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'InventoryTransactionId'.&#xD;
+[xUnit.net 00:00:29.08]       The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_Piece". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'PieceId'.&#xD;
+[xUnit.net 00:00:29.08]       The DELETE statement conflicted with the REFERENCE constraint "FK_Pieces_OrderItems_OrderItemID". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.Pieces", column 'OrderItemID'.&#xD;
+[xUnit.net 00:00:29.08]       The DELETE statement conflicted with the REFERENCE constraint "FK_InventoryReceiptPostings_GoodsReceiptItem". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.InventoryReceiptPostings", column 'GoodsReceiptItemId'.&#xD;
+[xUnit.net 00:00:29.08]       The DELETE statement conflicted with the REFERENCE constraint "FK_InventoryReceiptPostings_GoodsReceiptItem". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.InventoryReceiptPostings", column 'GoodsReceiptItemId'.&#xD;
+[xUnit.net 00:00:29.08]       The DELETE statement conflicted with the REFERENCE constraint "FK_GoodsReceipts_PurchaseOrders_PurchaseOrderId". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.GoodsReceipts", column 'PurchaseOrderId'.&#xD;
+[xUnit.net 00:00:29.08]       The DELETE statement conflicted with the REFERENCE constraint "FK_OrderItems_Orders_OrderID". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.OrderItems", column 'OrderID'.&#xD;
+[xUnit.net 00:00:29.08]       The DELETE statement conflicted with the REFERENCE constraint "FK_GoodsReceipts_Suppliers_SupplierId". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.GoodsReceipts", column 'SupplierId'.&#xD;
+[xUnit.net 00:00:29.08]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.08]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.08]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.08]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.08]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.08]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.08]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.08]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.08]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.08]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.08]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.08]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.08]       Stack Trace:&#xD;
+[xUnit.net 00:00:29.08]            at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:29.08]            at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:29.08]            at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+[xUnit.net 00:00:29.08]            at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+[xUnit.net 00:00:29.08]            at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+[xUnit.net 00:00:29.08]            at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+[xUnit.net 00:00:29.08]            at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)&#xD;
+[xUnit.net 00:00:29.08]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:29.08]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:29.08]            at Microsoft.Data.SqlClient.SqlCommand.&lt;&gt;c.&lt;InternalExecuteNonQueryAsync&gt;b__193_1(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:29.08]            at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+[xUnit.net 00:00:29.08]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:29.08]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(1706,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed)&#xD;
+[xUnit.net 00:00:29.08]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(1706,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed)&#xD;
+[xUnit.net 00:00:29.08]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(1706,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed)&#xD;
+[xUnit.net 00:00:29.08]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(893,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(Int16 unitId)&#xD;
+[xUnit.net 00:00:29.08]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:29.84]       Microsoft.Data.SqlClient.SqlException : The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_AccountingEvent". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'AccountingEventId'.&#xD;
+[xUnit.net 00:00:29.84]       The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_InventoryTransaction". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'InventoryTransactionId'.&#xD;
+[xUnit.net 00:00:29.84]       The DELETE statement conflicted with the REFERENCE constraint "FK_AccountingEvents_InventoryReceiptPosting". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.AccountingEvents", column 'InventoryReceiptPostingId'.&#xD;
+[xUnit.net 00:00:29.84]       The DELETE statement conflicted with the REFERENCE constraint "FK_AccountingEvents_FabricConsumptionSource". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.AccountingEvents", column 'FabricConsumptionSourceId'.&#xD;
+[xUnit.net 00:00:29.84]       The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_InventoryTransaction". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'InventoryTransactionId'.&#xD;
+[xUnit.net 00:00:29.84]       The DELETE statement conflicted with the REFERENCE constraint "FK_FabricConsumptionSources_Piece". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.FabricConsumptionSources", column 'PieceId'.&#xD;
+[xUnit.net 00:00:29.84]       The DELETE statement conflicted with the REFERENCE constraint "FK_Pieces_OrderItems_OrderItemID". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.Pieces", column 'OrderItemID'.&#xD;
+[xUnit.net 00:00:29.84]       The DELETE statement conflicted with the REFERENCE constraint "FK_InventoryReceiptPostings_GoodsReceiptItem". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.InventoryReceiptPostings", column 'GoodsReceiptItemId'.&#xD;
+[xUnit.net 00:00:29.84]       The DELETE statement conflicted with the REFERENCE constraint "FK_InventoryReceiptPostings_GoodsReceiptItem". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.InventoryReceiptPostings", column 'GoodsReceiptItemId'.&#xD;
+[xUnit.net 00:00:29.84]       The DELETE statement conflicted with the REFERENCE constraint "FK_GoodsReceipts_PurchaseOrders_PurchaseOrderId". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.GoodsReceipts", column 'PurchaseOrderId'.&#xD;
+[xUnit.net 00:00:29.84]       The DELETE statement conflicted with the REFERENCE constraint "FK_OrderItems_Orders_OrderID". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.OrderItems", column 'OrderID'.&#xD;
+[xUnit.net 00:00:29.84]       The DELETE statement conflicted with the REFERENCE constraint "FK_GoodsReceipts_Suppliers_SupplierId". The conflict occurred in database "LUMAR_ERP_TEST_R3_ROLLS", table "dbo.GoodsReceipts", column 'SupplierId'.&#xD;
+[xUnit.net 00:00:29.84]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.84]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.84]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.84]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.84]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.84]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.84]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.85]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.85]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.85]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.85]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.85]       The statement has been terminated.&#xD;
+[xUnit.net 00:00:29.85]       Stack Trace:&#xD;
+[xUnit.net 00:00:29.85]            at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:29.85]            at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:29.85]            at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+[xUnit.net 00:00:29.85]            at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+[xUnit.net 00:00:29.85]            at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+[xUnit.net 00:00:29.85]            at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+[xUnit.net 00:00:29.85]            at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)&#xD;
+[xUnit.net 00:00:29.85]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:29.85]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:29.85]            at Microsoft.Data.SqlClient.SqlCommand.&lt;&gt;c.&lt;InternalExecuteNonQueryAsync&gt;b__193_1(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:29.85]            at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+[xUnit.net 00:00:29.85]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:29.85]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(1706,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed)&#xD;
+[xUnit.net 00:00:29.85]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(1706,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed)&#xD;
+[xUnit.net 00:00:29.85]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(1706,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed)&#xD;
+[xUnit.net 00:00:29.85]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(893,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(Int16 unitId)&#xD;
+[xUnit.net 00:00:29.85]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:31.67]       Microsoft.Data.SqlClient.SqlException : A required active ledger account is missing.&#xD;
+[xUnit.net 00:00:31.67]       Stack Trace:&#xD;
+[xUnit.net 00:00:31.67]            at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:31.67]            at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:31.67]            at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+[xUnit.net 00:00:31.67]            at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+[xUnit.net 00:00:31.67]            at Microsoft.Data.SqlClient.SqlDataReader.TryConsumeMetaData()&#xD;
+[xUnit.net 00:00:31.67]            at Microsoft.Data.SqlClient.SqlDataReader.get_MetaData()&#xD;
+[xUnit.net 00:00:31.67]            at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+[xUnit.net 00:00:31.67]            at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+[xUnit.net 00:00:31.67]            at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteReader(IAsyncResult asyncResult, Boolean isInternal, String endMethod)&#xD;
+[xUnit.net 00:00:31.67]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderInternal(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:31.67]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderAsync(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:31.67]            at Microsoft.Data.SqlClient.SqlCommand.&lt;&gt;c.&lt;InternalExecuteReaderAsync&gt;b__201_1(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:31.67]            at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+[xUnit.net 00:00:31.67]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:31.67]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs(420,0): at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostCoreAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, Nullable`1 customerAdvanceApplicationId, Nullable`1 inventoryReceiptPostingId, Nullable`1 fabricConsumptionSourceId, Nullable`1 productionMaterialConsumptionId, Nullable`1 readyMadeSaleCostPostingId, Nullable`1 importedReadyMadeInventoryReceiptId, Nullable`1 importedReadyMadeSaleCostPostingId, Nullable`1 toolIssuanceId, Nullable`1 toolIssuanceReversalId, String referenceNumber, String description, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:31.67]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs(449,0): at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostCoreAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, Nullable`1 customerAdvanceApplicationId, Nullable`1 inventoryReceiptPostingId, Nullable`1 fabricConsumptionSourceId, Nullable`1 productionMaterialConsumptionId, Nullable`1 readyMadeSaleCostPostingId, Nullable`1 importedReadyMadeInventoryReceiptId, Nullable`1 importedReadyMadeSaleCostPostingId, Nullable`1 toolIssuanceId, Nullable`1 toolIssuanceReversalId, String referenceNumber, String description, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:31.67]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs(79,0): at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, String referenceNumber, String description, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:31.67]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(1492,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.InsertAdvanceAsync(Int32 orderId, String orderNumber, Int32 customerId, Decimal amount, String paymentMethod, Int32 cashAccountId, DateTime now, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:31.67]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(174,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:31.67]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(178,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:31.67]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(193,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:31.67]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(196,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:31.67]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(196,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:31.67]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Services\OrderService.cs(22,0): at LUMAR_ERP_API_V2.Services.OrderService.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:31.67]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.OrderEdit.cs(493,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_ConflictingEditAndAddPayloads_AreRejected()&#xD;
+[xUnit.net 00:00:31.67]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:36.75]       Microsoft.Data.SqlClient.SqlException : A required active ledger account is missing.&#xD;
+[xUnit.net 00:00:36.75]       Stack Trace:&#xD;
+[xUnit.net 00:00:36.75]            at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:36.75]            at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:36.75]            at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+[xUnit.net 00:00:36.75]            at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+[xUnit.net 00:00:36.75]            at Microsoft.Data.SqlClient.SqlDataReader.TryConsumeMetaData()&#xD;
+[xUnit.net 00:00:36.75]            at Microsoft.Data.SqlClient.SqlDataReader.get_MetaData()&#xD;
+[xUnit.net 00:00:36.75]            at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+[xUnit.net 00:00:36.75]            at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+[xUnit.net 00:00:36.75]            at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteReader(IAsyncResult asyncResult, Boolean isInternal, String endMethod)&#xD;
+[xUnit.net 00:00:36.75]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderInternal(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:36.75]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderAsync(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:36.75]            at Microsoft.Data.SqlClient.SqlCommand.&lt;&gt;c.&lt;InternalExecuteReaderAsync&gt;b__201_1(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:36.75]            at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+[xUnit.net 00:00:36.75]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:36.75]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs(420,0): at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostCoreAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, Nullable`1 customerAdvanceApplicationId, Nullable`1 inventoryReceiptPostingId, Nullable`1 fabricConsumptionSourceId, Nullable`1 productionMaterialConsumptionId, Nullable`1 readyMadeSaleCostPostingId, Nullable`1 importedReadyMadeInventoryReceiptId, Nullable`1 importedReadyMadeSaleCostPostingId, Nullable`1 toolIssuanceId, Nullable`1 toolIssuanceReversalId, String referenceNumber, String description, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:36.75]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs(449,0): at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostCoreAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, Nullable`1 customerAdvanceApplicationId, Nullable`1 inventoryReceiptPostingId, Nullable`1 fabricConsumptionSourceId, Nullable`1 productionMaterialConsumptionId, Nullable`1 readyMadeSaleCostPostingId, Nullable`1 importedReadyMadeInventoryReceiptId, Nullable`1 importedReadyMadeSaleCostPostingId, Nullable`1 toolIssuanceId, Nullable`1 toolIssuanceReversalId, String referenceNumber, String description, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:36.75]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs(79,0): at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, String referenceNumber, String description, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:36.75]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(1492,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.InsertAdvanceAsync(Int32 orderId, String orderNumber, Int32 customerId, Decimal amount, String paymentMethod, Int32 cashAccountId, DateTime now, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:36.75]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(174,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:36.75]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(178,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:36.76]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(193,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:36.76]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(196,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:36.76]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(196,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:36.76]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Services\OrderService.cs(22,0): at LUMAR_ERP_API_V2.Services.OrderService.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:36.76]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.OrderEdit.cs(119,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_CancelPiece_PreservesActualPaidDiscountAndRemaining()&#xD;
+[xUnit.net 00:00:36.76]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:39.96]       Microsoft.Data.SqlClient.SqlException : A required active ledger account is missing.&#xD;
+[xUnit.net 00:00:39.96]       Stack Trace:&#xD;
+[xUnit.net 00:00:39.96]            at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:39.96]            at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)&#xD;
+[xUnit.net 00:00:39.96]            at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)&#xD;
+[xUnit.net 00:00:39.96]            at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean&amp; dataReady)&#xD;
+[xUnit.net 00:00:39.96]            at Microsoft.Data.SqlClient.SqlDataReader.TryConsumeMetaData()&#xD;
+[xUnit.net 00:00:39.96]            at Microsoft.Data.SqlClient.SqlDataReader.get_MetaData()&#xD;
+[xUnit.net 00:00:39.96]            at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)&#xD;
+[xUnit.net 00:00:39.96]            at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)&#xD;
+[xUnit.net 00:00:39.96]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderInternal(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:39.96]            at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderAsync(IAsyncResult asyncResult)&#xD;
+[xUnit.net 00:00:39.96]            at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)&#xD;
+[xUnit.net 00:00:39.96]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:39.96]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs(420,0): at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostCoreAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, Nullable`1 customerAdvanceApplicationId, Nullable`1 inventoryReceiptPostingId, Nullable`1 fabricConsumptionSourceId, Nullable`1 productionMaterialConsumptionId, Nullable`1 readyMadeSaleCostPostingId, Nullable`1 importedReadyMadeInventoryReceiptId, Nullable`1 importedReadyMadeSaleCostPostingId, Nullable`1 toolIssuanceId, Nullable`1 toolIssuanceReversalId, String referenceNumber, String description, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:39.96]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs(449,0): at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostCoreAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, Nullable`1 customerAdvanceApplicationId, Nullable`1 inventoryReceiptPostingId, Nullable`1 fabricConsumptionSourceId, Nullable`1 productionMaterialConsumptionId, Nullable`1 readyMadeSaleCostPostingId, Nullable`1 importedReadyMadeInventoryReceiptId, Nullable`1 importedReadyMadeSaleCostPostingId, Nullable`1 toolIssuanceId, Nullable`1 toolIssuanceReversalId, String referenceNumber, String description, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:39.96]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Utilities\AccountingEventPostingGateway.cs(79,0): at LUMAR_ERP_API_V2.Utilities.AccountingEventPostingGateway.PostAsync(SqlConnection connection, SqlTransaction transaction, AccountingEventType accountingEventType, Decimal postingAmount, Nullable`1 paymentId, Nullable`1 orderId, Nullable`1 measurementCardPrintHistoryId, Nullable`1 readyMadeInventoryProductId, String referenceNumber, String description, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:39.96]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(1492,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.InsertAdvanceAsync(Int32 orderId, String orderNumber, Int32 customerId, Decimal amount, String paymentMethod, Int32 cashAccountId, DateTime now, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:39.97]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(174,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:39.97]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(178,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:39.97]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(193,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:39.97]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(196,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:39.97]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\OrderRepository.cs(196,0): at LUMAR_ERP_API_V2.Repositories.OrderRepository.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:39.97]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Services\OrderService.cs(22,0): at LUMAR_ERP_API_V2.Services.OrderService.CreateAsync(CreateOrderDto order, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:39.97]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.OrderEdit.cs(427,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_SameAddOperationIdWithSamePayload_IsReplaySafe()&#xD;
+[xUnit.net 00:00:39.97]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:48.16]       System.InvalidOperationException : The opposing ledger account '2100' is not approved for this inventory receipt event.&#xD;
+[xUnit.net 00:00:48.16]       Stack Trace:&#xD;
+[xUnit.net 00:00:48.16]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs(2993,0): at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ValidateApprovedOpposingLedgerAccount(String accountCode, String[] approvedAccountCodes)&#xD;
+[xUnit.net 00:00:48.16]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs(2506,0): at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFoundationInventoryAsync(Int32 goodsReceiptItemId, Byte inventoryClassId, Int16 unitId, String itemCode, String opposingLedgerAccountCode, Guid sourceOperationId, String fabricTypeCode, String rollCode, String colorValue, CancellationToken ct)&#xD;
+[xUnit.net 00:00:48.16]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs(2662,0): at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFoundationInventoryAsync(Int32 goodsReceiptItemId, Byte inventoryClassId, Int16 unitId, String itemCode, String opposingLedgerAccountCode, Guid sourceOperationId, String fabricTypeCode, String rollCode, String colorValue, CancellationToken ct)&#xD;
+[xUnit.net 00:00:48.16]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs(2663,0): at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFoundationInventoryAsync(Int32 goodsReceiptItemId, Byte inventoryClassId, Int16 unitId, String itemCode, String opposingLedgerAccountCode, Guid sourceOperationId, String fabricTypeCode, String rollCode, String colorValue, CancellationToken ct)&#xD;
+[xUnit.net 00:00:48.16]         D:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs(2663,0): at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFoundationInventoryAsync(Int32 goodsReceiptItemId, Byte inventoryClassId, Int16 unitId, String itemCode, String opposingLedgerAccountCode, Guid sourceOperationId, String fabricTypeCode, String rollCode, String colorValue, CancellationToken ct)&#xD;
+[xUnit.net 00:00:48.16]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(258,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceiptAndConsumption_AreBalancedPreciseAndIdempotent()&#xD;
+[xUnit.net 00:00:48.16]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(363,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceiptAndConsumption_AreBalancedPreciseAndIdempotent()&#xD;
+[xUnit.net 00:00:48.16]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:49.17]       Assert.Equal() Failure: Values differ&#xD;
+[xUnit.net 00:00:49.17]       Expected: 1&#xD;
+[xUnit.net 00:00:49.17]       Actual:   10&#xD;
+[xUnit.net 00:00:49.17]       Stack Trace:&#xD;
+[xUnit.net 00:00:49.17]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(680,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_TenRollBatch_KeepsOneSharedCatalogButUniqueFabricCodes()&#xD;
+[xUnit.net 00:00:49.17]         D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs(685,0): at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_TenRollBatch_KeepsOneSharedCatalogButUniqueFabricCodes()&#xD;
+[xUnit.net 00:00:49.18]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:49.25]   Finished:    LUMAR_ERP_API_V2.Tests&#xD;
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="YASIN-YASIN" outcome="Error" timestamp="2026-11-09T01:40:45.9144495+03:00">
+        <Text>[xUnit.net 00:00:11.69]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_PartialReversal_PreservesOtherPiece_AndIsAtomicAndIdempotent [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="YASIN-YASIN" outcome="Error" timestamp="2026-11-09T01:40:55.5251836+03:00">
+        <Text>[xUnit.net 00:00:21.28]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ShortageReturnsJsonMessageForFlutter [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="YASIN-YASIN" outcome="Error" timestamp="2026-11-09T01:41:03.2953581+03:00">
+        <Text>[xUnit.net 00:00:29.08]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(unitId: 1) [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="YASIN-YASIN" outcome="Error" timestamp="2026-11-09T01:41:04.0614062+03:00">
+        <Text>[xUnit.net 00:00:29.84]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(unitId: 2) [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="YASIN-YASIN" outcome="Error" timestamp="2026-11-09T01:41:05.8865424+03:00">
+        <Text>[xUnit.net 00:00:31.67]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_ConflictingEditAndAddPayloads_AreRejected [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="YASIN-YASIN" outcome="Error" timestamp="2026-11-09T01:41:10.9718882+03:00">
+        <Text>[xUnit.net 00:00:36.75]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_CancelPiece_PreservesActualPaidDiscountAndRemaining [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="YASIN-YASIN" outcome="Error" timestamp="2026-11-09T01:41:14.1854781+03:00">
+        <Text>[xUnit.net 00:00:39.96]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringEdit_SameAddOperationIdWithSamePayload_IsReplaySafe [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="YASIN-YASIN" outcome="Error" timestamp="2026-11-09T01:41:22.3753631+03:00">
+        <Text>[xUnit.net 00:00:48.16]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceiptAndConsumption_AreBalancedPreciseAndIdempotent [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="YASIN-YASIN" outcome="Error" timestamp="2026-11-09T01:41:23.3924278+03:00">
+        <Text>[xUnit.net 00:00:49.17]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_TenRollBatch_KeepsOneSharedCatalogButUniqueFabricCodes [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

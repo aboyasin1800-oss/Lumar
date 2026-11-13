@@ -664,6 +664,24 @@ public sealed class WhatsAppConnectionSettingsTests
             Task.FromResult(new GeneralCashAccountSettingDto(null, null, false, ""));
         public Task<GeneralCashAccountSettingDto> UpsertGeneralCashAccountSettingAsync(int? cashAccountId, CancellationToken c) =>
             Task.FromResult(new GeneralCashAccountSettingDto(cashAccountId, null, false, ""));
+
+        public Task<TestDataResetExecutionResultDto> ExecuteTestDataResetAsync(CancellationToken c) =>
+            Task.FromResult(new TestDataResetExecutionResultDto(false, "Mock reset not implemented.", "UNKNOWN", null, false));
+
+        public Task<TestDataResetReadinessResultDto> GetTestDataResetReadinessAsync(CancellationToken c) =>
+            Task.FromResult(new TestDataResetReadinessResultDto(
+                Success: true,
+                DatabaseName: "LUMAR_ERP_ES_VALIDATION_R3",
+                ScriptPath: "D:\\YASIN\\Backend\\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1",
+                WorkingDirectory: "D:\\YASIN\\Backend",
+                ManifestPath: "D:\\YASIN\\Backend\\R3_RESET_REFERENCE_MANIFEST.csv",
+                DependencyGraphPath: "D:\\YASIN\\Backend\\R3_RESET_DEPENDENCY_GRAPH.csv",
+                ExitCode: 0,
+                StdOutSummary: "Preview passed",
+                StdErrSummary: string.Empty,
+                FailureStage: "NONE",
+                FailureCode: "NONE",
+                CorrelationId: "mock-correlation"));
     }
 
     private sealed class FakeWhatsAppConnectionSettingsStore(WhatsAppConnectionSettingsOptions options) : IWhatsAppConnectionSettingsStore

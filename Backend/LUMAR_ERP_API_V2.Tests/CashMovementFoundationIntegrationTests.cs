@@ -15,9 +15,10 @@ public sealed class CashMovementFoundationIntegrationTests
         var reference = $"CMF-RETRY-{Guid.NewGuid():N}";
         var paymentId = await InsertPaymentAsync(connection, transaction, reference);
         var posting = await AccountingEventPostingGateway.PostAsync(connection, transaction, AccountingEventType.CustomerAdvance, 25m, paymentId, null, null, null, reference, "Cash movement integration test", CancellationToken.None);
+        var cashAccountId = await EnsureActiveCashAccountAsync(connection, transaction);
 
-        var first = await CashMovementPostingGateway.PostCashInAsync(connection, transaction, posting.AccountingEventId, 1, 25m, CancellationToken.None);
-        var retry = await CashMovementPostingGateway.PostCashInAsync(connection, transaction, posting.AccountingEventId, 1, 25m, CancellationToken.None);
+        var first = await CashMovementPostingGateway.PostCashInAsync(connection, transaction, posting.AccountingEventId, cashAccountId, 25m, CancellationToken.None);
+        var retry = await CashMovementPostingGateway.PostCashInAsync(connection, transaction, posting.AccountingEventId, cashAccountId, 25m, CancellationToken.None);
 
         Assert.False(first.IsExisting);
         Assert.True(retry.IsExisting);
@@ -26,7 +27,8 @@ public sealed class CashMovementFoundationIntegrationTests
 
         await Assert.ThrowsAsync<SqlException>(async () =>
         {
-            await using var direct = new SqlCommand("INSERT INTO dbo.CashMovements (CashAccountId, AccountingEventId, CashDirection, Amount, OccurredAt) VALUES (1, @eventId, 1, 1, SYSUTCDATETIME())", connection, transaction);
+            await using var direct = new SqlCommand("INSERT INTO dbo.CashMovements (CashAccountId, AccountingEventId, CashDirection, Amount, OccurredAt) VALUES (@cashAccountId, @eventId, 1, 1, SYSUTCDATETIME())", connection, transaction);
+            direct.Parameters.AddWithValue("@cashAccountId", cashAccountId);
             direct.Parameters.AddWithValue("@eventId", posting.AccountingEventId);
             await direct.ExecuteNonQueryAsync();
         });
@@ -45,7 +47,8 @@ public sealed class CashMovementFoundationIntegrationTests
         {
             var paymentId = await InsertPaymentAsync(connection, transaction, reference);
             var posting = await AccountingEventPostingGateway.PostAsync(connection, transaction, AccountingEventType.CustomerAdvance, 25m, paymentId, null, null, null, reference, "Cash rollback integration test", CancellationToken.None);
-            await CashMovementPostingGateway.PostCashInAsync(connection, transaction, posting.AccountingEventId, 1, 25m, CancellationToken.None);
+            var cashAccountId = await EnsureActiveCashAccountAsync(connection, transaction);
+            await CashMovementPostingGateway.PostCashInAsync(connection, transaction, posting.AccountingEventId, cashAccountId, 25m, CancellationToken.None);
             await transaction.RollbackAsync();
         }
 
@@ -67,6 +70,44 @@ public sealed class CashMovementFoundationIntegrationTests
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
+    private static async Task<int> EnsureActiveCashAccountAsync(SqlConnection connection, SqlTransaction transaction)
+    {
+        var ledgerId = await ReadIntAsync(connection, transaction, "SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WHERE AccountCode = N'1000' AND IsActive = 1 ORDER BY LedgerAccountId");
+        if (ledgerId <= 0)
+            throw new InvalidOperationException("Fabric/Payment tests require the live cash control ledger AccountCode 1000 to exist and be active.");
+
+        var existingCashAccountId = await ReadIntAsync(connection, transaction, "SELECT TOP (1) CashAccountId FROM dbo.CashAccounts WHERE AccountName = N'Cash Movement Test Cash' AND IsActive = 1 AND CashAccountType = 1 AND CurrencyCode = N'YER' AND LedgerControlAccountId = @ledgerId AND AllowsReceipts = 1 ORDER BY CashAccountId",
+            "@ledgerId", ledgerId);
+        if (existingCashAccountId > 0)
+            return existingCashAccountId;
+
+        var insertedCashAccountId = await InsertCashAccountAsync(connection, transaction, ledgerId);
+        if (insertedCashAccountId <= 0)
+            throw new InvalidOperationException("Unable to provision a valid cash account for cash movement tests.");
+        return insertedCashAccountId;
+    }
+
+    private static async Task<int> InsertCashAccountAsync(SqlConnection connection, SqlTransaction transaction, int ledgerId)
+    {
+        await using var command = new SqlCommand(@"
+            INSERT INTO dbo.CashAccounts (AccountName, CurrentBalance, IsActive, CreatedAt, CashAccountType, CurrencyCode, LedgerControlAccountId, AllowsReceipts, AllowsDisbursements)
+            OUTPUT INSERTED.CashAccountId
+            VALUES (N'Cash Movement Test Cash', 0, 1, SYSUTCDATETIME(), 1, N'YER', @ledgerId, 1, 1);", connection, transaction);
+        command.Parameters.AddWithValue("@ledgerId", ledgerId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> ReadIntAsync(SqlConnection connection, SqlTransaction transaction, string sql, string parameterName = "", object? parameterValue = null)
+    {
+        await using var command = new SqlCommand(sql, connection, transaction);
+        if (!string.IsNullOrWhiteSpace(parameterName) && parameterValue is not null)
+        {
+            command.Parameters.AddWithValue(parameterName, parameterValue);
+        }
+        var value = await command.ExecuteScalarAsync();
+        return value is null or DBNull ? 0 : Convert.ToInt32(value);
+    }
+
     private static string GetConnectionString() => Environment.GetEnvironmentVariable("Lumar__ConnectionString")
-        ?? "Data Source=YASIN-YASIN\\SQLEXPRESS;Initial Catalog=LUMAR_ERP;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True;";
+        ?? "Data Source=YASIN-YASIN\\SQLEXPRESS;Initial Catalog=LUMAR_ERP_TEST_R3_ROLLS;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True;";
 }

@@ -66,7 +66,8 @@ public sealed class Es7OperationalApiAuthorizationTests
             Lines: [new(11, 2m, 50m, null, "Fabric sample", "Fabric")]),
             CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(result.Result);
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Contains("عدد اللفات", badRequest.Value?.ToString() ?? string.Empty);
         Assert.False(coordinator.InvoiceCalled);
     }
 

@@ -1,0 +1,78 @@
+SQLPACKAGE_PATH=D:\YASIN\Backend\SqlPackage\extract\sqlpackage.exe
+SQLCMD_PATH=C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn\sqlcmd.exe
+SOURCE_DATABASE=LUMAR_ERP_ES_VALIDATION_R3
+TARGET_DATABASE=LUMAR_ERP_TEST_R3_ROLLS
+DACPAC_PATH=D:\YASIN\Backend\LUMAR_ERP_TEST_R3_ROLLS_SCHEMA_PROBE.dacpac
+
+R3_TABLE_COUNT
+--------------
+179
+
+(1 rows affected)
+R3_VIEW_COUNT
+-------------
+14
+
+(1 rows affected)
+R3_PROCEDURE_COUNT
+------------------
+8
+
+(1 rows affected)
+
+SOURCE_TABLE_EXISTS:TailoringPieceSaleValues=YES
+SOURCE_TABLE_EXISTS:FabricRolls=YES
+SOURCE_TABLE_EXISTS:InventoryItems=YES
+SOURCE_TABLE_EXISTS:InventoryReceiptLines=YES
+SOURCE_TABLE_EXISTS:InventoryReceiptPostings=YES
+SOURCE_TABLE_EXISTS:GoodsReceiptItemStorageAllocations=YES
+SOURCE_TABLE_EXISTS:GoodsReceipts=YES
+SOURCE_TABLE_EXISTS:GoodsReceiptItems=YES
+TEST_TABLE_COUNT
+----------------
+0
+
+(1 rows affected)
+TEST_VIEW_COUNT
+---------------
+0
+
+(1 rows affected)
+TEST_PROCEDURE_COUNT
+--------------------
+0
+
+(1 rows affected)
+
+TARGET_TABLE_EXISTS:TailoringPieceSaleValues=NO
+TARGET_TABLE_EXISTS:FabricRolls=NO
+TARGET_TABLE_EXISTS:InventoryItems=NO
+TARGET_TABLE_EXISTS:InventoryReceiptLines=NO
+TARGET_TABLE_EXISTS:InventoryReceiptPostings=NO
+TARGET_TABLE_EXISTS:GoodsReceiptItemStorageAllocations=NO
+TARGET_TABLE_EXISTS:GoodsReceipts=NO
+TARGET_TABLE_EXISTS:GoodsReceiptItems=NO
+EXTRACT_EXIT_CODE=0
+DACPAC_EXISTS=YES
+DACPAC_SIZE=81175
+--- EXTRACT STDOUT ---
+Connecting to database 'LUMAR_ERP_ES_VALIDATION_R3' on server 'YASIN-YASIN\SQLEXPRESS'.
+Extracting schema
+Extracting schema from database
+Resolving references in schema model
+Validating schema model for data package
+Validating schema
+Successfully extracted database and saved it to file 'D:\YASIN\Backend\LUMAR_ERP_TEST_R3_ROLLS_SCHEMA_PROBE.dacpac'.
+Time elapsed 0:01:08.74
+--- EXTRACT STDERR ---
+PUBLISH_EXIT_CODE=ERROR
+sqlpackage.exe : *** 'DoNotDropObjectInTarget' is not a valid argument for the 
+'Publish' action.
+At line:1 char:143
++ ... txt'; try { & $sqlPackage /Action:Publish /SourceFile:$dac /TargetCon ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (*** 'DoNotDropO...ublish' action. 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+

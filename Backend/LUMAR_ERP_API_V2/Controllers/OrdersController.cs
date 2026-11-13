@@ -159,25 +159,6 @@ public sealed class OrdersController(IOrderService service, IAuthenticatedUserCo
                 return Unauthorized();
 
             var safeOrder = order;
-            if (CustomerOrderOwnershipGuard.IsCustomerAccount(user))
-            {
-                safeOrder = new CreateOrderDto
-                {
-                    CustomerId = user.CustomerId!.Value,
-                    OrderDate = order.OrderDate,
-                    DeliveryDate = order.DeliveryDate,
-                    TotalAmount = order.TotalAmount,
-                    DiscountAmount = order.DiscountAmount,
-                    AdvancePayment = order.AdvancePayment,
-                    UrgencyStatus = order.UrgencyStatus,
-                    Notes = order.Notes,
-                    SaleCategory = order.SaleCategory,
-                    PaymentMethod = order.PaymentMethod,
-                    CashAccountId = order.CashAccountId,
-                    RequestReference = order.RequestReference,
-                    Items = order.Items
-                };
-            }
 
             if (safeOrder.DiscountAmount > safeOrder.TotalAmount) return BadRequest("Discount cannot exceed total amount.");
             if (safeOrder.AdvancePayment > safeOrder.TotalAmount - safeOrder.DiscountAmount) return BadRequest("Advance payment cannot exceed the amount due.");

@@ -39,6 +39,10 @@ _validation/
 _validation_output/
 _validation_obj/
 
+# Large generated reports and runtime artifacts must stay local
+frontend/tailoring_system/flutter_full_suite_report.txt
+**/flutter_full_suite_report.txt
+
 # Campaign media uploads are runtime-only and must not be tracked
 Backend/LUMAR_ERP_API_V2/wwwroot/campaign-media/*
 !Backend/LUMAR_ERP_API_V2/wwwroot/campaign-media/.gitkeep

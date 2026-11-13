@@ -701,22 +701,185 @@ class _JournalEntryDetailsScreenState extends State<JournalEntryDetailsScreen> {
           }));
 }
 
-class LedgerAccountsScreen extends StatelessWidget {
+class LedgerAccountsScreen extends StatefulWidget {
   const LedgerAccountsScreen({this.embedded = false, super.key});
   final bool embedded;
   @override
-  Widget build(BuildContext context) => _SimpleListPage<LedgerAccount>(
-      title: 'دليل الحسابات',
-      embedded: embedded,
-      load: FinanceRepository().getLedgerAccounts,
-      columns: const ['رمز الحساب', 'اسم الحساب', 'نوع الحساب', 'الحالة'],
-      row: (item) => [
-            item.accountCode,
-            FinanceUiText.accountName(item.accountCode, item.accountName),
-            FinanceUiText.accountType(item.accountType),
-            item.isActive ? 'نشط' : 'غير نشط'
-          ],
-      toolbar: const _LedgerActions());
+  State<LedgerAccountsScreen> createState() => _LedgerAccountsScreenState();
+}
+
+class _LedgerAccountsScreenState extends State<LedgerAccountsScreen> {
+  final repository = FinanceRepository();
+  late Future<List<LedgerAccount>> future;
+  int? selectedIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    future = load();
+  }
+
+  Future<List<LedgerAccount>> load() => repository.getLedgerAccounts();
+
+  void reload() => setState(() => future = load());
+
+  void selectAccount(int index) {
+    setState(() => selectedIndex = index);
+  }
+
+  @override
+  Widget build(BuildContext context) => _Page(
+        title: 'دليل الحسابات',
+        onRefresh: reload,
+        embedded: widget.embedded,
+        child: FutureBuilder<List<LedgerAccount>>(
+          future: future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
+            final items = snapshot.data ?? const <LedgerAccount>[];
+            final selectedAccount =
+                selectedIndex == null || selectedIndex! < 0 || selectedIndex! >= items.length
+                    ? null
+                    : items[selectedIndex!];
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _LedgerActions(
+                  selectedAccount: selectedAccount,
+                  onEdit: selectedAccount == null
+                      ? null
+                      : () => AppNavigation.push(
+                            context,
+                            (_) => LedgerAccountDetailsScreen(
+                              accountId: selectedAccount.id,
+                            ),
+                          ),
+                ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: _Table(
+                    columns: const ['رمز الحساب', 'اسم الحساب', 'نوع الحساب', 'الحالة'],
+                    rows: items
+                        .map((item) => [
+                              item.accountCode,
+                              FinanceUiText.accountName(
+                                  item.accountCode, item.accountName),
+                              FinanceUiText.accountType(item.accountType),
+                              item.isActive ? 'نشط' : 'غير نشط'
+                            ])
+                        .toList(),
+                    empty: 'لا توجد حسابات في الدليل.',
+                    onRowTap: (index) {
+                      selectAccount(index);
+                      AppNavigation.push(
+                        context,
+                        (_) => LedgerAccountDetailsScreen(accountId: items[index].id),
+                      );
+                    },
+                    selectedIndex: selectedIndex,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+}
+
+class LedgerAccountDetailsScreen extends StatefulWidget {
+  const LedgerAccountDetailsScreen({required this.accountId, super.key});
+  final int accountId;
+
+  @override
+  State<LedgerAccountDetailsScreen> createState() =>
+      _LedgerAccountDetailsScreenState();
+}
+
+class _LedgerAccountDetailsScreenState extends State<LedgerAccountDetailsScreen> {
+  final repository = FinanceRepository();
+  late Future<(LedgerAccount, List<JournalEntryLine>)> future;
+
+  @override
+  void initState() {
+    super.initState();
+    future = load();
+  }
+
+  Future<(LedgerAccount, List<JournalEntryLine>)> load() async {
+    final account = await repository.getLedgerAccount(widget.accountId);
+    final lines = await repository.getLedgerAccountLines(widget.accountId);
+    return (account, lines);
+  }
+
+  void reload() => setState(() => future = load());
+
+  @override
+  Widget build(BuildContext context) => _Page(
+        title: 'تفاصيل الحساب',
+        onRefresh: reload,
+        child: FutureBuilder<(LedgerAccount, List<JournalEntryLine>)>(
+          future: future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
+            final (account, lines) = snapshot.data!;
+            final debit = lines.fold<double>(0, (sum, line) => sum + line.debitAmount);
+            final credit = lines.fold<double>(0, (sum, line) => sum + line.creditAmount);
+            final accountType = account.accountType.trim().toLowerCase();
+            final normalBalance = accountType == 'asset' || accountType == 'expense'
+                ? debit - credit
+                : credit - debit;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Wrap(
+                      spacing: 22,
+                      runSpacing: 10,
+                      children: [
+                        Text('رمز الحساب: ${account.accountCode}'),
+                        Text(
+                          'اسم الحساب: ${FinanceUiText.accountName(account.accountCode, account.accountName)}',
+                          softWrap: true,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 2,
+                        ),
+                        Text('نوع الحساب: ${FinanceUiText.accountType(account.accountType)}'),
+                        Text('إجمالي المدين: ${_money.format(debit)}'),
+                        Text('إجمالي الدائن: ${_money.format(credit)}'),
+                        Text('الرصيد الحالي: ${_money.format(normalBalance)}'),
+                        Text('الحالة: ${account.isActive ? 'نشط' : 'غير نشط'}'),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: _Table(
+                    columns: const ['رقم القيد', 'مدين', 'دائن', 'الوصف'],
+                    rows: lines
+                        .map((line) => [
+                              '${line.journalEntryId}',
+                              _money.format(line.debitAmount),
+                              _money.format(line.creditAmount),
+                              FinanceUiText.description(line.description),
+                            ])
+                        .toList(),
+                    empty: 'لا توجد حركات مسجلة لهذا الحساب.',
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
 }
 
 class CashAccountsScreen extends StatefulWidget {
@@ -1253,27 +1416,44 @@ class SupplierLedgerScreen extends StatelessWidget {
 }
 
 class _LedgerActions extends StatelessWidget {
-  const _LedgerActions();
+  const _LedgerActions({this.selectedAccount, this.onEdit});
+  final LedgerAccount? selectedAccount;
+  final VoidCallback? onEdit;
   static const reason =
       'إضافة الحسابات وتعديلها غير مدعومتين لأن خدمة المالية الحالية للقراءة فقط.';
   @override
-  Widget build(BuildContext context) => Row(children: [
-        Tooltip(
-            message: reason,
-            child: FilledButton.icon(
-                onPressed: null,
-                icon: const Icon(Icons.add),
-                label: const Text('إضافة حساب'))),
-        const SizedBox(width: 8),
-        Tooltip(
-            message: reason,
-            child: OutlinedButton.icon(
-                onPressed: null,
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('تعديل حساب'))),
-        const SizedBox(width: 12),
-        const Expanded(child: Text('التحديث متاح من زر التحديث أعلى القائمة.')),
-      ]);
+  Widget build(BuildContext context) {
+    final account = selectedAccount;
+    final selectionText = account == null
+        ? 'التحديث متاح من زر التحديث أعلى القائمة.'
+        : 'الحساب المحدد: ${account.accountCode} - ${FinanceUiText.accountName(account.accountCode, account.accountName)}';
+
+    return Row(children: [
+      Tooltip(
+          message: reason,
+          child: FilledButton.icon(
+              onPressed: null,
+              icon: const Icon(Icons.add),
+              label: const Text('إضافة حساب'))),
+      const SizedBox(width: 8),
+      Tooltip(
+          message: account == null
+              ? 'اختر حساباً أولاً لتفعيل تعديل الحساب.'
+              : 'تعديل الحساب المحدد.',
+          child: OutlinedButton.icon(
+              onPressed: account == null ? null : onEdit,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('تعديل حساب'))),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Text(
+          selectionText,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    ]);
+  }
 }
 
 class SupplierInvoicesScreen extends StatefulWidget {
@@ -1896,11 +2076,13 @@ class _Table extends StatelessWidget {
       {required this.columns,
       required this.rows,
       required this.empty,
-      this.onRowTap});
+      this.onRowTap,
+      this.selectedIndex});
   final List<String> columns;
   final List<List<String>> rows;
   final String empty;
   final ValueChanged<int>? onRowTap;
+  final int? selectedIndex;
   @override
   Widget build(BuildContext context) {
     if (rows.isEmpty) return Center(child: Text(empty));
@@ -1909,7 +2091,10 @@ class _Table extends StatelessWidget {
       child: Scrollbar(
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minWidth: MediaQuery.of(context).size.width,
+            ),
             child: DataTable(
               columns: columns
                   .map((value) => DataColumn(
@@ -1920,10 +2105,25 @@ class _Table extends StatelessWidget {
                   .asMap()
                   .entries
                   .map((entry) => DataRow(
-                      onSelectChanged:
-                          onRowTap == null ? null : (_) => onRowTap!(entry.key),
+                      selected: selectedIndex == entry.key,
+                      onSelectChanged: onRowTap == null
+                          ? null
+                          : (_) {
+                              onRowTap!(entry.key);
+                            },
                       cells: entry.value
-                          .map((value) => DataCell(SelectableText(value)))
+                          .map((value) => DataCell(
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 220,
+                                  ),
+                                  child: Text(
+                                    value,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ))
                           .toList()))
                   .toList(),
             ),

@@ -19,15 +19,21 @@ public sealed class SupplierFinancialOperationsController(
     [HttpPost("invoices")]
     public async Task<ActionResult<SupplierFinancialInvoiceResult>> CreateInvoice(CreateSupplierInvoiceRequestDto request, CancellationToken cancellationToken)
     {
-        if (request.SupplierId <= 0 || string.IsNullOrWhiteSpace(request.InvoiceNumber) || request.Amount <= 0 || request.SourceOperationId == Guid.Empty || request.InvoiceDate > request.DueDate || request.Lines is not { Count: > 0 } || request.Lines.Any(line =>
+        if (request.SupplierId <= 0 || string.IsNullOrWhiteSpace(request.InvoiceNumber) || request.Amount <= 0 || request.SourceOperationId == Guid.Empty || request.InvoiceDate > request.DueDate || request.Lines is not { Count: > 0 })
+            return BadRequest(new { message = "بيانات فاتورة المورد غير مكتملة." });
+
+        if (request.Lines.Any(line =>
                 (line.InventoryItemId is null && string.IsNullOrWhiteSpace(line.ItemDescription))
                 || line.Quantity <= 0
                 || line.UnitCost <= 0
-                || (string.Equals(line.ItemType, "Fabric", StringComparison.OrdinalIgnoreCase) && (line.RollCount is null || line.RollCount <= 0))
                 || !IsSupportedInvoiceItemType(line.ItemType)))
-            return BadRequest("Supplier invoice data is incomplete.");
+            return BadRequest(new { message = "بيانات سطر فاتورة المورد غير مكتملة." });
+
+        if (request.Lines.Any(line => string.Equals(line.ItemType, "Fabric", StringComparison.OrdinalIgnoreCase) && (line.RollCount is null || line.RollCount <= 0)))
+            return BadRequest(new { message = "للأصناف القماشية يجب إدخال عدد اللفات لكل بند بشكل صحيح." });
+
         var linesTotal = request.Lines.Sum(line => decimal.Round(line.Quantity * line.UnitCost, 6, MidpointRounding.AwayFromZero));
-        if (linesTotal != request.Amount) return BadRequest("Supplier invoice amount must equal the lines total.");
+        if (linesTotal != request.Amount) return BadRequest(new { message = "إجمالي أسطر الفاتورة يجب أن يساوي قيمة الفاتورة." });
         var auth = await AuthorizeAsync(Es7Permission.PurchasingInvoice, cancellationToken);
         if (auth.Error is not null) return auth.Error;
         return StatusCode(StatusCodes.Status201Created, await coordinator.CreateInvoiceAsync(request, auth.User!, CorrelationId, cancellationToken));

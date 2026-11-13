@@ -61,6 +61,111 @@ public static class SystemCodeGenerator
         return (int)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
+    public static async Task<string> GetNextAllocatedCatalogNumberAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        CancellationToken cancellationToken)
+    {
+        var prefix = await ResolvePrefixAsync(connection, transaction, "CatalogNumberPrefix", "CAT", cancellationToken);
+        var normalizedPrefix = NormalizeGlobalPrefix(prefix);
+        var pattern = $"{normalizedPrefix}%";
+        const string sql = @"
+            SELECT ISNULL(MAX(value), 0) + 1
+            FROM (
+                SELECT TRY_CONVERT(bigint, SUBSTRING(i.Barcode, @prefixLength + 1, 50)) AS value
+                FROM dbo.InventoryItems i WITH (TABLOCKX, HOLDLOCK)
+                WHERE i.Barcode IS NOT NULL
+                  AND i.Barcode LIKE @pattern
+            ) x;";
+
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pattern", pattern);
+        command.Parameters.AddWithValue("@prefixLength", normalizedPrefix.Length);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        var nextValue = result is DBNull or null ? 1L : Convert.ToInt64(result);
+        return $"{normalizedPrefix}{nextValue:D4}";
+    }
+
+    public static async Task<string> GetNextAllocatedFabricCodeAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        CancellationToken cancellationToken)
+    {
+        var prefix = await ResolvePrefixAsync(connection, transaction, "FabricCodePrefix", "FA", cancellationToken);
+        var normalizedPrefix = NormalizeGlobalPrefix(prefix);
+        var pattern = $"{normalizedPrefix}%";
+        const string sql = @"
+            SELECT ISNULL(MAX(value), 0) + 1
+            FROM (
+                SELECT TRY_CONVERT(bigint, SUBSTRING(i.ItemCode, @prefixLength + 1, 50)) AS value
+                FROM dbo.InventoryItems i WITH (TABLOCKX, HOLDLOCK)
+                WHERE i.ItemCode IS NOT NULL
+                  AND i.ItemCode LIKE @pattern
+                UNION ALL
+                SELECT TRY_CONVERT(bigint, SUBSTRING(fr.RollCode, @prefixLength + 1, 50)) AS value
+                FROM dbo.FabricRolls fr WITH (TABLOCKX, HOLDLOCK)
+                WHERE fr.RollCode IS NOT NULL
+                  AND fr.RollCode LIKE @pattern
+            ) x;";
+
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pattern", pattern);
+        command.Parameters.AddWithValue("@prefixLength", normalizedPrefix.Length);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        var nextValue = result is DBNull or null ? 1L : Convert.ToInt64(result);
+        return $"{normalizedPrefix}{nextValue:D4}";
+    }
+
+    public static async Task<string> AllocateNextGlobalCodeAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string allocationScope,
+        string settingName,
+        string defaultPrefix,
+        CancellationToken cancellationToken)
+    {
+        var prefix = await ResolvePrefixAsync(connection, transaction, settingName, defaultPrefix, cancellationToken);
+        var normalizedPrefix = NormalizeGlobalPrefix(prefix);
+
+        var scope = allocationScope.Trim();
+        var pattern = $"{normalizedPrefix}%";
+        var sql = scope.Equals("CatalogNumber", StringComparison.OrdinalIgnoreCase)
+            ? @"
+                SELECT ISNULL(MAX(value), 0) + 1
+                FROM (
+                    SELECT TRY_CONVERT(bigint, SUBSTRING(i.Barcode, @prefixLength + 1, 50)) AS value
+                    FROM dbo.InventoryItems i WITH (TABLOCKX, HOLDLOCK)
+                    WHERE i.Barcode IS NOT NULL
+                      AND i.Barcode LIKE @pattern
+                ) x;"
+            : @"
+                SELECT ISNULL(MAX(value), 0) + 1
+                FROM (
+                    SELECT TRY_CONVERT(bigint, SUBSTRING(i.ItemCode, @prefixLength + 1, 50)) AS value
+                    FROM dbo.InventoryItems i WITH (TABLOCKX, HOLDLOCK)
+                    WHERE i.ItemCode IS NOT NULL
+                      AND i.ItemCode LIKE @pattern
+                    UNION ALL
+                    SELECT TRY_CONVERT(bigint, SUBSTRING(fr.RollCode, @prefixLength + 1, 50)) AS value
+                    FROM dbo.FabricRolls fr WITH (TABLOCKX, HOLDLOCK)
+                    WHERE fr.RollCode IS NOT NULL
+                      AND fr.RollCode LIKE @pattern
+                ) x;";
+
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@pattern", pattern);
+        command.Parameters.AddWithValue("@prefixLength", normalizedPrefix.Length);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        var nextValue = result is DBNull or null ? 1L : Convert.ToInt64(result);
+        return $"{normalizedPrefix}{nextValue:D4}";
+    }
+
+    private static string NormalizeGlobalPrefix(string? prefix)
+    {
+        var value = prefix?.Trim() ?? string.Empty;
+        return string.IsNullOrWhiteSpace(value) ? "FA" : value.Trim();
+    }
+
     private static async Task<string?> ReadSettingAsync(SqlConnection connection, SqlTransaction? transaction, string settingName, CancellationToken cancellationToken)
     {
         const string sql = "SELECT TOP (1) SettingValue FROM dbo.System_Settings WITH (NOLOCK) WHERE SettingName = @name";

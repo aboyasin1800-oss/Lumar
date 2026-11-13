@@ -29,8 +29,7 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests
             new OperationalSqlConnectionFactory(options),
             new MeasurementConsumptionRules(),
             pricing);
-        var cashId = await ReadIntAsync(connectionString,
-            "SELECT TOP(1) CashAccountId FROM dbo.CashAccounts WHERE IsActive=1 AND AllowsReceipts=1 AND AllowsDisbursements=1 AND CurrencyCode=N'YER' ORDER BY CashAccountId", 0);
+        var cashId = seed.CashAccountId;
         var template = await CreateFabricOrderRequestAsync(connectionString, seed, $"EDIT-{Guid.NewGuid():N}", 36m, 1);
         var created = await repository.CreateAsync(new CreateOrderDto
         {
@@ -113,8 +112,7 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests
         var parentId=await CreateEditReferrerAsync(connectionString,seed.CustomerId);
         var loyaltyService=new OrderLoyaltyIntegrationService(repository,points,referrals,loyalty);
         var service=new OrderService(repository,null!,loyaltyService);
-        var cashId=await ReadIntAsync(connectionString,
-            "SELECT TOP(1) CashAccountId FROM dbo.CashAccounts WHERE IsActive=1 AND AllowsReceipts=1 AND AllowsDisbursements=1 AND CurrencyCode=N'YER' ORDER BY CashAccountId",0);
+        var cashId=seed.CashAccountId;
         var template=await CreateFabricOrderRequestAsync(connectionString,seed,$"EDIT-{Guid.NewGuid():N}",36m,1);
         var created=await service.CreateAsync(new CreateOrderDto
         {
@@ -421,8 +419,7 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests
         var parentId=await CreateEditReferrerAsync(connectionString,seed.CustomerId);
         var loyaltyService=new OrderLoyaltyIntegrationService(repository,points,referrals,loyalty);
         var service=new OrderService(repository,null!,loyaltyService);
-        var cashId=await ReadIntAsync(connectionString,
-            "SELECT TOP(1) CashAccountId FROM dbo.CashAccounts WHERE IsActive=1 AND AllowsReceipts=1 AND AllowsDisbursements=1 AND CurrencyCode=N'YER' ORDER BY CashAccountId",0);
+        var cashId=seed.CashAccountId;
         var template=await CreateFabricOrderRequestAsync(connectionString,seed,$"EDIT-{Guid.NewGuid():N}",36m,1);
         var created=await service.CreateAsync(new CreateOrderDto
         {
@@ -487,8 +484,7 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests
         var parentId=await CreateEditReferrerAsync(connectionString,seed.CustomerId);
         var loyaltyService=new OrderLoyaltyIntegrationService(repository,points,referrals,loyalty);
         var service=new OrderService(repository,null!,loyaltyService);
-        var cashId=await ReadIntAsync(connectionString,
-            "SELECT TOP(1) CashAccountId FROM dbo.CashAccounts WHERE IsActive=1 AND AllowsReceipts=1 AND AllowsDisbursements=1 AND CurrencyCode=N'YER' ORDER BY CashAccountId",0);
+        var cashId=seed.CashAccountId;
         var template=await CreateFabricOrderRequestAsync(connectionString,seed,$"EDIT-{Guid.NewGuid():N}",36m,1);
         var created=await service.CreateAsync(new CreateOrderDto
         {

@@ -1,0 +1,3 @@
+Analyzing inventory_screen.dart...                              
+No issues found! (ran in 21.6s)
+0  

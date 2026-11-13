@@ -292,9 +292,6 @@ public sealed class ReceiveFabricInventoryDto
     public string FabricTypeCode { get; init; } = string.Empty;
 
     [StringLength(100)]
-    public string? RollCode { get; init; }
-
-    [StringLength(100)]
     public string? ColorValue { get; init; }
 
     [Range(typeof(decimal), "0.01", "100000")]
@@ -316,9 +313,6 @@ public sealed class ReceiveFabricInventoryRollDto
 {
     [Required, StringLength(100)]
     public string FabricCode { get; init; } = string.Empty;
-
-    [StringLength(100)]
-    public string? RollCode { get; init; }
 
     [StringLength(100)]
     public string? ColorValue { get; init; }
@@ -463,7 +457,6 @@ public sealed class CreateGoodsReceiptItemDto
     public string? UnitCode { get; init; }
     public decimal? ItemCount { get; init; }
     public decimal? ReceivedItemCount { get; init; }
-    public string? RollCode { get; init; }
 }
 
 public sealed record GoodsReceiptRuntimeResult(int GoodsReceiptId, string ReceiptNumber, bool IsExisting);

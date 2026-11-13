@@ -83,4 +83,108 @@ void main() {
     expect(normalized.single.goodsReceiptItemId, 32);
     expect(normalized.single.remainingQuantity, 20);
   });
+
+  test('live fabric batch payload always sends the approved opposing ledger account', () {
+    final pending = PendingReceiptStorage(
+      goodsReceiptItemId: 77,
+      goodsReceiptId: 99,
+      supplierId: 12,
+      supplierName: 'المورد أ',
+      receiptNumber: 'R-1001',
+      receiptDate: DateTime(2026, 10, 5),
+      itemType: 'Fabric',
+      itemDescription: 'قماش أبيض',
+      receivedQuantity: 20,
+      storedQuantity: 0,
+      remainingQuantity: 20,
+      unit: 'ياردة',
+      unitCost: 60,
+    );
+
+    final payload = buildFabricReceiptPayload(
+      isPendingStorage: true,
+      pendingReceipt: pending,
+      batchCatalogNumber: 'CAT-001',
+      itemCode: 'FAB-001',
+      fabricTypeCode: 'Cotton',
+      fabricWidth: 58,
+      colorValue: 'أبيض',
+      unitId: 1,
+      sourceOperationId: '3d0d54ef-7bb8-4b55-a19b-7d9c8dcbf5d3',
+      rolls: [
+        {
+          'fabricCode': 'FAB-001',
+          'rollCode': 'ROLL-001',
+          'colorValue': 'أبيض',
+          'quantity': 12.5,
+        },
+      ],
+    );
+
+    expect(payload['opposingLedgerAccountCode'], '2100');
+  });
+
+  test('manual quantities are accepted without enforcing equal roll splitting', () {
+    final validNonEqual = [
+      FabricRollQuantityInput(quantityYards: '23.5'),
+      FabricRollQuantityInput(quantityYards: '26'),
+      FabricRollQuantityInput(quantityYards: '25.5'),
+    ];
+    final validBalanced = [
+      FabricRollQuantityInput(quantityYards: '20'),
+      FabricRollQuantityInput(quantityYards: '25'),
+      FabricRollQuantityInput(quantityYards: '30'),
+    ];
+
+    expect(validateRollQuantities(expectedTotal: 75, rolls: validNonEqual.cast<Object>().toList()), isNull);
+    expect(validateRollQuantities(expectedTotal: 75, rolls: validBalanced.cast<Object>().toList()), isNull);
+  });
+
+  test('manual roll quantity edits are rejected when the total does not match the invoice line total', () {
+    final rolls = [
+      FabricRollQuantityInput(quantityYards: '24'),
+      FabricRollQuantityInput(quantityYards: '25'),
+      FabricRollQuantityInput(quantityYards: '25'),
+    ];
+
+    final validation = validateRollQuantities(expectedTotal: 75, rolls: rolls.cast<Object>().toList());
+
+    expect(validation, isNotNull);
+    expect(validation, contains('كمية البند المطلوبة هي 75.000'));
+    expect(validation, contains('مجموع كميات الرولات المدخلة هو 74.000'));
+  });
+
+  test('manual roll quantities are not auto-filled or distributed across the roll count', () {
+    final rolls = [
+      FabricRollQuantityInput(quantityYards: ''),
+      FabricRollQuantityInput(quantityYards: ''),
+      FabricRollQuantityInput(quantityYards: ''),
+    ];
+
+    final validation = validateRollQuantities(expectedTotal: 75, rolls: rolls.cast<Object>().toList());
+
+    expect(validation, isNotNull);
+    expect(validation, contains('مجموع كميات الرولات المدخلة هو 0.000'));
+  });
+
+  test('a single invoice line keeps one batch catalog number for all its rolls', () {
+    final batchCatalog = 'CAT0003';
+    final catalogValues = [batchCatalog, batchCatalog, batchCatalog];
+
+    expect(catalogValues.toSet().length, 1);
+    expect(catalogValues.first, 'CAT0003');
+  });
+
+  test('batch generation must keep fabric codes unique across the same unsaved batch', () {
+    final existingCodes = <String>['FA0001', 'FA0002'];
+    final currentBatchCodes = <String>['FA0003'];
+
+    final next = FabricCodeUtils.nextFabricCode(
+      [...existingCodes, ...currentBatchCodes],
+      prefix: 'FA',
+    );
+
+    expect(next, 'FA0004');
+    expect(next != currentBatchCodes.first, isTrue);
+  });
 }

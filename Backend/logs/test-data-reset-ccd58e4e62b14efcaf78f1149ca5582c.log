@@ -1,0 +1,956 @@
+CorrelationId=ccd58e4e62b14efcaf78f1149ca5582c
+Stage=RECEIVED
+Mode=Preview
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=
+ExitCode=
+ConfiguredTimeoutSeconds=180
+FailureStage=RECEIVED
+FailureCode=NONE
+StartTime=2026-11-09T14:26:41.1703383+00:00
+EndTime=2026-11-09T14:26:41.1703383+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=Request has reached the reset runner. ConfiguredTimeoutSeconds=180; LiveMode=True; TestOverride=False
+---
+CorrelationId=ccd58e4e62b14efcaf78f1149ca5582c
+Stage=PROCESS_STARTING
+Mode=Preview
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=
+ExitCode=
+ConfiguredTimeoutSeconds=180
+FailureStage=PROCESS_STARTING
+FailureCode=NONE
+StartTime=2026-11-09T14:26:41.1703383+00:00
+EndTime=2026-11-09T14:26:41.1711889+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=Process start is about to begin for the approved reset engine. ConfiguredTimeoutSeconds=180; SafetyFloorSeconds=180.
+---
+CorrelationId=ccd58e4e62b14efcaf78f1149ca5582c
+Stage=PROCESS_STARTED
+Mode=Preview
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=18576
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=PROCESS_STARTED
+FailureCode=NONE
+StartTime=2026-11-09T14:26:41.1703383+00:00
+EndTime=2026-11-09T14:26:41.1753122+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=PowerShell process was created successfully.
+---
+CorrelationId=ccd58e4e62b14efcaf78f1149ca5582c
+Stage=STDOUT_CAPTURED
+Mode=Preview
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=18576
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=STDOUT_CAPTURED
+FailureCode=NONE
+StartTime=2026-11-09T14:26:41.1703383+00:00
+EndTime=2026-11-09T14:27:03.9817922+00:00
+StdOut=R3 SAFE ZERO-OPERATIONAL RESET PREVIEW
+Target database: LUMAR_ERP_ES_VALIDATION_R3
+Pure operational tables: 113
+Preserve baseline tables: 42
+Mixed-rule tables: 19
+Exception tables: 5
+Operational cleanup candidates: 137
+
+[dbo].[__EFMigrationsHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[AccountingEvents] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ApiFailureLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[AuditLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[BackupRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[BillOfMaterials] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CancelledPieceDisposition] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CashMovements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerAdvanceApplications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerLedgerEntries] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerMeasurements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerMessages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerNotifications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Customers] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[Employee_Draws] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Employee_Workflow] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeAdvances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeAttendances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeContracts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyAccruals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyEligibility] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyExpenses] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDocuments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDrawSettlements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeLedgerEntries] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeePayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeePieceRateAssignments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Employees] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeSeasonalBonuses] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeStatusHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricConsumptionPartialReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricConsumptionSources] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricRolls] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Fabrics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Fabrics_Inventory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FinancialTransactions] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[FinishedProductReceipts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptDifferences] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptItems] -> current rows = 3 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptItemStorageAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptReversalLines] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceipts] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeInventoryReceipts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeProducts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeSaleCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryItemFoundation] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryReceiptLines] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryReceiptPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryValuationSnapshots] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Invoice_Details] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Invoice_Header] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[JournalEntries] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[JournalEntryLines] -> current rows = 2 ; planned action = DELETE ALL rows
+[dbo].[LeaveRequests] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Live_Scan] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyAccounts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyRedemptions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyRewards] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MeasurementCardPrintHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileAccountCustomerAccess] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileAccounts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobilePushDevices] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileRecoveryChallenges] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileSessions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[OrderItemFabrics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[OrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Orders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PaymentDisputes] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Payments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Payments_Log] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollPeriods] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PerformanceMetricRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Piece_Measurements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Piece_Rates] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Pieces] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PieceWageRates] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PieceWageRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Production_Tracking] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionBatches] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionMaterialConsumptions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductMaterials] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Products] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PurchaseOrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PurchaseOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeInventoryProducts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrderPieceInstances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeSaleCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[RecoveryRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralAccounts] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ReferralAnalytics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralCodes] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ReferralRewards] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[RestoreRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ScannerStageProductPermissions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SecurityDriftRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SecurityEventLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Sent_Log] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Sent_Messages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ServiceAvailabilityRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[StageAttributionCorrections] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierAnnouncements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialInvoices] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialPaymentAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialPayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierInvoiceLines] -> current rows = 3 ; planned action = DELETE ALL rows
+[dbo].[SupplierInvoices] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierLedgerEntries] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierMessages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierNotifications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPaymentAcknowledgements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPaymentAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Suppliers] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SystemHealthRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringOrderEditOperations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceAddOperations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceBenefitBalances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceCancellations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceSaleValues] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuanceReturns] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuanceReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TrackingEvents] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[UserActivityLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[UserSessions] -> current rows = 1 ; planned action = DELETE ALL rows
+Protected baseline check [System_Settings] -> current rows = 125
+Protected baseline check [CashAccounts] -> current rows = 2
+Protected baseline check [LedgerAccounts] -> current rows = 24
+Protected baseline check [AccountingEventDefinitions] -> current rows = 14
+Protected baseline check [AccountRoleMappings] -> current rows = 9
+Protected baseline check [InventoryClassCatalog] -> current rows = 2
+Protected baseline check [InventoryUnitCatalog] -> current rows = 3
+Protected baseline check [PricingProductTypes] -> current rows = 0
+Protected baseline check [MessageTemplates] -> current rows = 0
+Protected baseline check [Messages_Templates] -> current rows = 0
+Protected baseline check [SecurityRoles] -> current rows = 9
+Protected baseline check [SecurityPermissions] -> current rows = 78
+Protected baseline check [RolePermissionMappings] -> current rows = 296
+Protected baseline check [UserRoleAssignments] -> current rows = 0
+Protected baseline check [UserClaimMappings] -> current rows = 0
+Protected baseline check [Users] -> current rows = 1
+
+Preview guard status: PASS
+No DELETE has been executed. This is a read-only preview.
+
+StdErr=<empty>
+Details=StdOut captured successfully.
+---
+CorrelationId=ccd58e4e62b14efcaf78f1149ca5582c
+Stage=STDERR_CAPTURED
+Mode=Preview
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=18576
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=STDERR_CAPTURED
+FailureCode=NONE
+StartTime=2026-11-09T14:26:41.1703383+00:00
+EndTime=2026-11-09T14:27:03.9831469+00:00
+StdOut=R3 SAFE ZERO-OPERATIONAL RESET PREVIEW
+Target database: LUMAR_ERP_ES_VALIDATION_R3
+Pure operational tables: 113
+Preserve baseline tables: 42
+Mixed-rule tables: 19
+Exception tables: 5
+Operational cleanup candidates: 137
+
+[dbo].[__EFMigrationsHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[AccountingEvents] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ApiFailureLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[AuditLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[BackupRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[BillOfMaterials] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CancelledPieceDisposition] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CashMovements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerAdvanceApplications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerLedgerEntries] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerMeasurements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerMessages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerNotifications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Customers] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[Employee_Draws] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Employee_Workflow] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeAdvances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeAttendances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeContracts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyAccruals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyEligibility] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyExpenses] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDocuments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDrawSettlements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeLedgerEntries] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeePayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeePieceRateAssignments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Employees] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeSeasonalBonuses] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeStatusHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricConsumptionPartialReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricConsumptionSources] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricRolls] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Fabrics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Fabrics_Inventory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FinancialTransactions] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[FinishedProductReceipts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptDifferences] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptItems] -> current rows = 3 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptItemStorageAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptReversalLines] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceipts] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeInventoryReceipts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeProducts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeSaleCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryItemFoundation] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryReceiptLines] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryReceiptPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryValuationSnapshots] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Invoice_Details] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Invoice_Header] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[JournalEntries] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[JournalEntryLines] -> current rows = 2 ; planned action = DELETE ALL rows
+[dbo].[LeaveRequests] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Live_Scan] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyAccounts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyRedemptions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyRewards] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MeasurementCardPrintHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileAccountCustomerAccess] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileAccounts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobilePushDevices] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileRecoveryChallenges] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileSessions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[OrderItemFabrics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[OrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Orders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PaymentDisputes] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Payments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Payments_Log] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollPeriods] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PerformanceMetricRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Piece_Measurements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Piece_Rates] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Pieces] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PieceWageRates] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PieceWageRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Production_Tracking] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionBatches] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionMaterialConsumptions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductMaterials] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Products] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PurchaseOrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PurchaseOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeInventoryProducts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrderPieceInstances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeSaleCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[RecoveryRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralAccounts] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ReferralAnalytics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralCodes] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ReferralRewards] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[RestoreRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ScannerStageProductPermissions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SecurityDriftRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SecurityEventLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Sent_Log] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Sent_Messages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ServiceAvailabilityRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[StageAttributionCorrections] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierAnnouncements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialInvoices] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialPaymentAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialPayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierInvoiceLines] -> current rows = 3 ; planned action = DELETE ALL rows
+[dbo].[SupplierInvoices] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierLedgerEntries] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierMessages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierNotifications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPaymentAcknowledgements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPaymentAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Suppliers] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SystemHealthRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringOrderEditOperations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceAddOperations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceBenefitBalances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceCancellations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceSaleValues] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuanceReturns] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuanceReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TrackingEvents] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[UserActivityLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[UserSessions] -> current rows = 1 ; planned action = DELETE ALL rows
+Protected baseline check [System_Settings] -> current rows = 125
+Protected baseline check [CashAccounts] -> current rows = 2
+Protected baseline check [LedgerAccounts] -> current rows = 24
+Protected baseline check [AccountingEventDefinitions] -> current rows = 14
+Protected baseline check [AccountRoleMappings] -> current rows = 9
+Protected baseline check [InventoryClassCatalog] -> current rows = 2
+Protected baseline check [InventoryUnitCatalog] -> current rows = 3
+Protected baseline check [PricingProductTypes] -> current rows = 0
+Protected baseline check [MessageTemplates] -> current rows = 0
+Protected baseline check [Messages_Templates] -> current rows = 0
+Protected baseline check [SecurityRoles] -> current rows = 9
+Protected baseline check [SecurityPermissions] -> current rows = 78
+Protected baseline check [RolePermissionMappings] -> current rows = 296
+Protected baseline check [UserRoleAssignments] -> current rows = 0
+Protected baseline check [UserClaimMappings] -> current rows = 0
+Protected baseline check [Users] -> current rows = 1
+
+Preview guard status: PASS
+No DELETE has been executed. This is a read-only preview.
+
+StdErr=<empty>
+Details=StdErr captured successfully.
+---
+CorrelationId=ccd58e4e62b14efcaf78f1149ca5582c
+Stage=PROCESS_EXITED
+Mode=Preview
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=18576
+ExitCode=0
+ConfiguredTimeoutSeconds=
+FailureStage=PROCESS_EXITED
+FailureCode=NONE
+StartTime=2026-11-09T14:26:41.1703383+00:00
+EndTime=2026-11-09T14:27:03.9845102+00:00
+StdOut=R3 SAFE ZERO-OPERATIONAL RESET PREVIEW
+Target database: LUMAR_ERP_ES_VALIDATION_R3
+Pure operational tables: 113
+Preserve baseline tables: 42
+Mixed-rule tables: 19
+Exception tables: 5
+Operational cleanup candidates: 137
+
+[dbo].[__EFMigrationsHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[AccountingEvents] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ApiFailureLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[AuditLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[BackupRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[BillOfMaterials] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CancelledPieceDisposition] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CashMovements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerAdvanceApplications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerLedgerEntries] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerMeasurements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerMessages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerNotifications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Customers] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[Employee_Draws] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Employee_Workflow] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeAdvances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeAttendances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeContracts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyAccruals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyEligibility] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyExpenses] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDocuments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDrawSettlements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeLedgerEntries] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeePayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeePieceRateAssignments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Employees] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeSeasonalBonuses] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeStatusHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricConsumptionPartialReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricConsumptionSources] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricRolls] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Fabrics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Fabrics_Inventory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FinancialTransactions] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[FinishedProductReceipts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptDifferences] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptItems] -> current rows = 3 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptItemStorageAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptReversalLines] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceipts] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeInventoryReceipts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeProducts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeSaleCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryItemFoundation] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryReceiptLines] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryReceiptPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryValuationSnapshots] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Invoice_Details] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Invoice_Header] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[JournalEntries] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[JournalEntryLines] -> current rows = 2 ; planned action = DELETE ALL rows
+[dbo].[LeaveRequests] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Live_Scan] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyAccounts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyRedemptions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyRewards] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MeasurementCardPrintHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileAccountCustomerAccess] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileAccounts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobilePushDevices] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileRecoveryChallenges] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileSessions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[OrderItemFabrics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[OrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Orders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PaymentDisputes] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Payments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Payments_Log] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollPeriods] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PerformanceMetricRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Piece_Measurements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Piece_Rates] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Pieces] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PieceWageRates] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PieceWageRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Production_Tracking] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionBatches] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionMaterialConsumptions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductMaterials] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Products] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PurchaseOrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PurchaseOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeInventoryProducts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrderPieceInstances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeSaleCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[RecoveryRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralAccounts] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ReferralAnalytics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralCodes] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ReferralRewards] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[RestoreRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ScannerStageProductPermissions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SecurityDriftRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SecurityEventLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Sent_Log] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Sent_Messages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ServiceAvailabilityRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[StageAttributionCorrections] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierAnnouncements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialInvoices] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialPaymentAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialPayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierInvoiceLines] -> current rows = 3 ; planned action = DELETE ALL rows
+[dbo].[SupplierInvoices] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierLedgerEntries] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierMessages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierNotifications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPaymentAcknowledgements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPaymentAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Suppliers] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SystemHealthRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringOrderEditOperations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceAddOperations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceBenefitBalances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceCancellations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceSaleValues] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuanceReturns] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuanceReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TrackingEvents] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[UserActivityLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[UserSessions] -> current rows = 1 ; planned action = DELETE ALL rows
+Protected baseline check [System_Settings] -> current rows = 125
+Protected baseline check [CashAccounts] -> current rows = 2
+Protected baseline check [LedgerAccounts] -> current rows = 24
+Protected baseline check [AccountingEventDefinitions] -> current rows = 14
+Protected baseline check [AccountRoleMappings] -> current rows = 9
+Protected baseline check [InventoryClassCatalog] -> current rows = 2
+Protected baseline check [InventoryUnitCatalog] -> current rows = 3
+Protected baseline check [PricingProductTypes] -> current rows = 0
+Protected baseline check [MessageTemplates] -> current rows = 0
+Protected baseline check [Messages_Templates] -> current rows = 0
+Protected baseline check [SecurityRoles] -> current rows = 9
+Protected baseline check [SecurityPermissions] -> current rows = 78
+Protected baseline check [RolePermissionMappings] -> current rows = 296
+Protected baseline check [UserRoleAssignments] -> current rows = 0
+Protected baseline check [UserClaimMappings] -> current rows = 0
+Protected baseline check [Users] -> current rows = 1
+
+Preview guard status: PASS
+No DELETE has been executed. This is a read-only preview.
+
+StdErr=<empty>
+Details=PowerShell process exited and output capture completed.
+---
+CorrelationId=ccd58e4e62b14efcaf78f1149ca5582c
+Stage=COMPLETE
+Mode=Preview
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=18576
+ExitCode=0
+ConfiguredTimeoutSeconds=
+FailureStage=NONE
+FailureCode=NONE
+StartTime=2026-11-09T14:26:41.1703383+00:00
+EndTime=2026-11-09T14:27:03.9851075+00:00
+StdOut=R3 SAFE ZERO-OPERATIONAL RESET PREVIEW
+Target database: LUMAR_ERP_ES_VALIDATION_R3
+Pure operational tables: 113
+Preserve baseline tables: 42
+Mixed-rule tables: 19
+Exception tables: 5
+Operational cleanup candidates: 137
+
+[dbo].[__EFMigrationsHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[AccountingEvents] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ApiFailureLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[AuditLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[BackupRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[BillOfMaterials] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CancelledPieceDisposition] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CashMovements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerAdvanceApplications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerLedgerEntries] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerMeasurements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerMessages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerNotifications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Customers] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[Employee_Draws] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Employee_Workflow] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeAdvances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeAttendances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeContracts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyAccruals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyEligibility] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyExpenses] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDocuments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDrawSettlements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeLedgerEntries] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeePayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeePieceRateAssignments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Employees] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeSeasonalBonuses] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeStatusHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricConsumptionPartialReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricConsumptionSources] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricRolls] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Fabrics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Fabrics_Inventory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FinancialTransactions] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[FinishedProductReceipts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptDifferences] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptItems] -> current rows = 3 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptItemStorageAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptReversalLines] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceipts] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeInventoryReceipts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeProducts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeSaleCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryItemFoundation] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryReceiptLines] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryReceiptPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryValuationSnapshots] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Invoice_Details] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Invoice_Header] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[JournalEntries] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[JournalEntryLines] -> current rows = 2 ; planned action = DELETE ALL rows
+[dbo].[LeaveRequests] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Live_Scan] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyAccounts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyRedemptions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyRewards] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MeasurementCardPrintHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileAccountCustomerAccess] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileAccounts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobilePushDevices] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileRecoveryChallenges] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileSessions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[OrderItemFabrics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[OrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Orders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PaymentDisputes] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Payments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Payments_Log] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollPeriods] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PerformanceMetricRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Piece_Measurements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Piece_Rates] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Pieces] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PieceWageRates] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PieceWageRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Production_Tracking] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionBatches] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionMaterialConsumptions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductMaterials] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Products] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PurchaseOrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PurchaseOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeInventoryProducts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrderPieceInstances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeSaleCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[RecoveryRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralAccounts] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ReferralAnalytics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralCodes] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ReferralRewards] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[RestoreRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ScannerStageProductPermissions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SecurityDriftRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SecurityEventLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Sent_Log] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Sent_Messages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ServiceAvailabilityRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[StageAttributionCorrections] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierAnnouncements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialInvoices] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialPaymentAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialPayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierInvoiceLines] -> current rows = 3 ; planned action = DELETE ALL rows
+[dbo].[SupplierInvoices] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierLedgerEntries] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierMessages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierNotifications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPaymentAcknowledgements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPaymentAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Suppliers] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SystemHealthRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringOrderEditOperations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceAddOperations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceBenefitBalances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceCancellations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceSaleValues] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuanceReturns] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuanceReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TrackingEvents] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[UserActivityLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[UserSessions] -> current rows = 1 ; planned action = DELETE ALL rows
+Protected baseline check [System_Settings] -> current rows = 125
+Protected baseline check [CashAccounts] -> current rows = 2
+Protected baseline check [LedgerAccounts] -> current rows = 24
+Protected baseline check [AccountingEventDefinitions] -> current rows = 14
+Protected baseline check [AccountRoleMappings] -> current rows = 9
+Protected baseline check [InventoryClassCatalog] -> current rows = 2
+Protected baseline check [InventoryUnitCatalog] -> current rows = 3
+Protected baseline check [PricingProductTypes] -> current rows = 0
+Protected baseline check [MessageTemplates] -> current rows = 0
+Protected baseline check [Messages_Templates] -> current rows = 0
+Protected baseline check [SecurityRoles] -> current rows = 9
+Protected baseline check [SecurityPermissions] -> current rows = 78
+Protected baseline check [RolePermissionMappings] -> current rows = 296
+Protected baseline check [UserRoleAssignments] -> current rows = 0
+Protected baseline check [UserClaimMappings] -> current rows = 0
+Protected baseline check [Users] -> current rows = 1
+
+Preview guard status: PASS
+No DELETE has been executed. This is a read-only preview.
+
+StdErr=<empty>
+Details=Process completed successfully.
+---
+CorrelationId=ccd58e4e62b14efcaf78f1149ca5582c
+Stage=FINAL
+Mode=Preview
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=18576
+ExitCode=0
+ConfiguredTimeoutSeconds=
+FailureStage=PREVIEW
+FailureCode=NONE
+StartTime=2026-11-09T14:26:41.1703383+00:00
+EndTime=2026-11-09T14:27:03.9858565+00:00
+StdOut=R3 SAFE ZERO-OPERATIONAL RESET PREVIEW
+Target database: LUMAR_ERP_ES_VALIDATION_R3
+Pure operational tables: 113
+Preserve baseline tables: 42
+Mixed-rule tables: 19
+Exception tables: 5
+Operational cleanup candidates: 137
+
+[dbo].[__EFMigrationsHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[AccountingEvents] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ApiFailureLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[AuditLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[BackupRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[BillOfMaterials] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CancelledPieceDisposition] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CashMovements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerAdvanceApplications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerLedgerEntries] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerMeasurements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerMessages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[CustomerNotifications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Customers] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[Employee_Draws] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Employee_Workflow] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeAdvances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeAttendances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeContracts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyAccruals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyEligibility] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDailyExpenses] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDocuments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeDrawSettlements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeLedgerEntries] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeePayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeePieceRateAssignments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Employees] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeSeasonalBonuses] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[EmployeeStatusHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricConsumptionPartialReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricConsumptionSources] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FabricRolls] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Fabrics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Fabrics_Inventory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[FinancialTransactions] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[FinishedProductReceipts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptDifferences] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptItems] -> current rows = 3 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptItemStorageAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptReversalLines] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceiptReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[GoodsReceipts] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeInventoryReceipts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeProducts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ImportedReadyMadeSaleCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryItemFoundation] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryReceiptLines] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryReceiptPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[InventoryValuationSnapshots] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Invoice_Details] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Invoice_Header] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[JournalEntries] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[JournalEntryLines] -> current rows = 2 ; planned action = DELETE ALL rows
+[dbo].[LeaveRequests] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Live_Scan] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyAccounts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyRedemptions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyRewards] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[LoyaltyTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MeasurementCardPrintHistory] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileAccountCustomerAccess] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileAccounts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobilePushDevices] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileRecoveryChallenges] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[MobileSessions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[OrderItemFabrics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[OrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Orders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PaymentDisputes] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Payments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Payments_Log] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollPeriods] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PayrollRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PerformanceMetricRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Piece_Measurements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Piece_Rates] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Pieces] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PieceWageRates] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PieceWageRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Production_Tracking] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionBatches] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionMaterialConsumptions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductionOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ProductMaterials] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Products] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PurchaseOrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[PurchaseOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeInventoryProducts] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrderItems] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrderPieceInstances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeProductionOrders] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReadyMadeSaleCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[RecoveryRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralAccounts] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ReferralAnalytics] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralCodes] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[ReferralRewards] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ReferralTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[RestoreRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ScannerStageProductPermissions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SecurityDriftRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SecurityEventLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Sent_Log] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Sent_Messages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ServiceAvailabilityRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[StageAttributionCorrections] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierAnnouncements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialInvoices] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialPaymentAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierFinancialPayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierInvoiceLines] -> current rows = 3 ; planned action = DELETE ALL rows
+[dbo].[SupplierInvoices] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierLedgerEntries] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierMessages] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierNotifications] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPaymentAcknowledgements] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPaymentAllocations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SupplierPayments] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[Suppliers] -> current rows = 1 ; planned action = DELETE ALL rows
+[dbo].[SupplierTransactions] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[SystemHealthRecords] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringCostPostings] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringOrderEditOperations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceAddOperations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceBenefitBalances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceCancellations] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TailoringPieceSaleValues] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuanceReturns] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuanceReversals] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[ToolIssuances] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[TrackingEvents] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[UserActivityLogs] -> current rows = 0 ; planned action = DELETE ALL rows
+[dbo].[UserSessions] -> current rows = 1 ; planned action = DELETE ALL rows
+Protected baseline check [System_Settings] -> current rows = 125
+Protected baseline check [CashAccounts] -> current rows = 2
+Protected baseline check [LedgerAccounts] -> current rows = 24
+Protected baseline check [AccountingEventDefinitions] -> current rows = 14
+Protected baseline check [AccountRoleMappings] -> current rows = 9
+Protected baseline check [InventoryClassCatalog] -> current rows = 2
+Protected baseline check [InventoryUnitCatalog] -> current rows = 3
+Protected baseline check [PricingProductTypes] -> current rows = 0
+Protected baseline check [MessageTemplates] -> current rows = 0
+Protected baseline check [Messages_Templates] -> current rows = 0
+Protected baseline check [SecurityRoles] -> current rows = 9
+Protected baseline check [SecurityPermissions] -> current rows = 78
+Protected baseline check [RolePermissionMappings] -> current rows = 296
+Protected baseline check [UserRoleAssignments] -> current rows = 0
+Protected baseline check [UserClaimMappings] -> current rows = 0
+Protected baseline check [Users] -> current rows = 1
+
+Preview guard status: PASS
+No DELETE has been executed. This is a read-only preview.
+
+StdErr=<empty>
+Details=Final log flush executed in finally block.
+---

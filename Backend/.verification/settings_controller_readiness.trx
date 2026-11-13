@@ -1,0 +1,106 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="17dd134a-a157-4255-879b-5c991c5a0286" name="LENOVO@YASIN-YASIN 2026-11-08 18:52:44" runUser="YASIN-YASIN\LENOVO" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-11-08T18:52:44.7758192+03:00" queuing="2026-11-08T18:52:44.7758200+03:00" start="2026-11-08T18:52:39.0618762+03:00" finish="2026-11-08T18:53:42.4235770+03:00" />
+  <TestSettings name="default" id="b2f148af-b326-4de7-be52-ee30f96e3be6">
+    <Deployment runDeploymentRoot="LENOVO_YASIN-YASIN_2026-11-08_18_52_44" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="f1f7a006-9846-4865-a405-8fcaa683b606" testId="70edc08d-20bd-2f2c-8e6e-0e910467e6ed" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.SettingsService_ReadinessPreview_UsesRealScript_AndWritesLogFile" computerName="YASIN-YASIN" duration="00:00:24.9030507" startTime="2026-11-08T18:52:43.7743042+03:00" endTime="2026-11-08T18:53:08.6781871+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f1f7a006-9846-4865-a405-8fcaa683b606" />
+    <UnitTestResult executionId="a08750d1-ad7c-4092-a75c-191d5e3e09a7" testId="a0500f9a-05fd-b240-77bb-d90361a93b4d" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.ProductionDIUsesCreateForLiveOnly" computerName="YASIN-YASIN" duration="00:00:11.9329587" startTime="2026-11-08T18:53:28.2796670+03:00" endTime="2026-11-08T18:53:40.2131378+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a08750d1-ad7c-4092-a75c-191d5e3e09a7" />
+    <UnitTestResult executionId="219f12db-4617-41b1-bc10-4c0b3cc44d91" testId="46ec3d06-5f6d-9a4c-e654-033065b23623" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.LiveReset_UsesOfficialTimeoutConfiguration_AndLogsConfiguredTimeout" computerName="YASIN-YASIN" duration="00:00:00.3247217" startTime="2026-11-08T18:52:43.1580553+03:00" endTime="2026-11-08T18:52:43.4094356+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="219f12db-4617-41b1-bc10-4c0b3cc44d91" />
+    <UnitTestResult executionId="1ac20f5e-162a-40ab-ab16-cb0b55facf93" testId="3dbcac38-e1d0-d509-ff0f-c68fb4249cbe" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.ExecuteTestDataResetAsync_WhenRequestCancelledAfterStart_RecordsLog_AndClassifiesRequestCancelled" computerName="YASIN-YASIN" duration="00:00:19.2845883" startTime="2026-11-08T18:53:08.9939997+03:00" endTime="2026-11-08T18:53:28.2785854+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1ac20f5e-162a-40ab-ab16-cb0b55facf93" />
+    <UnitTestResult executionId="d413ec74-fd07-4df5-b6b7-2dd96e75a146" testId="c1b1ba45-8f46-679a-bfd3-bd24872b7521" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.ExecuteTestDataResetAsync_WhenProcessTimesOut_RecordsTimeout" computerName="YASIN-YASIN" duration="00:00:02.1144371" startTime="2026-11-08T18:53:40.2153174+03:00" endTime="2026-11-08T18:53:42.3301296+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d413ec74-fd07-4df5-b6b7-2dd96e75a146" />
+    <UnitTestResult executionId="b3846f33-ca8a-4df3-a26d-84ca00252124" testId="abac909f-7bff-000a-652a-7e7f2299286e" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.TestOverrideCannotReachProductionDI" computerName="YASIN-YASIN" duration="00:00:00.0080842" startTime="2026-11-08T18:52:43.7576643+03:00" endTime="2026-11-08T18:52:43.7670038+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b3846f33-ca8a-4df3-a26d-84ca00252124" />
+    <UnitTestResult executionId="027ac068-e698-482b-93af-9b79f20dc4b9" testId="3763446f-a938-85d7-2d08-2cd0d3e3282a" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.LiveReset_WhenConfiguredTimeoutIsBelowSafetyFloor_FailsWithInvalidTimeoutGuard" computerName="YASIN-YASIN" duration="00:00:00.0064418" startTime="2026-11-08T18:52:43.7675067+03:00" endTime="2026-11-08T18:52:43.7737460+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="027ac068-e698-482b-93af-9b79f20dc4b9" />
+    <UnitTestResult executionId="14a2e572-530e-4b42-9c47-b4f30cee7ecb" testId="3e737ecc-4052-58bd-cd78-a29da94ba527" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.SettingsController_CanBeResolvedThroughAspNetDi" computerName="YASIN-YASIN" duration="00:00:00.0907878" startTime="2026-11-08T18:53:08.9027217+03:00" endTime="2026-11-08T18:53:08.9934421+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="14a2e572-530e-4b42-9c47-b4f30cee7ecb" />
+    <UnitTestResult executionId="1f8c5fbb-0c75-44dc-9a7a-73c5dce9e7ad" testId="329488b8-a28b-c001-7dcb-2844fe2a5461" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.PostExecuteUsesLiveConfiguration" computerName="YASIN-YASIN" duration="00:00:00.2036662" startTime="2026-11-08T18:52:43.5542365+03:00" endTime="2026-11-08T18:52:43.7570853+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1f8c5fbb-0c75-44dc-9a7a-73c5dce9e7ad" />
+    <UnitTestResult executionId="71c8c0c9-51c4-4ac5-b372-5b727c50ae7d" testId="89b8287a-2475-0d30-9f1c-1002f5b5c746" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.ReadinessAndExecuteUseSameLiveConfiguration" computerName="YASIN-YASIN" duration="00:00:00.2175981" startTime="2026-11-08T18:53:08.6819431+03:00" endTime="2026-11-08T18:53:08.8964933+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="71c8c0c9-51c4-4ac5-b372-5b727c50ae7d" />
+    <UnitTestResult executionId="2f07ad49-9d3d-4167-835d-c7ab3b025b7a" testId="21d6c910-6418-c783-b035-3ce9dd0eacef" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.InvalidLiveConfigurationIsBlockedBeforeProcessStart" computerName="YASIN-YASIN" duration="00:00:00.0055711" startTime="2026-11-08T18:53:08.8973207+03:00" endTime="2026-11-08T18:53:08.9022834+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2f07ad49-9d3d-4167-835d-c7ab3b025b7a" />
+    <UnitTestResult executionId="08e4173e-f3ae-4f35-8683-35990f2796a2" testId="572d77d0-b6cb-7c1a-c265-654612bc7f70" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.ExecuteTestDataResetAsync_WhenPowerShellExitsNonZero_RecordsFailureCode" computerName="YASIN-YASIN" duration="00:00:00.1307337" startTime="2026-11-08T18:52:43.4624907+03:00" endTime="2026-11-08T18:52:43.5522053+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="08e4173e-f3ae-4f35-8683-35990f2796a2" />
+    <UnitTestResult executionId="6fb929e1-f7ad-4204-9185-99d1482251e6" testId="9907f2bc-4a2e-edd4-c66a-c027bb40c42a" testName="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.ReadinessEndpoint_ReturnsPreviewResult_ForAdminUser" computerName="YASIN-YASIN" duration="00:00:00.0020337" startTime="2026-11-08T18:53:40.2141880+03:00" endTime="2026-11-08T18:53:40.2149795+03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6fb929e1-f7ad-4204-9185-99d1482251e6" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.InvalidLiveConfigurationIsBlockedBeforeProcessStart" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="21d6c910-6418-c783-b035-3ce9dd0eacef">
+      <Execution id="2f07ad49-9d3d-4167-835d-c7ab3b025b7a" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="InvalidLiveConfigurationIsBlockedBeforeProcessStart" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.SettingsController_CanBeResolvedThroughAspNetDi" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="3e737ecc-4052-58bd-cd78-a29da94ba527">
+      <Execution id="14a2e572-530e-4b42-9c47-b4f30cee7ecb" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="SettingsController_CanBeResolvedThroughAspNetDi" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.PostExecuteUsesLiveConfiguration" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="329488b8-a28b-c001-7dcb-2844fe2a5461">
+      <Execution id="1f8c5fbb-0c75-44dc-9a7a-73c5dce9e7ad" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="PostExecuteUsesLiveConfiguration" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.ExecuteTestDataResetAsync_WhenProcessTimesOut_RecordsTimeout" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="c1b1ba45-8f46-679a-bfd3-bd24872b7521">
+      <Execution id="d413ec74-fd07-4df5-b6b7-2dd96e75a146" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="ExecuteTestDataResetAsync_WhenProcessTimesOut_RecordsTimeout" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.ExecuteTestDataResetAsync_WhenPowerShellExitsNonZero_RecordsFailureCode" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="572d77d0-b6cb-7c1a-c265-654612bc7f70">
+      <Execution id="08e4173e-f3ae-4f35-8683-35990f2796a2" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="ExecuteTestDataResetAsync_WhenPowerShellExitsNonZero_RecordsFailureCode" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.ReadinessAndExecuteUseSameLiveConfiguration" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="89b8287a-2475-0d30-9f1c-1002f5b5c746">
+      <Execution id="71c8c0c9-51c4-4ac5-b372-5b727c50ae7d" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="ReadinessAndExecuteUseSameLiveConfiguration" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.LiveReset_WhenConfiguredTimeoutIsBelowSafetyFloor_FailsWithInvalidTimeoutGuard" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="3763446f-a938-85d7-2d08-2cd0d3e3282a">
+      <Execution id="027ac068-e698-482b-93af-9b79f20dc4b9" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="LiveReset_WhenConfiguredTimeoutIsBelowSafetyFloor_FailsWithInvalidTimeoutGuard" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.SettingsService_ReadinessPreview_UsesRealScript_AndWritesLogFile" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="70edc08d-20bd-2f2c-8e6e-0e910467e6ed">
+      <Execution id="f1f7a006-9846-4865-a405-8fcaa683b606" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="SettingsService_ReadinessPreview_UsesRealScript_AndWritesLogFile" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.TestOverrideCannotReachProductionDI" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="abac909f-7bff-000a-652a-7e7f2299286e">
+      <Execution id="b3846f33-ca8a-4df3-a26d-84ca00252124" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="TestOverrideCannotReachProductionDI" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.ReadinessEndpoint_ReturnsPreviewResult_ForAdminUser" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="9907f2bc-4a2e-edd4-c66a-c027bb40c42a">
+      <Execution id="6fb929e1-f7ad-4204-9185-99d1482251e6" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="ReadinessEndpoint_ReturnsPreviewResult_ForAdminUser" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.LiveReset_UsesOfficialTimeoutConfiguration_AndLogsConfiguredTimeout" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="46ec3d06-5f6d-9a4c-e654-033065b23623">
+      <Execution id="219f12db-4617-41b1-bc10-4c0b3cc44d91" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="LiveReset_UsesOfficialTimeoutConfiguration_AndLogsConfiguredTimeout" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.ProductionDIUsesCreateForLiveOnly" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="a0500f9a-05fd-b240-77bb-d90361a93b4d">
+      <Execution id="a08750d1-ad7c-4092-a75c-191d5e3e09a7" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="ProductionDIUsesCreateForLiveOnly" />
+    </UnitTest>
+    <UnitTest name="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests.ExecuteTestDataResetAsync_WhenRequestCancelledAfterStart_RecordsLog_AndClassifiesRequestCancelled" storage="d:\yasin\backend\lumar_erp_api_v2.tests\bin\debug\net10.0\lumar_erp_api_v2.tests.dll" id="3dbcac38-e1d0-d509-ff0f-c68fb4249cbe">
+      <Execution id="1ac20f5e-162a-40ab-ab16-cb0b55facf93" />
+      <TestMethod codeBase="D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="LUMAR_ERP_API_V2.Tests.SettingsControllerReadinessTests" name="ExecuteTestDataResetAsync_WhenRequestCancelledAfterStart_RecordsLog_AndClassifiesRequestCancelled" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="70edc08d-20bd-2f2c-8e6e-0e910467e6ed" executionId="f1f7a006-9846-4865-a405-8fcaa683b606" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a0500f9a-05fd-b240-77bb-d90361a93b4d" executionId="a08750d1-ad7c-4092-a75c-191d5e3e09a7" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="46ec3d06-5f6d-9a4c-e654-033065b23623" executionId="219f12db-4617-41b1-bc10-4c0b3cc44d91" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3dbcac38-e1d0-d509-ff0f-c68fb4249cbe" executionId="1ac20f5e-162a-40ab-ab16-cb0b55facf93" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c1b1ba45-8f46-679a-bfd3-bd24872b7521" executionId="d413ec74-fd07-4df5-b6b7-2dd96e75a146" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="abac909f-7bff-000a-652a-7e7f2299286e" executionId="b3846f33-ca8a-4df3-a26d-84ca00252124" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3763446f-a938-85d7-2d08-2cd0d3e3282a" executionId="027ac068-e698-482b-93af-9b79f20dc4b9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3e737ecc-4052-58bd-cd78-a29da94ba527" executionId="14a2e572-530e-4b42-9c47-b4f30cee7ecb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="329488b8-a28b-c001-7dcb-2844fe2a5461" executionId="1f8c5fbb-0c75-44dc-9a7a-73c5dce9e7ad" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="89b8287a-2475-0d30-9f1c-1002f5b5c746" executionId="71c8c0c9-51c4-4ac5-b372-5b727c50ae7d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="21d6c910-6418-c783-b035-3ce9dd0eacef" executionId="2f07ad49-9d3d-4167-835d-c7ab3b025b7a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="572d77d0-b6cb-7c1a-c265-654612bc7f70" executionId="08e4173e-f3ae-4f35-8683-35990f2796a2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9907f2bc-4a2e-edd4-c66a-c027bb40c42a" executionId="6fb929e1-f7ad-4204-9185-99d1482251e6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="13" executed="13" passed="13" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.01] xUnit.net VSTest Adapter v3.0.2+dd36e86129 (64-bit .NET 10.0.12)&#xD;
+[xUnit.net 00:00:00.66]   Discovering: LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:01.44]   Discovered:  LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:00:01.77]   Starting:    LUMAR_ERP_API_V2.Tests&#xD;
+[xUnit.net 00:01:01.26]   Finished:    LUMAR_ERP_API_V2.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

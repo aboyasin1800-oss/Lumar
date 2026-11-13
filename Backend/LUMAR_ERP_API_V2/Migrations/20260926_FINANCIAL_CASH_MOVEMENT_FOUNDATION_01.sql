@@ -27,20 +27,21 @@ BEGIN TRY
             ADD CONSTRAINT FK_CashAccounts_LedgerAccounts_LedgerControlAccountId
             FOREIGN KEY (LedgerControlAccountId) REFERENCES dbo.LedgerAccounts(LedgerAccountId);');
 
-    IF NOT EXISTS (SELECT 1 FROM dbo.LedgerAccounts WHERE LedgerAccountId = 7 AND AccountCode = N'1000' AND IsActive = 1)
+    DECLARE @cashControlLedgerAccountId int = (SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WHERE AccountCode = N'1000' AND IsActive = 1 ORDER BY LedgerAccountId);
+    IF @cashControlLedgerAccountId IS NULL
         THROW 51103, N'The approved cash control account 1000 is unavailable.', 1;
 
-        DECLARE @configuredAccounts int;
-        EXEC sys.sp_executesql N'
-                UPDATE dbo.CashAccounts
-                SET CashAccountType = 1,
-                        CurrencyCode = ''YER'',
-                        LedgerControlAccountId = 7,
-                        AllowsReceipts = 1
-                WHERE CashAccountId = 1
-                    AND AccountName = N''Petty Cash 0719001842'';
-                SELECT @rows = @@ROWCOUNT;',
-                N'@rows int OUTPUT', @rows = @configuredAccounts OUTPUT;
+    DECLARE @configuredAccounts int;
+    EXEC sys.sp_executesql N'
+            UPDATE dbo.CashAccounts
+            SET CashAccountType = 1,
+                    CurrencyCode = ''YER'',
+                    LedgerControlAccountId = @cashControlLedgerAccountId,
+                    AllowsReceipts = 1
+            WHERE CashAccountId = 1
+                AND AccountName = N''Petty Cash 0719001842'';
+            SELECT @rows = @@ROWCOUNT;',
+            N'@rows int OUTPUT, @cashControlLedgerAccountId int', @rows = @configuredAccounts OUTPUT, @cashControlLedgerAccountId = @cashControlLedgerAccountId;
 
         IF @configuredAccounts <> 1
         THROW 51104, N'The approved Go-Live cash account was not found.', 1;
@@ -98,12 +99,16 @@ BEGIN
     IF @eventAmount IS NULL OR @eventType NOT IN (1,2) OR @eventAmount <> @Amount
         THROW 51112, N''The accounting event is not an eligible cash receipt.'', 1;
 
+    DECLARE @cashControlLedgerAccountId int = (SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE AccountCode = N''1000'' AND IsActive = 1 ORDER BY LedgerAccountId);
+    IF @cashControlLedgerAccountId IS NULL
+        THROW 51113, N''The approved cash control account 1000 is unavailable.'', 1;
+
     DECLARE @isEligible bit;
     SELECT @isEligible = CASE WHEN IsActive = 1
                                   AND CashAccountType = 1
                                   AND AllowsReceipts = 1
                                   AND CurrencyCode = @CurrencyCode
-                                  AND LedgerControlAccountId = 7
+                                  AND LedgerControlAccountId = @cashControlLedgerAccountId
                               THEN 1 ELSE 0 END
     FROM dbo.CashAccounts WITH (UPDLOCK, HOLDLOCK)
     WHERE CashAccountId = @CashAccountId;

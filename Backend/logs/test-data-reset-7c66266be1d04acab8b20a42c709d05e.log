@@ -1,0 +1,17 @@
+CorrelationId=7c66266be1d04acab8b20a42c709d05e
+Stage=BLOCKED
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=
+WorkingDirectory=D:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0
+PowerShellProcessId=
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=OWNER_APPROVAL_REQUIRED
+FailureCode=OWNER_APPROVAL_REQUIRED
+StartTime=2026-11-09T14:25:02.4860623+00:00
+EndTime=2026-11-09T14:25:02.4896208+00:00
+StdOut=<empty>
+StdErr=Test data reset is frozen and locked until explicit owner approval from YASIN is present.
+Details=Cleanup execution is blocked by the dedicated safety policy and requires a direct YASIN approval signal.
+---

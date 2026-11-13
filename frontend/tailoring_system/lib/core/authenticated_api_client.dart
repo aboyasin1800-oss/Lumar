@@ -121,13 +121,60 @@ class AuthenticatedApiClient {
   }
 
   void _throwApiError(http.Response response, String path) {
+    Map<String, dynamic>? payload;
     String message = 'تعذر تنفيذ العملية.';
     try {
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
-      message = (json['message'] ?? json['title'] ?? message).toString();
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        payload = decoded;
+      } else if (decoded is Map) {
+        payload = Map<String, dynamic>.from(decoded);
+      }
+      message = (payload?['message'] ?? payload?['title'] ?? message).toString();
     } catch (_) {}
-    throw ApiClientException(path, response.statusCode,
-        _arabicMessage(response.statusCode, message));
+
+    final structuredMessage = payload != null
+        ? _structuredFailureMessage(payload, message)
+        : _arabicMessage(response.statusCode, message);
+
+    final structuredDetails = payload?['details']?.toString() ??
+        payload?['detail']?.toString() ??
+        message;
+    final structuredStage = payload?['failureStage']?.toString() ?? '';
+    final structuredCode = payload?['failureCode']?.toString() ?? '';
+    final structuredCorrelation = payload?['correlationId']?.toString() ?? '';
+    final timestampUtc = payload?['timestampUtc']?.toString() ?? '';
+
+    throw StructuredApiException(
+      path,
+      response.statusCode,
+      structuredMessage,
+      details: structuredDetails,
+      failureStage: structuredStage,
+      failureCode: structuredCode,
+      correlationId: structuredCorrelation,
+      timestampUtc: timestampUtc,
+      responseBody: response.body,
+      payload: payload,
+    );
+  }
+
+  String _structuredFailureMessage(Map<String, dynamic> payload, String fallbackMessage) {
+    final message = (payload['message'] ?? payload['title'] ?? fallbackMessage).toString();
+    final parts = <String>[message];
+    final stage = payload['failureStage']?.toString();
+    if (stage != null && stage.isNotEmpty) {
+      parts.add('المرحلة: $stage');
+    }
+    final code = payload['failureCode']?.toString();
+    if (code != null && code.isNotEmpty) {
+      parts.add('FailureCode: $code');
+    }
+    final correlationId = payload['correlationId']?.toString();
+    if (correlationId != null && correlationId.isNotEmpty) {
+      parts.add('CorrelationId: $correlationId');
+    }
+    return parts.join('\n');
   }
 
   String _arabicMessage(int statusCode, String message) {
@@ -140,14 +187,43 @@ class AuthenticatedApiClient {
 }
 
 class ApiClientException implements Exception {
-  const ApiClientException(this.path, this.statusCode, this.message);
+  const ApiClientException(
+    this.path,
+    this.statusCode,
+    this.message, {
+    this.payload,
+    this.responseBody,
+  });
 
   final String path;
   final int statusCode;
   final String message;
+  final Map<String, dynamic>? payload;
+  final String? responseBody;
 
   @override
   String toString() => message;
+}
+
+class StructuredApiException extends ApiClientException {
+  const StructuredApiException(
+    super.path,
+    super.statusCode,
+    super.message, {
+    required this.details,
+    required this.failureStage,
+    required this.failureCode,
+    required this.correlationId,
+    required this.timestampUtc,
+    super.responseBody,
+    super.payload,
+  });
+
+  final String details;
+  final String failureStage;
+  final String failureCode;
+  final String correlationId;
+  final String timestampUtc;
 }
 
 

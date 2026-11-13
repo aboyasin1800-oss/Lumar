@@ -8,6 +8,117 @@ import 'package:intl/intl.dart';
 import '../../core/ui_palette.dart';
 import '../../models/pending_receipt_storage.dart';
 
+String _friendlyInventorySaveError(http.Response response) {
+  final raw = response.body.trim();
+  if (raw.isEmpty) {
+    return 'تعذر حفظ الدفعة. يرجى مراجعة البيانات ثم إعادة المحاولة.';
+  }
+
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is Map<String, dynamic>) {
+      final userFriendly = decoded['userFriendlyMessage']?.toString();
+      final message = decoded['message']?.toString();
+      final friendly = (userFriendly ?? message ?? '').trim();
+      if (friendly.isNotEmpty && friendly.toLowerCase() != 'null') {
+        return friendly;
+      }
+    }
+  } catch (_) {
+    // Ignore malformed JSON and fall back to safe cleanup below.
+  }
+
+  if (raw.startsWith('{') || raw.startsWith('[')) {
+    return 'تعذر حفظ الدفعة. يرجى مراجعة البيانات ثم إعادة المحاولة.';
+  }
+
+  return raw;
+}
+
+List<double> distributeRollQuantities({
+  required int rollCount,
+  required double totalQuantity,
+}) {
+  final safeCount = rollCount > 0 ? rollCount : 1;
+  if (safeCount == 1) {
+    return [totalQuantity];
+  }
+
+  final base = totalQuantity / safeCount;
+  final values = List<double>.filled(safeCount, base, growable: false);
+  final roundedSum = values.fold<double>(0, (sum, value) => sum + value);
+  final delta = totalQuantity - roundedSum;
+  values[safeCount - 1] = values.last + delta;
+
+  return values
+      .map((value) => double.parse(value.toStringAsFixed(6)))
+      .toList(growable: false);
+}
+
+String? validateRollQuantities({
+  required double expectedTotal,
+  required List<Object> rolls,
+}) {
+  final total = rolls.fold<double>(0, (sum, rawRoll) {
+    final quantity = switch (rawRoll) {
+      _RollEntryItem(:final quantityYardsController) => double.tryParse(quantityYardsController.text.trim().replaceAll(',', '.')) ?? 0,
+      FabricRollQuantityInput(:final quantityYardsController) => double.tryParse(quantityYardsController.text.trim().replaceAll(',', '.')) ?? 0,
+      _ => 0.0,
+    };
+    return sum + quantity;
+  });
+
+  final difference = total - expectedTotal;
+  if ((difference.abs() > 0.0001)) {
+    final deltaText = difference.abs().toStringAsFixed(3);
+    final direction = difference > 0 ? 'زيادة' : 'نقصان';
+    return 'لا يمكن حفظ الاستلام: كمية البند المطلوبة هي ${expectedTotal.toStringAsFixed(3)} ياردة، مجموع كميات الرولات المدخلة هو ${total.toStringAsFixed(3)} ياردة، والفرق هو $direction قدره $deltaText ياردة.';
+  }
+
+  return null;
+}
+
+Map<String, dynamic> buildFabricReceiptPayload({
+  required bool isPendingStorage,
+  PendingReceiptStorage? pendingReceipt,
+  required String batchCatalogNumber,
+  required String itemCode,
+  required String fabricTypeCode,
+  required double fabricWidth,
+  required String colorValue,
+  required int unitId,
+  required String sourceOperationId,
+  required List<Map<String, dynamic>> rolls,
+  Map<String, dynamic>? extraFields,
+}) {
+  final approved = {'opposingLedgerAccountCode': '2100'};
+
+  if (isPendingStorage) {
+    if (pendingReceipt == null) {
+      throw ArgumentError('pendingReceipt is required when isPendingStorage is true.');
+    }
+
+    final payload = {
+      'goodsReceiptItemId': pendingReceipt.goodsReceiptItemId,
+      'catalogNumber': batchCatalogNumber.trim(),
+      'itemCode': itemCode.trim(),
+      'fabricTypeCode': fabricTypeCode.trim(),
+      'fabricWidth': fabricWidth,
+      'colorValue': colorValue.trim(),
+      'unitId': unitId,
+      'sourceOperationId': sourceOperationId,
+      'rolls': rolls,
+    };
+
+    return {...payload, ...approved, ...(extraFields ?? const {})};
+  }
+
+  final payload = {
+    'rolls': rolls,
+  };
+  return {...payload, ...approved, ...(extraFields ?? const {})};
+}
+
 class FabricCodeUtils {
   static String _normalizeCode(String value) => value.trim().toUpperCase();
 
@@ -67,6 +178,34 @@ class FabricCodeUtils {
     return '$resolvedPrefix${(maxNumber + 1).toString().padLeft(width, '0')}';
   }
 
+  static List<String> nextUniqueFabricCodesForBatch({
+    required int count,
+    required List<String> existingCodes,
+    required List<String> currentBatchCodes,
+    String prefix = 'FA',
+    int width = 4,
+  }) {
+    final used = <String>{};
+    for (final code in existingCodes.map(_normalizeCode)) {
+      if (code.isNotEmpty) {
+        used.add(code);
+      }
+    }
+    for (final code in currentBatchCodes.map(_normalizeCode)) {
+      if (code.isNotEmpty) {
+        used.add(code);
+      }
+    }
+
+    final result = <String>[];
+    for (var i = 0; i < count; i++) {
+      final next = nextFabricCode(used.toList(), prefix: prefix, width: width);
+      used.add(next);
+      result.add(next);
+    }
+    return result;
+  }
+
   static String formatYardPriceDisplay(num value) {
     final numeric = value.toDouble();
     if (numeric.isNaN || numeric.isInfinite) {
@@ -85,12 +224,6 @@ class FabricCodeUtils {
 }
 
 class _FabricBatchUtils {
-  static String nextFabricCode(
-    List<String> existingCodes, {
-    String prefix = 'FA',
-    int width = 4,
-  }) => FabricCodeUtils.nextFabricCode(existingCodes, prefix: prefix, width: width);
-
   static String nextCatalogNumber(
     List<String> existingCatalogs, {
     String prefix = 'CAT',
@@ -185,6 +318,16 @@ class _InventoryFabricItem {
   final double availableQuantity;
   final double consumedQuantity;
   final String catalogNumber;
+}
+
+class FabricRollQuantityInput {
+  FabricRollQuantityInput({String quantityYards = ''}) : quantityYardsController = TextEditingController(text: quantityYards);
+
+  final TextEditingController quantityYardsController;
+
+  void dispose() {
+    quantityYardsController.dispose();
+  }
 }
 
 class _RollEntryItem {
@@ -323,17 +466,22 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
   void _applyPendingReceipt() {
     final pending = widget.pendingReceipt;
     if (pending == null || pending.itemType != 'Fabric') return;
+
+    final rollCount = pending.rollCount ?? 1;
     _selectedSupplierId = pending.supplierId;
     _invoiceNumberController.text = pending.receiptNumber;
     _fabricTypeController.text = pending.itemDescription;
     _yardPriceController.text = FabricCodeUtils.formatYardPriceDisplay(pending.unitCost);
-    _rollCountController.text = (pending.rollCount ?? 1).toString();
+    _rollCountController.text = rollCount.toString();
+    _catalogNumberController.text = _nextCatalogNumber();
     _updateRollsFromCount();
-    if (_rolls.isNotEmpty) {
-      _rolls.first.quantityYardsController.text = pending.remainingQuantity.toStringAsFixed(3);
-      _rolls.first.yardPriceController.text = FabricCodeUtils.formatYardPriceDisplay(pending.unitCost);
-      _rolls.first.fabricTypeController.text = pending.itemDescription;
-      _rolls.first.updateCalculations();
+
+    for (var i = 0; i < _rolls.length; i++) {
+      final roll = _rolls[i];
+      roll.quantityYardsController.text = '';
+      roll.yardPriceController.text = FabricCodeUtils.formatYardPriceDisplay(pending.unitCost);
+      roll.fabricTypeController.text = pending.itemDescription;
+      roll.updateCalculations();
     }
   }
 
@@ -540,21 +688,23 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
       final oldLength = _rolls.length;
       final batchCatalog = _catalogNumberController.text.trim();
       final activeCatalog = batchCatalog.isNotEmpty ? batchCatalog : _nextCatalogNumber();
+      if (batchCatalog.isEmpty) {
+        _catalogNumberController.text = activeCatalog;
+      }
       if (oldLength < safeCount) {
+        final currentBatchCodes = _rolls.map((roll) => roll.fabricCodeController.text.trim()).where((code) => code.isNotEmpty).toList();
         final existingCodes = <String>{..._allKnownFabricCodes, ..._availableInventory.map((item) => item.code)};
-        final generatedCodes = <String>[];
-        final usedCodes = <String>{...existingCodes};
-
-        for (var i = 0; i < safeCount - oldLength; i++) {
-          final nextCode = _FabricBatchUtils.nextFabricCode(usedCodes.toList(), prefix: _fabricCodePrefix);
-          usedCodes.add(nextCode);
-          generatedCodes.add(nextCode);
-        }
+        final generatedCodes = FabricCodeUtils.nextUniqueFabricCodesForBatch(
+          count: safeCount - oldLength,
+          existingCodes: existingCodes.toList(),
+          currentBatchCodes: currentBatchCodes,
+          prefix: _fabricCodePrefix,
+        );
 
         for (var i = 0; i < safeCount - oldLength; i++) {
           final newRoll = _RollEntryItem(
             fabricCode: generatedCodes[i],
-            catalogNumber: activeCatalog,
+            catalogNumber: _catalogNumberController.text.trim(),
             fabricType: _fabricTypeController.text.trim(),
             fabricColor: '',
             fabricWidth: _fabricWidthController.text.trim(),
@@ -573,25 +723,25 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
 
       if (_mode == _FabricEntryMode.renewExisting && _selectedExistingFabric != null) {
         _catalogNumberController.text = _selectedExistingFabric!.catalogNumber;
-      } else if (_catalogNumberController.text.trim().isEmpty) {
-        _catalogNumberController.text = activeCatalog;
       }
 
       for (var i = 0; i < _rolls.length; i++) {
         final roll = _rolls[i];
+        roll.catalogNumberController.text = _catalogNumberController.text.trim();
         if (_mode == _FabricEntryMode.renewExisting && _selectedExistingFabric != null) {
           roll.fabricCodeController.text = _selectedExistingFabric!.code;
           roll.fabricTypeController.text = _selectedExistingFabric!.name;
-          roll.catalogNumberController.text = _catalogNumberController.text.trim();
           roll.fabricWidthController.text = _selectedExistingFabric!.width > 0 ? _selectedExistingFabric!.width.toStringAsFixed(0) : '58';
           roll.yardPriceController.text = _selectedExistingFabric!.unitPrice > 0 ? FabricCodeUtils.formatYardPriceDisplay(_selectedExistingFabric!.unitPrice) : '';
-          roll.quantityYardsController.text = i == 0 ? _rolls.first.quantityYardsController.text : roll.quantityYardsController.text;
         } else {
-          roll.fabricCodeController.text = _FabricBatchUtils.nextFabricCode(
-            [..._availableInventory.map((item) => item.code), ..._rolls.map((entry) => entry.fabricCodeController.text.trim())],
-            prefix: _fabricCodePrefix,
-          );
-          roll.catalogNumberController.text = _catalogNumberController.text.trim();
+          if (roll.fabricCodeController.text.trim().isEmpty) {
+            final batchCodes = _rolls.map((entry) => entry.fabricCodeController.text.trim()).where((code) => code.isNotEmpty).toList();
+            final nextCode = FabricCodeUtils.nextFabricCode(
+              [..._availableInventory.map((item) => item.code), ...batchCodes],
+              prefix: _fabricCodePrefix,
+            );
+            roll.fabricCodeController.text = nextCode;
+          }
           roll.fabricTypeController.text = _fabricTypeController.text.trim();
           roll.fabricWidthController.text = _fabricWidthController.text.trim();
           roll.yardPriceController.text = FabricCodeUtils.formatYardPriceDisplay(double.tryParse(_yardPriceController.text.trim().replaceAll(',', '.')) ?? 0);
@@ -625,6 +775,7 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
       removed.dispose();
       _rollCountController.text = _rolls.length.toString();
     });
+    _updateRollsFromCount();
   }
 
   double get _totalYards => _FabricBatchUtils.batchTotalYards(_rolls);
@@ -744,57 +895,58 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
 
     setState(() => _isSaving = true);
 
-    final batchCatalogNumber = _catalogNumberController.text.trim();
     final pendingReceipt = widget.pendingReceipt;
     final isPendingStorage = pendingReceipt != null && pendingReceipt.itemType == 'Fabric';
+    if (isPendingStorage) {
+      final activePendingReceipt = pendingReceipt;
+      final validationMessage = validateRollQuantities(
+        expectedTotal: activePendingReceipt.remainingQuantity,
+        rolls: _rolls.cast<Object>().toList(),
+      );
+      if (validationMessage != null) {
+        if (mounted) setState(() => _isSaving = false);
+        _showMessage(validationMessage);
+        return;
+      }
+    }
 
-    final payload = isPendingStorage
-        ? {
-            'goodsReceiptItemId': pendingReceipt.goodsReceiptItemId,
-            'catalogNumber': batchCatalogNumber.isNotEmpty ? batchCatalogNumber : (_rolls.firstOrNull?.catalogNumberController.text.trim() ?? ''),
-            'itemCode': (_rolls.firstOrNull?.fabricCodeController.text.trim() ?? _fabricTypeController.text.trim()).isNotEmpty
-                ? (_rolls.firstOrNull?.fabricCodeController.text.trim() ?? _fabricTypeController.text.trim())
-                : _selectedExistingFabric?.code ?? '',
-            'fabricTypeCode': (_rolls.firstOrNull?.fabricTypeController.text.trim() ?? _fabricTypeController.text.trim()).isNotEmpty
-                ? (_rolls.firstOrNull?.fabricTypeController.text.trim() ?? _fabricTypeController.text.trim())
-                : _selectedExistingFabric?.name ?? '',
-            'fabricWidth': (double.tryParse((_rolls.firstOrNull?.fabricWidthController.text.trim() ?? '').replaceAll(',', '.')) ?? 58.0),
-            'colorValue': _rolls.firstOrNull?.fabricColorController.text.trim() ?? '',
-            'unitId': 1,
-            'opposingLedgerAccountCode': '1000',
-            'sourceOperationId': _operationId(),
-            'rolls': _rolls.map((roll) {
-              return {
-                'fabricCode': _mode == _FabricEntryMode.renewExisting && _selectedExistingFabric != null
-                    ? _selectedExistingFabric!.code
-                    : roll.fabricCodeController.text.trim(),
-                'rollCode': roll.fabricCodeController.text.trim(),
-                'colorValue': roll.fabricColorController.text.trim(),
-                'quantity': double.tryParse(roll.quantityYardsController.text.trim().replaceAll(',', '.')) ?? 0,
-              };
-            }).toList(),
-          }
-        : {
-            'supplierId': _selectedSupplierId,
-            'invoiceNumber': invoice,
-            'purchaseDate': _selectedDate.toIso8601String(),
-            'notes': _notesController.text.trim(),
-            'rolls': _rolls.map((roll) {
-              return {
-                'fabricCode': _mode == _FabricEntryMode.renewExisting && _selectedExistingFabric != null
-                    ? _selectedExistingFabric!.code
-                    : roll.fabricCodeController.text.trim(),
-                'catalogNumber': batchCatalogNumber.isNotEmpty ? batchCatalogNumber : roll.catalogNumberController.text.trim(),
-                'fabricType': _mode == _FabricEntryMode.renewExisting && _selectedExistingFabric != null
-                    ? _selectedExistingFabric!.name
-                    : roll.fabricTypeController.text.trim(),
-                'fabricColor': roll.fabricColorController.text.trim(),
-                'fabricWidth': double.tryParse(roll.fabricWidthController.text.trim().replaceAll(',', '.')) ?? 58,
-                'quantityYards': double.tryParse(roll.quantityYardsController.text.trim().replaceAll(',', '.')) ?? 0,
-                'yardPrice': double.tryParse(roll.yardPriceController.text.trim().replaceAll(',', '.')) ?? 0,
-              };
-            }).toList(),
-          };
+    final batchPlaceholderCatalog = 'LOCAL-CATALOG-${DateTime.now().microsecondsSinceEpoch % 1000000}';
+    final batchPlaceholderItemCode = 'LOCAL-ITEM-${DateTime.now().microsecondsSinceEpoch % 1000000}';
+
+    final payload = buildFabricReceiptPayload(
+      isPendingStorage: isPendingStorage,
+      pendingReceipt: pendingReceipt,
+      batchCatalogNumber: batchPlaceholderCatalog,
+      itemCode: batchPlaceholderItemCode,
+      fabricTypeCode: (_rolls.firstOrNull?.fabricTypeController.text.trim() ?? _fabricTypeController.text.trim()).isNotEmpty
+          ? (_rolls.firstOrNull?.fabricTypeController.text.trim() ?? _fabricTypeController.text.trim())
+          : _selectedExistingFabric?.name ?? '',
+      fabricWidth: (double.tryParse((_rolls.firstOrNull?.fabricWidthController.text.trim() ?? '').replaceAll(',', '.')) ?? 58.0),
+      colorValue: _rolls.firstOrNull?.fabricColorController.text.trim() ?? '',
+      unitId: 1,
+      sourceOperationId: _operationId(),
+      rolls: _rolls.asMap().entries.map((entry) {
+        final index = entry.key;
+        final roll = entry.value;
+        final placeholderCode = _mode == _FabricEntryMode.renewExisting && _selectedExistingFabric != null
+            ? _selectedExistingFabric!.code
+            : 'LOCAL-ROLL-${DateTime.now().microsecondsSinceEpoch + index}';
+        return {
+          'fabricCode': placeholderCode,
+          'rollCode': placeholderCode,
+          'colorValue': roll.fabricColorController.text.trim(),
+          'quantity': double.tryParse(roll.quantityYardsController.text.trim().replaceAll(',', '.')) ?? 0,
+        };
+      }).toList(),
+      extraFields: isPendingStorage
+          ? null
+          : {
+              'supplierId': _selectedSupplierId,
+              'invoiceNumber': invoice,
+              'purchaseDate': _selectedDate.toIso8601String(),
+              'notes': _notesController.text.trim(),
+            },
+    );
 
     final endpoint = isPendingStorage ? '$_baseUrl/inventory/foundation/fabric-receipts' : '$_baseUrl/inventory/fabric-batches';
 
@@ -817,11 +969,12 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
         );
         Navigator.of(context).pop(true);
       } else {
-        final body = response.body;
-        _showMessage('تعذر حفظ الدفعة: ${body.isNotEmpty ? body : response.statusCode}');
+        debugPrint('Bulk fabric receipt save failed. Status=${response.statusCode}; Body=${response.body}');
+        _showMessage(_friendlyInventorySaveError(response));
       }
     } catch (e) {
-      _showMessage('حدث خطأ أثناء الاتصال بالخادم: $e');
+      debugPrint('Bulk fabric receipt save exception: $e');
+      _showMessage('حدث خطأ أثناء الاتصال بالخادم. يرجى إعادة المحاولة.');
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -1215,67 +1368,69 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            LayoutBuilder(builder: (context, constraints) {
-              final isWide = constraints.maxWidth > 700;
-              final halfWidth = isWide ? (constraints.maxWidth - 12) / 2 : constraints.maxWidth;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                children: [
-                  SizedBox(
-                    width: halfWidth,
-                    child: _loadingSuppliers
-                        ? const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
-                        : DropdownButtonFormField<int>(
-                            initialValue: _selectedSupplierId,
-                            isExpanded: true,
-                            decoration: _inputDecoration(theme, 'المورد *'),
-                            dropdownColor: theme.colorScheme.surfaceContainerHighest,
-                            items: _suppliers.map((s) {
-                              return DropdownMenuItem<int>(
-                                value: s.id,
-                                child: Text('${s.name} (${s.code.isNotEmpty ? s.code : s.id})', maxLines: 1, overflow: TextOverflow.ellipsis),
-                              );
-                            }).toList(),
-                            onChanged: (val) => setState(() => _selectedSupplierId = val),
-                          ),
-                  ),
-                  SizedBox(
-                    width: halfWidth,
-                    child: TextFormField(
-                      controller: _invoiceNumberController,
-                      textInputAction: TextInputAction.next,
-                      onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
-                      decoration: _inputDecoration(theme, 'رقم فاتورة المورد *'),
+            FocusTraversalGroup(
+              policy: OrderedTraversalPolicy(),
+              child: LayoutBuilder(builder: (context, constraints) {
+                final itemWidth = ((constraints.maxWidth - 36) / 4).clamp(180.0, double.infinity);
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    SizedBox(
+                      width: itemWidth,
+                      child: _loadingSuppliers
+                          ? const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
+                          : DropdownButtonFormField<int>(
+                              initialValue: _selectedSupplierId,
+                              isExpanded: true,
+                              decoration: _inputDecoration(theme, 'المورد *'),
+                              dropdownColor: theme.colorScheme.surfaceContainerHighest,
+                              items: _suppliers.map((s) {
+                                return DropdownMenuItem<int>(
+                                  value: s.id,
+                                  child: Text('${s.name} (${s.code.isNotEmpty ? s.code : s.id})', maxLines: 1, overflow: TextOverflow.ellipsis),
+                                );
+                              }).toList(),
+                              onChanged: (val) => setState(() => _selectedSupplierId = val),
+                            ),
                     ),
-                  ),
-                  SizedBox(
-                    width: halfWidth,
-                    child: TextFormField(
-                      controller: _purchaseDateController,
-                      readOnly: true,
-                      onTap: _pickDate,
-                      onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
-                      decoration: _inputDecoration(theme, 'تاريخ الشراء').copyWith(
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.calendar_today_outlined, size: 18),
-                          onPressed: _pickDate,
+                    SizedBox(
+                      width: itemWidth,
+                      child: TextFormField(
+                        controller: _invoiceNumberController,
+                        textInputAction: TextInputAction.next,
+                        onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                        decoration: _inputDecoration(theme, 'رقم فاتورة المورد *'),
+                      ),
+                    ),
+                    SizedBox(
+                      width: itemWidth,
+                      child: TextFormField(
+                        controller: _purchaseDateController,
+                        readOnly: true,
+                        canRequestFocus: false,
+                        onTap: _pickDate,
+                        decoration: _inputDecoration(theme, 'تاريخ الشراء').copyWith(
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                            onPressed: _pickDate,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  SizedBox(
-                    width: halfWidth,
-                    child: TextFormField(
-                      controller: _notesController,
-                      textInputAction: TextInputAction.next,
-                      onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
-                      decoration: _inputDecoration(theme, 'ملاحظات عامة'),
+                    SizedBox(
+                      width: itemWidth,
+                      child: TextFormField(
+                        controller: _notesController,
+                        textInputAction: TextInputAction.next,
+                        onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                        decoration: _inputDecoration(theme, 'ملاحظات عامة'),
+                      ),
                     ),
-                  ),
-                ],
-              );
-            }),
+                  ],
+                );
+              }),
+            ),
           ],
         ),
       ),
@@ -1318,150 +1473,157 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                const spacing = 8.0;
-                final width = constraints.maxWidth < 600 ? constraints.maxWidth : (constraints.maxWidth - spacing) / 2;
+            FocusTraversalGroup(
+              policy: OrderedTraversalPolicy(),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  const spacing = 8.0;
+                  final rowWidth = ((constraints.maxWidth - (spacing * 4)) / 5).clamp(120.0, double.infinity);
+                  final rowTwoWidth = ((constraints.maxWidth - (spacing * 3)) / 4).clamp(120.0, double.infinity);
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: spacing,
-                      runSpacing: spacing,
-                      children: [
-                        SizedBox(
-                          width: width,
-                          child: TextFormField(
-                            controller: roll.fabricCodeController,
-                            readOnly: true,
-                            canRequestFocus: false,
-                            decoration: _inputDecoration(theme, 'كود القماش').copyWith(
-                              fillColor: theme.colorScheme.surfaceContainerLow,
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: spacing,
+                        runSpacing: spacing,
+                        children: [
+                          SizedBox(
+                            width: rowWidth,
+                            child: Autocomplete<String>(
+                              initialValue: TextEditingValue(text: roll.fabricColorController.text),
+                              optionsBuilder: (textVal) {
+                                if (textVal.text.isEmpty) return _commonColors;
+                                return _commonColors.where((c) => c.contains(textVal.text));
+                              },
+                              onSelected: (val) {
+                                roll.fabricColorController.text = val;
+                                setState(() {});
+                              },
+                              fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+                                return TextFormField(
+                                  controller: textController,
+                                  focusNode: focusNode,
+                                  textInputAction: TextInputAction.next,
+                                  onChanged: (val) => roll.fabricColorController.text = val,
+                                  onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                                  decoration: _inputDecoration(theme, 'لون القماش *'),
+                                );
+                              },
                             ),
-                            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                           ),
-                        ),
-                        SizedBox(
-                          width: width,
-                          child: TextFormField(
-                            controller: roll.catalogNumberController,
-                            readOnly: true,
-                            canRequestFocus: false,
-                            decoration: _inputDecoration(theme, 'رقم الكتالوج').copyWith(
-                              fillColor: theme.colorScheme.surfaceContainerLow,
+                          SizedBox(
+                            width: rowWidth,
+                            child: TextFormField(
+                              controller: roll.fabricCodeController,
+                              readOnly: true,
+                              canRequestFocus: false,
+                              decoration: _inputDecoration(theme, 'كود القماش').copyWith(
+                                fillColor: theme.colorScheme.surfaceContainerLow,
+                              ),
+                              style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                             ),
-                            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                           ),
-                        ),
-                        SizedBox(
-                          width: width,
-                          child: TextFormField(
-                            controller: roll.fabricTypeController,
-                            readOnly: true,
-                            canRequestFocus: false,
-                            decoration: _inputDecoration(theme, 'نوع القماش').copyWith(
-                              fillColor: theme.colorScheme.surfaceContainerLow,
+                          SizedBox(
+                            width: rowWidth,
+                            child: TextFormField(
+                              controller: roll.catalogNumberController,
+                              readOnly: true,
+                              canRequestFocus: false,
+                              decoration: _inputDecoration(theme, 'رقم الكتالوج').copyWith(
+                                fillColor: theme.colorScheme.surfaceContainerLow,
+                              ),
+                              style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                             ),
-                            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                           ),
-                        ),
-                        SizedBox(
-                          width: width,
-                          child: TextFormField(
-                            controller: roll.fabricWidthController,
-                            readOnly: true,
-                            canRequestFocus: false,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            decoration: _inputDecoration(theme, 'عرض القماش (بوصة)').copyWith(
-                              fillColor: theme.colorScheme.surfaceContainerLow,
+                          SizedBox(
+                            width: rowWidth,
+                            child: TextFormField(
+                              controller: roll.fabricTypeController,
+                              readOnly: true,
+                              canRequestFocus: false,
+                              decoration: _inputDecoration(theme, 'نوع القماش').copyWith(
+                                fillColor: theme.colorScheme.surfaceContainerLow,
+                              ),
+                              style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                             ),
-                            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                           ),
-                        ),
-                        SizedBox(
-                          width: width,
-                          child: TextFormField(
-                            controller: roll.yardPriceController,
-                            readOnly: true,
-                            canRequestFocus: false,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            decoration: _inputDecoration(theme, 'سعر الياردة (ريال)').copyWith(
-                              fillColor: theme.colorScheme.surfaceContainerLow,
+                          SizedBox(
+                            width: rowWidth,
+                            child: TextFormField(
+                              controller: roll.fabricWidthController,
+                              readOnly: true,
+                              canRequestFocus: false,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: _inputDecoration(theme, 'عرض القماش (بوصة)').copyWith(
+                                fillColor: theme.colorScheme.surfaceContainerLow,
+                              ),
+                              style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                             ),
-                            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                           ),
-                        ),
-                        SizedBox(
-                          width: width,
-                          child: TextFormField(
-                            controller: roll.inchPriceController,
-                            readOnly: true,
-                            canRequestFocus: false,
-                            decoration: _inputDecoration(theme, 'سعر البوصة').copyWith(
-                              fillColor: theme.colorScheme.surfaceContainerLow,
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: spacing,
+                        runSpacing: spacing,
+                        children: [
+                          SizedBox(
+                            width: rowTwoWidth,
+                            child: TextFormField(
+                              controller: roll.quantityYardsController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              textInputAction: TextInputAction.next,
+                              onChanged: (_) {
+                                setState(() => roll.updateCalculations());
+                              },
+                              onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                              decoration: _inputDecoration(theme, 'كمية القماش (ياردة) *'),
                             ),
-                            style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
                           ),
-                        ),
-                        SizedBox(
-                          width: width,
-                          child: TextFormField(
-                            controller: roll.totalRollCostController,
-                            readOnly: true,
-                            canRequestFocus: false,
-                            decoration: _inputDecoration(theme, 'إجمالي الرول').copyWith(
-                              fillColor: theme.colorScheme.surfaceContainerLow,
+                          SizedBox(
+                            width: rowTwoWidth,
+                            child: TextFormField(
+                              controller: roll.yardPriceController,
+                              readOnly: true,
+                              canRequestFocus: false,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: _inputDecoration(theme, 'سعر الياردة (ريال)').copyWith(
+                                fillColor: theme.colorScheme.surfaceContainerLow,
+                              ),
+                              style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                             ),
-                            style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Autocomplete<String>(
-                            initialValue: TextEditingValue(text: roll.fabricColorController.text),
-                            optionsBuilder: (textVal) {
-                              if (textVal.text.isEmpty) return _commonColors;
-                              return _commonColors.where((c) => c.contains(textVal.text));
-                            },
-                            onSelected: (val) {
-                              roll.fabricColorController.text = val;
-                              setState(() {});
-                            },
-                            fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
-                              return TextFormField(
-                                controller: textController,
-                                focusNode: focusNode,
-                                textInputAction: TextInputAction.next,
-                                onChanged: (val) => roll.fabricColorController.text = val,
-                                onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
-                                decoration: _inputDecoration(theme, 'لون القماش *'),
-                              );
-                            },
+                          SizedBox(
+                            width: rowTwoWidth,
+                            child: TextFormField(
+                              controller: roll.inchPriceController,
+                              readOnly: true,
+                              canRequestFocus: false,
+                              decoration: _inputDecoration(theme, 'سعر البوصة').copyWith(
+                                fillColor: theme.colorScheme.surfaceContainerLow,
+                              ),
+                              style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextFormField(
-                            controller: roll.quantityYardsController,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            textInputAction: TextInputAction.next,
-                            onChanged: (_) {
-                              setState(() => roll.updateCalculations());
-                            },
-                            onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
-                            decoration: _inputDecoration(theme, 'كمية القماش (ياردة) *'),
+                          SizedBox(
+                            width: rowTwoWidth,
+                            child: TextFormField(
+                              controller: roll.totalRollCostController,
+                              readOnly: true,
+                              canRequestFocus: false,
+                              decoration: _inputDecoration(theme, 'إجمالي الرول').copyWith(
+                                fillColor: theme.colorScheme.surfaceContainerLow,
+                              ),
+                              style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                );
-              },
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ],
         ),

@@ -168,6 +168,17 @@
 			"problemMatcher": []
 		},
 		{
+			"label": "Fabric foundation integration tests",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
 			"label": "Clean LocalWhatsApp stale nodes",
 			"type": "shell",
 			"command": "cmd",
@@ -1252,6 +1263,555 @@
 			"args": [
 				"/c",
 				"sqlcmd -S YASIN-YASIN\\SQLEXPRESS -d LUMAR_ERP_ES_VALIDATION_R2 -Q \"SELECT TOP 20 UnitId, UnitCode, UnitName FROM dbo.InventoryUnitCatalog ORDER BY UnitId;\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "prove-shell-output",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"echo hi && echo EXIT:%ERRORLEVEL%"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "probe secure session",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\probe_secure_session.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "secure-probe-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\probe_secure_session.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "read secure session",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\read_secure_session.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "read secure session 2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\read_secure_session.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "live owner readiness",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\live_owner_readiness.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "live owner reset",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\live_owner_reset.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "sql tooling check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Command Invoke-Sqlcmd -ErrorAction SilentlyContinue | Format-List *; Write-Host '---'; sqlcmd -? 2>$null | Select-Object -First 20"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "verify R3 zero counts",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\verify_r3_zero_counts.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "sql server probe",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Invoke-Sqlcmd -ServerInstance 'YASIN-YASIN\\SQLEXPRESS' -Database 'master' -Query \"SELECT @@SERVERNAME AS ServerName, DB_NAME() AS DbName, GETDATE() AS NowUtc;\" -SuppressProviderContextWarning"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "sql server probe script",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\sql_server_probe.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "verify real R3 counts",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\verify_r3_zero_rows.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Schema clone proof",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\schema_clone_isolated_test_db.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Schema count proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"\"C:\\Program Files\\Microsoft SQL Server\\Client SDK\\ODBC\\170\\Tools\\Binn\\sqlcmd.exe\" -S \"YASIN-YASIN\\SQLEXPRESS\" -d \"LUMAR_ERP_TEST_R3_ROLLS\" -Q \"SELECT COUNT(*) AS TEST_TABLE_COUNT FROM sys.tables; SELECT COUNT(*) AS TEST_VIEW_COUNT FROM sys.views; SELECT COUNT(*) AS TEST_PROCEDURE_COUNT FROM sys.procedures; SELECT CASE WHEN OBJECT_ID('dbo.TailoringPieceSaleValues','U') IS NOT NULL THEN 1 ELSE 0 END AS TailoringPieceSaleValues, CASE WHEN OBJECT_ID('dbo.FabricRolls','U') IS NOT NULL THEN 1 ELSE 0 END AS FabricRolls, CASE WHEN OBJECT_ID('dbo.InventoryItems','U') IS NOT NULL THEN 1 ELSE 0 END AS InventoryItems, CASE WHEN OBJECT_ID('dbo.InventoryReceiptLines','U') IS NOT NULL THEN 1 ELSE 0 END AS InventoryReceiptLines, CASE WHEN OBJECT_ID('dbo.InventoryReceiptPostings','U') IS NOT NULL THEN 1 ELSE 0 END AS InventoryReceiptPostings, CASE WHEN OBJECT_ID('dbo.GoodsReceiptItemStorageAllocations','U') IS NOT NULL THEN 1 ELSE 0 END AS GoodsReceiptItemStorageAllocations, CASE WHEN OBJECT_ID('dbo.GoodsReceipts','U') IS NOT NULL THEN 1 ELSE 0 END AS GoodsReceipts, CASE WHEN OBJECT_ID('dbo.GoodsReceiptItems','U') IS NOT NULL THEN 1 ELSE 0 END AS GoodsReceiptItems;\" -W -s \",\""
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Schema source target counts",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"& \"C:\\Program Files\\Microsoft SQL Server\\Client SDK\\ODBC\\170\\Tools\\Binn\\sqlcmd.exe\" -S \"YASIN-YASIN\\SQLEXPRESS\" -d \"LUMAR_ERP_TEST_R3_ROLLS\" -Q @'\nSELECT COUNT(*) AS TEST_TABLE_COUNT FROM sys.tables;\nSELECT COUNT(*) AS TEST_VIEW_COUNT FROM sys.views;\nSELECT COUNT(*) AS TEST_PROCEDURE_COUNT FROM sys.procedures;\nSELECT CASE WHEN OBJECT_ID('dbo.TailoringPieceSaleValues','U') IS NOT NULL THEN 1 ELSE 0 END AS TailoringPieceSaleValues,\n       CASE WHEN OBJECT_ID('dbo.FabricRolls','U') IS NOT NULL THEN 1 ELSE 0 END AS FabricRolls,\n       CASE WHEN OBJECT_ID('dbo.InventoryItems','U') IS NOT NULL THEN 1 ELSE 0 END AS InventoryItems,\n       CASE WHEN OBJECT_ID('dbo.InventoryReceiptLines','U') IS NOT NULL THEN 1 ELSE 0 END AS InventoryReceiptLines,\n       CASE WHEN OBJECT_ID('dbo.InventoryReceiptPostings','U') IS NOT NULL THEN 1 ELSE 0 END AS InventoryReceiptPostings,\n       CASE WHEN OBJECT_ID('dbo.GoodsReceiptItemStorageAllocations','U') IS NOT NULL THEN 1 ELSE 0 END AS GoodsReceiptItemStorageAllocations,\n       CASE WHEN OBJECT_ID('dbo.GoodsReceipts','U') IS NOT NULL THEN 1 ELSE 0 END AS GoodsReceipts,\n       CASE WHEN OBJECT_ID('dbo.GoodsReceiptItems','U') IS NOT NULL THEN 1 ELSE 0 END AS GoodsReceiptItems;\n'@ -W -s \",\""
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "R3 schema object proof",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"D:\\YASIN\\Backend\\schema_verify_counts.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Fabric foundation contract proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && echo --- DISCOVERY --- && dotnet test LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj --list-tests --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" && echo --- EXECUTION --- && dotnet test LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Probe terminal file output",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"echo hello > d:\\temp\\task_probe.txt"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Fabric foundation proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --logger \"console;verbosity=minimal\" > d:\\YASIN\\Backend\\fabric_foundation_proof.txt 2>&1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Fabric suite no-restore",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\" ; echo EXITCODE:%ERRORLEVEL%"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Fabric contract proof after cleanup fix",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --filter FullyQualifiedName~FabricConsumablesFoundationIntegrationTests --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Fabric contract proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter FabricConsumablesFoundationIntegrationTests > d:\\YASIN\\Backend\\fabric_contract_proof.txt 2>&1 & echo %ERRORLEVEL% > d:\\YASIN\\Backend\\fabric_contract_exit.txt"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Fabric contract proof 2",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter FabricConsumablesFoundationIntegrationTests > d:\\YASIN\\Backend\\fabric_contract_proof.txt 2>&1; echo %ERRORLEVEL% > d:\\YASIN\\Backend\\fabric_contract_exit.txt"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Fabric current discovery proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --list-tests --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" > d:\\YASIN\\Backend\\fabric_current_discovery.txt 2>&1 && echo EXITCODE=%ERRORLEVEL% >> d:\\YASIN\\Backend\\fabric_current_discovery.txt"
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Fabric full current proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && echo RUN_START=%DATE% %TIME% > d:\\YASIN\\Backend\\fabric_full_current_proof_20261112.txt && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --logger \"console;verbosity=minimal\" >> d:\\YASIN\\Backend\\fabric_full_current_proof_20261112.txt 2>&1 && echo EXITCODE=%ERRORLEVEL% >> d:\\YASIN\\Backend\\fabric_full_current_proof_20261112.txt"
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Fabric post-fix proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --logger \"console;verbosity=minimal\" > d:\\YASIN\\Backend\\fabric_post_fix_proof.txt 2>&1; echo EXITCODE:%ERRORLEVEL% >> d:\\YASIN\\Backend\\fabric_post_fix_proof.txt; dir d:\\YASIN\\Backend\\fabric_post_fix_proof.txt"
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Fabric proof after cleanup fix",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --logger \"console;verbosity=minimal\" > d:\\YASIN\\Backend\\fabric_proof_after_fix_20261112.txt 2>&1 && echo EXITCODE=%ERRORLEVEL% >> d:\\YASIN\\Backend\\fabric_proof_after_fix_20261112.txt"
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "SQL tool availability probe",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"where sqlcmd > d:\\YASIN\\Backend\\sqlcmd_probe.txt 2>&1 && (sqlcmd -? >> d:\\YASIN\\Backend\\sqlcmd_probe.txt 2>&1 || true)"
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "AccountingEvents violation probe",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"sqlcmd -S \"YASIN-YASIN\\SQLEXPRESS\" -d \"LUMAR_TAILORING_EDIT_TEST_20261101\" -E -Q \"SELECT TOP 50 AccountingEventId, AccountingEventType, Status, SourceType, SourceId, SourceOperationId, OriginalAccountingEventId, OrderId, PaymentId, InventoryReceiptPostingId, FabricConsumptionSourceId, ProductionMaterialConsumptionId, CustomerAdvanceApplicationId, MeasurementCardPrintHistoryId, ReadyMadeInventoryProductId, ToolIssuanceId, ToolIssuanceReversalId, ReadyMadeSaleCostPostingId, ImportedReadyMadeInventoryReceiptId, ImportedReadyMadeSaleCostPostingId FROM dbo.AccountingEvents WHERE AccountingEventType BETWEEN 20 AND 35 AND (SourceType IS NOT NULL OR SourceId IS NOT NULL OR SourceOperationId IS NOT NULL OR OriginalAccountingEventId IS NOT NULL) ORDER BY AccountingEventId;\" -W -s\",\" -h-1 > d:\\YASIN\\Backend\\sql_violation_probe.txt 2>&1"
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Fresh proof after broadened cleanup",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\" > d:\\YASIN\\Backend\\fabric_proof_after_fix_20261112_03.txt 2>&1 && echo EXITCODE:%ERRORLEVEL% >> d:\\YASIN\\Backend\\fabric_proof_after_fix_20261112_03.txt && type d:\\YASIN\\Backend\\fabric_proof_after_fix_20261112_03.txt"
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "proof-test-shell",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"echo hi && cd /d d:\\YASIN\\Backend && echo inbackend"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Fabric current proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Diagnose dirty accounting rows",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"sqlcmd -S \"YASIN-YASIN\\SQLEXPRESS\" -d \"LUMAR_TAILORING_EDIT_TEST_20261101\" -E -Q \"SELECT TOP 50 AccountingEventId, AccountingEventType, SourceType, SourceId, SourceOperationId, OriginalAccountingEventId, OrderId, PaymentId, CustomerAdvanceApplicationId, InventoryReceiptPostingId, FabricConsumptionSourceId, ProductionMaterialConsumptionId, ReadyMadeSaleCostPostingId, ImportedReadyMadeSaleCostPostingId, ToolIssuanceId, ToolIssuanceReversalId, ReversalReason, ReversedBy, ReversedAt, Status FROM dbo.AccountingEvents WHERE AccountingEventType BETWEEN 20 AND 35 ORDER BY AccountingEventId; SELECT 'COUNT=' + CAST(COUNT(*) AS varchar(20)) FROM dbo.AccountingEvents WHERE AccountingEventType BETWEEN 20 AND 35;\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Run dirty accounting query",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"sqlcmd -S \"YASIN-YASIN\\SQLEXPRESS\" -d \"LUMAR_TAILORING_EDIT_TEST_20261101\" -E -i \"d:\\YASIN\\Backend\\temp_diagnose_accounting_events.sql\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Fabric proof after root fix",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Fresh proof after FK-safe cleanup",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Final root-cause proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Fresh contract cleanup proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Fresh proof after contract-safe cleanup",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Final contract-validation sweep",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Targeted fabric cleanup proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically\" --no-restore --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Fabric foundation full proof x2",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\" ; echo PASS1_EXIT:%ERRORLEVEL% ; dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\" ; echo PASS2_EXIT:%ERRORLEVEL%"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Fabric foundation full proof x2 fixed",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\" && echo PASS1_OK && dotnet test \"LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj\" --filter \"FullyQualifiedName~FabricConsumablesFoundationIntegrationTests\" --no-restore --logger \"console;verbosity=minimal\" && echo PASS2_OK"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Fabric foundation proof after fix",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d d:\\YASIN\\Backend && dotnet test LUMAR_ERP_API_V2.Tests/LUMAR_ERP_API_V2.Tests.csproj --filter \"FabricConsumablesFoundationIntegrationTests\" --logger \"console;verbosity=minimal\" > d:\\YASIN\\Backend\\fabric_foundation_after_fix_proof.txt 2>&1"
 			],
 			"isBackground": false,
 			"problemMatcher": [],

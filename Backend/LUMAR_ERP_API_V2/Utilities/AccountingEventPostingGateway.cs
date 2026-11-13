@@ -455,6 +455,27 @@ public static class AccountingEventPostingGateway
     private static void AddNullableLong(SqlCommand command, string name, long? value) =>
         command.Parameters.Add(name, SqlDbType.BigInt).Value = value ?? (object)DBNull.Value;
 
-    private static void AddNullableString(SqlCommand command, string name, string? value, int size) =>
-        command.Parameters.Add(name, SqlDbType.NVarChar, size).Value = string.IsNullOrWhiteSpace(value) ? DBNull.Value : value.Trim();
+    private static void AddNullableString(SqlCommand command, string name, string? value, int size)
+    {
+        var normalized = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        if (normalized is null)
+        {
+            command.Parameters.Add(name, SqlDbType.NVarChar, size).Value = DBNull.Value;
+            return;
+        }
+
+        if (normalized.Length <= size)
+        {
+            command.Parameters.Add(name, SqlDbType.NVarChar, size).Value = normalized;
+            return;
+        }
+
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(normalized)))
+            .Substring(0, Math.Min(12, Math.Max(4, size / 4)))
+            .ToUpperInvariant();
+        var prefixLength = Math.Max(0, size - hash.Length - 1);
+        var prefix = normalized.Substring(0, Math.Min(prefixLength, normalized.Length));
+        var compact = $"{prefix}-{hash}";
+        command.Parameters.Add(name, SqlDbType.NVarChar, size).Value = compact.Length > size ? compact.Substring(0, size) : compact;
+    }
 }

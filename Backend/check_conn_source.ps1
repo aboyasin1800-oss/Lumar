@@ -1,0 +1,9 @@
+$proc = [System.Environment]::GetEnvironmentVariable('Lumar__ConnectionString','Process')
+$user = [System.Environment]::GetEnvironmentVariable('Lumar__ConnectionString','User')
+$machine = [System.Environment]::GetEnvironmentVariable('Lumar__ConnectionString','Machine')
+if ($null -eq $proc) { $proc = 'NULL' }
+if ($null -eq $user) { $user = 'NULL' }
+if ($null -eq $machine) { $machine = 'NULL' }
+Write-Host ('PROCESS=' + $proc)
+Write-Host ('USER=' + $user)
+Write-Host ('MACHINE=' + $machine)

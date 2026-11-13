@@ -107,6 +107,7 @@ public sealed class SafeRequestCaptureMiddleware(RequestDelegate next)
 
         return path.StartsWith("/production", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/auth", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/settings", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase);
     }
 

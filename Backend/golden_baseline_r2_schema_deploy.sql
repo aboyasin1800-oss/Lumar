@@ -5559,6 +5559,10 @@ PRINT N'Altering Procedure [dbo].[usp_PostAccountingEvent]...';
 
 
 GO
+SET QUOTED_IDENTIFIER ON;
+GO
+SET ANSI_NULLS ON;
+GO
 ALTER   PROCEDURE dbo.usp_PostAccountingEvent
     @AccountingEventType tinyint,
     @PostingAmount decimal(18,2),
@@ -5659,7 +5663,7 @@ BEGIN
            OR CONVERT(decimal(18,2), ROUND(@sourceOperationalAmount, 2)) <> @PostingAmount
             THROW 51515, N'The inventory receipt amount does not match.', 1;
         IF (@AccountingEventType = 7 AND @creditAccountCode NOT IN (N'2100', N'1101'))
-           OR (@AccountingEventType = 9 AND @creditAccountCode <> N'1102')
+           OR (@AccountingEventType = 9 AND @creditAccountCode NOT IN (N'2100', N'1102'))
             THROW 51516, N'The inventory receipt opposing account is not approved for this event.', 1;
         SET @debitAccountCode = CASE @AccountingEventType WHEN 7 THEN N'1101' ELSE N'1102' END;
         SET @transactionType = CASE @AccountingEventType WHEN 7 THEN N'FabricInventoryReceived' ELSE N'ConsumableInventoryReceived' END;

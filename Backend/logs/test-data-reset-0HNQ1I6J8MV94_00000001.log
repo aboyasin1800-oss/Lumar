@@ -1,0 +1,2361 @@
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=RECEIVED
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=RECEIVED
+FailureCode=NONE
+StartTime=2026-11-13T14:33:47.5829371+00:00
+EndTime=2026-11-13T14:33:47.5829371+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=Request received before starting approved reset process.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=SCRIPT_RESOLVED
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=SCRIPT_RESOLVED
+FailureCode=NONE
+StartTime=2026-11-13T14:33:47.5829371+00:00
+EndTime=2026-11-13T14:33:47.5847581+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=Reset script path and artifacts are resolved.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=RECEIVED
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=
+ExitCode=
+ConfiguredTimeoutSeconds=180
+FailureStage=RECEIVED
+FailureCode=NONE
+StartTime=2026-11-13T14:33:47.5871726+00:00
+EndTime=2026-11-13T14:33:47.5871726+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=Request has reached the reset runner. ConfiguredTimeoutSeconds=180; LiveMode=True; TestOverride=False
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=PROCESS_STARTING
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=
+ExitCode=
+ConfiguredTimeoutSeconds=180
+FailureStage=PROCESS_STARTING
+FailureCode=NONE
+StartTime=2026-11-13T14:33:47.5871726+00:00
+EndTime=2026-11-13T14:33:47.5876659+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=Process start is about to begin for the approved reset engine. ConfiguredTimeoutSeconds=180; SafetyFloorSeconds=180.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=PROCESS_STARTED
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=14348
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=PROCESS_STARTED
+FailureCode=NONE
+StartTime=2026-11-13T14:33:47.5871726+00:00
+EndTime=2026-11-13T14:33:47.6207968+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=PowerShell process was created successfully.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=STDOUT_CAPTURED
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=14348
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=STDOUT_CAPTURED
+FailureCode=NONE
+StartTime=2026-11-13T14:33:47.5871726+00:00
+EndTime=2026-11-13T14:33:50.8150535+00:00
+StdOut=Executing safe reset plan for PURE_OPERATIONAL tables only...
+Delete targets: 137
+Protected mixed-rule tables excluded: 19
+Exception tables excluded: 5
+Real execution completed successfully.
+
+(0 rows affected)
+
+(2 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(1 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(2 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(2 rows affected)
+
+(4 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+StdErr=<empty>
+Details=StdOut captured successfully.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=STDERR_CAPTURED
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=14348
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=STDERR_CAPTURED
+FailureCode=NONE
+StartTime=2026-11-13T14:33:47.5871726+00:00
+EndTime=2026-11-13T14:33:50.8154492+00:00
+StdOut=Executing safe reset plan for PURE_OPERATIONAL tables only...
+Delete targets: 137
+Protected mixed-rule tables excluded: 19
+Exception tables excluded: 5
+Real execution completed successfully.
+
+(0 rows affected)
+
+(2 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(1 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(2 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(2 rows affected)
+
+(4 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+StdErr=<empty>
+Details=StdErr captured successfully.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=PROCESS_EXITED
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=14348
+ExitCode=0
+ConfiguredTimeoutSeconds=
+FailureStage=PROCESS_EXITED
+FailureCode=NONE
+StartTime=2026-11-13T14:33:47.5871726+00:00
+EndTime=2026-11-13T14:33:50.8158473+00:00
+StdOut=Executing safe reset plan for PURE_OPERATIONAL tables only...
+Delete targets: 137
+Protected mixed-rule tables excluded: 19
+Exception tables excluded: 5
+Real execution completed successfully.
+
+(0 rows affected)
+
+(2 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(1 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(2 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(2 rows affected)
+
+(4 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+StdErr=<empty>
+Details=PowerShell process exited and output capture completed.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=COMPLETE
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=14348
+ExitCode=0
+ConfiguredTimeoutSeconds=
+FailureStage=NONE
+FailureCode=NONE
+StartTime=2026-11-13T14:33:47.5871726+00:00
+EndTime=2026-11-13T14:33:50.8160808+00:00
+StdOut=Executing safe reset plan for PURE_OPERATIONAL tables only...
+Delete targets: 137
+Protected mixed-rule tables excluded: 19
+Exception tables excluded: 5
+Real execution completed successfully.
+
+(0 rows affected)
+
+(2 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(1 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(2 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(2 rows affected)
+
+(4 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+StdErr=<empty>
+Details=Process completed successfully.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=FINAL
+Mode=Execute
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=14348
+ExitCode=0
+ConfiguredTimeoutSeconds=
+FailureStage=EXECUTE
+FailureCode=NONE
+StartTime=2026-11-13T14:33:47.5871726+00:00
+EndTime=2026-11-13T14:33:50.8164070+00:00
+StdOut=Executing safe reset plan for PURE_OPERATIONAL tables only...
+Delete targets: 137
+Protected mixed-rule tables excluded: 19
+Exception tables excluded: 5
+Real execution completed successfully.
+
+(0 rows affected)
+
+(2 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(1 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(2 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(2 rows affected)
+
+(4 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(3 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+(0 rows affected)
+
+(0 rows affected)
+
+(1 rows affected)
+
+StdErr=<empty>
+Details=Final log flush executed in finally block.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=RECEIVED
+Mode=Verify
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=
+ExitCode=
+ConfiguredTimeoutSeconds=180
+FailureStage=RECEIVED
+FailureCode=NONE
+StartTime=2026-11-13T14:33:50.8169053+00:00
+EndTime=2026-11-13T14:33:50.8169053+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=Request has reached the reset runner. ConfiguredTimeoutSeconds=180; LiveMode=True; TestOverride=False
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=PROCESS_STARTING
+Mode=Verify
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=
+ExitCode=
+ConfiguredTimeoutSeconds=180
+FailureStage=PROCESS_STARTING
+FailureCode=NONE
+StartTime=2026-11-13T14:33:50.8169053+00:00
+EndTime=2026-11-13T14:33:50.8172602+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=Process start is about to begin for the approved reset engine. ConfiguredTimeoutSeconds=180; SafetyFloorSeconds=180.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=PROCESS_STARTED
+Mode=Verify
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=31272
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=PROCESS_STARTED
+FailureCode=NONE
+StartTime=2026-11-13T14:33:50.8169053+00:00
+EndTime=2026-11-13T14:33:50.8342829+00:00
+StdOut=<empty>
+StdErr=<empty>
+Details=PowerShell process was created successfully.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=STDOUT_CAPTURED
+Mode=Verify
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=31272
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=STDOUT_CAPTURED
+FailureCode=NONE
+StartTime=2026-11-13T14:33:50.8169053+00:00
+EndTime=2026-11-13T14:34:07.6428798+00:00
+StdOut=R3 SAFE ZERO-OPERATIONAL RESET VERIFY (read-only)
+Target database: LUMAR_ERP_ES_VALIDATION_R3
+[dbo].[AccountingEvents] => 0 rows
+[dbo].[CashMovements] => 0 rows
+[dbo].[CustomerAdvanceApplications] => 0 rows
+[dbo].[CustomerLedgerEntries] => 0 rows
+[dbo].[CustomerMeasurements] => 0 rows
+[dbo].[CustomerMessages] => 0 rows
+[dbo].[CustomerNotifications] => 0 rows
+[dbo].[Customers] => 0 rows
+[dbo].[EmployeeAdvances] => 0 rows
+[dbo].[EmployeeAttendances] => 0 rows
+[dbo].[EmployeeContracts] => 0 rows
+[dbo].[EmployeeDailyAccruals] => 0 rows
+[dbo].[EmployeeDailyEligibility] => 0 rows
+[dbo].[EmployeeDailyExpenses] => 0 rows
+[dbo].[EmployeeDocuments] => 0 rows
+[dbo].[EmployeeDrawSettlements] => 0 rows
+[dbo].[EmployeeLedgerEntries] => 0 rows
+[dbo].[EmployeePayments] => 0 rows
+[dbo].[EmployeePieceRateAssignments] => 0 rows
+[dbo].[Employees] => 0 rows
+[dbo].[EmployeeSeasonalBonuses] => 0 rows
+[dbo].[EmployeeStatusHistory] => 0 rows
+[dbo].[FabricRolls] => 0 rows
+[dbo].[Fabrics] => 0 rows
+[dbo].[Fabrics_Inventory] => 0 rows
+[dbo].[FinancialTransactions] => 0 rows
+[dbo].[GoodsReceiptDifferences] => 0 rows
+[dbo].[GoodsReceiptItems] => 0 rows
+[dbo].[GoodsReceiptReversalLines] => 0 rows
+[dbo].[GoodsReceiptReversals] => 0 rows
+[dbo].[GoodsReceipts] => 0 rows
+[dbo].[ImportedReadyMadeInventoryReceipts] => 0 rows
+[dbo].[ImportedReadyMadeProducts] => 0 rows
+[dbo].[ImportedReadyMadeSaleCostPostings] => 0 rows
+[dbo].[InventoryItemFoundation] => 0 rows
+[dbo].[InventoryItems] => 0 rows
+[dbo].[InventoryReceiptLines] => 0 rows
+[dbo].[InventoryReceiptPostings] => 0 rows
+[dbo].[InventoryTransactions] => 0 rows
+[dbo].[InventoryValuationSnapshots] => 0 rows
+[dbo].[JournalEntries] => 0 rows
+[dbo].[JournalEntryLines] => 0 rows
+[dbo].[Live_Scan] => 0 rows
+[dbo].[LoyaltyAccounts] => 0 rows
+[dbo].[LoyaltyRedemptions] => 0 rows
+[dbo].[LoyaltyRewards] => 0 rows
+[dbo].[LoyaltyTransactions] => 0 rows
+[dbo].[MeasurementCardPrintHistory] => 0 rows
+[dbo].[MobileAccountCustomerAccess] => 0 rows
+[dbo].[MobileAccounts] => 0 rows
+[dbo].[MobilePushDevices] => 0 rows
+[dbo].[MobileRecoveryChallenges] => 0 rows
+[dbo].[MobileSessions] => 0 rows
+[dbo].[OrderItemFabrics] => 0 rows
+[dbo].[OrderItems] => 0 rows
+[dbo].[Orders] => 0 rows
+[dbo].[PaymentDisputes] => 0 rows
+[dbo].[Payments] => 0 rows
+[dbo].[Payments_Log] => 0 rows
+[dbo].[PerformanceMetricRecords] => 0 rows
+[dbo].[Piece_Measurements] => 0 rows
+[dbo].[Piece_Rates] => 0 rows
+[dbo].[Pieces] => 0 rows
+[dbo].[Production_Tracking] => 0 rows
+[dbo].[ProductionBatches] => 0 rows
+[dbo].[ProductionMaterialConsumptions] => 0 rows
+[dbo].[ProductionOrders] => 0 rows
+[dbo].[ProductMaterials] => 0 rows
+[dbo].[Products] => 0 rows
+[dbo].[PurchaseOrderItems] => 0 rows
+[dbo].[PurchaseOrders] => 0 rows
+[dbo].[ReadyMadeInventoryProducts] => 0 rows
+[dbo].[ReadyMadeProductionOrderItems] => 0 rows
+[dbo].[ReadyMadeProductionOrderPieceInstances] => 0 rows
+[dbo].[ReadyMadeProductionOrders] => 0 rows
+[dbo].[ReadyMadeSaleCostPostings] => 0 rows
+[dbo].[RecoveryRecords] => 0 rows
+[dbo].[ReferralAccounts] => 0 rows
+[dbo].[ReferralAnalytics] => 0 rows
+[dbo].[ReferralCodes] => 0 rows
+[dbo].[ReferralRewards] => 0 rows
+[dbo].[ReferralTransactions] => 0 rows
+[dbo].[RestoreRecords] => 0 rows
+[dbo].[Sent_Log] => 0 rows
+[dbo].[Sent_Messages] => 0 rows
+[dbo].[ServiceAvailabilityRecords] => 0 rows
+[dbo].[StageAttributionCorrections] => 0 rows
+[dbo].[SupplierAnnouncements] => 0 rows
+[dbo].[SupplierFinancialInvoices] => 0 rows
+[dbo].[SupplierFinancialPaymentAllocations] => 0 rows
+[dbo].[SupplierFinancialPayments] => 0 rows
+[dbo].[SupplierInvoiceLines] => 0 rows
+[dbo].[SupplierInvoices] => 0 rows
+[dbo].[SupplierLedgerEntries] => 0 rows
+[dbo].[SupplierMessages] => 0 rows
+[dbo].[SupplierNotifications] => 0 rows
+[dbo].[SupplierPaymentAcknowledgements] => 0 rows
+[dbo].[SupplierPaymentAllocations] => 0 rows
+[dbo].[SupplierPayments] => 0 rows
+[dbo].[Suppliers] => 0 rows
+[dbo].[SupplierTransactions] => 0 rows
+[dbo].[TailoringCostPostings] => 0 rows
+[dbo].[TailoringOrderEditOperations] => 0 rows
+[dbo].[TailoringPieceAddOperations] => 0 rows
+[dbo].[TailoringPieceBenefitBalances] => 0 rows
+[dbo].[TailoringPieceCancellations] => 0 rows
+[dbo].[TailoringPieceSaleValues] => 0 rows
+[dbo].[ToolIssuanceReturns] => 0 rows
+[dbo].[ToolIssuanceReversals] => 0 rows
+[dbo].[ToolIssuances] => 0 rows
+[dbo].[TrackingEvents] => 0 rows
+[dbo].[UserActivityLogs] => 0 rows
+[dbo].[UserSessions] => 0 rows
+Preserve baseline [System_Settings] => 125 rows
+Preserve baseline [CashAccounts] => 2 rows
+Preserve baseline [LedgerAccounts] => 24 rows
+Preserve baseline [AccountingEventDefinitions] => 14 rows
+Preserve baseline [AccountRoleMappings] => 9 rows
+Preserve baseline [InventoryClassCatalog] => 2 rows
+Preserve baseline [InventoryUnitCatalog] => 3 rows
+Preserve baseline [PricingProductTypes] => 0 rows
+Preserve baseline [MessageTemplates] => 0 rows
+Preserve baseline [Messages_Templates] => 0 rows
+Preserve baseline [SecurityRoles] => 9 rows
+Preserve baseline [SecurityPermissions] => 78 rows
+Preserve baseline [RolePermissionMappings] => 296 rows
+Preserve baseline [UserRoleAssignments] => 0 rows
+Preserve baseline [UserClaimMappings] => 0 rows
+Preserve baseline [Users] => 1 rows
+Verify guard status: PASS (read-only validation only)
+
+StdErr=<empty>
+Details=StdOut captured successfully.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=STDERR_CAPTURED
+Mode=Verify
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=31272
+ExitCode=
+ConfiguredTimeoutSeconds=
+FailureStage=STDERR_CAPTURED
+FailureCode=NONE
+StartTime=2026-11-13T14:33:50.8169053+00:00
+EndTime=2026-11-13T14:34:07.6436130+00:00
+StdOut=R3 SAFE ZERO-OPERATIONAL RESET VERIFY (read-only)
+Target database: LUMAR_ERP_ES_VALIDATION_R3
+[dbo].[AccountingEvents] => 0 rows
+[dbo].[CashMovements] => 0 rows
+[dbo].[CustomerAdvanceApplications] => 0 rows
+[dbo].[CustomerLedgerEntries] => 0 rows
+[dbo].[CustomerMeasurements] => 0 rows
+[dbo].[CustomerMessages] => 0 rows
+[dbo].[CustomerNotifications] => 0 rows
+[dbo].[Customers] => 0 rows
+[dbo].[EmployeeAdvances] => 0 rows
+[dbo].[EmployeeAttendances] => 0 rows
+[dbo].[EmployeeContracts] => 0 rows
+[dbo].[EmployeeDailyAccruals] => 0 rows
+[dbo].[EmployeeDailyEligibility] => 0 rows
+[dbo].[EmployeeDailyExpenses] => 0 rows
+[dbo].[EmployeeDocuments] => 0 rows
+[dbo].[EmployeeDrawSettlements] => 0 rows
+[dbo].[EmployeeLedgerEntries] => 0 rows
+[dbo].[EmployeePayments] => 0 rows
+[dbo].[EmployeePieceRateAssignments] => 0 rows
+[dbo].[Employees] => 0 rows
+[dbo].[EmployeeSeasonalBonuses] => 0 rows
+[dbo].[EmployeeStatusHistory] => 0 rows
+[dbo].[FabricRolls] => 0 rows
+[dbo].[Fabrics] => 0 rows
+[dbo].[Fabrics_Inventory] => 0 rows
+[dbo].[FinancialTransactions] => 0 rows
+[dbo].[GoodsReceiptDifferences] => 0 rows
+[dbo].[GoodsReceiptItems] => 0 rows
+[dbo].[GoodsReceiptReversalLines] => 0 rows
+[dbo].[GoodsReceiptReversals] => 0 rows
+[dbo].[GoodsReceipts] => 0 rows
+[dbo].[ImportedReadyMadeInventoryReceipts] => 0 rows
+[dbo].[ImportedReadyMadeProducts] => 0 rows
+[dbo].[ImportedReadyMadeSaleCostPostings] => 0 rows
+[dbo].[InventoryItemFoundation] => 0 rows
+[dbo].[InventoryItems] => 0 rows
+[dbo].[InventoryReceiptLines] => 0 rows
+[dbo].[InventoryReceiptPostings] => 0 rows
+[dbo].[InventoryTransactions] => 0 rows
+[dbo].[InventoryValuationSnapshots] => 0 rows
+[dbo].[JournalEntries] => 0 rows
+[dbo].[JournalEntryLines] => 0 rows
+[dbo].[Live_Scan] => 0 rows
+[dbo].[LoyaltyAccounts] => 0 rows
+[dbo].[LoyaltyRedemptions] => 0 rows
+[dbo].[LoyaltyRewards] => 0 rows
+[dbo].[LoyaltyTransactions] => 0 rows
+[dbo].[MeasurementCardPrintHistory] => 0 rows
+[dbo].[MobileAccountCustomerAccess] => 0 rows
+[dbo].[MobileAccounts] => 0 rows
+[dbo].[MobilePushDevices] => 0 rows
+[dbo].[MobileRecoveryChallenges] => 0 rows
+[dbo].[MobileSessions] => 0 rows
+[dbo].[OrderItemFabrics] => 0 rows
+[dbo].[OrderItems] => 0 rows
+[dbo].[Orders] => 0 rows
+[dbo].[PaymentDisputes] => 0 rows
+[dbo].[Payments] => 0 rows
+[dbo].[Payments_Log] => 0 rows
+[dbo].[PerformanceMetricRecords] => 0 rows
+[dbo].[Piece_Measurements] => 0 rows
+[dbo].[Piece_Rates] => 0 rows
+[dbo].[Pieces] => 0 rows
+[dbo].[Production_Tracking] => 0 rows
+[dbo].[ProductionBatches] => 0 rows
+[dbo].[ProductionMaterialConsumptions] => 0 rows
+[dbo].[ProductionOrders] => 0 rows
+[dbo].[ProductMaterials] => 0 rows
+[dbo].[Products] => 0 rows
+[dbo].[PurchaseOrderItems] => 0 rows
+[dbo].[PurchaseOrders] => 0 rows
+[dbo].[ReadyMadeInventoryProducts] => 0 rows
+[dbo].[ReadyMadeProductionOrderItems] => 0 rows
+[dbo].[ReadyMadeProductionOrderPieceInstances] => 0 rows
+[dbo].[ReadyMadeProductionOrders] => 0 rows
+[dbo].[ReadyMadeSaleCostPostings] => 0 rows
+[dbo].[RecoveryRecords] => 0 rows
+[dbo].[ReferralAccounts] => 0 rows
+[dbo].[ReferralAnalytics] => 0 rows
+[dbo].[ReferralCodes] => 0 rows
+[dbo].[ReferralRewards] => 0 rows
+[dbo].[ReferralTransactions] => 0 rows
+[dbo].[RestoreRecords] => 0 rows
+[dbo].[Sent_Log] => 0 rows
+[dbo].[Sent_Messages] => 0 rows
+[dbo].[ServiceAvailabilityRecords] => 0 rows
+[dbo].[StageAttributionCorrections] => 0 rows
+[dbo].[SupplierAnnouncements] => 0 rows
+[dbo].[SupplierFinancialInvoices] => 0 rows
+[dbo].[SupplierFinancialPaymentAllocations] => 0 rows
+[dbo].[SupplierFinancialPayments] => 0 rows
+[dbo].[SupplierInvoiceLines] => 0 rows
+[dbo].[SupplierInvoices] => 0 rows
+[dbo].[SupplierLedgerEntries] => 0 rows
+[dbo].[SupplierMessages] => 0 rows
+[dbo].[SupplierNotifications] => 0 rows
+[dbo].[SupplierPaymentAcknowledgements] => 0 rows
+[dbo].[SupplierPaymentAllocations] => 0 rows
+[dbo].[SupplierPayments] => 0 rows
+[dbo].[Suppliers] => 0 rows
+[dbo].[SupplierTransactions] => 0 rows
+[dbo].[TailoringCostPostings] => 0 rows
+[dbo].[TailoringOrderEditOperations] => 0 rows
+[dbo].[TailoringPieceAddOperations] => 0 rows
+[dbo].[TailoringPieceBenefitBalances] => 0 rows
+[dbo].[TailoringPieceCancellations] => 0 rows
+[dbo].[TailoringPieceSaleValues] => 0 rows
+[dbo].[ToolIssuanceReturns] => 0 rows
+[dbo].[ToolIssuanceReversals] => 0 rows
+[dbo].[ToolIssuances] => 0 rows
+[dbo].[TrackingEvents] => 0 rows
+[dbo].[UserActivityLogs] => 0 rows
+[dbo].[UserSessions] => 0 rows
+Preserve baseline [System_Settings] => 125 rows
+Preserve baseline [CashAccounts] => 2 rows
+Preserve baseline [LedgerAccounts] => 24 rows
+Preserve baseline [AccountingEventDefinitions] => 14 rows
+Preserve baseline [AccountRoleMappings] => 9 rows
+Preserve baseline [InventoryClassCatalog] => 2 rows
+Preserve baseline [InventoryUnitCatalog] => 3 rows
+Preserve baseline [PricingProductTypes] => 0 rows
+Preserve baseline [MessageTemplates] => 0 rows
+Preserve baseline [Messages_Templates] => 0 rows
+Preserve baseline [SecurityRoles] => 9 rows
+Preserve baseline [SecurityPermissions] => 78 rows
+Preserve baseline [RolePermissionMappings] => 296 rows
+Preserve baseline [UserRoleAssignments] => 0 rows
+Preserve baseline [UserClaimMappings] => 0 rows
+Preserve baseline [Users] => 1 rows
+Verify guard status: PASS (read-only validation only)
+
+StdErr=<empty>
+Details=StdErr captured successfully.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=PROCESS_EXITED
+Mode=Verify
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=31272
+ExitCode=0
+ConfiguredTimeoutSeconds=
+FailureStage=PROCESS_EXITED
+FailureCode=NONE
+StartTime=2026-11-13T14:33:50.8169053+00:00
+EndTime=2026-11-13T14:34:07.6440046+00:00
+StdOut=R3 SAFE ZERO-OPERATIONAL RESET VERIFY (read-only)
+Target database: LUMAR_ERP_ES_VALIDATION_R3
+[dbo].[AccountingEvents] => 0 rows
+[dbo].[CashMovements] => 0 rows
+[dbo].[CustomerAdvanceApplications] => 0 rows
+[dbo].[CustomerLedgerEntries] => 0 rows
+[dbo].[CustomerMeasurements] => 0 rows
+[dbo].[CustomerMessages] => 0 rows
+[dbo].[CustomerNotifications] => 0 rows
+[dbo].[Customers] => 0 rows
+[dbo].[EmployeeAdvances] => 0 rows
+[dbo].[EmployeeAttendances] => 0 rows
+[dbo].[EmployeeContracts] => 0 rows
+[dbo].[EmployeeDailyAccruals] => 0 rows
+[dbo].[EmployeeDailyEligibility] => 0 rows
+[dbo].[EmployeeDailyExpenses] => 0 rows
+[dbo].[EmployeeDocuments] => 0 rows
+[dbo].[EmployeeDrawSettlements] => 0 rows
+[dbo].[EmployeeLedgerEntries] => 0 rows
+[dbo].[EmployeePayments] => 0 rows
+[dbo].[EmployeePieceRateAssignments] => 0 rows
+[dbo].[Employees] => 0 rows
+[dbo].[EmployeeSeasonalBonuses] => 0 rows
+[dbo].[EmployeeStatusHistory] => 0 rows
+[dbo].[FabricRolls] => 0 rows
+[dbo].[Fabrics] => 0 rows
+[dbo].[Fabrics_Inventory] => 0 rows
+[dbo].[FinancialTransactions] => 0 rows
+[dbo].[GoodsReceiptDifferences] => 0 rows
+[dbo].[GoodsReceiptItems] => 0 rows
+[dbo].[GoodsReceiptReversalLines] => 0 rows
+[dbo].[GoodsReceiptReversals] => 0 rows
+[dbo].[GoodsReceipts] => 0 rows
+[dbo].[ImportedReadyMadeInventoryReceipts] => 0 rows
+[dbo].[ImportedReadyMadeProducts] => 0 rows
+[dbo].[ImportedReadyMadeSaleCostPostings] => 0 rows
+[dbo].[InventoryItemFoundation] => 0 rows
+[dbo].[InventoryItems] => 0 rows
+[dbo].[InventoryReceiptLines] => 0 rows
+[dbo].[InventoryReceiptPostings] => 0 rows
+[dbo].[InventoryTransactions] => 0 rows
+[dbo].[InventoryValuationSnapshots] => 0 rows
+[dbo].[JournalEntries] => 0 rows
+[dbo].[JournalEntryLines] => 0 rows
+[dbo].[Live_Scan] => 0 rows
+[dbo].[LoyaltyAccounts] => 0 rows
+[dbo].[LoyaltyRedemptions] => 0 rows
+[dbo].[LoyaltyRewards] => 0 rows
+[dbo].[LoyaltyTransactions] => 0 rows
+[dbo].[MeasurementCardPrintHistory] => 0 rows
+[dbo].[MobileAccountCustomerAccess] => 0 rows
+[dbo].[MobileAccounts] => 0 rows
+[dbo].[MobilePushDevices] => 0 rows
+[dbo].[MobileRecoveryChallenges] => 0 rows
+[dbo].[MobileSessions] => 0 rows
+[dbo].[OrderItemFabrics] => 0 rows
+[dbo].[OrderItems] => 0 rows
+[dbo].[Orders] => 0 rows
+[dbo].[PaymentDisputes] => 0 rows
+[dbo].[Payments] => 0 rows
+[dbo].[Payments_Log] => 0 rows
+[dbo].[PerformanceMetricRecords] => 0 rows
+[dbo].[Piece_Measurements] => 0 rows
+[dbo].[Piece_Rates] => 0 rows
+[dbo].[Pieces] => 0 rows
+[dbo].[Production_Tracking] => 0 rows
+[dbo].[ProductionBatches] => 0 rows
+[dbo].[ProductionMaterialConsumptions] => 0 rows
+[dbo].[ProductionOrders] => 0 rows
+[dbo].[ProductMaterials] => 0 rows
+[dbo].[Products] => 0 rows
+[dbo].[PurchaseOrderItems] => 0 rows
+[dbo].[PurchaseOrders] => 0 rows
+[dbo].[ReadyMadeInventoryProducts] => 0 rows
+[dbo].[ReadyMadeProductionOrderItems] => 0 rows
+[dbo].[ReadyMadeProductionOrderPieceInstances] => 0 rows
+[dbo].[ReadyMadeProductionOrders] => 0 rows
+[dbo].[ReadyMadeSaleCostPostings] => 0 rows
+[dbo].[RecoveryRecords] => 0 rows
+[dbo].[ReferralAccounts] => 0 rows
+[dbo].[ReferralAnalytics] => 0 rows
+[dbo].[ReferralCodes] => 0 rows
+[dbo].[ReferralRewards] => 0 rows
+[dbo].[ReferralTransactions] => 0 rows
+[dbo].[RestoreRecords] => 0 rows
+[dbo].[Sent_Log] => 0 rows
+[dbo].[Sent_Messages] => 0 rows
+[dbo].[ServiceAvailabilityRecords] => 0 rows
+[dbo].[StageAttributionCorrections] => 0 rows
+[dbo].[SupplierAnnouncements] => 0 rows
+[dbo].[SupplierFinancialInvoices] => 0 rows
+[dbo].[SupplierFinancialPaymentAllocations] => 0 rows
+[dbo].[SupplierFinancialPayments] => 0 rows
+[dbo].[SupplierInvoiceLines] => 0 rows
+[dbo].[SupplierInvoices] => 0 rows
+[dbo].[SupplierLedgerEntries] => 0 rows
+[dbo].[SupplierMessages] => 0 rows
+[dbo].[SupplierNotifications] => 0 rows
+[dbo].[SupplierPaymentAcknowledgements] => 0 rows
+[dbo].[SupplierPaymentAllocations] => 0 rows
+[dbo].[SupplierPayments] => 0 rows
+[dbo].[Suppliers] => 0 rows
+[dbo].[SupplierTransactions] => 0 rows
+[dbo].[TailoringCostPostings] => 0 rows
+[dbo].[TailoringOrderEditOperations] => 0 rows
+[dbo].[TailoringPieceAddOperations] => 0 rows
+[dbo].[TailoringPieceBenefitBalances] => 0 rows
+[dbo].[TailoringPieceCancellations] => 0 rows
+[dbo].[TailoringPieceSaleValues] => 0 rows
+[dbo].[ToolIssuanceReturns] => 0 rows
+[dbo].[ToolIssuanceReversals] => 0 rows
+[dbo].[ToolIssuances] => 0 rows
+[dbo].[TrackingEvents] => 0 rows
+[dbo].[UserActivityLogs] => 0 rows
+[dbo].[UserSessions] => 0 rows
+Preserve baseline [System_Settings] => 125 rows
+Preserve baseline [CashAccounts] => 2 rows
+Preserve baseline [LedgerAccounts] => 24 rows
+Preserve baseline [AccountingEventDefinitions] => 14 rows
+Preserve baseline [AccountRoleMappings] => 9 rows
+Preserve baseline [InventoryClassCatalog] => 2 rows
+Preserve baseline [InventoryUnitCatalog] => 3 rows
+Preserve baseline [PricingProductTypes] => 0 rows
+Preserve baseline [MessageTemplates] => 0 rows
+Preserve baseline [Messages_Templates] => 0 rows
+Preserve baseline [SecurityRoles] => 9 rows
+Preserve baseline [SecurityPermissions] => 78 rows
+Preserve baseline [RolePermissionMappings] => 296 rows
+Preserve baseline [UserRoleAssignments] => 0 rows
+Preserve baseline [UserClaimMappings] => 0 rows
+Preserve baseline [Users] => 1 rows
+Verify guard status: PASS (read-only validation only)
+
+StdErr=<empty>
+Details=PowerShell process exited and output capture completed.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=COMPLETE
+Mode=Verify
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=31272
+ExitCode=0
+ConfiguredTimeoutSeconds=
+FailureStage=NONE
+FailureCode=NONE
+StartTime=2026-11-13T14:33:50.8169053+00:00
+EndTime=2026-11-13T14:34:07.6446285+00:00
+StdOut=R3 SAFE ZERO-OPERATIONAL RESET VERIFY (read-only)
+Target database: LUMAR_ERP_ES_VALIDATION_R3
+[dbo].[AccountingEvents] => 0 rows
+[dbo].[CashMovements] => 0 rows
+[dbo].[CustomerAdvanceApplications] => 0 rows
+[dbo].[CustomerLedgerEntries] => 0 rows
+[dbo].[CustomerMeasurements] => 0 rows
+[dbo].[CustomerMessages] => 0 rows
+[dbo].[CustomerNotifications] => 0 rows
+[dbo].[Customers] => 0 rows
+[dbo].[EmployeeAdvances] => 0 rows
+[dbo].[EmployeeAttendances] => 0 rows
+[dbo].[EmployeeContracts] => 0 rows
+[dbo].[EmployeeDailyAccruals] => 0 rows
+[dbo].[EmployeeDailyEligibility] => 0 rows
+[dbo].[EmployeeDailyExpenses] => 0 rows
+[dbo].[EmployeeDocuments] => 0 rows
+[dbo].[EmployeeDrawSettlements] => 0 rows
+[dbo].[EmployeeLedgerEntries] => 0 rows
+[dbo].[EmployeePayments] => 0 rows
+[dbo].[EmployeePieceRateAssignments] => 0 rows
+[dbo].[Employees] => 0 rows
+[dbo].[EmployeeSeasonalBonuses] => 0 rows
+[dbo].[EmployeeStatusHistory] => 0 rows
+[dbo].[FabricRolls] => 0 rows
+[dbo].[Fabrics] => 0 rows
+[dbo].[Fabrics_Inventory] => 0 rows
+[dbo].[FinancialTransactions] => 0 rows
+[dbo].[GoodsReceiptDifferences] => 0 rows
+[dbo].[GoodsReceiptItems] => 0 rows
+[dbo].[GoodsReceiptReversalLines] => 0 rows
+[dbo].[GoodsReceiptReversals] => 0 rows
+[dbo].[GoodsReceipts] => 0 rows
+[dbo].[ImportedReadyMadeInventoryReceipts] => 0 rows
+[dbo].[ImportedReadyMadeProducts] => 0 rows
+[dbo].[ImportedReadyMadeSaleCostPostings] => 0 rows
+[dbo].[InventoryItemFoundation] => 0 rows
+[dbo].[InventoryItems] => 0 rows
+[dbo].[InventoryReceiptLines] => 0 rows
+[dbo].[InventoryReceiptPostings] => 0 rows
+[dbo].[InventoryTransactions] => 0 rows
+[dbo].[InventoryValuationSnapshots] => 0 rows
+[dbo].[JournalEntries] => 0 rows
+[dbo].[JournalEntryLines] => 0 rows
+[dbo].[Live_Scan] => 0 rows
+[dbo].[LoyaltyAccounts] => 0 rows
+[dbo].[LoyaltyRedemptions] => 0 rows
+[dbo].[LoyaltyRewards] => 0 rows
+[dbo].[LoyaltyTransactions] => 0 rows
+[dbo].[MeasurementCardPrintHistory] => 0 rows
+[dbo].[MobileAccountCustomerAccess] => 0 rows
+[dbo].[MobileAccounts] => 0 rows
+[dbo].[MobilePushDevices] => 0 rows
+[dbo].[MobileRecoveryChallenges] => 0 rows
+[dbo].[MobileSessions] => 0 rows
+[dbo].[OrderItemFabrics] => 0 rows
+[dbo].[OrderItems] => 0 rows
+[dbo].[Orders] => 0 rows
+[dbo].[PaymentDisputes] => 0 rows
+[dbo].[Payments] => 0 rows
+[dbo].[Payments_Log] => 0 rows
+[dbo].[PerformanceMetricRecords] => 0 rows
+[dbo].[Piece_Measurements] => 0 rows
+[dbo].[Piece_Rates] => 0 rows
+[dbo].[Pieces] => 0 rows
+[dbo].[Production_Tracking] => 0 rows
+[dbo].[ProductionBatches] => 0 rows
+[dbo].[ProductionMaterialConsumptions] => 0 rows
+[dbo].[ProductionOrders] => 0 rows
+[dbo].[ProductMaterials] => 0 rows
+[dbo].[Products] => 0 rows
+[dbo].[PurchaseOrderItems] => 0 rows
+[dbo].[PurchaseOrders] => 0 rows
+[dbo].[ReadyMadeInventoryProducts] => 0 rows
+[dbo].[ReadyMadeProductionOrderItems] => 0 rows
+[dbo].[ReadyMadeProductionOrderPieceInstances] => 0 rows
+[dbo].[ReadyMadeProductionOrders] => 0 rows
+[dbo].[ReadyMadeSaleCostPostings] => 0 rows
+[dbo].[RecoveryRecords] => 0 rows
+[dbo].[ReferralAccounts] => 0 rows
+[dbo].[ReferralAnalytics] => 0 rows
+[dbo].[ReferralCodes] => 0 rows
+[dbo].[ReferralRewards] => 0 rows
+[dbo].[ReferralTransactions] => 0 rows
+[dbo].[RestoreRecords] => 0 rows
+[dbo].[Sent_Log] => 0 rows
+[dbo].[Sent_Messages] => 0 rows
+[dbo].[ServiceAvailabilityRecords] => 0 rows
+[dbo].[StageAttributionCorrections] => 0 rows
+[dbo].[SupplierAnnouncements] => 0 rows
+[dbo].[SupplierFinancialInvoices] => 0 rows
+[dbo].[SupplierFinancialPaymentAllocations] => 0 rows
+[dbo].[SupplierFinancialPayments] => 0 rows
+[dbo].[SupplierInvoiceLines] => 0 rows
+[dbo].[SupplierInvoices] => 0 rows
+[dbo].[SupplierLedgerEntries] => 0 rows
+[dbo].[SupplierMessages] => 0 rows
+[dbo].[SupplierNotifications] => 0 rows
+[dbo].[SupplierPaymentAcknowledgements] => 0 rows
+[dbo].[SupplierPaymentAllocations] => 0 rows
+[dbo].[SupplierPayments] => 0 rows
+[dbo].[Suppliers] => 0 rows
+[dbo].[SupplierTransactions] => 0 rows
+[dbo].[TailoringCostPostings] => 0 rows
+[dbo].[TailoringOrderEditOperations] => 0 rows
+[dbo].[TailoringPieceAddOperations] => 0 rows
+[dbo].[TailoringPieceBenefitBalances] => 0 rows
+[dbo].[TailoringPieceCancellations] => 0 rows
+[dbo].[TailoringPieceSaleValues] => 0 rows
+[dbo].[ToolIssuanceReturns] => 0 rows
+[dbo].[ToolIssuanceReversals] => 0 rows
+[dbo].[ToolIssuances] => 0 rows
+[dbo].[TrackingEvents] => 0 rows
+[dbo].[UserActivityLogs] => 0 rows
+[dbo].[UserSessions] => 0 rows
+Preserve baseline [System_Settings] => 125 rows
+Preserve baseline [CashAccounts] => 2 rows
+Preserve baseline [LedgerAccounts] => 24 rows
+Preserve baseline [AccountingEventDefinitions] => 14 rows
+Preserve baseline [AccountRoleMappings] => 9 rows
+Preserve baseline [InventoryClassCatalog] => 2 rows
+Preserve baseline [InventoryUnitCatalog] => 3 rows
+Preserve baseline [PricingProductTypes] => 0 rows
+Preserve baseline [MessageTemplates] => 0 rows
+Preserve baseline [Messages_Templates] => 0 rows
+Preserve baseline [SecurityRoles] => 9 rows
+Preserve baseline [SecurityPermissions] => 78 rows
+Preserve baseline [RolePermissionMappings] => 296 rows
+Preserve baseline [UserRoleAssignments] => 0 rows
+Preserve baseline [UserClaimMappings] => 0 rows
+Preserve baseline [Users] => 1 rows
+Verify guard status: PASS (read-only validation only)
+
+StdErr=<empty>
+Details=Process completed successfully.
+---
+CorrelationId=0HNQ1I6J8MV94:00000001
+Stage=FINAL
+Mode=Verify
+DatabaseName=LUMAR_ERP_ES_VALIDATION_R3
+ScriptPath=D:\YASIN\Backend\R3_SAFE_ZERO_OPERATIONAL_RESET.ps1
+WorkingDirectory=D:\YASIN\Backend
+PowerShellProcessId=31272
+ExitCode=0
+ConfiguredTimeoutSeconds=
+FailureStage=VERIFY
+FailureCode=NONE
+StartTime=2026-11-13T14:33:50.8169053+00:00
+EndTime=2026-11-13T14:34:07.6453439+00:00
+StdOut=R3 SAFE ZERO-OPERATIONAL RESET VERIFY (read-only)
+Target database: LUMAR_ERP_ES_VALIDATION_R3
+[dbo].[AccountingEvents] => 0 rows
+[dbo].[CashMovements] => 0 rows
+[dbo].[CustomerAdvanceApplications] => 0 rows
+[dbo].[CustomerLedgerEntries] => 0 rows
+[dbo].[CustomerMeasurements] => 0 rows
+[dbo].[CustomerMessages] => 0 rows
+[dbo].[CustomerNotifications] => 0 rows
+[dbo].[Customers] => 0 rows
+[dbo].[EmployeeAdvances] => 0 rows
+[dbo].[EmployeeAttendances] => 0 rows
+[dbo].[EmployeeContracts] => 0 rows
+[dbo].[EmployeeDailyAccruals] => 0 rows
+[dbo].[EmployeeDailyEligibility] => 0 rows
+[dbo].[EmployeeDailyExpenses] => 0 rows
+[dbo].[EmployeeDocuments] => 0 rows
+[dbo].[EmployeeDrawSettlements] => 0 rows
+[dbo].[EmployeeLedgerEntries] => 0 rows
+[dbo].[EmployeePayments] => 0 rows
+[dbo].[EmployeePieceRateAssignments] => 0 rows
+[dbo].[Employees] => 0 rows
+[dbo].[EmployeeSeasonalBonuses] => 0 rows
+[dbo].[EmployeeStatusHistory] => 0 rows
+[dbo].[FabricRolls] => 0 rows
+[dbo].[Fabrics] => 0 rows
+[dbo].[Fabrics_Inventory] => 0 rows
+[dbo].[FinancialTransactions] => 0 rows
+[dbo].[GoodsReceiptDifferences] => 0 rows
+[dbo].[GoodsReceiptItems] => 0 rows
+[dbo].[GoodsReceiptReversalLines] => 0 rows
+[dbo].[GoodsReceiptReversals] => 0 rows
+[dbo].[GoodsReceipts] => 0 rows
+[dbo].[ImportedReadyMadeInventoryReceipts] => 0 rows
+[dbo].[ImportedReadyMadeProducts] => 0 rows
+[dbo].[ImportedReadyMadeSaleCostPostings] => 0 rows
+[dbo].[InventoryItemFoundation] => 0 rows
+[dbo].[InventoryItems] => 0 rows
+[dbo].[InventoryReceiptLines] => 0 rows
+[dbo].[InventoryReceiptPostings] => 0 rows
+[dbo].[InventoryTransactions] => 0 rows
+[dbo].[InventoryValuationSnapshots] => 0 rows
+[dbo].[JournalEntries] => 0 rows
+[dbo].[JournalEntryLines] => 0 rows
+[dbo].[Live_Scan] => 0 rows
+[dbo].[LoyaltyAccounts] => 0 rows
+[dbo].[LoyaltyRedemptions] => 0 rows
+[dbo].[LoyaltyRewards] => 0 rows
+[dbo].[LoyaltyTransactions] => 0 rows
+[dbo].[MeasurementCardPrintHistory] => 0 rows
+[dbo].[MobileAccountCustomerAccess] => 0 rows
+[dbo].[MobileAccounts] => 0 rows
+[dbo].[MobilePushDevices] => 0 rows
+[dbo].[MobileRecoveryChallenges] => 0 rows
+[dbo].[MobileSessions] => 0 rows
+[dbo].[OrderItemFabrics] => 0 rows
+[dbo].[OrderItems] => 0 rows
+[dbo].[Orders] => 0 rows
+[dbo].[PaymentDisputes] => 0 rows
+[dbo].[Payments] => 0 rows
+[dbo].[Payments_Log] => 0 rows
+[dbo].[PerformanceMetricRecords] => 0 rows
+[dbo].[Piece_Measurements] => 0 rows
+[dbo].[Piece_Rates] => 0 rows
+[dbo].[Pieces] => 0 rows
+[dbo].[Production_Tracking] => 0 rows
+[dbo].[ProductionBatches] => 0 rows
+[dbo].[ProductionMaterialConsumptions] => 0 rows
+[dbo].[ProductionOrders] => 0 rows
+[dbo].[ProductMaterials] => 0 rows
+[dbo].[Products] => 0 rows
+[dbo].[PurchaseOrderItems] => 0 rows
+[dbo].[PurchaseOrders] => 0 rows
+[dbo].[ReadyMadeInventoryProducts] => 0 rows
+[dbo].[ReadyMadeProductionOrderItems] => 0 rows
+[dbo].[ReadyMadeProductionOrderPieceInstances] => 0 rows
+[dbo].[ReadyMadeProductionOrders] => 0 rows
+[dbo].[ReadyMadeSaleCostPostings] => 0 rows
+[dbo].[RecoveryRecords] => 0 rows
+[dbo].[ReferralAccounts] => 0 rows
+[dbo].[ReferralAnalytics] => 0 rows
+[dbo].[ReferralCodes] => 0 rows
+[dbo].[ReferralRewards] => 0 rows
+[dbo].[ReferralTransactions] => 0 rows
+[dbo].[RestoreRecords] => 0 rows
+[dbo].[Sent_Log] => 0 rows
+[dbo].[Sent_Messages] => 0 rows
+[dbo].[ServiceAvailabilityRecords] => 0 rows
+[dbo].[StageAttributionCorrections] => 0 rows
+[dbo].[SupplierAnnouncements] => 0 rows
+[dbo].[SupplierFinancialInvoices] => 0 rows
+[dbo].[SupplierFinancialPaymentAllocations] => 0 rows
+[dbo].[SupplierFinancialPayments] => 0 rows
+[dbo].[SupplierInvoiceLines] => 0 rows
+[dbo].[SupplierInvoices] => 0 rows
+[dbo].[SupplierLedgerEntries] => 0 rows
+[dbo].[SupplierMessages] => 0 rows
+[dbo].[SupplierNotifications] => 0 rows
+[dbo].[SupplierPaymentAcknowledgements] => 0 rows
+[dbo].[SupplierPaymentAllocations] => 0 rows
+[dbo].[SupplierPayments] => 0 rows
+[dbo].[Suppliers] => 0 rows
+[dbo].[SupplierTransactions] => 0 rows
+[dbo].[TailoringCostPostings] => 0 rows
+[dbo].[TailoringOrderEditOperations] => 0 rows
+[dbo].[TailoringPieceAddOperations] => 0 rows
+[dbo].[TailoringPieceBenefitBalances] => 0 rows
+[dbo].[TailoringPieceCancellations] => 0 rows
+[dbo].[TailoringPieceSaleValues] => 0 rows
+[dbo].[ToolIssuanceReturns] => 0 rows
+[dbo].[ToolIssuanceReversals] => 0 rows
+[dbo].[ToolIssuances] => 0 rows
+[dbo].[TrackingEvents] => 0 rows
+[dbo].[UserActivityLogs] => 0 rows
+[dbo].[UserSessions] => 0 rows
+Preserve baseline [System_Settings] => 125 rows
+Preserve baseline [CashAccounts] => 2 rows
+Preserve baseline [LedgerAccounts] => 24 rows
+Preserve baseline [AccountingEventDefinitions] => 14 rows
+Preserve baseline [AccountRoleMappings] => 9 rows
+Preserve baseline [InventoryClassCatalog] => 2 rows
+Preserve baseline [InventoryUnitCatalog] => 3 rows
+Preserve baseline [PricingProductTypes] => 0 rows
+Preserve baseline [MessageTemplates] => 0 rows
+Preserve baseline [Messages_Templates] => 0 rows
+Preserve baseline [SecurityRoles] => 9 rows
+Preserve baseline [SecurityPermissions] => 78 rows
+Preserve baseline [RolePermissionMappings] => 296 rows
+Preserve baseline [UserRoleAssignments] => 0 rows
+Preserve baseline [UserClaimMappings] => 0 rows
+Preserve baseline [Users] => 1 rows
+Verify guard status: PASS (read-only validation only)
+
+StdErr=<empty>
+Details=Final log flush executed in finally block.
+---

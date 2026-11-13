@@ -19,4 +19,5 @@ public interface ISettingsService
     Task<GeneralCashAccountSettingDto> GetGeneralCashAccountSettingAsync(CancellationToken c);
     Task<GeneralCashAccountSettingDto> UpsertGeneralCashAccountSettingAsync(int? cashAccountId, CancellationToken c);
     Task<TestDataResetExecutionResultDto> ExecuteTestDataResetAsync(CancellationToken c);
+    Task<TestDataResetReadinessResultDto> GetTestDataResetReadinessAsync(CancellationToken c);
 }

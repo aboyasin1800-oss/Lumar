@@ -1,0 +1,698 @@
+RUN_START=Thu 11/12/2026  3:19:07.91  
+  Determining projects to restore...
+d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\LUMAR_ERP_API_V2.Tests.csproj : warning NU1900: Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json.
+d:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1900: Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json. [d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\LUMAR_ERP_API_V2.Tests.csproj]
+  All projects are up-to-date for restore.
+d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\LUMAR_ERP_API_V2.Tests.csproj : warning NU1900: Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json.
+d:\YASIN\Backend\LUMAR_ERP_API_V2\LUMAR_ERP_API_V2.csproj : warning NU1900: Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json.
+  LUMAR_ERP_API_V2 -> d:\YASIN\Backend\LUMAR_ERP_API_V2\bin\Debug\net10.0\LUMAR_ERP_API_V2.dll
+  LUMAR_ERP_API_V2.Tests -> d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll
+Test run for d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\bin\Debug\net10.0\LUMAR_ERP_API_V2.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:03.32]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_ReplayedWithSameRollCode_DoesNotCreateDuplicateFabricRoll [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_ReplayedWithSameRollCode_DoesNotCreateDuplicateFabricRoll [2 s]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_ReplayedWithSameRollCode_DoesNotCreateDuplicateFabricRoll() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 776
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:05.43]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder(missingCode: False) [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder(missingCode: False) [1 s]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.WithFabricOrderAsync(String reference, Func`3 action) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1692
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder(Boolean missingCode) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1659
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:06.70]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder(missingCode: True) [FAIL]
+[xUnit.net 00:00:07.83]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_PartialPostingWithoutStorage_IsCompletedSafely [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder(missingCode: True) [1 s]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.WithFabricOrderAsync(String reference, Func`3 action) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1692
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MissingOrConflictingCodeRejectsEntireOrder(Boolean missingCode) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1659
+--- End of stack trace from previous location ---
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_PartialPostingWithoutStorage_IsCompletedSafely [1 s]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_PartialPostingWithoutStorage_IsCompletedSafely() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1162
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_PartialPostingWithoutStorage_IsCompletedSafely() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1162
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_PartialPostingWithoutStorage_IsCompletedSafely() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1162
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:10.01]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically(secondInches: 217, shouldSucceed: False) [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically(secondInches: 217, shouldSucceed: False) [1 s]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically(Decimal secondInches, Boolean shouldSucceed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1495
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:11.41]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically(secondInches: 36, shouldSucceed: True) [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically(secondInches: 36, shouldSucceed: True) [1 s]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_MultipleCodesRemainIndependentAndSaveAtomically(Decimal secondInches, Boolean shouldSucceed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1495
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:13.73]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ShortageReturnsJsonMessageForFlutter [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ShortageReturnsJsonMessageForFlutter [1 s]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.WithFabricOrderAsync(String reference, Func`3 action) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1692
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ShortageReturnsJsonMessageForFlutter() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1602
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:14.92]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(inchesPerPiece: 36, quantity: 2) [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(inchesPerPiece: 36, quantity: 2) [1 s]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(Decimal inchesPerPiece, Int32 quantity) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1388
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ {"FabricCode":"FAB-FOUND-8505fbac23d3","InventoryItemId":6313,"OrderId":4952,"RequiredInches":72,"BeforeQuantity":6,"AfterQuantity":4,"BeforeValue":153,"AfterValue":102.0,"RetryOrderId":4952}
+ {"FabricCode":"FAB-FOUND-8505FBAC23D3","InventoryItemId":6313,"OrderItemId":5206,"PieceId":null,"FabricConsumptionSourceId":2070,"SourceOperationId":"fe028e51-9e86-1e38-d575-3fbd7639cb74","ConsumedQuantity":2.000000,"UnitId":1,"OfficialUnitCost":25.500000,"OperationalAmount":51.000000,"PostingAmount":51.00,"InventoryTransactionId":8074,"AccountingEventId":9005,"FinancialTransactionId":8914,"JournalEntryId":8901,"AccountCode":"1101","DebitAmount":0.00,"CreditAmount":51.00}
+ {"FabricCode":"FAB-FOUND-8505FBAC23D3","InventoryItemId":6313,"OrderItemId":5206,"PieceId":null,"FabricConsumptionSourceId":2070,"SourceOperationId":"fe028e51-9e86-1e38-d575-3fbd7639cb74","ConsumedQuantity":2.000000,"UnitId":1,"OfficialUnitCost":25.500000,"OperationalAmount":51.000000,"PostingAmount":51.00,"InventoryTransactionId":8074,"AccountingEventId":9005,"FinancialTransactionId":8914,"JournalEntryId":8901,"AccountCode":"1130","DebitAmount":51.00,"CreditAmount":0.00}
+
+
+[xUnit.net 00:00:16.00]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(inchesPerPiece: 108, quantity: 2) [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(inchesPerPiece: 108, quantity: 2) [1 s]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(Decimal inchesPerPiece, Int32 quantity) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1388
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ {"FabricCode":"FAB-FOUND-d2397331ecf0","InventoryItemId":6314,"OrderId":4954,"RequiredInches":216,"BeforeQuantity":6,"AfterQuantity":0,"BeforeValue":153,"AfterValue":0.0,"RetryOrderId":4954}
+ {"FabricCode":"FAB-FOUND-D2397331ECF0","InventoryItemId":6314,"OrderItemId":5208,"PieceId":null,"FabricConsumptionSourceId":2071,"SourceOperationId":"7969163b-2656-c04c-102e-3ee58c8304fe","ConsumedQuantity":6.000000,"UnitId":1,"OfficialUnitCost":25.500000,"OperationalAmount":153.000000,"PostingAmount":153.00,"InventoryTransactionId":8076,"AccountingEventId":9007,"FinancialTransactionId":8916,"JournalEntryId":8903,"AccountCode":"1101","DebitAmount":0.00,"CreditAmount":153.00}
+ {"FabricCode":"FAB-FOUND-D2397331ECF0","InventoryItemId":6314,"OrderItemId":5208,"PieceId":null,"FabricConsumptionSourceId":2071,"SourceOperationId":"7969163b-2656-c04c-102e-3ee58c8304fe","ConsumedQuantity":6.000000,"UnitId":1,"OfficialUnitCost":25.500000,"OperationalAmount":153.000000,"PostingAmount":153.00,"InventoryTransactionId":8076,"AccountingEventId":9007,"FinancialTransactionId":8916,"JournalEntryId":8903,"AccountCode":"1130","DebitAmount":153.00,"CreditAmount":0.00}
+
+
+[xUnit.net 00:00:17.13]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(inchesPerPiece: 24, quantity: 9) [FAIL]
+[xUnit.net 00:00:18.08]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_MultiFabricItemBatch_GeneratesDistinctCatalogNumbersPerDistinctFabricItem [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(inchesPerPiece: 24, quantity: 9) [1 s]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OrderSaveConsumesOfficialQuantityAndRetryDoesNotRepeat(Decimal inchesPerPiece, Int32 quantity) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1388
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ {"FabricCode":"FAB-FOUND-c0e9f22b76cd","InventoryItemId":6315,"OrderId":4956,"RequiredInches":216,"BeforeQuantity":6,"AfterQuantity":0,"BeforeValue":153,"AfterValue":0.0,"RetryOrderId":4956}
+ {"FabricCode":"FAB-FOUND-C0E9F22B76CD","InventoryItemId":6315,"OrderItemId":5210,"PieceId":null,"FabricConsumptionSourceId":2072,"SourceOperationId":"43fbacc0-f229-24cc-a9a1-2aef15535825","ConsumedQuantity":6.000000,"UnitId":1,"OfficialUnitCost":25.500000,"OperationalAmount":153.000000,"PostingAmount":153.00,"InventoryTransactionId":8078,"AccountingEventId":9009,"FinancialTransactionId":8918,"JournalEntryId":8905,"AccountCode":"1101","DebitAmount":0.00,"CreditAmount":153.00}
+ {"FabricCode":"FAB-FOUND-C0E9F22B76CD","InventoryItemId":6315,"OrderItemId":5210,"PieceId":null,"FabricConsumptionSourceId":2072,"SourceOperationId":"43fbacc0-f229-24cc-a9a1-2aef15535825","ConsumedQuantity":6.000000,"UnitId":1,"OfficialUnitCost":25.500000,"OperationalAmount":153.000000,"PostingAmount":153.00,"InventoryTransactionId":8078,"AccountingEventId":9009,"FinancialTransactionId":8918,"JournalEntryId":8905,"AccountCode":"1130","DebitAmount":153.00,"CreditAmount":0.00}
+
+
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_MultiFabricItemBatch_GeneratesDistinctCatalogNumbersPerDistinctFabricItem [766 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_MultiFabricItemBatch_GeneratesDistinctCatalogNumbersPerDistinctFabricItem() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1013
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:18.86]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_ReusesExistingActiveFabricCodeInsteadOfAllocatingReplacement [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_ReusesExistingActiveFabricCodeInsteadOfAllocatingReplacement [778 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_ReusesExistingActiveFabricCodeInsteadOfAllocatingReplacement() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 840
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:20.06]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_CallerRollbackRestoresStockAndRemovesPosting [FAIL]
+[xUnit.net 00:00:20.85]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.StorageLinkedFabricBatch_DoesNotCreatePurchaseOrderOrGoodsReceipt [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_CallerRollbackRestoresStockAndRemovesPosting [800 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_CallerRollbackRestoresStockAndRemovesPosting() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1324
+--- End of stack trace from previous location ---
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.StorageLinkedFabricBatch_DoesNotCreatePurchaseOrderOrGoodsReceipt [789 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.StorageLinkedFabricBatch_DoesNotCreatePurchaseOrderOrGoodsReceipt() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 451
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:21.77]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.LiveStorageBatch_UsesOfficialServerAllocatedFabricAndCatalogIdentity [FAIL]
+[xUnit.net 00:00:22.63]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(unitId: 1) [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.LiveStorageBatch_UsesOfficialServerAllocatedFabricAndCatalogIdentity [919 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.LiveStorageBatch_UsesOfficialServerAllocatedFabricAndCatalogIdentity() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 404
+--- End of stack trace from previous location ---
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(unitId: 1) [851 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(Int16 unitId) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1273
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:23.41]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(unitId: 2) [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(unitId: 2) [781 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FabricCodeConsumption_UsesOfficialStockAndPostsOnce(Int16 unitId) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1273
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:24.79]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems(inchesPerPiece: 108, shouldSucceed: True) [FAIL]
+[xUnit.net 00:00:25.65]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems(inchesPerPiece: 109, shouldSucceed: False) [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems(inchesPerPiece: 108, shouldSucceed: True) [978 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems(Decimal inchesPerPiece, Boolean shouldSucceed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1452
+--- End of stack trace from previous location ---
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems(inchesPerPiece: 109, shouldSucceed: False) [855 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_RepeatedCodeIsCheckedAcrossAllItems(Decimal inchesPerPiece, Boolean shouldSucceed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1452
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:26.38]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.StorageLinkedFabricBatch_ReplayWithSameOperationIsIdempotent [FAIL]
+[xUnit.net 00:00:27.32]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_FailureAfterFirstPostingRollsBackEntireOrder [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.StorageLinkedFabricBatch_ReplayWithSameOperationIsIdempotent [725 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.StorageLinkedFabricBatch_ReplayWithSameOperationIsIdempotent() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 509
+--- End of stack trace from previous location ---
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_FailureAfterFirstPostingRollsBackEntireOrder [940 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_FailureAfterFirstPostingRollsBackEntireOrder() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1566
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:28.91]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OmittingNestedFabricDoesNotBypassConsumption [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OmittingNestedFabricDoesNotBypassConsumption [1 s]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.WithFabricOrderAsync(String reference, Func`3 action) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1692
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_OmittingNestedFabricDoesNotBypassConsumption() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1634
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:29.64]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationConsumption_RejectsInsufficientQuantityWithoutArtifacts [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationConsumption_RejectsInsufficientQuantityWithoutArtifacts [729 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationConsumption_RejectsInsufficientQuantityWithoutArtifacts() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1204
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:31.33]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_InsufficientStockRejectsBeforeCreatingOrder [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_InsufficientStockRejectsBeforeCreatingOrder [948 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_InsufficientStockRejectsBeforeCreatingOrder() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1417
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:32.06]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_MultiRollBatch_StoresEachRollWithoutDuplication [FAIL]
+[xUnit.net 00:00:33.09]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_UsesApprovedOpposingAccountAndCreatesBalancedAccountingEvent [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_MultiRollBatch_StoresEachRollWithoutDuplication [730 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_MultiRollBatch_StoresEachRollWithoutDuplication() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 885
+--- End of stack trace from previous location ---
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_UsesApprovedOpposingAccountAndCreatesBalancedAccountingEvent [586 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_UsesApprovedOpposingAccountAndCreatesBalancedAccountingEvent() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 732
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:34.17]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ConcurrentOrdersCannotExceedSameCodeAvailability [FAIL]
+[xUnit.net 00:00:34.95]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceiptAndConsumption_AreBalancedPreciseAndIdempotent [FAIL]
+[xUnit.net 00:00:35.00]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.OfficialFabricBatch_PreventsCrossItemPhysicalIdentityReuse [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ConcurrentOrdersCannotExceedSameCodeAvailability [1 s]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.TailoringFabric_ConcurrentOrdersCannotExceedSameCodeAvailability() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1536
+--- End of stack trace from previous location ---
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceiptAndConsumption_AreBalancedPreciseAndIdempotent [780 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceiptAndConsumption_AreBalancedPreciseAndIdempotent() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 682
+--- End of stack trace from previous location ---
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.OfficialFabricBatch_PreventsCrossItemPhysicalIdentityReuse [39 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : String or binary data would be truncated in table 'LUMAR_TAILORING_EDIT_TEST_20261101.dbo.InventoryTransactions', column 'ReferenceNumber'. Truncated value: 'GoodsReceipt:FAB-CROSS-ITEM-758313f079c24664a698e76a005dbc3e:Item:7570:Roll:ROLL-CROSS-3617202dc0bf4'.
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlDataReader.TryHasMoreRows(Boolean& moreRows)
+   at Microsoft.Data.SqlClient.SqlDataReader.TryReadInternal(Boolean setTimeout, Boolean& more)
+   at Microsoft.Data.SqlClient.SqlDataReader.ReadAsyncExecute(Task task, Object state)
+   at Microsoft.Data.SqlClient.SqlDataReader.InvokeAsyncCall[T](SqlDataReaderBaseAsyncCallContext`1 context)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.InsertFoundationInventoryTransactionAsync(SqlConnection connection, SqlTransaction transaction, Int32 itemId, String transactionType, Decimal quantity, String reference, Decimal operationalCostImpact, Decimal unitCost, Guid sourceOperationId, DateTime now, CancellationToken ct) in d:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs:line 3604
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.InsertFoundationInventoryTransactionAsync(SqlConnection connection, SqlTransaction transaction, Int32 itemId, String transactionType, Decimal quantity, String reference, Decimal operationalCostImpact, Decimal unitCost, Guid sourceOperationId, DateTime now, CancellationToken ct) in d:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs:line 3604
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFabricInventoryBatchAsync(ReceiveFabricInventoryDto request, CancellationToken ct) in d:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs:line 2004
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFabricInventoryBatchAsync(ReceiveFabricInventoryDto request, CancellationToken ct) in d:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs:line 2068
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFabricInventoryBatchAsync(ReceiveFabricInventoryDto request, CancellationToken ct) in d:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs:line 2069
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFabricInventoryBatchAsync(ReceiveFabricInventoryDto request, CancellationToken ct) in d:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs:line 2069
+   at LUMAR_ERP_API_V2.Repositories.InventoryRepository.ReceiveFabricInventoryAsync(ReceiveFabricInventoryDto request, CancellationToken ct) in d:\YASIN\Backend\LUMAR_ERP_API_V2\Repositories\InventoryRepository.cs:line 1842
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.OfficialFabricBatch_PreventsCrossItemPhysicalIdentityReuse() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 200
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.OfficialFabricBatch_PreventsCrossItemPhysicalIdentityReuse() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 242
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.OfficialFabricBatch_PreventsCrossItemPhysicalIdentityReuse() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 242
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.OfficialFabricBatch_PreventsCrossItemPhysicalIdentityReuse() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 243
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:35.77]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_TenRollBatch_KeepsOneSharedCatalogButUniqueFabricCodes [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_TenRollBatch_KeepsOneSharedCatalogButUniqueFabricCodes [766 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_TenRollBatch_KeepsOneSharedCatalogButUniqueFabricCodes() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 1064
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:37.14]     LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_SingleSupplierInvoiceLine_KeepsSharedCatalogAcrossDistinctRollFabricCodes [FAIL]
+  Failed LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_SingleSupplierInvoiceLine_KeepsSharedCatalogAcrossDistinctRollFabricCodes [726 ms]
+  Error Message:
+   Microsoft.Data.SqlClient.SqlException : The ALTER TABLE statement conflicted with the CHECK constraint "CK_AccountingEvents_SourceCardinality". The conflict occurred in database "LUMAR_TAILORING_EDIT_TEST_20261101", table "dbo.AccountingEvents".
+  Stack Trace:
+     at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.CleanupAsync(String connectionString, TestSeed seed) in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 2237
+   at LUMAR_ERP_API_V2.Tests.FabricConsumablesFoundationIntegrationTests.FoundationReceipt_SingleSupplierInvoiceLine_KeepsSharedCatalogAcrossDistinctRollFabricCodes() in d:\YASIN\Backend\LUMAR_ERP_API_V2.Tests\FabricConsumablesFoundationIntegrationTests.cs:line 945
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:    31, Passed:    11, Skipped:     0, Total:    42, Duration: 36 s - LUMAR_ERP_API_V2.Tests.dll (net10.0)

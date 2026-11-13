@@ -1,0 +1,6 @@
+MSBUILD : error MSB1008: Only one project can be specified.
+    Full command line: 'C:\Program Files\dotnet\sdk\10.0.401\MSBuild.exe -maxcpucount --verbosity:m -tlp:default=auto --property:VSTestTestCaseFilter="FabricConsumablesFoundationIntegrationTests" --property:VSTestNoLogo=true --property:NuGetInteractive=false --property:VSTestArtifactsProcessingMode=collect --property:VSTestSessionCorrelationId=25948_b0336288-ab2b-4f29-a0ed-dfa511f9fdb8 --restoreProperty:VSTestTestCaseFilter="FabricConsumablesFoundationIntegrationTests" --restoreProperty:VSTestNoLogo=true --restoreProperty:NuGetInteractive=false --restoreProperty:VSTestArtifactsProcessingMode=collect --restoreProperty:VSTestSessionCorrelationId=25948_b0336288-ab2b-4f29-a0ed-dfa511f9fdb8 --restoreProperty:EnableDefaultCompileItems=false --restoreProperty:EnableDefaultEmbeddedResourceItems=false --restoreProperty:EnableDefaultNoneItems=false --target:VSTest --nologo -nodereuse:false LUMAR_ERP_API_V2.Tests\LUMAR_ERP_API_V2.Tests.csproj ; echo 0 -restore -distributedlogger:Microsoft.DotNet.Cli.Commands.MSBuild.MSBuildLogger,C:\Program Files\dotnet\sdk\10.0.401\dotnet.dll*Microsoft.DotNet.Cli.Commands.MSBuild.MSBuildForwardingLogger,C:\Program Files\dotnet\sdk\10.0.401\dotnet.dll'
+  Switches appended by response files:
+Switch: ;
+
+For switch syntax, type "MSBuild -help"
