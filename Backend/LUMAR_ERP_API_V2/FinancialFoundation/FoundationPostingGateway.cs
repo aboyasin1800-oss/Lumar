@@ -21,6 +21,49 @@ public sealed record FoundationPostingResult(long AccountingEventId, bool IsExis
 
 public static class FoundationPostingGateway
 {
+        private static async Task EnsureSupplierInvoiceContractAsync(SqlConnection connection, SqlTransaction transaction, byte accountingEventType, string sourceType, CancellationToken cancellationToken)
+        {
+                if (accountingEventType != 28 || !string.Equals(sourceType, "SupplierInvoice", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                await using var command = new SqlCommand(@" 
+                        DECLARE @purchaseClearingId int = (SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE AccountCode = N'1120' AND IsActive = 1 ORDER BY LedgerAccountId);
+                        DECLARE @supplierLiabilityId int = (SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE AccountCode = N'2100' AND IsActive = 1 ORDER BY LedgerAccountId);
+                        IF @purchaseClearingId IS NULL OR @supplierLiabilityId IS NULL
+                            THROW 51980, N'Approved supplier invoice ledger accounts 1120 and 2100 are unavailable.', 1;
+
+                        IF NOT EXISTS (SELECT 1 FROM dbo.AccountRoleMappings WITH (UPDLOCK, HOLDLOCK) WHERE AccountRole = N'PurchaseClearing')
+                            INSERT dbo.AccountRoleMappings (AccountRole, LedgerAccountId, IsEnabled)
+                            VALUES (N'PurchaseClearing', @purchaseClearingId, 1);
+                        ELSE
+                            UPDATE dbo.AccountRoleMappings WITH (UPDLOCK, HOLDLOCK)
+                            SET LedgerAccountId = @purchaseClearingId, IsEnabled = 1
+                            WHERE AccountRole = N'PurchaseClearing';
+
+                        IF NOT EXISTS (SELECT 1 FROM dbo.AccountRoleMappings WITH (UPDLOCK, HOLDLOCK) WHERE AccountRole = N'SupplierLiability')
+                            INSERT dbo.AccountRoleMappings (AccountRole, LedgerAccountId, IsEnabled)
+                            VALUES (N'SupplierLiability', @supplierLiabilityId, 1);
+                        ELSE
+                            UPDATE dbo.AccountRoleMappings WITH (UPDLOCK, HOLDLOCK)
+                            SET LedgerAccountId = @supplierLiabilityId, IsEnabled = 1
+                            WHERE AccountRole = N'SupplierLiability';
+
+                        IF NOT EXISTS (SELECT 1 FROM dbo.AccountingEventDefinitions WITH (UPDLOCK, HOLDLOCK) WHERE AccountingEventType = 28)
+                            INSERT dbo.AccountingEventDefinitions (AccountingEventType, EventName, SourceType, DebitAccountRole, CreditAccountRole, CashDirection, RequiresCashMovement, LiabilityImpact, ExpenseImpact, InventoryImpact, IsEnabled, IsBusinessRuntimeEnabled)
+                            VALUES (28, N'SupplierInvoice', N'SupplierInvoice', N'PurchaseClearing', N'SupplierLiability', NULL, 0, 1, 0, 0, 1, 0);
+                        ELSE
+                            UPDATE dbo.AccountingEventDefinitions WITH (UPDLOCK, HOLDLOCK)
+                            SET DebitAccountRole = N'PurchaseClearing',
+                                CreditAccountRole = N'SupplierLiability',
+                                IsEnabled = 1,
+                                IsBusinessRuntimeEnabled = 0,
+                                SourceType = N'SupplierInvoice',
+                                EventName = N'SupplierInvoice'
+                            WHERE AccountingEventType = 28;", connection, transaction);
+
+                await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         internal static async Task<FoundationPostingResult> ReverseFabricPartialAsync(
                 SqlConnection connection, SqlTransaction transaction, long reversalId, long originalEventId,
                 Guid operationId, string reference, string reason, string actor, CancellationToken cancellationToken)
@@ -73,6 +116,8 @@ public static class FoundationPostingGateway
 
     public static async Task<FoundationPostingResult> PostAsync(SqlConnection connection, SqlTransaction transaction, FoundationPostingRequest request, CancellationToken cancellationToken)
     {
+        await EnsureSupplierInvoiceContractAsync(connection, transaction, request.AccountingEventType, request.SourceType, cancellationToken);
+
         await using var command = new SqlCommand("dbo.usp_PostFoundationAccountingEvent", connection, transaction) { CommandType = CommandType.StoredProcedure };
         command.Parameters.Add("@AccountingEventType", SqlDbType.TinyInt).Value = request.AccountingEventType;
         var amount = command.Parameters.Add("@PostingAmount", SqlDbType.Decimal); amount.Precision = 18; amount.Scale = 2; amount.Value = request.Amount;

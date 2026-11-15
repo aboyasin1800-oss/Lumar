@@ -4,6 +4,7 @@ using LUMAR_ERP_API_V2.Controllers;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.DTOs.Consumption;
+using LUMAR_ERP_API_V2.FinancialFoundation;
 using LUMAR_ERP_API_V2.DTOs.Inventory;
 using LUMAR_ERP_API_V2.DTOs.Orders;
 using LUMAR_ERP_API_V2.DTOs.Pricing;
@@ -95,6 +96,305 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests(ITestOut
         finally
         {
             await CleanupOfficialFabricBatchAsync(connectionString, invoiceNumber);
+            await CleanupOfficialBatchSupportAsync(connectionString, support);
+        }
+    }
+
+    [Fact]
+    public async Task OfficialSupplierInvoiceContract_UsesPurchaseClearingAndSupplierLiability()
+    {
+        var connectionString = GetConnectionString();
+        var support = await SeedOfficialBatchSupportAsync(connectionString);
+        var suffix = Guid.NewGuid().ToString("N")[..12];
+        var invoiceNumber = $"ES7-CONTRACT-{suffix}";
+        var operation = Guid.NewGuid();
+
+        SupplierFinancialInvoiceResult? invoice = null;
+
+        try
+        {
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+                var runtime = new SupplierFinancialRuntime();
+                invoice = await runtime.CreateInvoiceAsync(connection, transaction,
+                    new SupplierFinancialInvoiceRequest(support.SupplierId, invoiceNumber, new DateOnly(2026, 9, 30), new DateOnly(2026, 10, 30), 60000m, null, operation, "ES7-contract-test"),
+                    CancellationToken.None);
+
+                Assert.Equal(60000m, invoice.OutstandingAmount + invoice.AmountPaid);
+
+                await transaction.CommitAsync();
+            }
+
+            Assert.NotNull(invoice);
+            Assert.Equal(60000m, await ReadDecimalAsync(connectionString,
+                "SELECT TotalAmount FROM dbo.SupplierInvoices WHERE SupplierInvoiceId=@id",
+                ("@id", invoice!.SupplierInvoiceId)));
+
+            Assert.Equal(1, await CountAsync(connectionString,
+                @"SELECT COUNT(*)
+                  FROM dbo.AccountingEvents ae
+                  INNER JOIN dbo.JournalEntries je ON je.AccountingEventId = ae.AccountingEventId
+                  INNER JOIN dbo.JournalEntryLines debit ON debit.JournalEntryId = je.JournalEntryId
+                  INNER JOIN dbo.LedgerAccounts debitAccount ON debitAccount.LedgerAccountId = debit.LedgerAccountId
+                  INNER JOIN dbo.JournalEntryLines credit ON credit.JournalEntryId = je.JournalEntryId
+                  INNER JOIN dbo.LedgerAccounts creditAccount ON creditAccount.LedgerAccountId = credit.LedgerAccountId
+                  WHERE ae.SourceType = N'SupplierInvoice'
+                    AND ae.SourceId = @invoiceId
+                    AND ae.AccountingEventType = 28
+                    AND ae.PostingAmount = 60000
+                    AND debitAccount.AccountCode = N'1120'
+                    AND creditAccount.AccountCode = N'2100'
+                    AND debit.DebitAmount = 60000
+                    AND credit.CreditAmount = 60000;",
+                ("@invoiceId", invoice!.SupplierInvoiceId)));
+        }
+        finally
+        {
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(@"
+                DELETE FROM dbo.SupplierFinancialInvoices WHERE SupplierInvoiceId IN (
+                    SELECT SupplierInvoiceId FROM dbo.SupplierInvoices WHERE InvoiceNumber = @invoiceNumber);
+                DELETE FROM dbo.SupplierInvoices WHERE InvoiceNumber = @invoiceNumber;
+                DELETE FROM dbo.AccountingEvents WHERE SourceType = N'SupplierInvoice' AND SourceId IN (
+                    SELECT SupplierInvoiceId FROM dbo.SupplierInvoices WHERE InvoiceNumber = @invoiceNumber);
+                DELETE FROM dbo.SupplierNotifications WHERE ReferenceType = N'SupplierInvoice' AND ReferenceId IN (
+                    SELECT SupplierInvoiceId FROM dbo.SupplierInvoices WHERE InvoiceNumber = @invoiceNumber);
+                DELETE FROM dbo.SupplierLedgerEntries WHERE SourceType = N'SupplierInvoice' AND SourceId IN (
+                    SELECT SupplierInvoiceId FROM dbo.SupplierInvoices WHERE InvoiceNumber = @invoiceNumber);",
+                connection);
+            command.Parameters.AddWithValue("@invoiceNumber", invoiceNumber);
+            await command.ExecuteNonQueryAsync();
+            await CleanupOfficialBatchSupportAsync(connectionString, support);
+        }
+    }
+
+    [Fact]
+    public async Task OfficialSupplierInvoiceReceiptInventoryMatch_ClosesPurchaseClearingAndKeepsSupplierLiabilitySingle()
+    {
+        var connectionString = GetConnectionString();
+        var support = await SeedOfficialBatchSupportAsync(connectionString);
+        var suffix = Guid.NewGuid().ToString("N")[..12];
+        var invoiceNumber = $"INV-RECEIPT-MATCH-{suffix}";
+        var operation = Guid.NewGuid();
+        var inventoryItemCode = $"FA-LINKED-{suffix}";
+
+        SupplierFinancialInvoiceResult? invoice = null;
+
+        try
+        {
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+                var runtime = new SupplierFinancialRuntime();
+                invoice = await runtime.CreateInvoiceAsync(connection, transaction,
+                    new SupplierFinancialInvoiceRequest(support.SupplierId, invoiceNumber, new DateOnly(2026, 9, 30), new DateOnly(2026, 10, 30), 100000m, null, operation, "MATCH-TEST"),
+                    CancellationToken.None);
+
+                Assert.Equal(100000m, invoice!.OutstandingAmount + invoice.AmountPaid);
+                await transaction.CommitAsync();
+            }
+
+            var supplierInvoiceId = invoice!.SupplierInvoiceId;
+            int supplierInvoiceLineId;
+            int goodsReceiptId;
+            int goodsReceiptItemId;
+
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+                supplierInvoiceLineId = Convert.ToInt32(await InsertScalarAsync(connection, transaction,
+                    @"INSERT INTO dbo.SupplierInvoiceLines (SupplierInvoiceId, InventoryItemId, Quantity, UnitCost, RollCount, SourceOperationId, Status, CreatedBy)
+                      OUTPUT INSERTED.SupplierInvoiceLineId
+                      VALUES (@supplierInvoiceId, NULL, 10.0, 10000.0, NULL, @sourceOperationId, N'Posted', N'ES7-Receipt-Link');",
+                    ("@supplierInvoiceId", supplierInvoiceId), ("@sourceOperationId", Guid.NewGuid())));
+
+                goodsReceiptId = Convert.ToInt32(await InsertScalarAsync(connection, transaction,
+                    @"INSERT INTO dbo.GoodsReceipts (SupplierId, ReceiptNumber, ReceiptDate, CreatedAt, ReceiptStatus)
+                      OUTPUT INSERTED.GoodsReceiptId
+                      VALUES (@supplierId, @receiptNumber, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Confirmed');",
+                    ("@supplierId", support.SupplierId), ("@receiptNumber", $"GR-{invoiceNumber}")));
+
+                goodsReceiptItemId = Convert.ToInt32(await InsertScalarAsync(connection, transaction,
+                    @"INSERT INTO dbo.GoodsReceiptItems (GoodsReceiptId, ItemName, ReceivedQuantity, UnitCost, LineTotal, ItemType, SupplierInvoiceLineId, LineStatus)
+                      OUTPUT INSERTED.GoodsReceiptItemId
+                      VALUES (@goodsReceiptId, N'Linked receipt item', 10.0, 10000.0, 100000.0, N'Fabric', @supplierInvoiceLineId, N'Confirmed');",
+                    ("@goodsReceiptId", goodsReceiptId), ("@supplierInvoiceLineId", supplierInvoiceLineId)));
+
+                await transaction.CommitAsync();
+            }
+
+            var repository = CreateRepository(connectionString);
+            var result = await repository.ReceiveFabricInventoryAsync(new ReceiveFabricInventoryDto
+            {
+                GoodsReceiptItemId = goodsReceiptItemId,
+                ItemCode = inventoryItemCode,
+                FabricTypeCode = "FabricLinkedMatch",
+                ColorValue = "Blue",
+                UnitId = 1,
+                OpposingLedgerAccountCode = "1120",
+                SourceOperationId = Guid.NewGuid(),
+                Rolls = [new ReceiveFabricInventoryRollDto { FabricCode = $"FA-{suffix}", ColorValue = "Blue", Quantity = 10m }]
+            }, CancellationToken.None);
+
+            Assert.NotNull(result);
+            Assert.Equal(10m, result!.Quantity);
+
+            var inventoryBalance = await ReadDecimalAsync(connectionString,
+                @"SELECT SUM(CASE WHEN i.CurrentQuantity IS NOT NULL THEN i.CurrentQuantity ELSE 0 END)
+                  FROM dbo.InventoryItems i
+                  INNER JOIN dbo.InventoryReceiptLines rl ON rl.InventoryItemId = i.InventoryItemID
+                  INNER JOIN dbo.InventoryReceiptPostings rp ON rp.InventoryReceiptPostingId = rl.InventoryReceiptPostingId
+                  WHERE rp.GoodsReceiptItemId = @goodsReceiptItemId;",
+                ("@goodsReceiptItemId", goodsReceiptItemId));
+            Assert.Equal(10m, inventoryBalance);
+
+            var goodsReceiptPostingCounts = await ReadIntAsync(connectionString,
+                @"SELECT COUNT(*) FROM dbo.InventoryReceiptPostings WHERE GoodsReceiptItemId=@goodsReceiptItemId AND SourceOperationId IS NOT NULL;",
+                ("@goodsReceiptItemId", goodsReceiptItemId));
+            Assert.Equal(1, goodsReceiptPostingCounts);
+
+            var supplierLiabilitySingle = await ReadIntAsync(connectionString,
+                @"SELECT COUNT(*)
+                  FROM dbo.JournalEntryLines jel
+                  INNER JOIN dbo.JournalEntries je ON je.JournalEntryId = jel.JournalEntryId
+                  INNER JOIN dbo.AccountingEvents ae ON ae.AccountingEventId = je.AccountingEventId
+                  INNER JOIN dbo.LedgerAccounts la ON la.LedgerAccountId = jel.LedgerAccountId
+                  WHERE ae.SourceType = N'SupplierInvoice'
+                    AND ae.SourceId = @supplierInvoiceId
+                    AND la.AccountCode = N'2100'
+                    AND jel.CreditAmount > 0;",
+                ("@supplierInvoiceId", supplierInvoiceId));
+            Assert.Equal(1, supplierLiabilitySingle);
+
+            var purchaseClearingZero = await ReadDecimalAsync(connectionString,
+                @"SELECT COALESCE(SUM(CASE WHEN la.AccountCode = N'1120' THEN jel.DebitAmount - jel.CreditAmount ELSE 0 END), 0)
+                  FROM dbo.JournalEntryLines jel
+                  INNER JOIN dbo.JournalEntries je ON je.JournalEntryId = jel.JournalEntryId
+                  INNER JOIN dbo.LedgerAccounts la ON la.LedgerAccountId = jel.LedgerAccountId
+                  WHERE je.ReferenceNumber LIKE N'GoodsReceipt:%' OR je.ReferenceNumber LIKE N'%' + CAST(@supplierInvoiceId AS nvarchar(20)) + N'%';",
+                ("@supplierInvoiceId", supplierInvoiceId));
+            Assert.Equal(0m, purchaseClearingZero);
+
+            var linkedCount = await CountAsync(connectionString,
+                @"SELECT COUNT(*)
+                  FROM dbo.GoodsReceiptItems gri
+                  INNER JOIN dbo.SupplierInvoiceLines sil ON sil.SupplierInvoiceLineId = gri.SupplierInvoiceLineId
+                  WHERE gri.SupplierInvoiceLineId = @supplierInvoiceLineId AND gri.GoodsReceiptItemId = @goodsReceiptItemId AND sil.SupplierInvoiceId = @supplierInvoiceId;",
+                ("@supplierInvoiceLineId", supplierInvoiceLineId), ("@goodsReceiptItemId", goodsReceiptItemId), ("@supplierInvoiceId", supplierInvoiceId));
+            Assert.Equal(1, linkedCount);
+        }
+        finally
+        {
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(@"
+                DELETE FROM dbo.JournalEntryLines WHERE JournalEntryId IN (
+                    SELECT je.JournalEntryId
+                    FROM dbo.JournalEntries je
+                    INNER JOIN dbo.AccountingEvents ae ON ae.AccountingEventId = je.AccountingEventId
+                    WHERE ae.SourceType = N'SupplierInvoice' AND ae.SourceId = @supplierInvoiceId
+                       OR ae.InventoryReceiptPostingId IN (
+                            SELECT rp.InventoryReceiptPostingId
+                            FROM dbo.InventoryReceiptPostings rp
+                            INNER JOIN dbo.GoodsReceiptItems gri ON gri.GoodsReceiptItemId = rp.GoodsReceiptItemId
+                            INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId = gri.GoodsReceiptId
+                            WHERE gr.ReceiptNumber = @receiptNumber));
+
+                DELETE FROM dbo.JournalEntries WHERE AccountingEventId IN (
+                    SELECT ae.AccountingEventId
+                    FROM dbo.AccountingEvents ae
+                    WHERE ae.SourceType = N'SupplierInvoice' AND ae.SourceId = @supplierInvoiceId
+                       OR ae.InventoryReceiptPostingId IN (
+                            SELECT rp.InventoryReceiptPostingId
+                            FROM dbo.InventoryReceiptPostings rp
+                            INNER JOIN dbo.GoodsReceiptItems gri ON gri.GoodsReceiptItemId = rp.GoodsReceiptItemId
+                            INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId = gri.GoodsReceiptId
+                            WHERE gr.ReceiptNumber = @receiptNumber));
+
+                DELETE FROM dbo.FinancialTransactions WHERE AccountingEventId IN (
+                    SELECT ae.AccountingEventId
+                    FROM dbo.AccountingEvents ae
+                    WHERE ae.SourceType = N'SupplierInvoice' AND ae.SourceId = @supplierInvoiceId
+                       OR ae.InventoryReceiptPostingId IN (
+                            SELECT rp.InventoryReceiptPostingId
+                            FROM dbo.InventoryReceiptPostings rp
+                            INNER JOIN dbo.GoodsReceiptItems gri ON gri.GoodsReceiptItemId = rp.GoodsReceiptItemId
+                            INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId = gri.GoodsReceiptId
+                            WHERE gr.ReceiptNumber = @receiptNumber));
+
+                DELETE FROM dbo.SupplierFinancialInvoices WHERE AccountingEventId IN (
+                    SELECT ae.AccountingEventId
+                    FROM dbo.AccountingEvents ae
+                    WHERE ae.SourceType = N'SupplierInvoice' AND ae.SourceId = @supplierInvoiceId
+                       OR ae.InventoryReceiptPostingId IN (
+                            SELECT rp.InventoryReceiptPostingId
+                            FROM dbo.InventoryReceiptPostings rp
+                            INNER JOIN dbo.GoodsReceiptItems gri ON gri.GoodsReceiptItemId = rp.GoodsReceiptItemId
+                            INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId = gri.GoodsReceiptId
+                            WHERE gr.ReceiptNumber = @receiptNumber));
+
+                DELETE FROM dbo.InventoryReceiptLines WHERE InventoryReceiptPostingId IN (
+                    SELECT rp.InventoryReceiptPostingId
+                    FROM dbo.InventoryReceiptPostings rp
+                    INNER JOIN dbo.GoodsReceiptItems gri ON gri.GoodsReceiptItemId = rp.GoodsReceiptItemId
+                    INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId = gri.GoodsReceiptId
+                    WHERE gr.ReceiptNumber = @receiptNumber);
+
+                DELETE FROM dbo.InventoryTransactions WHERE AccountingEventId IN (
+                    SELECT ae.AccountingEventId
+                    FROM dbo.AccountingEvents ae
+                    WHERE ae.SourceType = N'SupplierInvoice' AND ae.SourceId = @supplierInvoiceId
+                       OR ae.InventoryReceiptPostingId IN (
+                            SELECT rp.InventoryReceiptPostingId
+                            FROM dbo.InventoryReceiptPostings rp
+                            INNER JOIN dbo.GoodsReceiptItems gri ON gri.GoodsReceiptItemId = rp.GoodsReceiptItemId
+                            INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId = gri.GoodsReceiptId
+                            WHERE gr.ReceiptNumber = @receiptNumber));
+
+                UPDATE dbo.InventoryReceiptPostings
+                SET AccountingEventId = NULL
+                WHERE GoodsReceiptItemId IN (
+                    SELECT gri.GoodsReceiptItemId
+                    FROM dbo.GoodsReceiptItems gri
+                    INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId = gri.GoodsReceiptId
+                    WHERE gr.ReceiptNumber = @receiptNumber);
+
+                DELETE FROM dbo.AccountingEvents WHERE SourceType = N'SupplierInvoice' AND SourceId = @supplierInvoiceId;
+                DELETE FROM dbo.AccountingEvents WHERE InventoryReceiptPostingId IN (
+                    SELECT rp.InventoryReceiptPostingId
+                    FROM dbo.InventoryReceiptPostings rp
+                    INNER JOIN dbo.GoodsReceiptItems gri ON gri.GoodsReceiptItemId = rp.GoodsReceiptItemId
+                    INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId = gri.GoodsReceiptId
+                    WHERE gr.ReceiptNumber = @receiptNumber);
+
+                DELETE FROM dbo.InventoryReceiptPostings WHERE GoodsReceiptItemId IN (
+                    SELECT gri.GoodsReceiptItemId
+                    FROM dbo.GoodsReceiptItems gri
+                    INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId = gri.GoodsReceiptId
+                    WHERE gr.ReceiptNumber = @receiptNumber);
+
+                DELETE FROM dbo.GoodsReceiptItemStorageAllocations WHERE GoodsReceiptItemId IN (
+                    SELECT gri.GoodsReceiptItemId
+                    FROM dbo.GoodsReceiptItems gri
+                    INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId = gri.GoodsReceiptId
+                    WHERE gr.ReceiptNumber = @receiptNumber);
+
+                DELETE FROM dbo.InventoryTransactions WHERE ReferenceNumber LIKE @receiptPattern;
+                DELETE FROM dbo.GoodsReceiptItems WHERE GoodsReceiptId IN (
+                    SELECT GoodsReceiptId FROM dbo.GoodsReceipts WHERE ReceiptNumber = @receiptNumber);
+                DELETE FROM dbo.SupplierInvoiceLines WHERE SupplierInvoiceId = @supplierInvoiceId;
+                DELETE FROM dbo.SupplierInvoices WHERE SupplierInvoiceId = @supplierInvoiceId;
+                DELETE FROM dbo.GoodsReceipts WHERE ReceiptNumber = @receiptNumber;",
+                connection);
+            command.Parameters.AddWithValue("@receiptNumber", $"GR-{invoiceNumber}");
+            command.Parameters.AddWithValue("@supplierInvoiceId", invoice?.SupplierInvoiceId ?? 0);
+            command.Parameters.AddWithValue("@receiptPattern", $"GoodsReceipt:{invoiceNumber}%");
+            await command.ExecuteNonQueryAsync();
             await CleanupOfficialBatchSupportAsync(connectionString, support);
         }
     }

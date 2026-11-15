@@ -1731,11 +1731,22 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
         if (quantity <= 0m || purchasePrice <= 0m)
             throw new InvalidOperationException("كمية أو تكلفة الاستلام المستورد غير صالحة.");
 
-        const string accountSql = "SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE AccountCode = N'2100' AND IsActive = 1 ORDER BY LedgerAccountId";
-        await using var accountCommand = new SqlCommand(accountSql, connection, transaction);
-        var accountValue = await accountCommand.ExecuteScalarAsync(ct);
-        if (accountValue is not int opposingLedgerAccountId)
-            throw new InvalidOperationException("حساب الموردين الرسمي غير موجود أو غير فعال.");
+        var approvedOpposingLedgerAccounts = await ResolveApprovedOpposingLedgerAccountsAsync(
+            connection,
+            transaction,
+            goodsReceiptItemId ?? 0,
+            2,
+            "1120",
+            ct);
+        var opposingLedgerAccountCode = approvedOpposingLedgerAccounts.Contains("1120", StringComparer.OrdinalIgnoreCase)
+            ? "1120"
+            : "2100";
+        var opposingLedgerAccountId = await ReadOpposingLedgerAccountIdAsync(
+            connection,
+            transaction,
+            opposingLedgerAccountCode,
+            ct,
+            approvedOpposingLedgerAccounts);
 
         var operationalAmount = quantity * purchasePrice;
         var postingAmount = decimal.Round(operationalAmount, 2, MidpointRounding.AwayFromZero);
@@ -1886,7 +1897,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             if (totalQuantity > receipt.Quantity)
                 throw new InvalidOperationException($"The requested storage quantity ({totalQuantity}) exceeds the original receipt quantity ({receipt.Quantity}).");
 
-            var approvedOpposingLedgerAccounts = new[] { "2100", "1101" };
+            var approvedOpposingLedgerAccounts = await ResolveApprovedOpposingLedgerAccountsAsync(connection, transaction, request.GoodsReceiptItemId, 1, request.OpposingLedgerAccountCode, ct);
             ValidateApprovedOpposingLedgerAccount(request.OpposingLedgerAccountCode, approvedOpposingLedgerAccounts);
 
             var incomplete = await TryReadIncompleteReceiptAsync(connection, transaction, request.GoodsReceiptItemId, 1, request.UnitId, string.Empty, request.SourceOperationId, request.OpposingLedgerAccountCode, approvedOpposingLedgerAccounts, ct);
@@ -2535,7 +2546,7 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             if (inventoryClassId == 1 && string.IsNullOrWhiteSpace(fabricTypeCode))
                 throw new ArgumentException("Fabric type code is required.");
 
-            var approvedOpposingLedgerAccounts = inventoryClassId == 1 ? new[] { "2100", "1101" } : new[] { "2100", "1102" };
+            var approvedOpposingLedgerAccounts = await ResolveApprovedOpposingLedgerAccountsAsync(connection, transaction, goodsReceiptItemId, inventoryClassId, opposingLedgerAccountCode, ct);
             ValidateApprovedOpposingLedgerAccount(opposingLedgerAccountCode, approvedOpposingLedgerAccounts);
             var opposingLedgerAccountId = await ReadOpposingLedgerAccountIdAsync(connection, transaction, opposingLedgerAccountCode, ct, approvedOpposingLedgerAccounts);
 
@@ -3104,6 +3115,53 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
             || normalized.Contains("LEGACY", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("ROLL-LEGACY", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static async Task<string[]> ResolveApprovedOpposingLedgerAccountsAsync(SqlConnection connection, SqlTransaction transaction, int goodsReceiptItemId, byte inventoryClassId, string opposingLedgerAccountCode, CancellationToken ct)
+    {
+        var defaultAccounts = inventoryClassId == 1 ? new[] { "2100", "1101" } : new[] { "2100", "1102" };
+        var linkedInvoiceContext = await TryReadLinkedSupplierInvoiceContextAsync(connection, transaction, goodsReceiptItemId, ct);
+        if (linkedInvoiceContext is null)
+            return defaultAccounts;
+
+        if (!string.Equals(opposingLedgerAccountCode, "1120", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Official linked supplier invoice receipt storage must use 1120 as the opposing ledger account.");
+
+        return new[] { "1120" };
+    }
+
+    private static async Task<LinkedSupplierInvoiceReceiptContext?> TryReadLinkedSupplierInvoiceContextAsync(SqlConnection connection, SqlTransaction transaction, int goodsReceiptItemId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT TOP (1)
+                gri.SupplierInvoiceLineId,
+                sil.SupplierInvoiceId,
+                si.SupplierId,
+                sil.Status,
+                si.Status
+            FROM dbo.GoodsReceiptItems gri WITH (UPDLOCK, HOLDLOCK)
+            LEFT JOIN dbo.SupplierInvoiceLines sil WITH (UPDLOCK, HOLDLOCK) ON sil.SupplierInvoiceLineId = gri.SupplierInvoiceLineId
+            LEFT JOIN dbo.SupplierInvoices si WITH (UPDLOCK, HOLDLOCK) ON si.SupplierInvoiceId = sil.SupplierInvoiceId
+            WHERE gri.GoodsReceiptItemId = @goodsReceiptItemId
+              AND gri.SupplierInvoiceLineId IS NOT NULL;";
+
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@goodsReceiptItemId", goodsReceiptItemId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return null;
+
+        if (reader.IsDBNull(0))
+            return null;
+
+        var supplierInvoiceLineId = Convert.ToInt64(reader.GetValue(0));
+        if (reader.IsDBNull(1))
+            return null;
+
+        var supplierInvoiceId = Convert.ToInt32(reader.GetValue(1));
+        return new LinkedSupplierInvoiceReceiptContext(supplierInvoiceLineId, supplierInvoiceId, reader.IsDBNull(2) ? null : Convert.ToInt32(reader.GetValue(2)), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4));
+    }
+
+    private sealed record LinkedSupplierInvoiceReceiptContext(long SupplierInvoiceLineId, int SupplierInvoiceId, int? SupplierId, string? SupplierInvoiceLineStatus, string? SupplierInvoiceStatus);
 
     private static void ValidateApprovedOpposingLedgerAccount(string accountCode, params string[] approvedAccountCodes)
     {

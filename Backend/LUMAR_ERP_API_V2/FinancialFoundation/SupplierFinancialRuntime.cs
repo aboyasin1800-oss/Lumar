@@ -7,7 +7,7 @@ public enum SupplierPaymentKind { Immediate, Later, Advance }
 
 public sealed record SupplierFinancialInvoiceRequest(
     int SupplierId, string InvoiceNumber, DateOnly InvoiceDate, DateOnly DueDate, decimal Amount,
-    string? Notes, Guid SourceOperationId, string CreatedBy, string CurrencyCode = "YER");
+    string? Notes, Guid SourceOperationId, string CreatedBy, string CurrencyCode = "YER", int? PurchaseOrderId = null);
 
 public sealed record SupplierFinancialPaymentRequest(
     int SupplierId, int? SupplierInvoiceId, decimal Amount, DateOnly PaymentDate, int CashAccountId,
@@ -32,7 +32,7 @@ public sealed class SupplierFinancialRuntime
         await ValidateSupplierAsync(connection, transaction, request.SupplierId, cancellationToken);
 
         var invoiceId = await InsertInvoiceAsync(connection, transaction, request, cancellationToken);
-        Console.WriteLine($"SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId={invoiceId}");
+        Console.WriteLine($"SUPPLIER_INVOICE_TRACE: runtime.CreateInvoiceAsync invoiceInsertedId={invoiceId} purchaseOrderId={request.PurchaseOrderId ?? 0}");
         var ledger = await _ledgerWriter.PostAsync(connection, transaction, request.SupplierId,
             new LedgerEntryRequest("SupplierInvoice", request.Amount, request.Amount, DateTime.UtcNow, request.InvoiceDate,
                 "SupplierInvoice", invoiceId, request.SourceOperationId, request.InvoiceNumber, request.CreatedBy), cancellationToken);
@@ -179,7 +179,7 @@ public sealed class SupplierFinancialRuntime
     private static async Task ValidateSupplierAsync(SqlConnection c, SqlTransaction t, int supplierId, CancellationToken ct)
     { await using var cmd = new SqlCommand("SELECT IsActive FROM dbo.Suppliers WITH(UPDLOCK,HOLDLOCK) WHERE SupplierId=@supplierId", c, t); cmd.Parameters.AddWithValue("@supplierId", supplierId); var value = await cmd.ExecuteScalarAsync(ct); if (value is null || value is DBNull || !Convert.ToBoolean(value)) throw new InvalidOperationException("Supplier is unavailable for financial posting."); }
     private static async Task<int> InsertInvoiceAsync(SqlConnection c, SqlTransaction t, SupplierFinancialInvoiceRequest r, CancellationToken ct)
-    { const string sql = "INSERT dbo.SupplierInvoices(SupplierId,PurchaseOrderId,InvoiceNumber,InvoiceDate,DueDate,TotalAmount,AmountPaid,Status,Notes,CreatedAt) OUTPUT inserted.SupplierInvoiceId VALUES(@supplierId,NULL,@number,@invoiceDate,@dueDate,@amount,0,N'Open',@notes,SYSUTCDATETIME());"; await using var cmd = new SqlCommand(sql, c, t); cmd.Parameters.AddWithValue("@supplierId", r.SupplierId); cmd.Parameters.AddWithValue("@number", r.InvoiceNumber); cmd.Parameters.AddWithValue("@invoiceDate", r.InvoiceDate.ToDateTime(TimeOnly.MinValue)); cmd.Parameters.AddWithValue("@dueDate", r.DueDate.ToDateTime(TimeOnly.MinValue)); cmd.Parameters.AddWithValue("@amount", r.Amount); cmd.Parameters.AddWithValue("@notes", r.Notes ?? (object)DBNull.Value); return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct)); }
+    { const string sql = "INSERT dbo.SupplierInvoices(SupplierId,PurchaseOrderId,InvoiceNumber,InvoiceDate,DueDate,TotalAmount,AmountPaid,Status,Notes,CreatedAt) OUTPUT inserted.SupplierInvoiceId VALUES(@supplierId,@purchaseOrderId,@number,@invoiceDate,@dueDate,@amount,0,N'Open',@notes,SYSUTCDATETIME());"; await using var cmd = new SqlCommand(sql, c, t); cmd.Parameters.AddWithValue("@supplierId", r.SupplierId); cmd.Parameters.AddWithValue("@purchaseOrderId", r.PurchaseOrderId ?? (object)DBNull.Value); cmd.Parameters.AddWithValue("@number", r.InvoiceNumber); cmd.Parameters.AddWithValue("@invoiceDate", r.InvoiceDate.ToDateTime(TimeOnly.MinValue)); cmd.Parameters.AddWithValue("@dueDate", r.DueDate.ToDateTime(TimeOnly.MinValue)); cmd.Parameters.AddWithValue("@amount", r.Amount); cmd.Parameters.AddWithValue("@notes", r.Notes ?? (object)DBNull.Value); return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct)); }
     private static async Task InsertFinancialInvoiceAsync(SqlConnection c, SqlTransaction t, int invoiceId, Guid operation, long eventId, string by, CancellationToken ct)
     { await using var cmd = new SqlCommand("INSERT dbo.SupplierFinancialInvoices(SupplierInvoiceId,SourceOperationId,AccountingEventId,Status,CreatedBy) VALUES(@invoiceId,@operation,@eventId,N'Posted',@by);", c, t); cmd.Parameters.AddWithValue("@invoiceId", invoiceId); cmd.Parameters.Add("@operation", SqlDbType.UniqueIdentifier).Value = operation; cmd.Parameters.AddWithValue("@eventId", eventId); cmd.Parameters.AddWithValue("@by", by); await cmd.ExecuteNonQueryAsync(ct); }
     private static async Task CreateSupplierNotificationAsync(SqlConnection c, SqlTransaction t, int supplierId, int referenceId, string referenceType, string notificationType, string title, string body, CancellationToken ct)

@@ -1,4 +1,4 @@
-SET NOCOUNT ON;
+﻿SET NOCOUNT ON;
 SET XACT_ABORT ON;
 SET QUOTED_IDENTIFIER ON;
 
@@ -288,9 +288,9 @@ BEGIN TRY
             ON dbo.AccountingEvents(ToolIssuanceReversalId)
             WHERE ToolIssuanceReversalId IS NOT NULL;');
 
-    EXEC(N'
     SET QUOTED_IDENTIFIER ON;
     SET ANSI_NULLS ON;
+    EXEC(N'
     CREATE OR ALTER PROCEDURE dbo.usp_PostAccountingEvent
         @AccountingEventType tinyint,
         @PostingAmount decimal(18,2),
@@ -726,9 +726,9 @@ BEGIN TRY
         ELSE IF @AccountingEventType = 14
             UPDATE dbo.ToolIssuances
             SET AccountingEventId = @accountingEventId,
-                Status = N'Posted'
+                Status = N''Posted''
             WHERE ToolIssuanceId = @ToolIssuanceId
-              AND Status = N'PendingPosting';
+              AND Status = N''PendingPosting'';
         ELSE IF @AccountingEventType = 15
             UPDATE dbo.ToolIssuanceReversals SET AccountingEventId = @accountingEventId WHERE ToolIssuanceReversalId = @ToolIssuanceReversalId;
 
@@ -745,3 +745,4 @@ BEGIN CATCH
         ROLLBACK TRANSACTION;
     THROW;
 END CATCH;
+

@@ -30,7 +30,7 @@ public sealed class SupplierFinancialWorkflowCoordinator(
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
         try
         {
-            var result = await runtime.CreateInvoiceAsync(connection, transaction, new SupplierFinancialInvoiceRequest(request.SupplierId, request.InvoiceNumber, request.InvoiceDate, request.DueDate, request.Amount, request.Notes, request.SourceOperationId, user.Username, request.CurrencyCode), cancellationToken);
+            var result = await runtime.CreateInvoiceAsync(connection, transaction, new SupplierFinancialInvoiceRequest(request.SupplierId, request.InvoiceNumber, request.InvoiceDate, request.DueDate, request.Amount, request.Notes, request.SourceOperationId, user.Username, request.CurrencyCode, request.PurchaseOrderId), cancellationToken);
             Console.WriteLine($"SUPPLIER_INVOICE_TRACE: coordinator.CreateInvoiceAsync runtime returned invoiceId={result.SupplierInvoiceId} accountingEventId={result.AccountingEventId}");
             if (request.PurchaseOrderId.HasValue)
                 await EnsureInvoicePurchaseOrderAsync(connection, transaction, result.SupplierInvoiceId, request.SupplierId, request.PurchaseOrderId.Value, cancellationToken);

@@ -1816,6 +1816,82 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "none"
+		},
+		{
+			"label": "Apply supplier reversal index fix",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"sqlcmd -S \"YASIN-YASIN\\SQLEXPRESS\" -d LUMAR_ERP_TEST -i \"D:\\YASIN\\Backend\\LUMAR_ERP_API_V2\\Migrations\\20261115_ES_5_SUPPLIER_PAYMENT_REVERSAL_CONSTRAINT_FIX_LUMAR_ERP_TEST.sql\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Imported supplier invoice cycle proof",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && dotnet test LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter \"Name=OfficialImportedSupplierInvoiceReceiptStorage_UsesLinkedInvoice1120AndKeepsSupplierLiabilitySingle\" --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Imported supplier invoice cycle proof (FQN)",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && dotnet test LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter \"FullyQualifiedName~OfficialImportedSupplierInvoiceReceiptStorage_UsesLinkedInvoice1120AndKeepsSupplierLiabilitySingle\" --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Focused financial and supplier regression sweep",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && dotnet test LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter \"FullyQualifiedName~SupplierFinancialRuntimeIntegrationTests|FullyQualifiedName~ReadyMadeImportedAccountingGate2IntegrationTests|FullyQualifiedName~GoodsReceipt|FullyQualifiedName~SupplierNotification\" --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Focused financial and supplier regression sweep 2",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && dotnet test LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter \"FullyQualifiedName~SupplierFinancialRuntimeIntegrationTests^|FullyQualifiedName~ReadyMadeImportedAccountingGate2IntegrationTests^|FullyQualifiedName~GoodsReceipt^|FullyQualifiedName~SupplierNotification\" --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Supplier financial runtime group",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && dotnet test LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter \"FullyQualifiedName~SupplierFinancialRuntimeIntegrationTests\" --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"group": "none"
+		},
+		{
+			"label": "Goods receipt runtime group",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"cd /d D:\\YASIN\\Backend && dotnet test LUMAR_ERP_API_V2.Tests\\LUMAR_ERP_API_V2.Tests.csproj --no-restore --filter \"FullyQualifiedName~GoodsReceiptRuntimeIntegrationTests\" --logger \"console;verbosity=minimal\""
+			],
+			"isBackground": false,
+			"group": "none"
 		}
 	]
 }

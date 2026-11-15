@@ -87,23 +87,48 @@ BEGIN
 
     IF @AccountingEventType IN (7,9)
     BEGIN
+        DECLARE @linkedSupplierInvoiceReceipt bit = 0;
+
         SELECT
             @sourcePostingAmount = p.PostingAmount,
             @sourceOperationalAmount = p.OperationalAmount,
-            @creditAccountCode = la.AccountCode
+            @creditAccountCode = la.AccountCode,
+            @linkedSupplierInvoiceReceipt = CASE
+                WHEN gri.SupplierInvoiceLineId IS NOT NULL
+                 AND sil.SupplierInvoiceLineId IS NOT NULL
+                 AND si.SupplierInvoiceId IS NOT NULL
+                 THEN 1 ELSE 0
+            END
         FROM dbo.InventoryReceiptPostings p WITH (UPDLOCK, HOLDLOCK)
         INNER JOIN dbo.LedgerAccounts la WITH (UPDLOCK, HOLDLOCK)
             ON la.LedgerAccountId = p.OpposingLedgerAccountId
            AND la.IsActive = 1
+        LEFT JOIN dbo.GoodsReceiptItems gri WITH (UPDLOCK, HOLDLOCK)
+            ON gri.GoodsReceiptItemId = p.GoodsReceiptItemId
+        LEFT JOIN dbo.SupplierInvoiceLines sil WITH (UPDLOCK, HOLDLOCK)
+            ON sil.SupplierInvoiceLineId = gri.SupplierInvoiceLineId
+        LEFT JOIN dbo.SupplierInvoices si WITH (UPDLOCK, HOLDLOCK)
+            ON si.SupplierInvoiceId = sil.SupplierInvoiceId
         WHERE p.InventoryReceiptPostingId = @InventoryReceiptPostingId;
+
         IF @sourcePostingAmount IS NULL
             THROW 51514, N'The inventory receipt source is missing or its opposing account is inactive.', 1;
         IF @sourcePostingAmount <> @PostingAmount
            OR CONVERT(decimal(18,2), ROUND(@sourceOperationalAmount, 2)) <> @PostingAmount
             THROW 51515, N'The inventory receipt amount does not match.', 1;
-        IF (@AccountingEventType = 7 AND @creditAccountCode NOT IN (N'2100', N'1101'))
-           OR (@AccountingEventType = 9 AND @creditAccountCode NOT IN (N'2100', N'1102'))
-            THROW 51516, N'The inventory receipt opposing account is not approved for this event.', 1;
+
+        IF @creditAccountCode = N'1120'
+        BEGIN
+            IF @linkedSupplierInvoiceReceipt = 0
+                THROW 51516, N'The inventory receipt opposing account is not approved for this event.', 1;
+        END
+        ELSE
+        BEGIN
+            IF (@AccountingEventType = 7 AND @creditAccountCode NOT IN (N'2100', N'1101'))
+               OR (@AccountingEventType = 9 AND @creditAccountCode NOT IN (N'2100', N'1102'))
+                THROW 51516, N'The inventory receipt opposing account is not approved for this event.', 1;
+        END;
+
         SET @debitAccountCode = CASE @AccountingEventType WHEN 7 THEN N'1101' ELSE N'1102' END;
         SET @transactionType = CASE @AccountingEventType WHEN 7 THEN N'FabricInventoryReceived' ELSE N'ConsumableInventoryReceived' END;
     END;

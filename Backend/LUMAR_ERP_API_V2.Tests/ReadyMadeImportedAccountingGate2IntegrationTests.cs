@@ -2,6 +2,7 @@ using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Inventory;
 using LUMAR_ERP_API_V2.DTOs.Orders;
+using LUMAR_ERP_API_V2.FinancialFoundation;
 using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Utilities;
 using Microsoft.Data.SqlClient;
@@ -79,6 +80,204 @@ public sealed class ReadyMadeImportedAccountingGate2IntegrationTests
         finally
         {
             await CleanupAsync(connectionString, orderId, productId, null, productCode, saleReference);
+        }
+    }
+
+    [Fact]
+    public async Task OfficialImportedSupplierInvoiceReceiptStorage_UsesLinkedInvoice1120AndKeepsSupplierLiabilitySingle()
+    {
+        var connectionString = GetTestConnectionString();
+        var suffix = Guid.NewGuid().ToString("N")[..12];
+        var productCode = $"IMP-LINK-{suffix}";
+        var invoiceNumber = $"IMP-LINK-{suffix}";
+        var supplierId = await ReadIntAsync(connectionString, "SELECT TOP (1) SupplierId FROM dbo.Suppliers WHERE IsActive=1 ORDER BY SupplierId");
+        ImportedReadyMadeProductDto? imported = null;
+        int supplierInvoiceId = 0;
+        int purchaseOrderId = 0;
+        int goodsReceiptItemId = 0;
+        int inventoryItemId = 0;
+        long receiptId = 0;
+
+        try
+        {
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+                purchaseOrderId = await InsertPurchaseOrderAsync(connection, transaction, supplierId, $"PO-IMP-LINK-{suffix}");
+
+                var runtime = new SupplierFinancialRuntime();
+                var invoice = await runtime.CreateInvoiceAsync(connection, transaction,
+                    new SupplierFinancialInvoiceRequest(
+                        supplierId,
+                        invoiceNumber,
+                        DateOnly.FromDateTime(DateTime.UtcNow),
+                        DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)),
+                        30000m,
+                        null,
+                        Guid.NewGuid(),
+                        "IMP-LINK-TEST",
+                        PurchaseOrderId: purchaseOrderId),
+                    CancellationToken.None);
+                supplierInvoiceId = invoice.SupplierInvoiceId;
+
+                var supplierInvoiceLineId = await InsertIntAsync(connection, transaction,
+                    @"INSERT INTO dbo.SupplierInvoiceLines (SupplierInvoiceId, InventoryItemId, Quantity, UnitCost, RollCount, SourceOperationId, Status, CreatedBy)
+                      OUTPUT INSERTED.SupplierInvoiceLineId
+                      VALUES (@supplierInvoiceId, NULL, 3.0, 10000.0, NULL, @sourceOperationId, N'Posted', N'IMP-LINK-TEST');",
+                    ("@supplierInvoiceId", supplierInvoiceId),
+                    ("@sourceOperationId", Guid.NewGuid()));
+
+                var goodsReceiptId = await InsertIntAsync(connection, transaction,
+                    @"INSERT INTO dbo.GoodsReceipts (SupplierId, ReceiptNumber, ReceiptDate, CreatedAt, ReceiptStatus)
+                      OUTPUT INSERTED.GoodsReceiptId
+                      VALUES (@supplierId, @receiptNumber, SYSUTCDATETIME(), SYSUTCDATETIME(), N'Confirmed');",
+                    ("@supplierId", supplierId),
+                    ("@receiptNumber", $"GR-IMP-{suffix}"));
+
+                goodsReceiptItemId = await InsertIntAsync(connection, transaction,
+                    @"INSERT INTO dbo.GoodsReceiptItems (GoodsReceiptId, ItemName, ReceivedQuantity, UnitCost, LineTotal, ItemType, SupplierInvoiceLineId, LineStatus)
+                      OUTPUT INSERTED.GoodsReceiptItemId
+                      VALUES (@goodsReceiptId, N'Imported linked item', 3.0, 10000.0, 30000.0, N'ImportedProduct', @supplierInvoiceLineId, N'Confirmed');",
+                    ("@goodsReceiptId", goodsReceiptId),
+                    ("@supplierInvoiceLineId", supplierInvoiceLineId));
+
+                await transaction.CommitAsync();
+            }
+
+            imported = await CreateInventoryRepository(connectionString).UpsertImportedProductAsync(new CreateImportedProductDto
+            {
+                ProductName = "Linked Imported Product",
+                ProductType = "Imported",
+                ProductCode = productCode,
+                Unit = "Piece",
+                Quantity = 3m,
+                PurchasePrice = 10000m,
+                SellingPrice = 20000m,
+                SupplierId = supplierId,
+                Category = "Imported",
+                Notes = "linked imported receipt validation",
+                GoodsReceiptItemId = goodsReceiptItemId,
+                StorageOperationId = Guid.NewGuid()
+            }, CancellationToken.None);
+
+            Assert.NotNull(imported);
+            receiptId = await ReadIntAsync(connectionString,
+                "SELECT TOP (1) ImportedReadyMadeInventoryReceiptId FROM dbo.ImportedReadyMadeInventoryReceipts WHERE ImportedReadyMadeProductId=@id ORDER BY ImportedReadyMadeInventoryReceiptId DESC",
+                imported!.ImportedReadyMadeProductId);
+            inventoryItemId = await ReadIntAsync(connectionString,
+                "SELECT TOP (1) InventoryItemID FROM dbo.InventoryItems WHERE ItemCode=@code ORDER BY InventoryItemID DESC",
+                null, productCode);
+
+            Assert.Equal(1, await ReadIntNamedAsync(connectionString,
+                @"SELECT COUNT(*)
+                  FROM dbo.JournalEntryLines jel
+                  INNER JOIN dbo.JournalEntries je ON je.JournalEntryId = jel.JournalEntryId
+                  INNER JOIN dbo.AccountingEvents ae ON ae.AccountingEventId = je.AccountingEventId
+                  INNER JOIN dbo.LedgerAccounts la ON la.LedgerAccountId = jel.LedgerAccountId
+                  WHERE ae.SourceType = N'SupplierInvoice'
+                    AND ae.SourceId = @supplierInvoiceId
+                    AND la.AccountCode = N'2100'
+                    AND jel.CreditAmount = 30000;",
+                ("@supplierInvoiceId", supplierInvoiceId)));
+
+            Assert.Equal(1, await ReadIntNamedAsync(connectionString,
+                @"SELECT COUNT(*)
+                  FROM dbo.JournalEntryLines debitLine
+                  INNER JOIN dbo.JournalEntries je ON je.JournalEntryId = debitLine.JournalEntryId
+                  INNER JOIN dbo.AccountingEvents ae ON ae.AccountingEventId = je.AccountingEventId
+                  INNER JOIN dbo.JournalEntryLines creditLine ON creditLine.JournalEntryId = je.JournalEntryId
+                  INNER JOIN dbo.LedgerAccounts debitAccount ON debitAccount.LedgerAccountId = debitLine.LedgerAccountId
+                  INNER JOIN dbo.LedgerAccounts creditAccount ON creditAccount.LedgerAccountId = creditLine.LedgerAccountId
+                  WHERE ae.AccountingEventType = 12
+                    AND ae.ImportedReadyMadeInventoryReceiptId = @receiptId
+                    AND debitAccount.AccountCode = N'1103'
+                    AND creditAccount.AccountCode = N'1120'
+                    AND debitLine.DebitAmount = 30000
+                    AND creditLine.CreditAmount = 30000;",
+                ("@receiptId", receiptId)));
+
+            Assert.Equal(0, await ReadIntNamedAsync(connectionString,
+                @"SELECT COUNT(*)
+                  FROM dbo.JournalEntryLines debitLine
+                  INNER JOIN dbo.JournalEntries je ON je.JournalEntryId = debitLine.JournalEntryId
+                  INNER JOIN dbo.AccountingEvents ae ON ae.AccountingEventId = je.AccountingEventId
+                  INNER JOIN dbo.JournalEntryLines creditLine ON creditLine.JournalEntryId = je.JournalEntryId
+                  INNER JOIN dbo.LedgerAccounts debitAccount ON debitAccount.LedgerAccountId = debitLine.LedgerAccountId
+                  INNER JOIN dbo.LedgerAccounts creditAccount ON creditAccount.LedgerAccountId = creditLine.LedgerAccountId
+                  WHERE ae.AccountingEventType = 12
+                    AND ae.ImportedReadyMadeInventoryReceiptId = @receiptId
+                    AND debitAccount.AccountCode = N'1103'
+                    AND creditAccount.AccountCode = N'2100';",
+                ("@receiptId", receiptId)));
+        }
+        finally
+        {
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
+            try
+            {
+                await using var cleanup = new SqlCommand(@"
+                    UPDATE dbo.ImportedReadyMadeInventoryReceipts
+                    SET AccountingEventId = NULL,
+                        InventoryTransactionId = NULL
+                    WHERE ImportedReadyMadeProductId = @productId;
+                    DELETE FROM dbo.JournalEntryLines WHERE JournalEntryId IN (
+                        SELECT je.JournalEntryId
+                        FROM dbo.JournalEntries je
+                        INNER JOIN dbo.AccountingEvents ae ON ae.AccountingEventId = je.AccountingEventId
+                        WHERE ae.SourceType = N'SupplierInvoice' AND ae.SourceId = @supplierInvoiceId
+                           OR ae.AccountingEventType = 12 AND ae.ImportedReadyMadeInventoryReceiptId IN (
+                                SELECT ImportedReadyMadeInventoryReceiptId FROM dbo.ImportedReadyMadeInventoryReceipts WHERE ImportedReadyMadeProductId = @productId));
+                    DELETE FROM dbo.JournalEntries WHERE AccountingEventId IN (
+                        SELECT ae.AccountingEventId
+                        FROM dbo.AccountingEvents ae
+                        WHERE ae.SourceType = N'SupplierInvoice' AND ae.SourceId = @supplierInvoiceId
+                           OR ae.AccountingEventType = 12 AND ae.ImportedReadyMadeInventoryReceiptId IN (
+                                SELECT ImportedReadyMadeInventoryReceiptId FROM dbo.ImportedReadyMadeInventoryReceipts WHERE ImportedReadyMadeProductId = @productId));
+                    DELETE FROM dbo.FinancialTransactions WHERE AccountingEventId IN (
+                        SELECT ae.AccountingEventId
+                        FROM dbo.AccountingEvents ae
+                        WHERE ae.SourceType = N'SupplierInvoice' AND ae.SourceId = @supplierInvoiceId
+                           OR ae.AccountingEventType = 12 AND ae.ImportedReadyMadeInventoryReceiptId IN (
+                                SELECT ImportedReadyMadeInventoryReceiptId FROM dbo.ImportedReadyMadeInventoryReceipts WHERE ImportedReadyMadeProductId = @productId));
+                    DELETE FROM dbo.SupplierFinancialInvoices WHERE SupplierInvoiceId = @supplierInvoiceId;
+                    DELETE FROM dbo.InventoryTransactions WHERE ImportedReadyMadeInventoryReceiptId IN (
+                        SELECT ImportedReadyMadeInventoryReceiptId FROM dbo.ImportedReadyMadeInventoryReceipts WHERE ImportedReadyMadeProductId = @productId);
+                    DELETE FROM dbo.AccountingEvents WHERE SourceType = N'SupplierInvoice' AND SourceId = @supplierInvoiceId;
+                    DELETE FROM dbo.AccountingEvents WHERE AccountingEventType = 12 AND ImportedReadyMadeInventoryReceiptId IN (
+                        SELECT ImportedReadyMadeInventoryReceiptId FROM dbo.ImportedReadyMadeInventoryReceipts WHERE ImportedReadyMadeProductId = @productId);
+                    DELETE FROM dbo.GoodsReceiptItemStorageAllocations
+                    WHERE GoodsReceiptItemId = @goodsReceiptItemId
+                       OR InventoryItemId = @inventoryItemId
+                       OR ImportedReadyMadeInventoryReceiptId = @receiptId;
+                    DELETE FROM dbo.ImportedReadyMadeInventoryReceipts WHERE ImportedReadyMadeProductId = @productId;
+                    DELETE FROM dbo.ImportedReadyMadeProducts WHERE ImportedReadyMadeProductId = @productId;
+                    DELETE FROM dbo.InventoryItems WHERE InventoryItemID = @inventoryItemId;
+                    DELETE FROM dbo.GoodsReceiptItems WHERE GoodsReceiptItemId = @goodsReceiptItemId;
+                    DELETE FROM dbo.GoodsReceipts WHERE ReceiptNumber = @receiptNumber;
+                    DELETE FROM dbo.SupplierInvoiceLines WHERE SupplierInvoiceId = @supplierInvoiceId;
+                    DELETE FROM dbo.SupplierInvoices WHERE SupplierInvoiceId = @supplierInvoiceId;
+                    DELETE FROM dbo.PurchaseOrderItems WHERE PurchaseOrderId = @purchaseOrderId;
+                    DELETE FROM dbo.PurchaseOrders WHERE PurchaseOrderId = @purchaseOrderId;",
+                    connection, transaction);
+                cleanup.Parameters.AddWithValue("@supplierInvoiceId", supplierInvoiceId);
+                cleanup.Parameters.AddWithValue("@purchaseOrderId", purchaseOrderId);
+                cleanup.Parameters.AddWithValue("@productId", imported?.ImportedReadyMadeProductId ?? 0);
+                cleanup.Parameters.AddWithValue("@productCode", productCode);
+                cleanup.Parameters.AddWithValue("@goodsReceiptItemId", goodsReceiptItemId);
+                cleanup.Parameters.AddWithValue("@inventoryItemId", inventoryItemId);
+                cleanup.Parameters.AddWithValue("@receiptId", receiptId);
+                cleanup.Parameters.AddWithValue("@receiptNumber", $"GR-IMP-{suffix}");
+                await cleanup.ExecuteNonQueryAsync();
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
     }
 
@@ -219,6 +418,17 @@ public sealed class ReadyMadeImportedAccountingGate2IntegrationTests
         }
     }
 
+    private static async Task<int> InsertPurchaseOrderAsync(SqlConnection connection, SqlTransaction transaction, int supplierId, string purchaseOrderNumber)
+    {
+        await using var command = new SqlCommand(@"
+            INSERT INTO dbo.PurchaseOrders (PurchaseOrderNumber, SupplierId, OrderDate, Status, TotalAmount, CreatedAt)
+            OUTPUT INSERTED.PurchaseOrderId
+            VALUES (@purchaseOrderNumber, @supplierId, SYSUTCDATETIME(), N'Open', 30000, SYSUTCDATETIME());", connection, transaction);
+        command.Parameters.AddWithValue("@purchaseOrderNumber", purchaseOrderNumber);
+        command.Parameters.AddWithValue("@supplierId", supplierId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
     private static async Task<int> ReadActiveCustomerIdAsync(string connectionString) => await ReadIntAsync(connectionString, "SELECT TOP (1) CustomerID FROM dbo.Customers WHERE IsActive=1 ORDER BY CustomerID");
     private static async Task<int> ReadActiveProductTypeIdAsync(string connectionString) => await ReadIntAsync(connectionString, "SELECT TOP (1) ProductTypeId FROM dbo.PricingProductTypes WHERE IsActive=1 ORDER BY ProductTypeId");
 
@@ -231,6 +441,17 @@ public sealed class ReadyMadeImportedAccountingGate2IntegrationTests
         command.Parameters.AddWithValue("@code", code ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@orderId", id ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@productId", secondId ?? (object)DBNull.Value);
+        var value = await command.ExecuteScalarAsync();
+        return value is null ? 0 : Convert.ToInt32(value);
+    }
+
+    private static async Task<int> ReadIntNamedAsync(string connectionString, string sql, params (string Name, object Value)[] parameters)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(sql, connection);
+        foreach (var parameter in parameters)
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value);
         var value = await command.ExecuteScalarAsync();
         return value is null ? 0 : Convert.ToInt32(value);
     }
