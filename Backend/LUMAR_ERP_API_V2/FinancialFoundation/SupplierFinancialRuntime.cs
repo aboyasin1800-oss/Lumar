@@ -77,10 +77,13 @@ public sealed class SupplierFinancialRuntime
         decimal allocated = 0m;
         if (request.SupplierInvoiceId.HasValue)
         {
-            allocated = request.PaymentKind == SupplierPaymentKind.Immediate
-                ? await RecordImmediatePaymentAllocationAsync(connection, transaction, paymentId, request.SupplierInvoiceId.Value, request.Amount, request.PaymentDate, cancellationToken)
-                : (await AllocateAsync(connection, transaction, paymentId, request.SupplierInvoiceId.Value, request.Amount,
-                    request.PaymentDate, request.SourceOperationId, request.ReferenceNumber, request.CreatedBy, cancellationToken)).Amount;
+            allocated = request.PaymentKind switch
+            {
+                SupplierPaymentKind.Immediate => await RecordImmediatePaymentAllocationAsync(connection, transaction, paymentId, request.SupplierInvoiceId.Value, request.Amount, request.PaymentDate, cancellationToken),
+                SupplierPaymentKind.Later => await RecordOrdinaryLaterPaymentAllocationAsync(connection, transaction, paymentId, request.SupplierInvoiceId.Value, request.Amount, request.PaymentDate, cancellationToken),
+                _ => (await AllocateAsync(connection, transaction, paymentId, request.SupplierInvoiceId.Value, request.Amount,
+                    request.PaymentDate, request.SourceOperationId, request.ReferenceNumber, request.CreatedBy, cancellationToken)).Amount
+            };
         }
         var balance = await GetSupplierBalanceAsync(connection, transaction, request.SupplierId, cancellationToken);
         return new SupplierFinancialPaymentResult(paymentId, posting.AccountingEventId, allocated, balance, false);
@@ -99,6 +102,10 @@ public sealed class SupplierFinancialRuntime
         }
 
         var supplierId = await ReadPaymentSupplierAsync(connection, transaction, supplierPaymentId, cancellationToken);
+        var paymentKind = await ReadPaymentKindAsync(connection, transaction, supplierPaymentId, cancellationToken);
+        if (paymentKind != SupplierPaymentKind.Advance)
+            throw new InvalidOperationException("Only advance payments may create a financial supplier allocation posting.");
+
         await ValidateInvoiceForAllocationAsync(connection, transaction, supplierId, supplierInvoiceId, amount, cancellationToken);
         var available = await GetAvailablePaymentAmountAsync(connection, transaction, supplierPaymentId, cancellationToken);
         if (amount > available) throw new InvalidOperationException("Supplier payment allocation exceeds the available payment amount.");
@@ -107,9 +114,7 @@ public sealed class SupplierFinancialRuntime
             new FoundationPostingRequest(32, amount, "SupplierPaymentAllocation", allocationId, sourceOperationId, referenceNumber,
                 "Supplier payment allocation", createdBy, null, "Supplier", supplierId), cancellationToken);
         await InsertFinancialAllocationAsync(connection, transaction, allocationId, sourceOperationId, posting.AccountingEventId, createdBy, cancellationToken);
-        await using var update = new SqlCommand("UPDATE dbo.SupplierInvoices SET AmountPaid=AmountPaid+@amount WHERE SupplierInvoiceId=@invoiceId;", connection, transaction);
-        update.Parameters.AddWithValue("@amount", amount); update.Parameters.AddWithValue("@invoiceId", supplierInvoiceId);
-        await update.ExecuteNonQueryAsync(cancellationToken);
+        await UpdateInvoicePaymentStateAsync(connection, transaction, supplierInvoiceId, amount, false, cancellationToken);
         return new SupplierFinancialAllocationResult(allocationId, posting.AccountingEventId, amount, false);
     }
 
@@ -120,10 +125,18 @@ public sealed class SupplierFinancialRuntime
         var available = await GetAvailablePaymentAmountAsync(connection, transaction, paymentId, cancellationToken);
         if (amount > available) throw new InvalidOperationException("Supplier payment allocation exceeds the available payment amount.");
         await InsertAllocationAsync(connection, transaction, paymentId, invoiceId, amount, allocationDate, cancellationToken);
-        await using var update = new SqlCommand("UPDATE dbo.SupplierInvoices SET AmountPaid=AmountPaid+@amount WHERE SupplierInvoiceId=@invoiceId;", connection, transaction);
-        update.Parameters.AddWithValue("@amount", amount);
-        update.Parameters.AddWithValue("@invoiceId", invoiceId);
-        await update.ExecuteNonQueryAsync(cancellationToken);
+        await UpdateInvoicePaymentStateAsync(connection, transaction, invoiceId, amount, false, cancellationToken);
+        return amount;
+    }
+
+    private static async Task<decimal> RecordOrdinaryLaterPaymentAllocationAsync(SqlConnection connection, SqlTransaction transaction, int paymentId, int invoiceId, decimal amount, DateOnly allocationDate, CancellationToken cancellationToken)
+    {
+        var supplierId = await ReadPaymentSupplierAsync(connection, transaction, paymentId, cancellationToken);
+        await ValidateInvoiceForAllocationAsync(connection, transaction, supplierId, invoiceId, amount, cancellationToken);
+        var available = await GetAvailablePaymentAmountAsync(connection, transaction, paymentId, cancellationToken);
+        if (amount > available) throw new InvalidOperationException("Supplier payment allocation exceeds the available payment amount.");
+        await InsertAllocationAsync(connection, transaction, paymentId, invoiceId, amount, allocationDate, cancellationToken);
+        await UpdateInvoicePaymentStateAsync(connection, transaction, invoiceId, amount, false, cancellationToken);
         return amount;
     }
 
@@ -158,13 +171,61 @@ public sealed class SupplierFinancialRuntime
     public async Task<long> ReverseAllocationAsync(SqlConnection connection, SqlTransaction transaction, int supplierPaymentAllocationId, Guid sourceOperationId, string referenceNumber, string reason, string reversedBy, CancellationToken cancellationToken)
     {
         if (connection is null || transaction is null || supplierPaymentAllocationId <= 0 || sourceOperationId == Guid.Empty || string.IsNullOrWhiteSpace(reason) || string.IsNullOrWhiteSpace(reversedBy)) throw new ArgumentException("Supplier payment allocation reversal is incomplete.");
-        var existing = await FindReversalEventAsync(connection, transaction, sourceOperationId, cancellationToken);
-        if (existing.HasValue) return existing.Value;
+
+        var reversalState = await ReadAllocationReversalStateAsync(connection, transaction, supplierPaymentAllocationId, cancellationToken);
+        if (reversalState.HasRecordedReversal)
+        {
+            if (reversalState.SourceOperationId == sourceOperationId)
+                return reversalState.AccountingEventId ?? 0;
+            throw new InvalidOperationException("Supplier payment allocation has already been reversed.");
+        }
+
         var original = await ReadAllocationForReversalAsync(connection, transaction, supplierPaymentAllocationId, cancellationToken);
+        if (!original.HasFinancialAllocation)
+        {
+            await using var markCommand = new SqlCommand(@"
+                UPDATE dbo.SupplierFinancialPaymentAllocations
+                SET SourceOperationId = @operation,
+                    Status = N'Reversed',
+                    AccountingEventId = @eventId,
+                    CreatedBy = @createdBy
+                WHERE SupplierPaymentAllocationId = @allocationId;
+
+                IF @@ROWCOUNT = 0
+                BEGIN
+                    INSERT dbo.SupplierFinancialPaymentAllocations(SupplierPaymentAllocationId, SourceOperationId, AccountingEventId, Status, CreatedBy)
+                    VALUES(@allocationId, @operation, @eventId, N'Reversed', @createdBy);
+                END;
+                ", connection, transaction);
+            markCommand.Parameters.AddWithValue("@allocationId", supplierPaymentAllocationId);
+            markCommand.Parameters.Add("@operation", SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+            markCommand.Parameters.AddWithValue("@eventId", original.EventId);
+            markCommand.Parameters.AddWithValue("@createdBy", reversedBy);
+            await markCommand.ExecuteNonQueryAsync(cancellationToken);
+
+            await UpdateInvoicePaymentStateAsync(connection, transaction, original.InvoiceId, original.Amount, true, cancellationToken);
+            return original.EventId;
+        }
+
         var reversal = await FoundationPostingGateway.ReverseAsync(connection, transaction, original.EventId, sourceOperationId, referenceNumber, reason, reversedBy, cancellationToken);
-        await using var update = new SqlCommand("UPDATE dbo.SupplierFinancialPaymentAllocations SET Status=N'Reversed' WHERE SupplierPaymentAllocationId=@allocationId; UPDATE dbo.SupplierInvoices SET AmountPaid=AmountPaid-@amount WHERE SupplierInvoiceId=@invoiceId;", connection, transaction);
-        update.Parameters.AddWithValue("@allocationId", supplierPaymentAllocationId); update.Parameters.AddWithValue("@amount", original.Amount); update.Parameters.AddWithValue("@invoiceId", original.InvoiceId);
+        await using var update = new SqlCommand(@"
+            UPDATE dbo.SupplierFinancialPaymentAllocations
+            SET Status = N'Reversed', AccountingEventId = @eventId, SourceOperationId = @operation
+            WHERE SupplierPaymentAllocationId = @allocationId;
+
+            IF @@ROWCOUNT = 0
+            BEGIN
+                INSERT dbo.SupplierFinancialPaymentAllocations(SupplierPaymentAllocationId, SourceOperationId, AccountingEventId, Status, CreatedBy)
+                VALUES(@allocationId, @operation, @eventId, N'Reversed', @createdBy);
+            END;
+            ", connection, transaction);
+        update.Parameters.AddWithValue("@allocationId", supplierPaymentAllocationId);
+        update.Parameters.Add("@operation", SqlDbType.UniqueIdentifier).Value = sourceOperationId;
+        update.Parameters.AddWithValue("@eventId", reversal.AccountingEventId);
+        update.Parameters.AddWithValue("@createdBy", reversedBy);
         await update.ExecuteNonQueryAsync(cancellationToken);
+
+        await UpdateInvoicePaymentStateAsync(connection, transaction, original.InvoiceId, original.Amount, true, cancellationToken);
         return reversal.AccountingEventId;
     }
 
@@ -238,6 +299,34 @@ public sealed class SupplierFinancialRuntime
     { const string sql = "SELECT a.SupplierPaymentAllocationId,a.SupplierPaymentId,a.SupplierInvoiceId,a.AllocatedAmount,f.AccountingEventId FROM dbo.SupplierFinancialPaymentAllocations f WITH(UPDLOCK,HOLDLOCK) JOIN dbo.SupplierPaymentAllocations a ON a.SupplierPaymentAllocationId=f.SupplierPaymentAllocationId WHERE f.SourceOperationId=@operation;"; await using var cmd = new SqlCommand(sql, c, t); cmd.Parameters.Add("@operation", SqlDbType.UniqueIdentifier).Value = operation; await using var r = await cmd.ExecuteReaderAsync(ct); return await r.ReadAsync(ct) ? (r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), r.GetDecimal(3), r.GetInt64(4)) : null; }
     private static async Task<int> ReadPaymentSupplierAsync(SqlConnection c, SqlTransaction t, int paymentId, CancellationToken ct)
     { await using var cmd = new SqlCommand("SELECT SupplierId FROM dbo.SupplierPayments WITH(UPDLOCK,HOLDLOCK) WHERE SupplierPaymentId=@paymentId", c, t); cmd.Parameters.AddWithValue("@paymentId", paymentId); var value = await cmd.ExecuteScalarAsync(ct); return value is null ? throw new InvalidOperationException("Supplier payment is unavailable.") : Convert.ToInt32(value); }
+    private static async Task<SupplierPaymentKind> ReadPaymentKindAsync(SqlConnection c, SqlTransaction t, int paymentId, CancellationToken ct)
+    { await using var cmd = new SqlCommand("SELECT PaymentKind FROM dbo.SupplierFinancialPayments WITH(UPDLOCK,HOLDLOCK) WHERE SupplierPaymentId=@paymentId", c, t); cmd.Parameters.AddWithValue("@paymentId", paymentId); var value = await cmd.ExecuteScalarAsync(ct); return value is null ? throw new InvalidOperationException("Supplier payment kind is unavailable.") : Enum.Parse<SupplierPaymentKind>(Convert.ToString(value)!); }
+    private static async Task UpdateInvoicePaymentStateAsync(SqlConnection c, SqlTransaction t, int invoiceId, decimal amount, bool isReversal, CancellationToken ct)
+    {
+        await using var cmd = new SqlCommand("""
+            UPDATE i
+            SET AmountPaid = x.NewAmountPaid,
+                Status = CASE
+                    WHEN x.NewAmountPaid <= 0 THEN N'Open'
+                    WHEN x.NewAmountPaid >= i.TotalAmount THEN N'Paid'
+                    ELSE N'PartiallyPaid'
+                END
+            FROM dbo.SupplierInvoices i
+            CROSS APPLY (
+                VALUES (
+                    CASE
+                        WHEN @isReversal = 1 THEN i.AmountPaid - @amount
+                        ELSE i.AmountPaid + @amount
+                    END
+                )
+            ) AS x(NewAmountPaid)
+            WHERE i.SupplierInvoiceId = @invoiceId;
+            """, c, t);
+        cmd.Parameters.AddWithValue("@invoiceId", invoiceId);
+        cmd.Parameters.AddWithValue("@amount", amount);
+        cmd.Parameters.AddWithValue("@isReversal", isReversal ? 1 : 0);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
     private static async Task ValidateInvoiceForPaymentAsync(SqlConnection c, SqlTransaction t, int supplierId, int invoiceId, decimal amount, CancellationToken ct) => await ValidateInvoiceForAllocationAsync(c, t, supplierId, invoiceId, amount, ct);
     private static async Task ValidateInvoiceForAllocationAsync(SqlConnection c, SqlTransaction t, int supplierId, int invoiceId, decimal amount, CancellationToken ct)
     { await using var cmd = new SqlCommand("SELECT SupplierId,TotalAmount,AmountPaid FROM dbo.SupplierInvoices WITH(UPDLOCK,HOLDLOCK) WHERE SupplierInvoiceId=@invoiceId", c, t); cmd.Parameters.AddWithValue("@invoiceId", invoiceId); await using var r = await cmd.ExecuteReaderAsync(ct); if (!await r.ReadAsync(ct) || r.GetInt32(0) != supplierId || amount > r.GetDecimal(1) - r.GetDecimal(2)) throw new InvalidOperationException("Supplier invoice is unavailable or overpaid."); }
@@ -255,8 +344,41 @@ public sealed class SupplierFinancialRuntime
     { const string sql = "SELECT i.SupplierId,i.TotalAmount,i.InvoiceDate,f.AccountingEventId,l.SupplierLedgerEntryId FROM dbo.SupplierFinancialInvoices f WITH(UPDLOCK,HOLDLOCK) JOIN dbo.SupplierInvoices i ON i.SupplierInvoiceId=f.SupplierInvoiceId JOIN dbo.SupplierLedgerEntries l ON l.SourceType=N'SupplierInvoice' AND l.SourceId=i.SupplierInvoiceId AND l.EntryType=N'SupplierInvoice' WHERE f.SupplierInvoiceId=@invoiceId AND f.Status=N'Posted';"; await using var cmd = new SqlCommand(sql, c, t); cmd.Parameters.AddWithValue("@invoiceId", invoiceId); await using var r = await cmd.ExecuteReaderAsync(ct); if (!await r.ReadAsync(ct)) throw new InvalidOperationException("Supplier invoice cannot be reversed."); return (r.GetInt32(0), r.GetDecimal(1), DateOnly.FromDateTime(r.GetDateTime(2)), r.GetInt64(3), r.GetInt32(4)); }
     private static async Task<(int SupplierId, decimal Amount, DateOnly PaymentDate, long EventId, int LedgerEntryId)> ReadPaymentForReversalAsync(SqlConnection c, SqlTransaction t, int paymentId, CancellationToken ct)
     { const string sql = "SELECT p.SupplierId,p.Amount,p.PaymentDate,f.AccountingEventId,l.SupplierLedgerEntryId FROM dbo.SupplierFinancialPayments f WITH(UPDLOCK,HOLDLOCK) JOIN dbo.SupplierPayments p ON p.SupplierPaymentId=f.SupplierPaymentId JOIN dbo.SupplierLedgerEntries l ON l.SourceType=N'SupplierPayment' AND l.SourceId=p.SupplierPaymentId AND l.EntryType IN(N'SupplierPayment',N'SupplierAdvancePayment') WHERE f.SupplierPaymentId=@paymentId AND f.Status=N'Posted';"; await using var cmd = new SqlCommand(sql, c, t); cmd.Parameters.AddWithValue("@paymentId", paymentId); await using var r = await cmd.ExecuteReaderAsync(ct); if (!await r.ReadAsync(ct)) throw new InvalidOperationException("Supplier payment cannot be reversed."); return (r.GetInt32(0), r.GetDecimal(1), DateOnly.FromDateTime(r.GetDateTime(2)), r.GetInt64(3), r.GetInt32(4)); }
-    private static async Task<(int InvoiceId, decimal Amount, long EventId)> ReadAllocationForReversalAsync(SqlConnection c, SqlTransaction t, int allocationId, CancellationToken ct)
-    { const string sql = "SELECT a.SupplierInvoiceId,a.AllocatedAmount,f.AccountingEventId FROM dbo.SupplierFinancialPaymentAllocations f WITH(UPDLOCK,HOLDLOCK) JOIN dbo.SupplierPaymentAllocations a ON a.SupplierPaymentAllocationId=f.SupplierPaymentAllocationId WHERE f.SupplierPaymentAllocationId=@allocationId AND f.Status=N'Posted';"; await using var cmd = new SqlCommand(sql, c, t); cmd.Parameters.AddWithValue("@allocationId", allocationId); await using var r = await cmd.ExecuteReaderAsync(ct); if (!await r.ReadAsync(ct)) throw new InvalidOperationException("Supplier payment allocation cannot be reversed."); return (r.GetInt32(0), r.GetDecimal(1), r.GetInt64(2)); }
+    private static async Task<(int InvoiceId, decimal Amount, long EventId, bool HasFinancialAllocation)> ReadAllocationForReversalAsync(SqlConnection c, SqlTransaction t, int allocationId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT a.SupplierInvoiceId,
+                   a.AllocatedAmount,
+                   COALESCE(f.AccountingEventId, fp.AccountingEventId) AS OriginalEventId,
+                   CAST(CASE WHEN f.SupplierPaymentAllocationId IS NOT NULL THEN 1 ELSE 0 END AS bit) AS HasFinancialAllocation
+            FROM dbo.SupplierPaymentAllocations a
+            LEFT JOIN dbo.SupplierFinancialPaymentAllocations f WITH(UPDLOCK,HOLDLOCK)
+                ON f.SupplierPaymentAllocationId = a.SupplierPaymentAllocationId
+            JOIN dbo.SupplierPayments p ON p.SupplierPaymentId = a.SupplierPaymentId
+            LEFT JOIN dbo.SupplierFinancialPayments fp WITH(UPDLOCK,HOLDLOCK)
+                ON fp.SupplierPaymentId = p.SupplierPaymentId
+            WHERE a.SupplierPaymentAllocationId = @allocationId
+              AND (f.Status = N'Posted' OR f.SupplierPaymentAllocationId IS NULL);
+            ";
+        await using var cmd = new SqlCommand(sql, c, t);
+        cmd.Parameters.AddWithValue("@allocationId", allocationId);
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        if (!await r.ReadAsync(ct)) throw new InvalidOperationException("Supplier payment allocation cannot be reversed.");
+        return (r.GetInt32(0), r.GetDecimal(1), r.GetInt64(2), r.GetBoolean(3));
+    }
+    private static async Task<(bool HasRecordedReversal, Guid? SourceOperationId, long? AccountingEventId)> ReadAllocationReversalStateAsync(SqlConnection c, SqlTransaction t, int allocationId, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT SourceOperationId, AccountingEventId
+            FROM dbo.SupplierFinancialPaymentAllocations WITH(UPDLOCK,HOLDLOCK)
+            WHERE SupplierPaymentAllocationId = @allocationId AND Status = N'Reversed';
+            ";
+        await using var cmd = new SqlCommand(sql, c, t);
+        cmd.Parameters.AddWithValue("@allocationId", allocationId);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return (false, null, null);
+        return (true, reader.IsDBNull(0) ? null : reader.GetGuid(0), reader.IsDBNull(1) ? null : reader.GetInt64(1));
+    }
     private static async Task<long?> FindReversalEventAsync(SqlConnection c, SqlTransaction t, Guid operation, CancellationToken ct)
     { await using var cmd = new SqlCommand("SELECT AccountingEventId FROM dbo.AccountingEvents WITH(UPDLOCK,HOLDLOCK) WHERE SourceOperationId=@operation AND AccountingEventType=33;", c, t); cmd.Parameters.Add("@operation", SqlDbType.UniqueIdentifier).Value = operation; var value = await cmd.ExecuteScalarAsync(ct); return value is null ? null : Convert.ToInt64(value); }
     private static async Task EnsureNoPostedAllocationsAsync(SqlConnection c, SqlTransaction t, string keyColumn, int keyId, CancellationToken ct)

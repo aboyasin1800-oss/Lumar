@@ -28,6 +28,21 @@ public interface IProductionProductTypeIdentityResolver
 
 public sealed class ProductionProductTypeIdentityResolver : IProductionProductTypeIdentityResolver
 {
+    public static bool IsOfficialProductType(string? category, string? scope)
+    {
+        if (string.IsNullOrWhiteSpace(category) || string.IsNullOrWhiteSpace(scope))
+        {
+            return false;
+        }
+
+        var normalizedCategory = category.Trim();
+        var normalizedScope = scope.Trim();
+
+        return normalizedCategory.Equals("Garment", StringComparison.OrdinalIgnoreCase)
+            && (normalizedScope.Equals("Both", StringComparison.OrdinalIgnoreCase)
+                || normalizedScope.Equals("Tailoring", StringComparison.OrdinalIgnoreCase));
+    }
+
     public async Task<ProductionProductTypeIdentity?> ResolveAsync(
         SqlConnection connection,
         SqlTransaction? transaction,
@@ -45,7 +60,8 @@ public sealed class ProductionProductTypeIdentityResolver : IProductionProductTy
         const string byIdSql = """
             SELECT ProductTypeId, Code, NameAr, NameEn, IsActive
             FROM dbo.PricingProductTypes WITH (NOLOCK)
-            WHERE ProductTypeId = @productTypeId AND IsActive = 1;
+            WHERE ProductTypeId = @productTypeId AND IsActive = 1
+              AND Category = N'Garment' AND Scope IN (N'Both', N'Tailoring');
             """;
 
         if (productTypeId.HasValue)
@@ -72,6 +88,7 @@ public sealed class ProductionProductTypeIdentityResolver : IProductionProductTy
             SELECT ProductTypeId, Code, NameAr, NameEn, IsActive
             FROM dbo.PricingProductTypes WITH (NOLOCK)
             WHERE IsActive = 1
+              AND Category = N'Garment' AND Scope IN (N'Both', N'Tailoring')
               AND (Code IN (@code, @nameAr, @nameEn)
                    OR NameAr IN (@code, @nameAr, @nameEn)
                    OR NameEn IN (@code, @nameAr, @nameEn));
@@ -100,6 +117,7 @@ public sealed class ProductionProductTypeIdentityResolver : IProductionProductTy
             SELECT ProductTypeId, Code, NameAr, NameEn, IsActive
             FROM dbo.PricingProductTypes WITH (NOLOCK)
             WHERE IsActive = 1
+              AND Category = N'Garment' AND Scope IN (N'Both', N'Tailoring')
             ORDER BY ProductTypeId;
             """;
 

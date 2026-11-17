@@ -63,15 +63,15 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests(ITestOut
                 ("@receiptNumber", $"FAB-{invoiceNumber}"));
 
             Assert.NotNull(result);
-            Assert.Equal(50m, result!.TotalYards);
+            Assert.Equal(50m, result.TotalYards);
             Assert.Equal(60000m, result.TotalCost);
             Assert.NotNull(generatedCode);
             Assert.StartsWith("FA", generatedCode, StringComparison.OrdinalIgnoreCase);
-            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryItems WHERE ItemCode=@name", ("@name", generatedCode)));
-            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryItemFoundation f INNER JOIN dbo.InventoryItems i ON i.InventoryItemID=f.InventoryItemId WHERE i.ItemCode=@name AND f.InventoryClassId=1", ("@name", generatedCode)));
-            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricRolls WHERE RollCode=@name AND AvailableQuantity=50", ("@name", generatedCode)));
-            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.AccountingEvents ae INNER JOIN dbo.InventoryReceiptPostings rp ON rp.InventoryReceiptPostingId=ae.InventoryReceiptPostingId INNER JOIN dbo.GoodsReceiptItems gri ON gri.GoodsReceiptItemId=rp.GoodsReceiptItemId INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId=gri.GoodsReceiptId WHERE gr.ReceiptNumber=@name AND ae.AccountingEventType=7 AND ae.PostingAmount=60000", ("@name", $"FAB-{invoiceNumber}")));
-            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.JournalEntryLines debitLine INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=debitLine.JournalEntryId INNER JOIN dbo.AccountingEvents ae ON ae.AccountingEventId=je.AccountingEventId INNER JOIN dbo.JournalEntryLines creditLine ON creditLine.JournalEntryId=je.JournalEntryId INNER JOIN dbo.LedgerAccounts debitAccount ON debitAccount.LedgerAccountId=debitLine.LedgerAccountId INNER JOIN dbo.LedgerAccounts creditAccount ON creditAccount.LedgerAccountId=creditLine.LedgerAccountId WHERE ae.AccountingEventType=7 AND debitAccount.AccountCode=N'1101' AND creditAccount.AccountCode=N'2100' AND debitLine.DebitAmount=60000 AND creditLine.CreditAmount=60000 AND je.ReferenceNumber LIKE @name", ("@name", $"GoodsReceipt:FAB-{invoiceNumber}:%")));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryItems WHERE ItemCode=@name", new (string Name, object? Value)[] { ("@name", generatedCode) }));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.InventoryItemFoundation f INNER JOIN dbo.InventoryItems i ON i.InventoryItemID=f.InventoryItemId WHERE i.ItemCode=@name AND f.InventoryClassId=1", new (string Name, object? Value)[] { ("@name", generatedCode) }));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.FabricRolls WHERE RollCode=@name AND AvailableQuantity=50", new (string Name, object? Value)[] { ("@name", generatedCode) }));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.AccountingEvents ae INNER JOIN dbo.InventoryReceiptPostings rp ON rp.InventoryReceiptPostingId=ae.InventoryReceiptPostingId INNER JOIN dbo.GoodsReceiptItems gri ON gri.GoodsReceiptItemId=rp.GoodsReceiptItemId INNER JOIN dbo.GoodsReceipts gr ON gr.GoodsReceiptId=gri.GoodsReceiptId WHERE gr.ReceiptNumber=@name AND ae.AccountingEventType=7 AND ae.PostingAmount=60000", new (string Name, object? Value)[] { ("@name", $"FAB-{invoiceNumber}") }));
+            Assert.Equal(1, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.JournalEntryLines debitLine INNER JOIN dbo.JournalEntries je ON je.JournalEntryId=debitLine.JournalEntryId INNER JOIN dbo.AccountingEvents ae ON ae.AccountingEventId=je.AccountingEventId INNER JOIN dbo.JournalEntryLines creditLine ON creditLine.JournalEntryId=je.JournalEntryId INNER JOIN dbo.LedgerAccounts debitAccount ON debitAccount.LedgerAccountId=debitLine.LedgerAccountId INNER JOIN dbo.LedgerAccounts creditAccount ON creditAccount.LedgerAccountId=creditLine.LedgerAccountId WHERE ae.AccountingEventType=7 AND debitAccount.AccountCode=N'1101' AND creditAccount.AccountCode=N'2100' AND debitLine.DebitAmount=60000 AND creditLine.CreditAmount=60000 AND je.ReferenceNumber LIKE @name", new (string Name, object? Value)[] { ("@name", $"GoodsReceipt:FAB-{invoiceNumber}:%") }));
 
             var retry = await CreateRepository(connectionString).ReceiveFabricBatchAsync(
                 new CreateFabricBatchDto
@@ -130,7 +130,7 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests(ITestOut
             Assert.NotNull(invoice);
             Assert.Equal(60000m, await ReadDecimalAsync(connectionString,
                 "SELECT TotalAmount FROM dbo.SupplierInvoices WHERE SupplierInvoiceId=@id",
-                ("@id", invoice!.SupplierInvoiceId)));
+                ("@id", invoice.SupplierInvoiceId)));
 
             Assert.Equal(1, await CountAsync(connectionString,
                 @"SELECT COUNT(*)
@@ -148,7 +148,7 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests(ITestOut
                     AND creditAccount.AccountCode = N'2100'
                     AND debit.DebitAmount = 60000
                     AND credit.CreditAmount = 60000;",
-                ("@invoiceId", invoice!.SupplierInvoiceId)));
+                new (string Name, object? Value)[] { ("@invoiceId", invoice.SupplierInvoiceId) }));
         }
         finally
         {
@@ -194,11 +194,11 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests(ITestOut
                     new SupplierFinancialInvoiceRequest(support.SupplierId, invoiceNumber, new DateOnly(2026, 9, 30), new DateOnly(2026, 10, 30), 100000m, null, operation, "MATCH-TEST"),
                     CancellationToken.None);
 
-                Assert.Equal(100000m, invoice!.OutstandingAmount + invoice.AmountPaid);
+                Assert.Equal(100000m, invoice.OutstandingAmount + invoice.AmountPaid);
                 await transaction.CommitAsync();
             }
 
-            var supplierInvoiceId = invoice!.SupplierInvoiceId;
+            var supplierInvoiceId = invoice.SupplierInvoiceId;
             int supplierInvoiceLineId;
             int goodsReceiptId;
             int goodsReceiptItemId;
@@ -242,7 +242,7 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests(ITestOut
             }, CancellationToken.None);
 
             Assert.NotNull(result);
-            Assert.Equal(10m, result!.Quantity);
+            Assert.Equal(10m, result.Quantity);
 
             var inventoryBalance = await ReadDecimalAsync(connectionString,
                 @"SELECT SUM(CASE WHEN i.CurrentQuantity IS NOT NULL THEN i.CurrentQuantity ELSE 0 END)
@@ -426,7 +426,7 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests(ITestOut
         {
             var result = await CreateRepository(connectionString).ReceiveFabricBatchAsync(batch, CancellationToken.None);
             Assert.NotNull(result);
-            Assert.Equal(6, result!.TotalRolls);
+            Assert.Equal(6, result.TotalRolls);
 
             var itemCodes = await QueryStringListAsync(connectionString,
                 @"SELECT DISTINCT i.ItemCode
@@ -679,7 +679,7 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests(ITestOut
             var result = await repository.ReceiveFabricInventoryAsync(request, CancellationToken.None);
 
             Assert.NotNull(result);
-            Assert.Equal(5m, result!.Quantity);
+            Assert.Equal(5m, result.Quantity);
             Assert.StartsWith("FA", result.ItemCode, StringComparison.OrdinalIgnoreCase);
 
             var itemCodes = await QueryStringListAsync(connectionString,
@@ -736,7 +736,7 @@ public sealed partial class FabricConsumablesFoundationIntegrationTests(ITestOut
             }, CancellationToken.None);
 
             Assert.NotNull(result);
-            Assert.Equal(1, result!.TotalRolls);
+            Assert.Equal(1, result.TotalRolls);
             Assert.Equal(6m, result.TotalYards);
             Assert.Equal(153m, result.TotalCost);
             Assert.Equal(beforePurchaseOrders, await CountAsync(connectionString, "SELECT COUNT(*) FROM dbo.PurchaseOrders"));

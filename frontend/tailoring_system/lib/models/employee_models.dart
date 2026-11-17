@@ -1,19 +1,43 @@
 typedef EmployeeJson = Map<String, dynamic>;
 
+class PieceWageProductTypeOption {
+  const PieceWageProductTypeOption({
+    required this.productTypeId,
+    required this.code,
+    required this.displayName,
+    this.allowedStages = const <String>[],
+    this.wageRates = const <String, double>{},
+  });
+
+  final int productTypeId;
+  final String code;
+  final String displayName;
+  final List<String> allowedStages;
+  final Map<String, double> wageRates;
+
+  String get label => displayName.trim().isNotEmpty ? displayName.trim() : code.trim();
+}
+
 class EmployeePieceRateRow {
   const EmployeePieceRateRow({
+    this.productTypeId,
     this.pieceType = '',
     this.stage = '',
     this.rateText = '',
   });
 
+  final int? productTypeId;
   final String pieceType;
   final String stage;
   final String rateText;
 
   EmployeePieceRateRow copyWith(
-          {String? pieceType, String? stage, String? rateText}) =>
+          {int? productTypeId,
+          String? pieceType,
+          String? stage,
+          String? rateText}) =>
       EmployeePieceRateRow(
+        productTypeId: productTypeId ?? this.productTypeId,
         pieceType: pieceType ?? this.pieceType,
         stage: stage ?? this.stage,
         rateText: rateText ?? this.rateText,
@@ -24,6 +48,7 @@ class EmployeePieceRateRow {
   Map<String, dynamic> toJson() {
     final rateValue = rateText.trim();
     return {
+      'productTypeId': productTypeId ?? 0,
       'pieceType': pieceType.trim(),
       'stage': stage.trim(),
       'rate': rateValue.isEmpty ? 0.0 : (double.tryParse(rateValue) ?? 0.0),

@@ -68,3 +68,20 @@ temp/
 # Campaign media uploads are runtime-only and must not be tracked
 Backend/LUMAR_ERP_API_V2/wwwroot/campaign-media/*
 !Backend/LUMAR_ERP_API_V2/wwwroot/campaign-media/.gitkeep
+
+# LUMAR local backups and verification artifacts
+
+*.bak
+*.trx
+
+*_dump.txt
+*_current.txt
+*_audit.txt
+
+R3_usp_PostAccountingEvent_before.sql
+R3_usp_PostAccountingEvent_after.sql
+R3_usp_PostAccountingEvent_proposed.sql
+R3_usp_PostAccountingEvent_rollback.sql
+
+r3_proc_dump.txt
+flutter_analyze_current.txt

@@ -740,10 +740,11 @@ class _LedgerAccountsScreenState extends State<LedgerAccountsScreen> {
             }
             if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
             final items = snapshot.data ?? const <LedgerAccount>[];
-            final selectedAccount =
-                selectedIndex == null || selectedIndex! < 0 || selectedIndex! >= items.length
-                    ? null
-                    : items[selectedIndex!];
+            final selectedAccount = selectedIndex == null ||
+                    selectedIndex! < 0 ||
+                    selectedIndex! >= items.length
+                ? null
+                : items[selectedIndex!];
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -761,7 +762,12 @@ class _LedgerAccountsScreenState extends State<LedgerAccountsScreen> {
                 const SizedBox(height: 10),
                 Expanded(
                   child: _Table(
-                    columns: const ['رمز الحساب', 'اسم الحساب', 'نوع الحساب', 'الحالة'],
+                    columns: const [
+                      'رمز الحساب',
+                      'اسم الحساب',
+                      'نوع الحساب',
+                      'الحالة'
+                    ],
                     rows: items
                         .map((item) => [
                               item.accountCode,
@@ -776,7 +782,8 @@ class _LedgerAccountsScreenState extends State<LedgerAccountsScreen> {
                       selectAccount(index);
                       AppNavigation.push(
                         context,
-                        (_) => LedgerAccountDetailsScreen(accountId: items[index].id),
+                        (_) => LedgerAccountDetailsScreen(
+                            accountId: items[index].id),
                       );
                     },
                     selectedIndex: selectedIndex,
@@ -798,7 +805,8 @@ class LedgerAccountDetailsScreen extends StatefulWidget {
       _LedgerAccountDetailsScreenState();
 }
 
-class _LedgerAccountDetailsScreenState extends State<LedgerAccountDetailsScreen> {
+class _LedgerAccountDetailsScreenState
+    extends State<LedgerAccountDetailsScreen> {
   final repository = FinanceRepository();
   late Future<(LedgerAccount, List<JournalEntryLine>)> future;
 
@@ -828,12 +836,15 @@ class _LedgerAccountDetailsScreenState extends State<LedgerAccountDetailsScreen>
             }
             if (snapshot.hasError) return _ErrorPanel(onRetry: reload);
             final (account, lines) = snapshot.data!;
-            final debit = lines.fold<double>(0, (sum, line) => sum + line.debitAmount);
-            final credit = lines.fold<double>(0, (sum, line) => sum + line.creditAmount);
+            final debit =
+                lines.fold<double>(0, (sum, line) => sum + line.debitAmount);
+            final credit =
+                lines.fold<double>(0, (sum, line) => sum + line.creditAmount);
             final accountType = account.accountType.trim().toLowerCase();
-            final normalBalance = accountType == 'asset' || accountType == 'expense'
-                ? debit - credit
-                : credit - debit;
+            final normalBalance =
+                accountType == 'asset' || accountType == 'expense'
+                    ? debit - credit
+                    : credit - debit;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -851,7 +862,8 @@ class _LedgerAccountDetailsScreenState extends State<LedgerAccountDetailsScreen>
                           overflow: TextOverflow.ellipsis,
                           maxLines: 2,
                         ),
-                        Text('نوع الحساب: ${FinanceUiText.accountType(account.accountType)}'),
+                        Text(
+                            'نوع الحساب: ${FinanceUiText.accountType(account.accountType)}'),
                         Text('إجمالي المدين: ${_money.format(debit)}'),
                         Text('إجمالي الدائن: ${_money.format(credit)}'),
                         Text('الرصيد الحالي: ${_money.format(normalBalance)}'),
@@ -1512,7 +1524,9 @@ class _SupplierInvoicesScreenState extends State<SupplierInvoicesScreen> {
   Widget build(BuildContext context) {
     final query = _search.text.trim().toLowerCase();
     return _Page(
-      title: widget.supplierId == null ? 'فواتير الموردين' : 'فواتير المورد #${widget.supplierId}',
+      title: widget.supplierId == null
+          ? 'فواتير الموردين'
+          : 'فواتير المورد #${widget.supplierId}',
       embedded: widget.embedded,
       onRefresh: _reload,
       child: Column(
@@ -1561,7 +1575,9 @@ class _SupplierInvoicesScreenState extends State<SupplierInvoicesScreen> {
                       if (snapshot.connectionState != ConnectionState.done) {
                         return const Center(child: CircularProgressIndicator());
                       }
-                      if (snapshot.hasError) return _ErrorPanel(onRetry: _reload);
+                      if (snapshot.hasError) {
+                        return _ErrorPanel(onRetry: _reload);
+                      }
 
                       final rows = snapshot.data!
                           .where((item) =>
@@ -1666,7 +1682,9 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen> {
   Widget build(BuildContext context) {
     final query = _search.text.trim().toLowerCase();
     return _Page(
-      title: widget.supplierId == null ? 'دفعات الموردين' : 'دفعات المورد #${widget.supplierId}',
+      title: widget.supplierId == null
+          ? 'دفعات الموردين'
+          : 'دفعات المورد #${widget.supplierId}',
       embedded: widget.embedded,
       onRefresh: _reload,
       child: Column(
@@ -1715,12 +1733,16 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen> {
                       if (snapshot.connectionState != ConnectionState.done) {
                         return const Center(child: CircularProgressIndicator());
                       }
-                      if (snapshot.hasError) return _ErrorPanel(onRetry: _reload);
+                      if (snapshot.hasError) {
+                        return _ErrorPanel(onRetry: _reload);
+                      }
 
                       final rows = snapshot.data!
                           .where((item) =>
                               query.isEmpty ||
-                              item.paymentNumber.toLowerCase().contains(query) ||
+                              item.paymentNumber
+                                  .toLowerCase()
+                                  .contains(query) ||
                               (item.referenceNumber ?? '')
                                   .toLowerCase()
                                   .contains(query))
@@ -1895,13 +1917,13 @@ class _LedgerLookupState<T> extends State<_LedgerLookup<T>> {
                 label: const Text('عرض الكشف')),
           ],
           Expanded(
-            child: TextField(
-                controller: filter,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.filter_alt_outlined),
-                    labelText: 'تصفية بالمرجع أو القيمة',
-                    border: OutlineInputBorder()))),
+              child: TextField(
+                  controller: filter,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.filter_alt_outlined),
+                      labelText: 'تصفية بالمرجع أو القيمة',
+                      border: OutlineInputBorder()))),
         ];
 
         return Column(
@@ -2071,61 +2093,128 @@ class _Page extends StatelessWidget {
   }
 }
 
-class _Table extends StatelessWidget {
-  const _Table(
-      {required this.columns,
-      required this.rows,
-      required this.empty,
-      this.onRowTap,
-      this.selectedIndex});
+class LedgerTable extends StatelessWidget {
+  const LedgerTable({
+    super.key,
+    required this.columns,
+    required this.rows,
+    required this.empty,
+    this.onRowTap,
+    this.selectedIndex,
+  });
   final List<String> columns;
   final List<List<String>> rows;
   final String empty;
   final ValueChanged<int>? onRowTap;
   final int? selectedIndex;
+
+  @override
+  Widget build(BuildContext context) => _Table(
+        key: const ValueKey('ledger-table'),
+        columns: columns,
+        rows: rows,
+        empty: empty,
+        onRowTap: onRowTap,
+        selectedIndex: selectedIndex,
+      );
+}
+
+class _Table extends StatefulWidget {
+  const _Table({
+    super.key,
+    required this.columns,
+    required this.rows,
+    required this.empty,
+    this.onRowTap,
+    this.selectedIndex,
+  });
+  final List<String> columns;
+  final List<List<String>> rows;
+  final String empty;
+  final ValueChanged<int>? onRowTap;
+  final int? selectedIndex;
+
+  @override
+  State<_Table> createState() => _TableState();
+}
+
+class _TableState extends State<_Table> {
+  late final ScrollController _verticalController;
+  late final ScrollController _horizontalController;
+
+  @override
+  void initState() {
+    super.initState();
+    _verticalController = ScrollController();
+    _horizontalController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _verticalController.dispose();
+    _horizontalController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (rows.isEmpty) return Center(child: Text(empty));
+    if (widget.rows.isEmpty) return Center(child: Text(widget.empty));
+
+    final table = DataTable(
+      columns: widget.columns
+          .map((value) => DataColumn(
+              label: Text(value,
+                  style: const TextStyle(fontWeight: FontWeight.bold))))
+          .toList(),
+      rows: widget.rows
+          .asMap()
+          .entries
+          .map((entry) => DataRow(
+              selected: widget.selectedIndex == entry.key,
+              onSelectChanged: widget.onRowTap == null
+                  ? null
+                  : (_) {
+                      widget.onRowTap!(entry.key);
+                    },
+              cells: entry.value
+                  .map((value) => DataCell(
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxWidth: 220,
+                          ),
+                          child: Text(
+                            value,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ))
+                  .toList()))
+          .toList(),
+    );
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Scrollbar(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minWidth: MediaQuery.of(context).size.width,
-            ),
-            child: DataTable(
-              columns: columns
-                  .map((value) => DataColumn(
-                      label: Text(value,
-                          style: const TextStyle(fontWeight: FontWeight.bold))))
-                  .toList(),
-              rows: rows
-                  .asMap()
-                  .entries
-                  .map((entry) => DataRow(
-                      selected: selectedIndex == entry.key,
-                      onSelectChanged: onRowTap == null
-                          ? null
-                          : (_) {
-                              onRowTap!(entry.key);
-                            },
-                      cells: entry.value
-                          .map((value) => DataCell(
-                                ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: 220,
-                                  ),
-                                  child: Text(
-                                    value,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ))
-                          .toList()))
-                  .toList(),
+        controller: _verticalController,
+        thumbVisibility: true,
+        trackVisibility: true,
+        child: Scrollbar(
+          controller: _horizontalController,
+          thumbVisibility: true,
+          trackVisibility: true,
+          notificationPredicate: (notification) => notification.depth == 0,
+          child: SingleChildScrollView(
+            controller: _verticalController,
+            child: SingleChildScrollView(
+              controller: _horizontalController,
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minWidth: MediaQuery.of(context).size.width,
+                ),
+                child: table,
+              ),
             ),
           ),
         ),
@@ -2180,8 +2269,8 @@ class _CashFlowStatement extends StatelessWidget {
       ('تحصيلات العملاء', cashFlow.customerCollections),
       ('عربون العملاء', cashFlow.customerAdvances),
       ('المبالغ المستردة', cashFlow.refunds),
-      ('صافي حركة النقد', cashFlow.netCashMovement),
-      ('صافي مركز النقد', cashFlow.netCashPosition),
+      ('صافي تحصيلات العملاء', cashFlow.netCashMovement),
+      ('صافي حركة النقد العام', cashFlow.netCashPosition),
       ('رصيد النقدية في الأستاذ العام', cashFlow.generalLedgerCashBalance),
       ('فرق المطابقة النقدية', cashFlow.cashDifference),
     ];
@@ -2195,6 +2284,16 @@ class _CashFlowStatement extends StatelessWidget {
                 subtitle: Text(
                     'يوجد فرق مثبت بين الحسابات النقدية ودفتر الأستاذ العام.'))),
       Text('التدفقات النقدية', style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 8),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text(
+            'صافي تحصيلات العملاء = تحصيلات العملاء + العربون - المستردات. صافي حركة النقد العام = صافي CashMovements الفعلي.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+      ),
       const SizedBox(height: 8),
       ...values.map((entry) => Card(
           child: ListTile(

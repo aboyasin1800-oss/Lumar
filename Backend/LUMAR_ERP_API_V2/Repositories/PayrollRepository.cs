@@ -15,7 +15,21 @@ public sealed class PayrollRepository(ReadOnlySqlConnectionFactory readOnlyConne
     public Task<IReadOnlyList<PayrollItemDto>> GetItemsAsync(int recordId, CancellationToken ct) => QueryAsync("SELECT PayrollItemId, PayrollRecordId, ItemType, ItemName, Quantity, Rate, Amount, Notes FROM dbo.PayrollItems WHERE PayrollRecordId = @id ORDER BY PayrollItemId", recordId, reader => new PayrollItemDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetString(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.NullableString("Notes")), ct);
     public Task<IReadOnlyList<EmployeePayrollSummaryDto>> GetEmployeeSummariesAsync(int periodId, CancellationToken ct) => QueryAsync("SELECT EmployeeId, PayrollPeriodId, BasicSalaryAmount, PieceWageAmount, AttendanceAdjustmentAmount, OvertimeAmount, GrossAmount, DeductionsAmount, NetAmount FROM dbo.PayrollRecords WHERE PayrollPeriodId = @id ORDER BY EmployeeId", periodId, reader => new EmployeePayrollSummaryDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetDecimal(2), reader.GetDecimal(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetDecimal(8)), ct);
     public Task<IReadOnlyList<PieceWageRecordDto>> GetPieceWagesAsync(CancellationToken ct) => QueryAsync("SELECT PieceWageRecordID, OrderID, OrderItemID, PieceID, TrackingEventID, EmployeeId, EmployeeCode, PieceType, Stage, Quantity, WageRate, TotalWage, PayrollPeriodId, PayrollRecordId, Status, Notes, CreatedAt FROM dbo.PieceWageRecords ORDER BY CreatedAt DESC, PieceWageRecordID DESC", null, reader => new PieceWageRecordDto(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.NullableInt32("EmployeeId"), reader.NullableString("EmployeeCode"), reader.GetString(7), reader.GetString(8), reader.GetDecimal(9), reader.GetDecimal(10), reader.GetDecimal(11), reader.NullableInt32("PayrollPeriodId"), reader.NullableInt32("PayrollRecordId"), reader.GetString(14), reader.NullableString("Notes"), reader.GetDateTime(16)), ct);
-    public Task<IReadOnlyList<PieceWageRateDto>> GetPieceWageRatesAsync(CancellationToken ct) => QueryAsync("SELECT PieceWageRateID, PieceType, Stage, WageRate, IsActive, Notes, CreatedAt, UpdatedAt FROM dbo.PieceWageRates ORDER BY PieceType, Stage, PieceWageRateID", null, reader => new PieceWageRateDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetDecimal(3), reader.GetBoolean(4), reader.NullableString("Notes"), reader.GetDateTime(6), reader.NullableDateTime("UpdatedAt")), ct);
+    public Task<IReadOnlyList<PieceWageRateDto>> GetPieceWageRatesAsync(CancellationToken ct) => QueryAsync(@"
+        SELECT pwr.PieceWageRateID, pwr.PieceType, pwr.Stage, pwr.WageRate, pwr.IsActive, pwr.Notes, pwr.CreatedAt, pwr.UpdatedAt
+        FROM dbo.PieceWageRates pwr
+        WHERE pwr.IsActive = 1
+          AND EXISTS (
+              SELECT 1
+              FROM dbo.PricingProductTypes pt
+              WHERE pt.IsActive = 1
+                AND pt.Category = N'Garment'
+                AND pt.Scope IN (N'Both', N'Tailoring')
+                AND pt.NameAr = pwr.PieceType
+          )
+        ORDER BY pwr.PieceType, pwr.Stage, pwr.PieceWageRateID",
+        null,
+        reader => new PieceWageRateDto(reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetDecimal(3), reader.GetBoolean(4), reader.NullableString("Notes"), reader.GetDateTime(6), reader.NullableDateTime("UpdatedAt")), ct);
 
     public async Task<PieceWageRateDto> CreatePieceWageRateAsync(CreatePieceWageRateDto request, CancellationToken ct)
     {

@@ -68,12 +68,11 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
 
   static const String _salaryTypeBasic = 'BasicSalary';
   static const String _salaryTypePiece = 'PieceWage';
-  static const String _officialPieceWageRatesUrl = 'http://127.0.0.1:5093/payroll/piece-wage-rates';
 
   late List<EmployeeDepartment> _departments;
-  List<String> _productionOptions = const <String>[];
-  final Map<String, List<String>> _stageOptionsByPieceType = <String, List<String>>{};
-  final Map<String, Map<String, double>> _officialPieceWageRatesByType = <String, Map<String, double>>{};
+  List<PieceWageProductTypeOption> _productionOptions = const <PieceWageProductTypeOption>[];
+  final Map<int, List<String>> _stageOptionsByProductTypeId = <int, List<String>>{};
+  final Map<int, Map<String, double>> _officialPieceWageRatesByProductTypeId = <int, Map<String, double>>{};
   final List<EmployeePieceRateRow> _pieceRateRows = <EmployeePieceRateRow>[
     const EmployeePieceRateRow(),
   ];
@@ -97,39 +96,11 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
 
   Future<void> _loadOfficialPieceWageRates() async {
     try {
-      final response = await http
-          .get(Uri.parse(_officialPieceWageRatesUrl))
-          .timeout(const Duration(seconds: 5));
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        return;
-      }
-
-      final payload = jsonDecode(response.body);
-      if (payload is! List) {
-        return;
-      }
-
-      final nextRates = <String, Map<String, double>>{};
-      for (final item in payload) {
-        if (item is! Map<String, dynamic>) continue;
-
-        final pieceType = (item['pieceType'] ?? item['PieceType'] ?? '').toString().trim();
-        final stage = (item['stage'] ?? item['Stage'] ?? '').toString().trim();
-        final wageRate = (item['wageRate'] ?? item['WageRate'] ?? 0).toString();
-        final parsedRate = double.tryParse(wageRate) ?? 0.0;
-
-        if (pieceType.isEmpty || stage.isEmpty) {
-          continue;
-        }
-
-        nextRates.putIfAbsent(pieceType, () => <String, double>{});
-        nextRates[pieceType]![stage] = parsedRate;
-      }
-
+      final officialRates = await repository.getOfficialPieceWageRatesByProductTypeId();
       if (!mounted) return;
       setState(() {
-        _officialPieceWageRatesByType.clear();
-        _officialPieceWageRatesByType.addAll(nextRates);
+        _officialPieceWageRatesByProductTypeId.clear();
+        _officialPieceWageRatesByProductTypeId.addAll(officialRates);
       });
     } catch (_) {
       if (!mounted) return;
@@ -137,8 +108,8 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
     }
   }
 
-  String _displayOfficialPieceRate(String pieceType, String stage) {
-    final rate = _officialPieceWageRatesByType[pieceType.trim()]?[stage.trim()];
+  String _displayOfficialPieceRate(int? productTypeId, String stage) {
+    final rate = productTypeId == null ? null : _officialPieceWageRatesByProductTypeId[productTypeId]?[stage.trim()];
     if (rate == null) {
       return 'غير متاح';
     }
@@ -178,15 +149,20 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
 
   Future<void> _loadProductionRouteOptions() async {
     try {
-      final options = await repository.getProductionRouteOptions();
-      final stageMap = await _loadOfficialStageMap(options);
+      final options = await repository.getPieceWageProductTypes();
+      final stageMap = <int, List<String>>{};
+      for (final option in options) {
+        if (option.productTypeId > 0) {
+          stageMap[option.productTypeId] = option.allowedStages;
+        }
+      }
       if (!mounted) return;
       setState(() {
         _productionOptions = options;
-        _stageOptionsByPieceType.clear();
-        _stageOptionsByPieceType.addAll(stageMap);
+        _stageOptionsByProductTypeId.clear();
+        _stageOptionsByProductTypeId.addAll(stageMap);
         _loadingProductionOptions = false;
-        if (_pieceRateRows.isEmpty || _pieceRateRows.every((row) => row.pieceType.isEmpty && row.stage.isEmpty && row.rateText.isEmpty)) {
+        if (_pieceRateRows.isEmpty || _pieceRateRows.every((row) => row.productTypeId == null && row.pieceType.isEmpty && row.stage.isEmpty && row.rateText.isEmpty)) {
           _pieceRateRows.clear();
           _pieceRateRows.add(const EmployeePieceRateRow());
         }
@@ -196,52 +172,6 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       setState(() => _loadingProductionOptions = false);
       _showMessage('تعذر تحميل أنواع القطع المتاحة.', isError: true);
     }
-  }
-
-  Future<Map<String, List<String>>> _loadOfficialStageMap(List<String> fallbackOptions) async {
-    final routeResponse = await http
-        .get(Uri.parse('http://localhost:5093/settings/production-routes'))
-        .timeout(const Duration(seconds: 5));
-    if (routeResponse.statusCode < 200 || routeResponse.statusCode >= 300) {
-      final result = <String, List<String>>{};
-      for (final type in fallbackOptions.where((option) => option.trim().isNotEmpty)) {
-        result.putIfAbsent(type, () => const <String>[]);
-      }
-      return result;
-    }
-
-    final payload = jsonDecode(routeResponse.body);
-    final routes = payload is Map<String, dynamic> ? (payload['routes'] as List<dynamic>? ?? const <dynamic>[]) : const <dynamic>[];
-    final result = <String, List<String>>{};
-
-    for (final route in routes) {
-      if (route is! Map<String, dynamic>) continue;
-
-      final productTypeName = (route['productTypeNameAr'] ?? route['ProductTypeNameAr'] ?? route['nameAr'] ?? route['NameAr'] ?? route['name'] ?? route['Name'] ?? route['productTypeCode'] ?? route['ProductTypeCode'] ?? '').toString().trim();
-      final productTypeCode = (route['productTypeCode'] ?? route['ProductTypeCode'] ?? route['code'] ?? route['Code'] ?? '').toString().trim();
-      final displayName = productTypeName.isNotEmpty ? productTypeName : productTypeCode;
-      final rawStages = route['stages'] as List<dynamic>? ?? const <dynamic>[];
-      final stages = rawStages
-          .map((value) => value.toString().trim())
-          .where((value) => value.isNotEmpty)
-          .toList();
-
-      if (displayName.isNotEmpty && stages.isNotEmpty) {
-        result[displayName] = stages;
-      }
-      if (productTypeCode.isNotEmpty && stages.isNotEmpty) {
-        result[productTypeCode] = stages;
-      }
-    }
-
-    for (final type in fallbackOptions.where((option) => option.trim().isNotEmpty)) {
-      result.putIfAbsent(type, () => const <String>[]);
-      if (result[type] == null || result[type]!.isEmpty) {
-        result[type] = const <String>[];
-      }
-    }
-
-    return result;
   }
 
   Future<void> _loadDepartments() async {
@@ -260,6 +190,19 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
         }
         _loadingDepartments = false;
       });
+    } on EmployeeApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _departments = const [];
+        _departmentId = null;
+        _loadingDepartments = false;
+      });
+      final friendlyMessage = switch (error.statusCode) {
+        401 => 'انتهت الجلسة. سجّل الدخول من جديد.',
+        403 => 'ليس لديك صلاحية للوصول إلى أقسام الموظفين.',
+        _ => 'تعذر تحميل أقسام الموظفين.',
+      };
+      _showMessage(friendlyMessage, isError: true);
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -306,7 +249,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       }
 
       for (final row in validRows) {
-        if (row.pieceType.trim().isEmpty) {
+        if (row.productTypeId == null || row.productTypeId! <= 0) {
           _showMessage('نوع القطعة مطلوب في كل سطر.', isError: true);
           return;
         }
@@ -315,10 +258,20 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
           return;
         }
 
-        final officialRate = _officialPieceWageRatesByType[row.pieceType.trim()]?[row.stage.trim()];
+        final option = _productionOptions.firstWhere(
+          (entry) => entry.productTypeId == row.productTypeId,
+          orElse: () => const PieceWageProductTypeOption(
+            productTypeId: 0,
+            code: '',
+            displayName: '',
+            allowedStages: <String>[],
+          ),
+        );
+        final officialRate = _officialPieceWageRatesByProductTypeId[row.productTypeId]?[row.stage.trim()];
         if (officialRate == null) {
+          final label = option.displayName.isNotEmpty ? option.displayName : 'نوع القطعة المحدد';
           _showMessage(
-            'السعر العام الرسمي غير متاح لنوع القطعة "${row.pieceType.trim()}" في المرحلة "${row.stage.trim()}". لا يمكن حفظ الأجر دون مصدر السعر الرسمي.',
+            'السعر العام الرسمي غير متاح لـ "$label" في المرحلة "${row.stage.trim()}". لا يمكن حفظ الأجر دون مصدر السعر الرسمي.',
             isError: true,
           );
           return;
@@ -361,7 +314,10 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       hireDate: parsedHireDate,
       status: _status,
       salaryType: _salaryType,
-      officialPieceRates: _officialPieceWageRatesByType,
+      officialPieceRates: _officialPieceWageRatesByProductTypeId.map(
+        (productTypeId, ratesByStage) =>
+            MapEntry(productTypeId.toString(), ratesByStage),
+      ),
       pieceRates: _salaryType == _salaryTypePiece
           ? _pieceRateRows
               .where((row) => row.pieceType.trim().isNotEmpty || row.stage.trim().isNotEmpty || row.rateText.trim().isNotEmpty)
@@ -586,9 +542,10 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                 ),
                               ),
                               SizedBox(
-                                width: 220,
+                                width: 260,
                                 child: DropdownButtonFormField<String>(
                                   initialValue: _status,
+                                  isExpanded: true,
                                   decoration: const InputDecoration(
                                     labelText: 'الحالة',
                                     border: OutlineInputBorder(),
@@ -659,9 +616,9 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                       children: [
                                         SizedBox(
                                           width: 280,
-                                          child: DropdownButtonFormField<String>(
+                                          child: DropdownButtonFormField<int>(
                                             key: ValueKey('piece_type_${index}_dropdown'),
-                                            initialValue: row.pieceType.isEmpty ? null : row.pieceType,
+                                            value: row.productTypeId != null && row.productTypeId! > 0 ? row.productTypeId : null,
                                             isExpanded: true,
                                             decoration: const InputDecoration(
                                               labelText: 'نوع القطعة',
@@ -669,22 +626,35 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                             ),
                                             items: _productionOptions
                                                 .map(
-                                                  (option) => DropdownMenuItem<String>(
-                                                    value: option,
-                                                    child: Text(_displayProductionLabel(option)),
+                                                  (option) => DropdownMenuItem<int>(
+                                                    value: option.productTypeId,
+                                                    child: Text(option.displayName),
                                                   ),
                                                 )
                                                 .toList(),
                                             onChanged: (value) {
                                               setState(() {
-                                                final nextType = value ?? '';
-                                                final nextStages = _stageOptionsByPieceType[nextType] ?? const <String>[];
+                                                final nextTypeId = value ?? 0;
+                                                final selectedOption = _productionOptions.firstWhere(
+                                                  (option) => option.productTypeId == nextTypeId,
+                                                  orElse: () => const PieceWageProductTypeOption(
+                                                    productTypeId: 0,
+                                                    code: '',
+                                                    displayName: '',
+                                                    allowedStages: <String>[],
+                                                  ),
+                                                );
+                                                final nextStages = _stageOptionsByProductTypeId[nextTypeId] ?? const <String>[];
                                                 final nextStage = nextStages.contains(row.stage) ? row.stage : (nextStages.isNotEmpty ? nextStages.first : '');
-                                                _pieceRateRows[index] = row.copyWith(pieceType: nextType, stage: nextStage);
+                                                _pieceRateRows[index] = row.copyWith(
+                                                  productTypeId: nextTypeId,
+                                                  pieceType: selectedOption.label,
+                                                  stage: nextStage,
+                                                );
                                               });
                                             },
                                             validator: (value) =>
-                                                (value == null || value.trim().isEmpty)
+                                                (value == null || value <= 0)
                                                     ? 'نوع القطعة مطلوب.'
                                                     : null,
                                           ),
@@ -693,13 +663,13 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                           width: 220,
                                           child: DropdownButtonFormField<String>(
                                             key: ValueKey('piece_stage_${index}_dropdown'),
-                                            initialValue: row.stage.isEmpty ? null : row.stage,
+                                            value: row.stage.isEmpty ? null : row.stage,
                                             isExpanded: true,
                                             decoration: const InputDecoration(
                                               labelText: 'المرحلة',
                                               border: OutlineInputBorder(),
                                             ),
-                                            items: (_stageOptionsByPieceType[row.pieceType] ?? const <String>[])
+                                            items: (_stageOptionsByProductTypeId[row.productTypeId] ?? const <String>[])
                                                 .map(
                                                   (option) => DropdownMenuItem<String>(
                                                     value: option,
@@ -722,9 +692,9 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                           width: 190,
                                           child: TextFormField(
                                             readOnly: true,
-                                            initialValue: row.pieceType.isEmpty || row.stage.isEmpty
+                                            initialValue: row.productTypeId == null || row.stage.isEmpty
                                                 ? ''
-                                                : _displayOfficialPieceRate(row.pieceType, row.stage),
+                                                : _displayOfficialPieceRate(row.productTypeId, row.stage),
                                             decoration: const InputDecoration(
                                               labelText: 'السعر العام',
                                               border: OutlineInputBorder(),

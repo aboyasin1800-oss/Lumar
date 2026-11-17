@@ -84,8 +84,8 @@ void main() {
     expect(normalized.single.remainingQuantity, 20);
   });
 
-  test('live fabric batch payload always sends the approved opposing ledger account', () {
-    final pending = PendingReceiptStorage(
+  test('official linked supplier invoice fabric payload uses 1120 while other pending receipts keep 2100', () {
+    final linkedPending = PendingReceiptStorage(
       goodsReceiptItemId: 77,
       goodsReceiptId: 99,
       supplierId: 12,
@@ -99,11 +99,28 @@ void main() {
       remainingQuantity: 20,
       unit: 'ياردة',
       unitCost: 60,
+      supplierInvoiceLineId: 405,
     );
 
-    final payload = buildFabricReceiptPayload(
+    final unlinkedPending = PendingReceiptStorage(
+      goodsReceiptItemId: 88,
+      goodsReceiptId: 100,
+      supplierId: 12,
+      supplierName: 'المورد أ',
+      receiptNumber: 'R-1002',
+      receiptDate: DateTime(2026, 10, 6),
+      itemType: 'Fabric',
+      itemDescription: 'قماش أسود',
+      receivedQuantity: 18,
+      storedQuantity: 0,
+      remainingQuantity: 18,
+      unit: 'ياردة',
+      unitCost: 55,
+    );
+
+    final linkedPayload = buildFabricReceiptPayload(
       isPendingStorage: true,
-      pendingReceipt: pending,
+      pendingReceipt: linkedPending,
       batchCatalogNumber: 'CAT-001',
       itemCode: 'FAB-001',
       fabricTypeCode: 'Cotton',
@@ -112,16 +129,27 @@ void main() {
       unitId: 1,
       sourceOperationId: '3d0d54ef-7bb8-4b55-a19b-7d9c8dcbf5d3',
       rolls: [
-        {
-          'fabricCode': 'FAB-001',
-          'rollCode': 'ROLL-001',
-          'colorValue': 'أبيض',
-          'quantity': 12.5,
-        },
+        {'fabricCode': 'FAB-001', 'rollCode': 'ROLL-001', 'colorValue': 'أبيض', 'quantity': 12.5},
       ],
     );
 
-    expect(payload['opposingLedgerAccountCode'], '2100');
+    final unlinkedPayload = buildFabricReceiptPayload(
+      isPendingStorage: true,
+      pendingReceipt: unlinkedPending,
+      batchCatalogNumber: 'CAT-002',
+      itemCode: 'FAB-002',
+      fabricTypeCode: 'Cotton',
+      fabricWidth: 58,
+      colorValue: 'أسود',
+      unitId: 1,
+      sourceOperationId: '3d0d54ef-7bb8-4b55-a19b-7d9c8dcbf5d3',
+      rolls: [
+        {'fabricCode': 'FAB-002', 'rollCode': 'ROLL-002', 'colorValue': 'أسود', 'quantity': 9.5},
+      ],
+    );
+
+    expect(linkedPayload['opposingLedgerAccountCode'], '1120');
+    expect(unlinkedPayload['opposingLedgerAccountCode'], '2100');
   });
 
   test('manual quantities are accepted without enforcing equal roll splitting', () {

@@ -390,7 +390,7 @@ BEGIN TRY
             IF @sourcePostingAmount <> @PostingAmount
                OR CONVERT(decimal(18,2), ROUND(@sourceOperationalAmount, 2)) <> @PostingAmount
                 THROW 51515, N''The inventory receipt amount does not match.'', 1;
-            IF (@AccountingEventType = 7 AND @creditAccountCode NOT IN (N''2100'', N''1101''))
+            IF (@AccountingEventType = 7 AND @creditAccountCode NOT IN (N''2100'', N''1101'', N''1120''))
                OR (@AccountingEventType = 9 AND @creditAccountCode NOT IN (N''2100'', N''1102''))
                 THROW 51516, N''The inventory receipt opposing account is not approved for this event.'', 1;
             SET @debitAccountCode = CASE @AccountingEventType WHEN 7 THEN N''1101'' ELSE N''1102'' END;

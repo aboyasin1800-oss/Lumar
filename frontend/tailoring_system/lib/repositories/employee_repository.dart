@@ -12,6 +12,178 @@ class EmployeeRepository {
       defaultValue: 'http://127.0.0.1:5093');
   final http.Client _client;
 
+  static String _canonicalStage(String value) {
+    final text = value.trim();
+    if (text.isEmpty) return '';
+    switch (text.toLowerCase()) {
+      case 'cutting':
+        return 'Cutting';
+      case 'sewing':
+        return 'Sewing';
+      default:
+        return '';
+    }
+  }
+
+  static List<dynamic> _coerceList(dynamic value) {
+    if (value is List) return value;
+    if (value is Map) {
+      final typed = Map<String, dynamic>.from(value as Map);
+      final candidates = <String>['routes', 'data', 'items', 'result', 'results', 'options', 'rates'];
+      for (final key in candidates) {
+        final candidate = typed[key];
+        if (candidate is List) return candidate;
+      }
+      for (final entry in typed.entries) {
+        final candidate = entry.value;
+        if (candidate is List && candidate.isNotEmpty) {
+          return candidate;
+        }
+      }
+    }
+    return const <dynamic>[];
+  }
+
+  static Map<String, String> _extractProductTypeIdentity(Map<String, dynamic> item) {
+    final productTypeId = item['productTypeId'] ?? item['ProductTypeId'] ?? item['productTypeID'];
+    final code = item['productTypeCode'] ?? item['ProductTypeCode'] ?? item['code'] ?? item['Code'] ?? '';
+    final displayName = item['productTypeNameAr'] ??
+        item['ProductTypeNameAr'] ??
+        item['nameAr'] ??
+        item['NameAr'] ??
+        item['name'] ??
+        item['Name'] ??
+        code;
+
+    final textId = productTypeId is num ? productTypeId.toInt() : int.tryParse(productTypeId?.toString() ?? '');
+    return {
+      'productTypeId': textId == null || textId <= 0 ? '' : textId.toString(),
+      'code': code.toString().trim(),
+      'displayName': displayName.toString().trim(),
+    };
+  }
+
+  Future<List<PieceWageProductTypeOption>> getPieceWageProductTypes() async {
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/settings/production-routes'),
+      headers: _headers(),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw EmployeeApiException(
+        '/settings/production-routes',
+        response.statusCode,
+        _extractMessage(response),
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    final routeEntries = _coerceList(decoded);
+    final uniqueTypes = <int, PieceWageProductTypeOption>{};
+
+    for (final rawEntry in routeEntries) {
+      if (rawEntry is! Map<String, dynamic>) {
+        if (rawEntry is Map) {
+          final typed = Map<String, dynamic>.from(rawEntry as Map);
+          final identity = _extractProductTypeIdentity(typed);
+          final productTypeId = int.tryParse(identity['productTypeId'] ?? '');
+          if (productTypeId == null || productTypeId <= 0) continue;
+          final stages = typed['stages'] is List
+              ? (typed['stages'] as List)
+              : const <dynamic>[];
+          final allowedStages = stages
+              .map((entry) => _canonicalStage(entry.toString()))
+              .where((entry) => entry.isNotEmpty)
+              .toSet()
+              .toList();
+          uniqueTypes[productTypeId] = PieceWageProductTypeOption(
+            productTypeId: productTypeId,
+            code: identity['code'] ?? '',
+            displayName: identity['displayName'] ?? identity['code'] ?? '',
+            allowedStages: allowedStages,
+          );
+        }
+        continue;
+      }
+
+      final identity = _extractProductTypeIdentity(rawEntry);
+      final productTypeId = int.tryParse(identity['productTypeId'] ?? '');
+      if (productTypeId == null || productTypeId <= 0) continue;
+      final stages = rawEntry['stages'] is List ? rawEntry['stages'] as List : const <dynamic>[];
+      final allowedStages = stages
+          .map((entry) => _canonicalStage(entry.toString()))
+          .where((entry) => entry.isNotEmpty)
+          .toSet()
+          .toList();
+
+      uniqueTypes[productTypeId] = PieceWageProductTypeOption(
+        productTypeId: productTypeId,
+        code: identity['code'] ?? '',
+        displayName: identity['displayName'] ?? identity['code'] ?? '',
+        allowedStages: allowedStages,
+      );
+    }
+
+    final ordered = uniqueTypes.values.toList();
+    ordered.sort((a, b) => a.productTypeId.compareTo(b.productTypeId));
+    return ordered;
+  }
+
+  Future<Map<String, Map<String, double>>> getOfficialPieceWageRates() async {
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/payroll/piece-wage-rates'),
+      headers: _headers(),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return const <String, Map<String, double>>{};
+    }
+
+    final decoded = jsonDecode(response.body);
+    final rateItems = _coerceList(decoded);
+
+    final rates = <String, Map<String, double>>{};
+    for (final item in rateItems) {
+      if (item is! Map<String, dynamic>) continue;
+      final pieceType = (item['pieceType'] ?? item['PieceType'] ?? '').toString().trim();
+      final stage = _canonicalStage((item['stage'] ?? item['Stage'] ?? '').toString());
+      final rawRate = item['wageRate'] ?? item['WageRate'] ?? 0;
+      final parsedRate = double.tryParse(rawRate.toString()) ?? 0.0;
+      if (pieceType.isEmpty || stage.isEmpty) continue;
+      rates.putIfAbsent(pieceType, () => <String, double>{});
+      rates[pieceType]![stage] = parsedRate;
+    }
+
+    return rates;
+  }
+
+  Future<Map<int, Map<String, double>>> getOfficialPieceWageRatesByProductTypeId() async {
+    final productTypes = await getPieceWageProductTypes();
+    final ratesByPieceType = await getOfficialPieceWageRates();
+    final result = <int, Map<String, double>>{};
+
+    for (final productType in productTypes) {
+      final matched = <String, double>{};
+      final keys = <String>{
+        productType.code,
+        productType.displayName,
+        productType.code.toLowerCase(),
+        productType.displayName.toLowerCase(),
+      };
+
+      for (final entry in ratesByPieceType.entries) {
+        final pieceTypeName = entry.key.trim();
+        if (keys.any((key) => key == pieceTypeName || key == pieceTypeName.toLowerCase())) {
+          matched.addAll(entry.value);
+        }
+      }
+
+      if (matched.isNotEmpty) {
+        result[productType.productTypeId] = matched;
+      }
+    }
+
+    return result;
+  }
+
   Map<String, String> _headers({Map<String, String>? extra}) {
     final headers = <String, String>{
       if (extra != null) ...extra,
@@ -168,15 +340,88 @@ class EmployeeRepository {
         _extractMessage(response),
       );
     }
+
     final decoded = jsonDecode(response.body);
-    if (decoded is! List) {
-      return const <String>[];
+    final candidates = <dynamic>[];
+
+    if (decoded is List) {
+      candidates.addAll(decoded);
+    } else if (decoded is Map<String, dynamic>) {
+      candidates.addAll([
+        decoded['data'],
+        decoded['items'],
+        decoded['result'],
+        decoded['results'],
+        decoded['routes'],
+        decoded['options'],
+      ]);
     }
-    return decoded
-        .whereType<String>()
-        .map((value) => value.trim())
-        .where((value) => value.isNotEmpty)
-        .toList();
+
+    final values = <String>[];
+    for (final candidate in candidates) {
+      if (candidate is String) {
+        final trimmed = candidate.trim();
+        if (trimmed.isNotEmpty) values.add(trimmed);
+        continue;
+      }
+
+      if (candidate is Map<String, dynamic>) {
+        final extracted = <String>[];
+        for (final key in [
+          'productTypeNameAr',
+          'ProductTypeNameAr',
+          'nameAr',
+          'NameAr',
+          'pieceType',
+          'PieceType',
+          'productTypeCode',
+          'ProductTypeCode',
+          'name',
+          'Name',
+          'code',
+          'Code',
+        ]) {
+          final value = candidate[key];
+          if (value is String && value.trim().isNotEmpty) {
+            extracted.add(value.trim());
+          }
+        }
+        values.addAll(extracted);
+        continue;
+      }
+
+      if (candidate is List) {
+        for (final item in candidate) {
+          if (item is String) {
+            final trimmed = item.trim();
+            if (trimmed.isNotEmpty) values.add(trimmed);
+          } else if (item is Map<String, dynamic>) {
+            final extracted = <String>[];
+            for (final key in [
+              'productTypeNameAr',
+              'ProductTypeNameAr',
+              'nameAr',
+              'NameAr',
+              'pieceType',
+              'PieceType',
+              'productTypeCode',
+              'ProductTypeCode',
+              'name',
+              'Name',
+              'code',
+              'Code',
+            ]) {
+              final value = item[key];
+              if (value is String && value.trim().isNotEmpty) extracted.add(value.trim());
+            }
+            values.addAll(extracted);
+          }
+        }
+      }
+    }
+
+    final seen = <String>{};
+    return values.where((value) => seen.add(value)).toList();
   }
 
   Future<List<EmployeeDocument>> getDocuments(int employeeId) => _list(
@@ -503,21 +748,25 @@ class EmployeeRepository {
 }
 
 String _extractMessage(http.Response response) {
-  try {
-    final decoded = jsonDecode(response.body);
-    if (decoded is Map<String, dynamic>) {
-      final message = decoded['message'] ?? decoded['error'];
-      if (message is String && message.isNotEmpty) return message;
-    }
-    if (decoded is String && decoded.isNotEmpty) return decoded;
-  } catch (_) {}
-
-  return switch (response.statusCode) {
+  final defaultMessage = switch (response.statusCode) {
     400 => 'بيانات الموظف غير صحيحة.',
+    401 => 'انتهت الجلسة أو غير مسموح لك بالوصول.',
+    403 => 'ليس لديك صلاحية للوصول إلى هذا القسم.',
     409 => 'رقم الموظف موجود بالفعل.',
     404 => 'الموظف المطلوب غير موجود.',
     _ => 'تعذر تنفيذ العملية المطلوبة.',
   };
+
+  try {
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) {
+      final message = decoded['message'] ?? decoded['error'];
+      if (message is String && message.isNotEmpty && response.statusCode < 400) return message;
+    }
+    if (decoded is String && decoded.isNotEmpty && response.statusCode < 400) return decoded;
+  } catch (_) {}
+
+  return defaultMessage;
 }
 
 class EmployeeApiException implements Exception {

@@ -91,7 +91,14 @@ Map<String, dynamic> buildFabricReceiptPayload({
   required List<Map<String, dynamic>> rolls,
   Map<String, dynamic>? extraFields,
 }) {
-  final approved = {'opposingLedgerAccountCode': '2100'};
+  final usesOfficialLinkedSupplierInvoiceAccount = isPendingStorage &&
+      pendingReceipt != null &&
+      pendingReceipt.supplierInvoiceLineId != null &&
+      pendingReceipt.supplierInvoiceLineId! > 0;
+
+  final approved = {
+    'opposingLedgerAccountCode': usesOfficialLinkedSupplierInvoiceAccount ? '1120' : '2100',
+  };
 
   if (isPendingStorage) {
     if (pendingReceipt == null) {
