@@ -180,6 +180,87 @@ class PayrollSettlement {
 	final int? journalEntryId;
 }
 
+class EmployeeLedgerEntry {
+  const EmployeeLedgerEntry({
+    required this.employeeLedgerEntryId,
+    required this.employeeId,
+    required this.entryType,
+    required this.amount,
+    required this.balanceEffect,
+    required this.effectiveDate,
+    required this.sourceType,
+    required this.sourceId,
+    required this.referenceNumber,
+    required this.status,
+    required this.createdBy,
+    required this.occurredAt,
+  });
+
+  factory EmployeeLedgerEntry.fromJson(PayrollJson json) => EmployeeLedgerEntry(
+        employeeLedgerEntryId: (json['employeeLedgerEntryId'] as num?)?.toInt() ?? 0,
+        employeeId: (json['employeeId'] as num?)?.toInt() ?? 0,
+        entryType: (json['entryType'] ?? json['EntryType'] ?? '').toString(),
+        amount: _nullableAmount(json, 'amount') ?? 0,
+        balanceEffect: _nullableAmount(json, 'balanceEffect') ?? 0,
+        effectiveDate: _nullableDate(json, 'effectiveDate') ?? _nullableDate(json, 'effectiveAt') ?? DateTime.now(),
+        sourceType: (json['sourceType'] ?? json['SourceType'] ?? '').toString(),
+        sourceId: (json['sourceId'] as num?)?.toInt() ?? 0,
+        referenceNumber: (json['referenceNumber'] ?? json['ReferenceNumber'] ?? '').toString(),
+        status: (json['status'] ?? json['Status'] ?? '').toString(),
+        createdBy: (json['createdBy'] ?? json['CreatedBy'])?.toString(),
+        occurredAt: _nullableDate(json, 'occurredAt') ?? _nullableDate(json, 'createdAt') ?? DateTime.now(),
+      );
+
+  final int employeeLedgerEntryId;
+  final int employeeId;
+  final String entryType;
+  final double amount;
+  final double balanceEffect;
+  final DateTime effectiveDate;
+  final String sourceType;
+  final int sourceId;
+  final String referenceNumber;
+  final String status;
+  final String? createdBy;
+  final DateTime occurredAt;
+}
+
+class EmployeeFinancialActionResult {
+  const EmployeeFinancialActionResult({
+    required this.transactionId,
+    required this.accountingEventId,
+    required this.amount,
+    required this.actionDate,
+    required this.actionType,
+    required this.referenceNumber,
+    required this.balanceBefore,
+    required this.balanceAfter,
+    required this.isExisting,
+  });
+
+  factory EmployeeFinancialActionResult.fromJson(PayrollJson json) => EmployeeFinancialActionResult(
+        transactionId: (json['transactionId'] as num?)?.toInt() ?? 0,
+        accountingEventId: (json['accountingEventId'] as num?)?.toInt() ?? 0,
+        amount: _nullableAmount(json, 'amount') ?? 0,
+        actionDate: _nullableDate(json, 'actionDate') ?? _nullableDate(json, 'date') ?? DateTime.now(),
+        actionType: (json['actionType'] ?? json['ActionType'] ?? '').toString(),
+        referenceNumber: (json['referenceNumber'] ?? json['ReferenceNumber'] ?? '').toString(),
+        balanceBefore: _nullableAmount(json, 'balanceBefore') ?? 0,
+        balanceAfter: _nullableAmount(json, 'balanceAfter') ?? 0,
+        isExisting: json['isExisting'] as bool? ?? false,
+      );
+
+  final int transactionId;
+  final int accountingEventId;
+  final double amount;
+  final DateTime actionDate;
+  final String actionType;
+  final String referenceNumber;
+  final double balanceBefore;
+  final double balanceAfter;
+  final bool isExisting;
+}
+
 class EmployeeSelfFinancialSummary {
   const EmployeeSelfFinancialSummary({
     required this.employeeId,

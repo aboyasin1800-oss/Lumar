@@ -10,6 +10,11 @@ class PayrollRepository {
 	static const _baseUrl = String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5093');
 	final http.Client _client;
 
+	String _newSourceOperationId() {
+		final hex = DateTime.now().microsecondsSinceEpoch.toRadixString(16).padLeft(12, '0');
+		return '00000000-0000-4000-8000-$hex';
+	}
+
 	http.Client get client => _client;
 
 	Map<String, String> _headers({Map<String, String>? extra}) {
@@ -83,6 +88,98 @@ class PayrollRepository {
 		if (response.statusCode < 200 || response.statusCode >= 300) throw PayrollApiException('/employees/$employeeId/monthly-statement', response.statusCode);
 		final decoded = jsonDecode(response.body);
 		return EmployeeMonthlyStatement.fromJson(decoded as PayrollJson);
+	}
+	Future<List<EmployeeLedgerEntry>> getEmployeeLedger(int employeeId) async {
+		final response = await _client.get(Uri.parse('$_baseUrl/employees/$employeeId/ledger'), headers: _headers());
+		if (response.statusCode < 200 || response.statusCode >= 300) throw PayrollApiException('/employees/$employeeId/ledger', response.statusCode);
+		final decoded = jsonDecode(response.body);
+		if (decoded is! List) return const <EmployeeLedgerEntry>[];
+		return decoded.whereType<Map<String, dynamic>>().map(EmployeeLedgerEntry.fromJson).toList();
+	}
+	Future<EmployeeFinancialActionResult> addEmployeeAdvance(int employeeId, {
+		required double amount,
+		required DateTime advanceDate,
+		required int cashAccountId,
+		String? referenceNumber,
+		String? notes,
+		String? sourceOperationId,
+	}) async {
+		final body = <String, dynamic>{
+			'employeeId': employeeId,
+			'amount': amount,
+			'advanceDate': advanceDate.toIso8601String().substring(0, 10),
+			'cashAccountId': cashAccountId,
+			'referenceNumber': referenceNumber ?? 'ADV-$employeeId-${DateTime.now().millisecondsSinceEpoch}',
+			'notes': notes ?? 'إضافة سلفة من شاشة الموظف',
+			'sourceOperationId': sourceOperationId ?? _newSourceOperationId(),
+			'currencyCode': 'YER',
+		};
+		final response = await _client.post(
+			Uri.parse('$_baseUrl/employees/$employeeId/advances'),
+			headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
+			body: jsonEncode(body),
+		);
+		if (response.statusCode < 200 || response.statusCode >= 300) throw PayrollApiException('/employees/$employeeId/advances', response.statusCode);
+		final decoded = jsonDecode(response.body);
+		return EmployeeFinancialActionResult.fromJson(decoded as PayrollJson);
+	}
+	Future<EmployeeFinancialActionResult> addEmployeeDailyExpense(int employeeId, {
+		required double amount,
+		required DateTime expenseDate,
+		required int cashAccountId,
+		String? referenceNumber,
+		String? notes,
+		String? sourceOperationId,
+	}) async {
+		final body = <String, dynamic>{
+			'employeeId': employeeId,
+			'amount': amount,
+			'expenseDate': expenseDate.toIso8601String().substring(0, 10),
+			'cashAccountId': cashAccountId,
+			'referenceNumber': referenceNumber ?? 'EXP-$employeeId-${DateTime.now().millisecondsSinceEpoch}',
+			'notes': notes ?? 'إضافة مصروف يومي من شاشة الموظف',
+			'sourceOperationId': sourceOperationId ?? _newSourceOperationId(),
+			'currencyCode': 'YER',
+		};
+		final response = await _client.post(
+			Uri.parse('$_baseUrl/employees/$employeeId/daily-expenses'),
+			headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
+			body: jsonEncode(body),
+		);
+		if (response.statusCode < 200 || response.statusCode >= 300) throw PayrollApiException('/employees/$employeeId/daily-expenses', response.statusCode);
+		final decoded = jsonDecode(response.body);
+		return EmployeeFinancialActionResult.fromJson(decoded as PayrollJson);
+	}
+	Future<EmployeeFinancialActionResult> payEmployee(int employeeId, {
+		required double amount,
+		required DateTime paymentDate,
+		required DateTime asOfDate,
+		required int cashAccountId,
+		required String paymentMethod,
+		String? referenceNumber,
+		String? notes,
+		String? sourceOperationId,
+	}) async {
+		final body = <String, dynamic>{
+			'employeeId': employeeId,
+			'amount': amount,
+			'paymentDate': paymentDate.toIso8601String().substring(0, 10),
+			'asOfDate': asOfDate.toIso8601String().substring(0, 10),
+			'cashAccountId': cashAccountId,
+			'paymentMethod': paymentMethod,
+			'referenceNumber': referenceNumber ?? 'PAY-$employeeId-${DateTime.now().millisecondsSinceEpoch}',
+			'notes': notes ?? 'دفع من شاشة الموظف',
+			'sourceOperationId': sourceOperationId ?? _newSourceOperationId(),
+			'currencyCode': 'YER',
+		};
+		final response = await _client.post(
+			Uri.parse('$_baseUrl/employees/$employeeId/payments'),
+			headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
+			body: jsonEncode(body),
+		);
+		if (response.statusCode < 200 || response.statusCode >= 300) throw PayrollApiException('/employees/$employeeId/payments', response.statusCode);
+		final decoded = jsonDecode(response.body);
+		return EmployeeFinancialActionResult.fromJson(decoded as PayrollJson);
 	}
 	Future<EmployeeSelfFinancialSummary> getMyFinancialSummary({int? periodId}) async {
 		final query = periodId == null ? '' : '?periodId=$periodId';

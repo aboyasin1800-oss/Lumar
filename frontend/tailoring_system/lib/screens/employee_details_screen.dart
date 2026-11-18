@@ -62,6 +62,154 @@ String _scannerStatus(EmployeeDetails employee) {
   return 'مرتبطة بالماسح: $scannerCode';
 }
 
+Future<bool> _showEmployeeFinanceActionDialog(
+  BuildContext context, {
+  required int employeeId,
+  required String title,
+  required String actionType,
+}) async {
+  final formKey = GlobalKey<FormState>();
+  final amountController = TextEditingController();
+  final referenceController = TextEditingController();
+  final notesController = TextEditingController();
+  final date = DateTime.now();
+
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        backgroundColor: UiPalette.surfaceCard,
+        title: Text(
+          title,
+          style: UiPalette.adaptiveTextStyle(
+            dialogContext,
+            backgroundColor: UiPalette.surfaceCard,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        content: SizedBox(
+          width: 420,
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'المبلغ',
+                    hintText: '0.00',
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'أدخل مبلغاً صحيحاً';
+                    }
+                    final parsed = double.tryParse(value.trim());
+                    if (parsed == null || parsed <= 0) {
+                      return 'يجب أن يكون المبلغ أكبر من صفر';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: referenceController,
+                  decoration: const InputDecoration(
+                    labelText: 'رقم المرجع (اختياري)',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: notesController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'ملاحظات',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              if (!formKey.currentState!.validate()) return;
+              final repository = PayrollRepository();
+              try {
+                if (actionType == 'advance') {
+                  await repository.addEmployeeAdvance(
+                    employeeId,
+                    amount: double.parse(amountController.text.trim()),
+                    advanceDate: date,
+                    cashAccountId: 1,
+                    referenceNumber: referenceController.text.trim().isEmpty
+                        ? 'ADV-$employeeId-${DateTime.now().millisecondsSinceEpoch}'
+                        : referenceController.text.trim(),
+                    notes: notesController.text.trim().isEmpty
+                        ? 'إضافة سلفة من شاشة الموظف'
+                        : notesController.text.trim(),
+                  );
+                } else if (actionType == 'dailyExpense') {
+                  await repository.addEmployeeDailyExpense(
+                    employeeId,
+                    amount: double.parse(amountController.text.trim()),
+                    expenseDate: date,
+                    cashAccountId: 1,
+                    referenceNumber: referenceController.text.trim().isEmpty
+                        ? 'EXP-$employeeId-${DateTime.now().millisecondsSinceEpoch}'
+                        : referenceController.text.trim(),
+                    notes: notesController.text.trim().isEmpty
+                        ? 'إضافة مصروف يومي من شاشة الموظف'
+                        : notesController.text.trim(),
+                  );
+                } else {
+                  await repository.payEmployee(
+                    employeeId,
+                    amount: double.parse(amountController.text.trim()),
+                    paymentDate: date,
+                    asOfDate: date,
+                    cashAccountId: 1,
+                    paymentMethod: 'Cash',
+                    referenceNumber: referenceController.text.trim().isEmpty
+                        ? 'PAY-$employeeId-${DateTime.now().millisecondsSinceEpoch}'
+                        : referenceController.text.trim(),
+                    notes: notesController.text.trim().isEmpty
+                        ? 'دفع مستحقات الموظف'
+                        : notesController.text.trim(),
+                  );
+                }
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop(true);
+                }
+              } catch (_) {
+                if (dialogContext.mounted) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('تعذر تنفيذ العملية المالية. راجع الخادم أو المبلغ.'),
+                    ),
+                  );
+                }
+              }
+            },
+            icon: const Icon(Icons.check_rounded),
+            label: const Text('تأكيد'),
+          ),
+        ],
+      );
+    },
+  );
+
+  return result ?? false;
+}
+
 class EmployeeProductionSummaryEntry {
   const EmployeeProductionSummaryEntry({
     required this.pieceType,
@@ -206,12 +354,14 @@ class _EmployeeFinancialSummary {
     required this.settlements,
     required this.pieceWages,
     this.officialSummary,
+    this.ledgerEntries = const <EmployeeLedgerEntry>[],
   });
 
   final List<EmployeeDraw> draws;
   final List<PayrollSettlement> settlements;
   final List<PieceWageRecord> pieceWages;
   final EmployeeSelfFinancialSummary? officialSummary;
+  final List<EmployeeLedgerEntry> ledgerEntries;
 
   double get drawTotal =>
       draws.fold<double>(0, (sum, item) => sum + (item.amount ?? 0));
@@ -268,6 +418,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
     final wages = (await payroll.getPieceWages())
         .where((item) => item.employeeId == widget.employeeId)
         .toList();
+    final ledgerEntries = await payroll.getEmployeeLedger(widget.employeeId).catchError((_) => const <EmployeeLedgerEntry>[]);
 
     EmployeeSelfFinancialSummary? officialSummary;
     try {
@@ -281,6 +432,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
       settlements: settlements,
       pieceWages: wages,
       officialSummary: officialSummary,
+      ledgerEntries: ledgerEntries,
     );
   }
 
@@ -353,6 +505,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                       draws: [],
                       settlements: [],
                       pieceWages: [],
+                      ledgerEntries: [],
                     );
 
                 return Column(
@@ -672,6 +825,115 @@ class _OverviewTab extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+        const SizedBox(height: 12),
+        _Panel(
+          title: 'الإجراءات المالية',
+          icon: Icons.sync_alt_rounded,
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              FilledButton.icon(
+                onPressed: () async {
+                  final ok = await _showEmployeeFinanceActionDialog(
+                    context,
+                    employeeId: employee.id,
+                    title: 'إضافة سلفة',
+                    actionType: 'advance',
+                  );
+                  if (ok) onReload();
+                },
+                icon: const Icon(Icons.account_balance_wallet_rounded),
+                label: const Text('إضافة سلفة'),
+              ),
+              FilledButton.icon(
+                onPressed: () async {
+                  final ok = await _showEmployeeFinanceActionDialog(
+                    context,
+                    employeeId: employee.id,
+                    title: 'إضافة مصروف يومي',
+                    actionType: 'dailyExpense',
+                  );
+                  if (ok) onReload();
+                },
+                icon: const Icon(Icons.receipt_long_rounded),
+                label: const Text('إضافة مصروف يومي'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final ok = await _showEmployeeFinanceActionDialog(
+                    context,
+                    employeeId: employee.id,
+                    title: 'دفع مستحقات الموظف',
+                    actionType: 'payment',
+                  );
+                  if (ok) onReload();
+                },
+                icon: const Icon(Icons.payments_rounded),
+                label: const Text('دفع الموظف'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _Panel(
+          title: 'سجل الحركات المالية',
+          icon: Icons.history_rounded,
+          child: financial.ledgerEntries.isEmpty
+              ? const _EmptyState(
+                  title: 'لا توجد حركات مالية مسجلة.',
+                  body: 'سيظهر السجل الرسمي من EmployeeLedgerEntries فور توفر البيانات من الخادم.',
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: financial.ledgerEntries
+                      .take(8)
+                      .map(
+                        (entry) => ListTile(
+                          dense: true,
+                          leading: Icon(
+                            entry.entryType.toLowerCase().contains('payment')
+                                ? Icons.payments_rounded
+                                : entry.entryType.toLowerCase().contains('expense')
+                                    ? Icons.receipt_long_rounded
+                                    : Icons.account_balance_wallet_rounded,
+                            color: UiPalette.primaryBlue,
+                          ),
+                          title: Text(
+                            '${entry.entryType} • ${entry.referenceNumber.isEmpty ? '—' : entry.referenceNumber}',
+                            style: UiPalette.adaptiveTextStyle(
+                              context,
+                              backgroundColor: UiPalette.surfaceCard,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '${_detailsDate.format(entry.effectiveDate)} • ${entry.sourceType} • ${entry.status}',
+                            style: UiPalette.adaptiveTextStyle(
+                              context,
+                              backgroundColor: UiPalette.surfaceCard,
+                              fontSize: 11,
+                            ).copyWith(color: UiPalette.textSoft),
+                          ),
+                          trailing: Text(
+                            '${entry.balanceEffect >= 0 ? '+' : ''}${_detailsMoney.format(entry.amount)}',
+                            style: UiPalette.adaptiveTextStyle(
+                              context,
+                              backgroundColor: UiPalette.surfaceCard,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ).copyWith(
+                              color: entry.balanceEffect >= 0
+                                  ? UiPalette.successGreen
+                                  : UiPalette.primaryBlue,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
         ),
         const SizedBox(height: 12),
         _Panel(

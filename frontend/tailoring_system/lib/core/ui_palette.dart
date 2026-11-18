@@ -21,6 +21,7 @@ class UiPalette {
   static const Color primaryBlue = primary;
   static const Color primaryDark = primaryBorder;
   static const Color purpleAccent = primary;
+  static const Color successGreen = Color(0xFF2E9D5A);
   static const Color textMain = darkText;
   static const Color textSoft = Color.fromARGB(255, 251, 251, 252);
   static const Color borderSoft = Color.fromARGB(255, 64, 68, 72);
