@@ -10,10 +10,8 @@ import '../core/app_navigation.dart';
 import '../core/document_printing.dart';
 import '../core/ui_palette.dart';
 import '../models/employee_models.dart';
-import '../models/finance_models.dart';
 import '../models/payroll_models.dart';
 import '../repositories/employee_repository.dart';
-import '../repositories/finance_repository.dart';
 import '../repositories/payroll_repository.dart';
 import 'employee_form_screen.dart';
 
@@ -207,14 +205,12 @@ class _EmployeeFinancialSummary {
     required this.draws,
     required this.settlements,
     required this.pieceWages,
-    required this.operatingExpenses,
     this.officialSummary,
   });
 
   final List<EmployeeDraw> draws;
   final List<PayrollSettlement> settlements;
   final List<PieceWageRecord> pieceWages;
-  final List<FinancialTransaction> operatingExpenses;
   final EmployeeSelfFinancialSummary? officialSummary;
 
   double get drawTotal =>
@@ -224,8 +220,8 @@ class _EmployeeFinancialSummary {
   double get currentBalance => drawTotal - settlementTotal;
   double get pieceWageTotal =>
       pieceWages.fold<double>(0, (sum, item) => sum + item.totalWage);
-  double get operatingExpenseTotal =>
-      operatingExpenses.fold<double>(0, (sum, item) => sum + item.amount);
+  double get officialDeductionTotal =>
+      officialSummary?.deductionsAmount ?? 0;
   double get officialNetAmount => officialSummary?.netAmount ?? 0;
 }
 
@@ -266,7 +262,6 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
 
   Future<_EmployeeFinancialSummary> _loadFinancialSummary() async {
     final payroll = PayrollRepository();
-    final finance = FinanceRepository();
 
     final draws = await payroll.getDraws(widget.employeeId);
     final settlements = await payroll.getSettlements(widget.employeeId);
@@ -281,15 +276,10 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
       officialSummary = null;
     }
 
-    final expenses = (await finance.getTransactions())
-        .where((item) => item.transactionType == 'OperatingExpense')
-        .toList();
-
     return _EmployeeFinancialSummary(
       draws: draws,
       settlements: settlements,
       pieceWages: wages,
-      operatingExpenses: expenses,
       officialSummary: officialSummary,
     );
   }
@@ -359,11 +349,10 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
               future: financialFuture,
               builder: (context, financialSnapshot) {
                 final financial = financialSnapshot.data ??
-                    _EmployeeFinancialSummary(
-                      draws: const [],
-                      settlements: const [],
-                      pieceWages: const [],
-                      operatingExpenses: const [],
+                    const _EmployeeFinancialSummary(
+                      draws: [],
+                      settlements: [],
+                      pieceWages: [],
                     );
 
                 return Column(
@@ -626,8 +615,7 @@ class _OverviewTab extends StatelessWidget {
                   ),
                   _MetricCard(
                     label: 'المصروفات اليومية',
-                    value:
-                        _detailsMoney.format(financial.operatingExpenseTotal),
+                    value: _detailsMoney.format(financial.officialDeductionTotal),
                     accent: UiPalette.primaryDark,
                   ),
                   _MetricCard(
@@ -948,14 +936,17 @@ class _MonthlyTabState extends State<_MonthlyTab> {
         _filteredWages.fold<double>(0, (sum, item) => sum + item.quantity);
     final totalDraws =
         _filteredDraws.fold<double>(0, (sum, item) => sum + (item.amount ?? 0));
-    final totalDailyExpense = 0.0;
-    final totalSettlements = 0.0;
+    final totalDailyExpense =
+        widget.financial.officialSummary?.deductionsAmount ?? 0;
+    final totalSettlements =
+        widget.financial.settlements.fold<double>(0, (sum, item) => sum + item.amount);
 
-    final netDue = _isPieceWageEmployee
-        ? totalWage - totalDraws - totalDailyExpense
-        : (widget.employee.basicSalary > 0
-            ? widget.employee.basicSalary - totalDraws
-            : totalWage - totalDraws - totalDailyExpense);
+    final netDue = widget.financial.officialSummary?.netAmount ??
+        (_isPieceWageEmployee
+            ? totalWage - totalDraws - totalDailyExpense
+            : (widget.employee.basicSalary > 0
+                ? widget.employee.basicSalary - totalDraws
+                : totalWage - totalDraws - totalDailyExpense));
 
     return _MonthlyCycleSummary(
       totalWage: totalWage,
