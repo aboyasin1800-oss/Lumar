@@ -182,6 +182,16 @@ public sealed class EmployeesController(IEmployeeService employees, IAuthenticat
     [HttpGet("me/piece-wages")] public async Task<ActionResult<IReadOnlyList<PieceWageRecordDto>>> GetCurrentEmployeePieceWages(CancellationToken ct) { var currentEmployeeId = await GetCurrentEmployeeIdOrErrorAsync(ct); if (currentEmployeeId.Error is not null) return currentEmployeeId.Error; return Ok(await employees.GetSelfPieceWagesAsync(currentEmployeeId.Value!.Value, ct)); }
     [HttpGet("me/draws")] public async Task<ActionResult<IReadOnlyList<EmployeeDrawDto>>> GetCurrentEmployeeDraws(CancellationToken ct) { var currentEmployeeId = await GetCurrentEmployeeIdOrErrorAsync(ct); if (currentEmployeeId.Error is not null) return currentEmployeeId.Error; return Ok(await employees.GetSelfDrawsAsync(currentEmployeeId.Value!.Value, ct)); }
     [HttpGet("me/settlements")] public async Task<ActionResult<IReadOnlyList<PayrollSettlementDto>>> GetCurrentEmployeeSettlements(CancellationToken ct) { var currentEmployeeId = await GetCurrentEmployeeIdOrErrorAsync(ct); if (currentEmployeeId.Error is not null) return currentEmployeeId.Error; return Ok(await employees.GetSelfSettlementsAsync(currentEmployeeId.Value!.Value, ct)); }
+    [HttpGet("{id:int}/financial-summary")] public async Task<ActionResult<EmployeeSelfFinancialSummaryDto>> GetEmployeeFinancialSummary(int id, [FromQuery] int? periodId, CancellationToken ct) { if (id <= 0) return BadRequest("Employee id must be positive."); var authError = await EnsureCurrentEmployeeAccessAsync(id, ct); if (authError is not null) return authError; var summary = await employees.GetSelfFinancialSummaryAsync(id, periodId, ct); return summary is null ? NotFound() : Ok(summary); }
+    [HttpGet("{id:int}/monthly-statement")]
+    public async Task<ActionResult<EmployeeSelfMonthlyStatementDto>> GetEmployeeMonthlyStatement(int id, [FromQuery] int periodId, CancellationToken ct)
+    {
+        if (id <= 0) return BadRequest("Employee id must be positive.");
+        if (periodId <= 0) return BadRequest("Payroll period id must be positive.");
+        var authError = await EnsureCurrentEmployeeAccessAsync(id, ct); if (authError is not null) return authError;
+        var statement = await employees.GetSelfMonthlyStatementAsync(id, periodId, ct);
+        return statement is null ? NotFound() : Ok(statement);
+    }
     [HttpGet("me/financial-summary")] public async Task<ActionResult<EmployeeSelfFinancialSummaryDto>> GetCurrentEmployeeFinancialSummary([FromQuery] int? periodId, CancellationToken ct) { var currentEmployeeId = await GetCurrentEmployeeIdOrErrorAsync(ct); if (currentEmployeeId.Error is not null) return currentEmployeeId.Error; var summary = await employees.GetSelfFinancialSummaryAsync(currentEmployeeId.Value!.Value, periodId, ct); return summary is null ? NotFound() : Ok(summary); }
     [HttpGet("me/monthly-statement")]
     public async Task<ActionResult<EmployeeSelfMonthlyStatementDto>> GetCurrentEmployeeMonthlyStatement([FromQuery] int periodId, CancellationToken ct)

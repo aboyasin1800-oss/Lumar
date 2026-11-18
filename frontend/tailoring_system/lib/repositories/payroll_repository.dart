@@ -71,6 +71,19 @@ class PayrollRepository {
 	Future<List<EmployeeDraw>> getMyDraws() => _list('/employees/me/draws', EmployeeDraw.fromJson);
 	Future<List<PayrollSettlement>> getMySettlements() => _list('/employees/me/settlements', PayrollSettlement.fromJson);
 	Future<List<PieceWageRecord>> getMyPieceWages() => _list('/employees/me/piece-wages', PieceWageRecord.fromJson);
+	Future<EmployeeSelfFinancialSummary> getEmployeeFinancialSummary(int employeeId, {int? periodId}) async {
+		final query = periodId == null ? '' : '?periodId=$periodId';
+		final response = await _client.get(Uri.parse('$_baseUrl/employees/$employeeId/financial-summary$query'), headers: _headers());
+		if (response.statusCode < 200 || response.statusCode >= 300) throw PayrollApiException('/employees/$employeeId/financial-summary', response.statusCode);
+		final decoded = jsonDecode(response.body);
+		return EmployeeSelfFinancialSummary.fromJson(decoded as PayrollJson);
+	}
+	Future<EmployeeMonthlyStatement> getEmployeeMonthlyStatement(int employeeId, int periodId) async {
+		final response = await _client.get(Uri.parse('$_baseUrl/employees/$employeeId/monthly-statement?periodId=$periodId'), headers: _headers());
+		if (response.statusCode < 200 || response.statusCode >= 300) throw PayrollApiException('/employees/$employeeId/monthly-statement', response.statusCode);
+		final decoded = jsonDecode(response.body);
+		return EmployeeMonthlyStatement.fromJson(decoded as PayrollJson);
+	}
 	Future<EmployeeSelfFinancialSummary> getMyFinancialSummary({int? periodId}) async {
 		final query = periodId == null ? '' : '?periodId=$periodId';
 		final response = await _client.get(Uri.parse('$_baseUrl/employees/me/financial-summary$query'), headers: _headers());

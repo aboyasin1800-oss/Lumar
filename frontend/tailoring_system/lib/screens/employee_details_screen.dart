@@ -271,7 +271,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
 
     EmployeeSelfFinancialSummary? officialSummary;
     try {
-      officialSummary = await payroll.getMyFinancialSummary();
+      officialSummary = await payroll.getEmployeeFinancialSummary(widget.employeeId);
     } catch (_) {
       officialSummary = null;
     }
@@ -904,22 +904,6 @@ class _MonthlyTabState extends State<_MonthlyTab> {
     return values;
   }
 
-  bool get _isPieceWageEmployee {
-    final rawSalaryType = (widget.employee.salaryType ?? '').trim();
-    if (rawSalaryType.isNotEmpty) {
-      final normalized = rawSalaryType.toLowerCase();
-      if (normalized == 'piecewage' || normalized == 'piece') {
-        return true;
-      }
-      if (normalized == 'basicpluspiece' || normalized == 'salarypluspiece') {
-        return true;
-      }
-    }
-
-    return widget.employee.pieceWageRate > 0 &&
-        widget.employee.basicSalary <= 0;
-  }
-
   _MonthlyCycleSummary get _cycleSummary {
     final pieceTypes = <String, _PieceTypeSummary>{};
     for (final item in _filteredWages) {
@@ -936,17 +920,11 @@ class _MonthlyTabState extends State<_MonthlyTab> {
         _filteredWages.fold<double>(0, (sum, item) => sum + item.quantity);
     final totalDraws =
         _filteredDraws.fold<double>(0, (sum, item) => sum + (item.amount ?? 0));
-    final totalDailyExpense =
-        widget.financial.officialSummary?.deductionsAmount ?? 0;
+    final totalDailyExpense = widget.financial.officialSummary?.deductionsAmount ?? 0;
     final totalSettlements =
         widget.financial.settlements.fold<double>(0, (sum, item) => sum + item.amount);
 
-    final netDue = widget.financial.officialSummary?.netAmount ??
-        (_isPieceWageEmployee
-            ? totalWage - totalDraws - totalDailyExpense
-            : (widget.employee.basicSalary > 0
-                ? widget.employee.basicSalary - totalDraws
-                : totalWage - totalDraws - totalDailyExpense));
+    final netDue = widget.financial.officialSummary?.netAmount ?? 0;
 
     return _MonthlyCycleSummary(
       totalWage: totalWage,
