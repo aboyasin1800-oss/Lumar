@@ -14,6 +14,186 @@ namespace LUMAR_ERP_API_V2.Tests;
 public sealed class EmployeeWriteInfrastructureTests
 {
     [Fact]
+    public async Task ProofAssignmentCycle_UsesPieceTypeAndStage_SourceOfTruth_OnIsolatedDatabase()
+    {
+        var connectionString = GetProofConnectionString();
+        var repository = CreateRepository(connectionString);
+        var employeeCode = CreateUniqueEmployeeCode("PROOF-ASG");
+        var otherEmployeeCode = CreateUniqueEmployeeCode("PROOF-OTHER");
+        var departmentId = await EnsureActiveDepartmentAsync(connectionString, "ProofDept");
+
+        await SeedOfficialPieceRatesAsync(connectionString, [
+            ("كوت", "Cutting"),
+            ("قميص", "Cutting"),
+            ("قميص", "Sewing")
+        ]);
+
+        var created = await repository.CreateAsync(new CreateEmployeeDto
+        {
+            EmployeeCode = employeeCode,
+            FullName = "موظف إثبات إسناد معزول",
+            DepartmentId = departmentId,
+            BasicSalary = 0m,
+            HireDate = new DateTime(2025, 11, 1),
+            Status = "Active",
+            SalaryType = "PieceWage",
+            PieceRates =
+            [
+                new EmployeePieceRateAssignmentInputDto("كوت", "Cutting", 10m, null, null, true),
+                new EmployeePieceRateAssignmentInputDto("قميص", "Cutting", 12m, null, null, true),
+                new EmployeePieceRateAssignmentInputDto("قميص", "Sewing", 14m, null, null, true)
+            ]
+        }, CancellationToken.None);
+
+        Assert.NotNull(created);
+
+        try
+        {
+            var assignments = await repository.GetPieceRateAssignmentsAsync(created!.EmployeeId, CancellationToken.None);
+            Assert.Equal(3, assignments.Count);
+            Assert.Contains(assignments, item => item.PieceType == "كوت" && item.Stage == "Cutting");
+            Assert.Contains(assignments, item => item.PieceType == "قميص" && item.Stage == "Cutting");
+            Assert.Contains(assignments, item => item.PieceType == "قميص" && item.Stage == "Sewing");
+
+            var otherEmployee = await repository.CreateAsync(new CreateEmployeeDto
+            {
+                EmployeeCode = otherEmployeeCode,
+                FullName = "موظف آخر لإثبات الاستبعاد",
+                DepartmentId = departmentId,
+                BasicSalary = 0m,
+                HireDate = new DateTime(2025, 11, 2),
+                Status = "Active",
+                SalaryType = "PieceWage",
+                PieceRates =
+                [
+                    new EmployeePieceRateAssignmentInputDto("قميص", "Cutting", 12m, null, null, true)
+                ]
+            }, CancellationToken.None);
+
+            Assert.NotNull(otherEmployee);
+
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+
+                var orderId1 = await InsertOrderAsync(connection, "PROOF-ORD-1");
+                var orderItemId1 = await InsertOrderItemAsync(connection, orderId1, "كوت", "TRACK-101");
+                var orderItemId2 = await InsertOrderItemAsync(connection, orderId1, "قميص", "TRACK-202");
+                var orderItemId3 = await InsertOrderItemAsync(connection, orderId1, "قميص", "TRACK-303");
+                var orderId2 = await InsertOrderAsync(connection, "PROOF-ORD-2");
+                var orderItemId4 = await InsertOrderItemAsync(connection, orderId2, "قميص", "TRACK-404");
+
+                var pieceId1 = await InsertPieceAsync(connection, orderItemId1, "PROOF-PIECE-101", "Completed", 101);
+                var pieceId2 = await InsertPieceAsync(connection, orderItemId2, "PROOF-PIECE-202", "Completed", 202);
+                var pieceId3 = await InsertPieceAsync(connection, orderItemId3, "PROOF-PIECE-303", "Completed", 303);
+                var pieceId4 = await InsertPieceAsync(connection, orderItemId4, "PROOF-PIECE-404", "Completed", 404);
+
+                var eventForCootCut = await InsertTrackingEventAsync(connection, orderId1, orderItemId1, pieceId1, "PROOF-TRACK-1", "Cutting", "Completed", employeeCode, created!.EmployeeId);
+                var eventForShirtCut1 = await InsertTrackingEventAsync(connection, orderId1, orderItemId2, pieceId2, "PROOF-TRACK-2", "Cutting", "Completed", employeeCode, created.EmployeeId);
+                var eventForShirtCut2 = await InsertTrackingEventAsync(connection, orderId1, orderItemId2, pieceId2, "PROOF-TRACK-3", "Cutting", "Completed", employeeCode, created.EmployeeId);
+                var eventForShirtSew = await InsertTrackingEventAsync(connection, orderId1, orderItemId3, pieceId3, "PROOF-TRACK-4", "Sewing", "Completed", employeeCode, created.EmployeeId);
+                var eventForOtherCut = await InsertTrackingEventAsync(connection, orderId2, orderItemId4, pieceId4, "PROOF-TRACK-5", "Cutting", "Completed", otherEmployeeCode, otherEmployee!.EmployeeId);
+
+                await using var insertWages = new SqlCommand(@"
+                    INSERT INTO dbo.PieceWageRecords (OrderID, OrderItemID, PieceID, TrackingEventID, EmployeeId, EmployeeCode, PieceType, Stage, Quantity, WageRate, TotalWage, PayrollPeriodId, PayrollRecordId, Status, Notes, CreatedAt)
+                    VALUES
+                        (@order1, @orderItem1, @pieceId1, @event1, @employeeId, @employeeCode, N'كوت', N'Cutting', 1, 10, 10, NULL, NULL, N'PendingPayroll', NULL, SYSDATETIME()),
+                        (@order1, @orderItem2, @pieceId2, @event2, @employeeId, @employeeCode, N'قميص', N'Cutting', 1, 12, 12, NULL, NULL, N'PendingPayroll', NULL, SYSDATETIME()),
+                        (@order1, @orderItem2, @pieceId2, @event3, @employeeId, @employeeCode, N'قميص', N'Cutting', 1, 12, 12, NULL, NULL, N'PendingPayroll', NULL, SYSDATETIME()),
+                        (@order1, @orderItem3, @pieceId3, @event4, @employeeId, @employeeCode, N'قميص', N'Sewing', 1, 14, 14, NULL, NULL, N'PendingPayroll', NULL, SYSDATETIME()),
+                        (@order2, @orderItem4, @pieceId4, @event5, @otherEmployeeId, @otherEmployeeCode, N'قميص', N'Cutting', 1, 12, 12, NULL, NULL, N'PendingPayroll', NULL, SYSDATETIME());", connection);
+
+                insertWages.Parameters.AddWithValue("@order1", orderId1);
+                insertWages.Parameters.AddWithValue("@order2", orderId2);
+                insertWages.Parameters.AddWithValue("@orderItem1", orderItemId1);
+                insertWages.Parameters.AddWithValue("@orderItem2", orderItemId2);
+                insertWages.Parameters.AddWithValue("@orderItem3", orderItemId3);
+                insertWages.Parameters.AddWithValue("@orderItem4", orderItemId4);
+                insertWages.Parameters.AddWithValue("@pieceId1", pieceId1);
+                insertWages.Parameters.AddWithValue("@pieceId2", pieceId2);
+                insertWages.Parameters.AddWithValue("@pieceId3", pieceId3);
+                insertWages.Parameters.AddWithValue("@pieceId4", pieceId4);
+                insertWages.Parameters.AddWithValue("@employeeId", created.EmployeeId);
+                insertWages.Parameters.AddWithValue("@employeeCode", employeeCode);
+                insertWages.Parameters.AddWithValue("@otherEmployeeId", otherEmployee.EmployeeId);
+                insertWages.Parameters.AddWithValue("@otherEmployeeCode", otherEmployeeCode);
+                insertWages.Parameters.AddWithValue("@event1", eventForCootCut);
+                insertWages.Parameters.AddWithValue("@event2", eventForShirtCut1);
+                insertWages.Parameters.AddWithValue("@event3", eventForShirtCut2);
+                insertWages.Parameters.AddWithValue("@event4", eventForShirtSew);
+                insertWages.Parameters.AddWithValue("@event5", eventForOtherCut);
+                await insertWages.ExecuteNonQueryAsync();
+
+                var cuttingCount = await CountDistinctPieceIdsAsync(connectionString, created.EmployeeId, "كوت", "Cutting");
+                var sewingCount = await CountDistinctPieceIdsAsync(connectionString, created.EmployeeId, "قميص", "Sewing");
+                var cutSheetCount = await CountDistinctPieceIdsAsync(connectionString, created.EmployeeId, "قميص", "Cutting");
+                var otherEmployeeCuttingCount = await CountDistinctPieceIdsAsync(connectionString, otherEmployee.EmployeeId, "قميص", "Cutting");
+
+                Assert.Equal(1, cuttingCount);
+                Assert.Equal(1, sewingCount);
+                Assert.Equal(1, cutSheetCount);
+                Assert.Equal(1, otherEmployeeCuttingCount);
+            }
+
+            var updated = await repository.UpdateAsync(created.EmployeeId, new UpdateEmployeeDto
+            {
+                EmployeeCode = employeeCode,
+                FullName = "موظف إثبات إسناد معزول",
+                DepartmentId = departmentId,
+                BasicSalary = 0m,
+                HireDate = new DateTime(2025, 11, 1),
+                Status = "Active",
+                IsActive = true,
+                SalaryType = "PieceWage",
+                PieceRates =
+                [
+                    new EmployeePieceRateAssignmentInputDto("كوت", "Cutting", 10m, null, null, true),
+                    new EmployeePieceRateAssignmentInputDto("قميص", "Sewing", 14m, null, null, true)
+                ]
+            }, CancellationToken.None);
+
+            Assert.NotNull(updated);
+            var updatedAssignments = await repository.GetPieceRateAssignmentsAsync(created.EmployeeId, CancellationToken.None);
+            Assert.Equal(2, updatedAssignments.Count);
+            Assert.Contains(updatedAssignments, item => item.PieceType == "كوت" && item.Stage == "Cutting");
+            Assert.Contains(updatedAssignments, item => item.PieceType == "قميص" && item.Stage == "Sewing");
+            Assert.DoesNotContain(updatedAssignments, item => item.PieceType == "قميص" && item.Stage == "Cutting");
+
+            var reduced = await repository.UpdateAsync(created.EmployeeId, new UpdateEmployeeDto
+            {
+                EmployeeCode = employeeCode,
+                FullName = "موظف إثبات إسناد معزول",
+                DepartmentId = departmentId,
+                BasicSalary = 0m,
+                HireDate = new DateTime(2025, 11, 1),
+                Status = "Active",
+                IsActive = true,
+                SalaryType = "PieceWage",
+                PieceRates =
+                [
+                    new EmployeePieceRateAssignmentInputDto("كوت", "Cutting", 10m, null, null, true),
+                    new EmployeePieceRateAssignmentInputDto("قميص", "Cutting", 12m, null, null, true)
+                ]
+            }, CancellationToken.None);
+
+            Assert.NotNull(reduced);
+            var reducedAssignments = await repository.GetPieceRateAssignmentsAsync(created.EmployeeId, CancellationToken.None);
+            Assert.Equal(2, reducedAssignments.Count);
+            Assert.DoesNotContain(reducedAssignments, item => item.PieceType == "قميص" && item.Stage == "Sewing");
+        }
+        finally
+        {
+            await DeleteOfficialPieceRatesAsync(connectionString, [
+                ("كوت", "Cutting"),
+                ("قميص", "Cutting"),
+                ("قميص", "Sewing")
+            ]);
+            await DeleteEmployeeByCodeAsync(connectionString, employeeCode);
+            await DeleteEmployeeByCodeAsync(connectionString, otherEmployeeCode);
+        }
+    }
+
+    [Fact]
     public void CreateEmployee_Valid_Request_Passes_Validation()
     {
         var request = new CreateEmployeeDto
@@ -493,8 +673,32 @@ VALUES (N'كوت', N'Cutting', 120.00, 1, N'Test rate', SYSDATETIME(), SYSDATETI
             ?? throw new InvalidOperationException("Set Lumar__ConnectionString to the approved validation database.");
 
         var builder = new SqlConnectionStringBuilder(value);
-        if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Employee integration tests require LUMAR_ERP_ES_VALIDATION.");
+        var allowed = new[]
+        {
+            "LUMAR_ERP_ES_VALIDATION",
+            "LUMAR_ERP_ES_VALIDATION_R3",
+            "LUMAR_ERP_ES_VALIDATION_R3_RESET_PROOF"
+        };
+
+        if (!allowed.Contains(builder.InitialCatalog, StringComparer.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Employee integration tests require an approved validation database.");
+
+        return builder.ConnectionString;
+    }
+
+    private static string GetProofConnectionString()
+    {
+        var value = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? "Server=YASIN-YASIN\\SQLEXPRESS;Database=LUMAR_ERP_ES_VALIDATION_R3_RESET_PROOF;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True;";
+
+        var builder = new SqlConnectionStringBuilder(value)
+        {
+            DataSource = "YASIN-YASIN\\SQLEXPRESS",
+            InitialCatalog = "LUMAR_ERP_ES_VALIDATION_R3_RESET_PROOF",
+            IntegratedSecurity = true,
+            TrustServerCertificate = true,
+            MultipleActiveResultSets = true
+        };
 
         return builder.ConnectionString;
     }
@@ -622,6 +826,120 @@ VALUES (N'كوت', N'Cutting', 120.00, 1, N'Test rate', SYSDATETIME(), SYSDATETI
         }
     }
 
+    private static async Task SeedOfficialPieceRatesAsync(string connectionString, IReadOnlyList<(string PieceType, string Stage)> rates)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        foreach (var (pieceType, stage) in rates)
+        {
+            await using var command = new SqlCommand(@"
+                INSERT INTO dbo.PieceWageRates (PieceType, Stage, WageRate, IsActive, Notes, CreatedAt, UpdatedAt)
+                SELECT @pieceType, @stage, 10.00, 1, N'Test proof rate', SYSDATETIME(), SYSDATETIME()
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM dbo.PieceWageRates WITH (NOLOCK)
+                    WHERE PieceType = @pieceType AND Stage = @stage AND IsActive = 1
+                );", connection);
+            command.Parameters.AddWithValue("@pieceType", pieceType);
+            command.Parameters.AddWithValue("@stage", stage);
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    private static async Task DeleteOfficialPieceRatesAsync(string connectionString, IReadOnlyList<(string PieceType, string Stage)> rates)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        foreach (var (pieceType, stage) in rates)
+        {
+            await using var command = new SqlCommand(
+                "DELETE FROM dbo.PieceWageRates WHERE PieceType = @pieceType AND Stage = @stage AND Notes = N'Test proof rate'",
+                connection);
+            command.Parameters.AddWithValue("@pieceType", pieceType);
+            command.Parameters.AddWithValue("@stage", stage);
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    private static async Task<int> EnsureActiveDepartmentAsync(string connectionString, string code)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        await using (var existing = new SqlCommand("SELECT TOP (1) DepartmentId FROM dbo.Departments WHERE DepartmentCode = @code AND IsActive = 1", connection))
+        {
+            existing.Parameters.AddWithValue("@code", code);
+            var existingId = await existing.ExecuteScalarAsync();
+            if (existingId is int departmentId)
+                return departmentId;
+        }
+
+        await using var insert = new SqlCommand(@"INSERT INTO dbo.Departments (DepartmentCode, DepartmentName, Description, IsActive, CreatedAt, UpdatedAt)
+OUTPUT INSERTED.DepartmentId
+VALUES (@code, @name, @description, 1, SYSDATETIME(), SYSDATETIME());", connection);
+        insert.Parameters.AddWithValue("@code", code);
+        insert.Parameters.AddWithValue("@name", "Proof Department");
+        insert.Parameters.AddWithValue("@description", "Temporary department for isolated proof test.");
+        var insertedId = await insert.ExecuteScalarAsync();
+        return insertedId is int id ? id : throw new InvalidOperationException("Unable to create proof department.");
+    }
+
+    private static async Task<int> InsertOrderAsync(SqlConnection connection, string orderNumber)
+    {
+        await using var command = new SqlCommand(@"
+            INSERT INTO dbo.Orders (OrderNumber, CustomerID, OrderDate, DeliveryDate, TotalAmount, DiscountAmount, PaidAmount, RemainingAmount, UrgencyStatus, OrderStatus, CreatedDate, SaleCategory, RevenueRecognized, RevenueReversalCreated)
+            OUTPUT INSERTED.OrderID
+            VALUES (@orderNumber, 1, SYSDATETIME(), DATEADD(day, 7, SYSDATETIME()), 1000, 0, 0, 1000, N'Normal', N'New', SYSDATETIME(), N'TailoringOrder', 0, 0);", connection);
+        command.Parameters.AddWithValue("@orderNumber", orderNumber);
+        var insertedId = await command.ExecuteScalarAsync();
+        return insertedId is int id ? id : throw new InvalidOperationException("Unable to insert proof order.");
+    }
+
+    private static async Task<int> InsertOrderItemAsync(SqlConnection connection, int orderId, string pieceType, string trackingCode)
+    {
+        await using var command = new SqlCommand(@"
+            INSERT INTO dbo.OrderItems (OrderID, PieceType, Quantity, MeasurementSnapshot, TrackingCode, PieceStatus, CreatedDate, ProductTypeId)
+            OUTPUT INSERTED.OrderItemID
+            VALUES (@orderId, @pieceType, 1, N'{}', @trackingCode, N'New', SYSDATETIME(), 1);", connection);
+        command.Parameters.AddWithValue("@orderId", orderId);
+        command.Parameters.AddWithValue("@pieceType", pieceType);
+        command.Parameters.AddWithValue("@trackingCode", trackingCode);
+        var insertedId = await command.ExecuteScalarAsync();
+        return insertedId is int id ? id : throw new InvalidOperationException("Unable to insert proof order item.");
+    }
+
+    private static async Task<int> InsertPieceAsync(SqlConnection connection, int orderItemId, string trackingCode, string pieceStatus, int pieceNumber)
+    {
+        await using var command = new SqlCommand(@"
+            INSERT INTO dbo.Pieces (OrderItemID, TrackingCode, PieceStatus, PieceNumber, CreatedDate)
+            OUTPUT INSERTED.PieceID
+            VALUES (@orderItemId, @trackingCode, @pieceStatus, @pieceNumber, SYSDATETIME());", connection);
+        command.Parameters.AddWithValue("@orderItemId", orderItemId);
+        command.Parameters.AddWithValue("@trackingCode", trackingCode);
+        command.Parameters.AddWithValue("@pieceStatus", pieceStatus);
+        command.Parameters.AddWithValue("@pieceNumber", pieceNumber);
+        var insertedId = await command.ExecuteScalarAsync();
+        return insertedId is int id ? id : throw new InvalidOperationException("Unable to insert proof piece.");
+    }
+
+    private static async Task<int> InsertTrackingEventAsync(SqlConnection connection, int orderId, int orderItemId, int pieceId, string trackingCode, string stage, string status, string employeeCode, int employeeId)
+    {
+        await using var command = new SqlCommand(@"
+            INSERT INTO dbo.TrackingEvents (OrderItemID, OrderID, TrackingCode, Stage, Status, EventTime, EmployeeCode, IsReverted, PieceID)
+            OUTPUT INSERTED.TrackingEventID
+            VALUES (@orderItemId, @orderId, @trackingCode, @stage, @status, SYSDATETIME(), @employeeCode, 0, @pieceId);", connection);
+        command.Parameters.AddWithValue("@orderItemId", orderItemId);
+        command.Parameters.AddWithValue("@orderId", orderId);
+        command.Parameters.AddWithValue("@trackingCode", trackingCode);
+        command.Parameters.AddWithValue("@stage", stage);
+        command.Parameters.AddWithValue("@status", status);
+        command.Parameters.AddWithValue("@employeeCode", employeeCode);
+        command.Parameters.AddWithValue("@pieceId", pieceId);
+        var insertedId = await command.ExecuteScalarAsync();
+        return insertedId is int id ? id : throw new InvalidOperationException("Unable to insert proof tracking event.");
+    }
+
     private static async Task<int> CountEmployeesAsync(string connectionString, string code)
     {
         await using var connection = new SqlConnection(connectionString);
@@ -629,6 +947,20 @@ VALUES (N'كوت', N'Cutting', 120.00, 1, N'Test rate', SYSDATETIME(), SYSDATETI
         await using var command = new SqlCommand("SELECT COUNT(*) FROM dbo.Employees WHERE EmployeeCode = @code", connection);
         command.Parameters.AddWithValue("@code", code);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountDistinctPieceIdsAsync(string connectionString, int employeeId, string pieceType, string stage)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(
+            "SELECT COUNT(DISTINCT PieceId) FROM dbo.PieceWageRecords WHERE EmployeeId = @employeeId AND PieceType = @pieceType AND Stage = @stage AND Status <> N'Cancelled' AND Status <> N'Canceled' AND Status <> N'Rejected' AND Status <> N'Void' AND Status <> N'Voided';",
+            connection);
+        command.Parameters.AddWithValue("@employeeId", employeeId);
+        command.Parameters.AddWithValue("@pieceType", pieceType);
+        command.Parameters.AddWithValue("@stage", stage);
+        var result = await command.ExecuteScalarAsync();
+        return result is DBNull or null ? 0 : Convert.ToInt32(result);
     }
 
     private static async Task DeleteEmployeeByCodeAsync(string connectionString, string code)

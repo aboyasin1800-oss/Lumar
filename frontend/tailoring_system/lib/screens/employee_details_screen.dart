@@ -64,18 +64,158 @@ String _scannerStatus(EmployeeDetails employee) {
   return 'مرتبطة بالماسح: $scannerCode';
 }
 
+class EmployeeProductionSummaryEntry {
+  const EmployeeProductionSummaryEntry({
+    required this.pieceType,
+    required this.stage,
+    required this.count,
+  });
+
+  final String pieceType;
+  final String stage;
+  final int count;
+}
+
+String _employeeAssignmentKey(String pieceType, String stage) =>
+    '${pieceType.trim().toLowerCase()}|${stage.trim().toLowerCase()}';
+
+class _EmployeeProductionTypeCard extends StatelessWidget {
+  const _EmployeeProductionTypeCard({
+    required this.pieceType,
+    required this.stage,
+    required this.count,
+  });
+
+  final String pieceType;
+  final String stage;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 220,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: UiPalette.surfaceCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: UiPalette.borderSoft, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'نوع القطعة: $pieceType',
+            style: UiPalette.adaptiveTextStyle(
+              context,
+              backgroundColor: UiPalette.surfaceCard,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'المرحلة: $stage',
+            style: UiPalette.adaptiveTextStyle(
+              context,
+              backgroundColor: UiPalette.surfaceCard,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ).copyWith(color: UiPalette.textSoft),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'عدد القطع المنفذة: $count',
+            style: UiPalette.adaptiveTextStyle(
+              context,
+              backgroundColor: UiPalette.surfaceCard,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ).copyWith(color: UiPalette.primaryBlue),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+bool _isRelevantPieceWageStatus(String? status) {
+  final normalized = (status ?? '').trim();
+  if (normalized.isEmpty) return true;
+
+  final lowered = normalized.toLowerCase();
+  return lowered != 'cancelled' &&
+      lowered != 'canceled' &&
+      lowered != 'rejected' &&
+      lowered != 'void' &&
+      lowered != 'voided';
+}
+
+List<EmployeeProductionSummaryEntry> summarizeEmployeeProduction(
+  EmployeeDetails employee,
+  List<PieceWageRecord> wages,
+) {
+  final assignedEntries = employee.pieceRates
+      .where((row) => row.pieceType.trim().isNotEmpty && row.stage.trim().isNotEmpty)
+      .map(
+        (row) => (
+          key: _employeeAssignmentKey(row.pieceType, row.stage),
+          pieceType: row.pieceType.trim(),
+          stage: row.stage.trim(),
+        ),
+      )
+      .toList();
+
+  if (assignedEntries.isEmpty) {
+    return const <EmployeeProductionSummaryEntry>[];
+  }
+
+  final countedPieceIdsByAssignment = <String, Set<int>>{};
+  for (final wage in wages) {
+    if (wage.employeeId != employee.id) continue;
+    final pieceType = wage.pieceType.trim();
+    final stage = wage.stage.trim();
+    final assignmentKey = _employeeAssignmentKey(pieceType, stage);
+    if (!_isRelevantPieceWageStatus(wage.status) ||
+        !assignedEntries.any((entry) => entry.key == assignmentKey)) {
+      continue;
+    }
+
+    final ids = countedPieceIdsByAssignment.putIfAbsent(assignmentKey, () => <int>{});
+    ids.add(wage.pieceId);
+  }
+
+  final entries = assignedEntries
+      .map(
+        (assignment) => EmployeeProductionSummaryEntry(
+          pieceType: assignment.pieceType,
+          stage: assignment.stage,
+          count: countedPieceIdsByAssignment[assignment.key]?.length ?? 0,
+        ),
+      )
+      .toList()
+    ..sort((a, b) {
+      final typeCompare = a.pieceType.compareTo(b.pieceType);
+      if (typeCompare != 0) return typeCompare;
+      return a.stage.compareTo(b.stage);
+    });
+
+  return entries;
+}
+
 class _EmployeeFinancialSummary {
   const _EmployeeFinancialSummary({
     required this.draws,
     required this.settlements,
     required this.pieceWages,
     required this.operatingExpenses,
+    this.officialSummary,
   });
 
   final List<EmployeeDraw> draws;
   final List<PayrollSettlement> settlements;
   final List<PieceWageRecord> pieceWages;
   final List<FinancialTransaction> operatingExpenses;
+  final EmployeeSelfFinancialSummary? officialSummary;
 
   double get drawTotal =>
       draws.fold<double>(0, (sum, item) => sum + (item.amount ?? 0));
@@ -86,6 +226,7 @@ class _EmployeeFinancialSummary {
       pieceWages.fold<double>(0, (sum, item) => sum + item.totalWage);
   double get operatingExpenseTotal =>
       operatingExpenses.fold<double>(0, (sum, item) => sum + item.amount);
+  double get officialNetAmount => officialSummary?.netAmount ?? 0;
 }
 
 class EmployeeDetailsScreen extends StatefulWidget {
@@ -132,6 +273,14 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
     final wages = (await payroll.getPieceWages())
         .where((item) => item.employeeId == widget.employeeId)
         .toList();
+
+    EmployeeSelfFinancialSummary? officialSummary;
+    try {
+      officialSummary = await payroll.getMyFinancialSummary();
+    } catch (_) {
+      officialSummary = null;
+    }
+
     final expenses = (await finance.getTransactions())
         .where((item) => item.transactionType == 'OperatingExpense')
         .toList();
@@ -141,6 +290,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
       settlements: settlements,
       pieceWages: wages,
       operatingExpenses: expenses,
+      officialSummary: officialSummary,
     );
   }
 
@@ -393,6 +543,10 @@ class _OverviewTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final productionSummary = summarizeEmployeeProduction(
+      employee,
+      financial.pieceWages,
+    );
     final personalItems = <_InfoTileData>[
       _InfoTileData('رقم الموظف', employee.code),
       _InfoTileData('الاسم الكامل', _detailsText(employee.fullName)),
@@ -476,8 +630,58 @@ class _OverviewTab extends StatelessWidget {
                         _detailsMoney.format(financial.operatingExpenseTotal),
                     accent: UiPalette.primaryDark,
                   ),
+                  _MetricCard(
+                    label: 'الصافي الرسمي',
+                    value: _detailsMoney.format(financial.officialNetAmount),
+                    accent: UiPalette.primaryBlue,
+                  ),
                 ],
               ),
+              const SizedBox(height: 18),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(
+                  'ملخص إنتاج الموظف حسب نوع القطعة',
+                  style: UiPalette.adaptiveTextStyle(
+                    context,
+                    backgroundColor: UiPalette.surfaceCard,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ).copyWith(color: UiPalette.textSoft),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (productionSummary.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: UiPalette.surfaceCard,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: UiPalette.borderSoft, width: 1),
+                  ),
+                  child: Text(
+                    'لا توجد أنواع قطع مسندة لهذا الموظف في قاعدة التخصيص الرسمية.',
+                    style: UiPalette.adaptiveTextStyle(
+                      context,
+                      backgroundColor: UiPalette.surfaceCard,
+                      fontSize: 13,
+                    ),
+                  ),
+                )
+              else
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: productionSummary
+                      .map(
+                        (entry) => _EmployeeProductionTypeCard(
+                          pieceType: entry.pieceType,
+                          stage: entry.stage,
+                          count: entry.count,
+                        ),
+                      )
+                      .toList(),
+                ),
             ],
           ),
         ),

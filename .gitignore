@@ -85,3 +85,14 @@ R3_usp_PostAccountingEvent_rollback.sql
 
 r3_proc_dump.txt
 flutter_analyze_current.txt
+# Diagnostic and temporary files
+*_LOG.txt
+*_debug.txt
+proof-*.txt
+tempfile_*.txt
+*_diagnosis.txt
+*_diagnostic.txt
+*.tmp
+*.temp
+Backend/R3_PROOF_*.txt
+Backend/R3_SAFE_ZERO_OPERATIONAL_RESET.before_order_69.ps1

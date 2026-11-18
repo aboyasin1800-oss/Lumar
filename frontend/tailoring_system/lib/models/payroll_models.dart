@@ -180,6 +180,99 @@ class PayrollSettlement {
 	final int? journalEntryId;
 }
 
+class EmployeeSelfFinancialSummary {
+  const EmployeeSelfFinancialSummary({
+    required this.employeeId,
+    required this.payrollPeriodId,
+    required this.basicSalaryAmount,
+    required this.pieceWageAmount,
+    required this.overtimeAmount,
+    required this.grossAmount,
+    required this.deductionsAmount,
+    required this.netAmount,
+    required this.status,
+    required this.createdAt,
+  });
+
+  factory EmployeeSelfFinancialSummary.fromJson(PayrollJson json) => EmployeeSelfFinancialSummary(
+        employeeId: json['employeeId'] as int,
+        payrollPeriodId: json['payrollPeriodId'] as int?,
+        basicSalaryAmount: _amount(json, 'basicSalaryAmount'),
+        pieceWageAmount: _amount(json, 'pieceWageAmount'),
+        overtimeAmount: _amount(json, 'overtimeAmount'),
+        grossAmount: _amount(json, 'grossAmount'),
+        deductionsAmount: _amount(json, 'deductionsAmount'),
+        netAmount: _amount(json, 'netAmount'),
+        status: json['status'] as String?,
+        createdAt: _nullableDate(json, 'createdAt'),
+      );
+
+  final int employeeId;
+  final int? payrollPeriodId;
+  final double basicSalaryAmount;
+  final double pieceWageAmount;
+  final double overtimeAmount;
+  final double grossAmount;
+  final double deductionsAmount;
+  final double netAmount;
+  final String? status;
+  final DateTime? createdAt;
+}
+
+class EmployeeMonthlyStatement {
+  const EmployeeMonthlyStatement({
+    required this.payrollPeriodId,
+    required this.periodCode,
+    required this.periodStart,
+    required this.periodEnd,
+    required this.periodStatus,
+    required this.basicSalaryAmount,
+    required this.pieceWageAmount,
+    required this.overtimeAmount,
+    required this.grossAmount,
+    required this.deductionsAmount,
+    required this.drawAmount,
+    required this.settlementsAmount,
+    required this.netAmount,
+    required this.generatedAt,
+    required this.approvedAt,
+  });
+
+  factory EmployeeMonthlyStatement.fromJson(PayrollJson json) => EmployeeMonthlyStatement(
+        payrollPeriodId: json['payrollPeriodId'] as int,
+        periodCode: json['periodCode'] as String,
+        periodStart: _date(json, 'periodStart'),
+        periodEnd: _date(json, 'periodEnd'),
+        periodStatus: json['periodStatus'] as String,
+        basicSalaryAmount: _nullableAmount(json, 'basicSalaryAmount') ?? 0,
+        pieceWageAmount: _nullableAmount(json, 'pieceWageAmount') ?? 0,
+        overtimeAmount: _nullableAmount(json, 'overtimeAmount') ?? 0,
+        grossAmount: _nullableAmount(json, 'grossAmount') ?? 0,
+        deductionsAmount: _nullableAmount(json, 'deductionsAmount') ?? 0,
+        drawAmount: _nullableAmount(json, 'drawAmount') ?? 0,
+        settlementsAmount: _nullableAmount(json, 'settlementsAmount') ?? 0,
+        netAmount: _nullableAmount(json, 'netAmount') ?? 0,
+        generatedAt: _nullableDate(json, 'generatedAt'),
+        approvedAt: _nullableDate(json, 'approvedAt'),
+      );
+
+  final int payrollPeriodId;
+  final String periodCode;
+  final DateTime periodStart;
+  final DateTime periodEnd;
+  final String periodStatus;
+  final double basicSalaryAmount;
+  final double pieceWageAmount;
+  final double overtimeAmount;
+  final double grossAmount;
+  final double deductionsAmount;
+  final double drawAmount;
+  final double settlementsAmount;
+  final double netAmount;
+  final DateTime? generatedAt;
+  final DateTime? approvedAt;
+}
+
 class PayrollOverview {
 	const PayrollOverview({required this.periods, required this.records, required this.employees, required this.departments, required this.pieceWages, required this.itemsByRecord, required this.drawsByEmployee});
 	final List<PayrollPeriod> periods;

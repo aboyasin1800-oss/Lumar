@@ -233,16 +233,28 @@ class EmployeeDetails {
     final values = raw is List ? raw : const <dynamic>[];
     return values
         .whereType<Map<String, dynamic>>()
-        .map(
-          (entry) => EmployeePieceRateRow(
+        .map((entry) {
+          final productTypeRaw = entry['productTypeId'] ??
+              entry['product_type_id'] ??
+              entry['productType'] ??
+              entry['officialProductTypeId'];
+          final productTypeId = productTypeRaw == null ||
+                  productTypeRaw.toString().trim().isEmpty
+              ? null
+              : int.tryParse(productTypeRaw.toString());
+
+          return EmployeePieceRateRow(
+            productTypeId: productTypeId,
             pieceType:
                 (entry['pieceType'] ?? entry['piece_type'] ?? '').toString(),
-            stage: (entry['stage'] ?? entry['stageName'] ?? '').toString(),
+            stage:
+                (entry['stage'] ?? entry['stageName'] ?? entry['workStage'] ?? '')
+                    .toString(),
             rateText:
                 (entry['rate'] ?? entry['wageRate'] ?? entry['pieceRate'] ?? '')
                     .toString(),
-          ),
-        )
+          );
+        })
         .toList();
   }
 

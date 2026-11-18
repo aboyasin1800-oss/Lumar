@@ -1,5 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:tailoring_system/models/loyalty_models.dart';
 import 'package:tailoring_system/repositories/loyalty_repository.dart';
 import 'package:tailoring_system/screens/loyalty/loyalty_transactions_screen.dart';
@@ -32,6 +36,43 @@ class _RecordingLoyaltyRepository extends LoyaltyRepository {
 }
 
 void main() {
+  test('program settings fetches the active loyalty-management endpoint', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'GET');
+      expect(request.url.toString(),
+          'http://127.0.0.1:5093/api/loyalty-management/program-settings');
+
+      return http.Response(
+        jsonEncode([
+          {
+            'loyaltyProgramSettingId': 1,
+            'isEnabled': true,
+            'pointsPerPiece': 10,
+            'pointMonetaryValue': 1,
+            'effectiveFromUtc': '2024-01-01T00:00:00Z',
+            'createdAt': '2024-01-01T00:00:00Z',
+            'updatedAt': '2024-01-01T00:00:00Z',
+            'allowRedemption': true,
+            'minimumRedemptionPoints': 0,
+            'maximumRedemptionPoints': 1000,
+            'loyaltyFreezeEnabled': false,
+            'gracePeriodDays': 180,
+            'warningPeriodDays': 30,
+            'manualReactivationEnabled': true,
+            'purchaseReactivationEnabled': true,
+          },
+        ]),
+        200,
+      );
+    });
+
+    final settings = await LoyaltyRepository(client: client).getProgramSettings();
+
+    expect(settings, hasLength(1));
+    expect(settings.first.isEnabled, isTrue);
+    expect(settings.first.pointsPerPiece, 10);
+  });
+
   test('redemption preview reads the backend validation message', () {
     final preview = LoyaltyRedemptionPreview.fromJson({
       'customerId': 78,
