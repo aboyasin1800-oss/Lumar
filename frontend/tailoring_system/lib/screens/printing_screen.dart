@@ -47,7 +47,7 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _future = _loadCenter();
   }
 
@@ -253,6 +253,9 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
                     Tab(
                         icon: Icon(Icons.fact_check_outlined),
                         text: 'الفواتير'),
+                    Tab(
+                        icon: Icon(Icons.label_outline),
+                        text: 'ملصقات الأقمشة'),
                   ],
                 ),
                 const SizedBox(height: 7),
@@ -278,6 +281,10 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
                       _PlaceholderTab(
                         title: 'طباعة الفواتير',
                         subtitle: 'سيتم تنفيذها في المرحلة القادمة.',
+                      ),
+                      _FabricRollLabelsTab(
+                        baseUrl: _baseUrl,
+                        auth: widget.auth,
                       ),
                     ],
                   ),
@@ -900,6 +907,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                           await FinanceRepository().resolveGeneralCashAccount(
                         requireReceiptEnabled: true,
                       );
+                      if (!dialogContext.mounted) return;
                       if (generalCashAccount == null) {
                         setDialogState(() => errorText =
                             'الصندوق النقدي العام غير محدد أو غير متاح. يرجى تحديده من الإعدادات المالية.');
@@ -1898,151 +1906,6 @@ class _MeasurementCardPdfGenerator {
 
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-
-  final String label;
-  final dynamic value;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = value == null || value.toString().trim().isEmpty
-        ? '-'
-        : value.toString();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: RichText(
-        textDirection: Directionality.of(context),
-        text: TextSpan(
-          style: const TextStyle(color: Colors.black87, fontSize: 9),
-          children: [
-            TextSpan(
-              text: '$label: ',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            TextSpan(text: text),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MeasurementCell extends StatelessWidget {
-  const _MeasurementCell({required this.label, required this.value});
-
-  final String label;
-  final dynamic value;
-
-  @override
-  Widget build(BuildContext context) {
-    final textValue = value == null || value.toString().trim().isEmpty
-        ? '-'
-        : value.toString();
-    return Container(
-      padding: const EdgeInsets.all(4),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            textValue,
-            style: const TextStyle(fontSize: 11, color: Colors.black),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QrCodeBox extends StatelessWidget {
-  const _QrCodeBox({required this.value});
-
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final safeValue = value.trim();
-    final safeLength = safeValue.isEmpty ? 1 : safeValue.length;
-    final items = List.generate(16, (row) {
-      final pattern = List.generate(16, (col) {
-        final charIndex = (row * 2 + (col % 2)) % safeLength;
-        final seed = (safeValue.isEmpty
-            ? (row + col) % 2
-            : (safeValue.codeUnits[charIndex] + row * 13 + col * 7) % 2);
-        return seed == 0 ? Colors.black : Colors.white;
-      });
-      return Row(
-        children: pattern
-            .map((color) => Expanded(child: Container(height: 5, color: color)))
-            .toList(),
-      );
-    });
-
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: .2),
-      ),
-      child: Column(
-        children: [
-          ...items,
-        ],
-      ),
-    );
-  }
-}
-
-class _BarcodeBox extends StatelessWidget {
-  const _BarcodeBox({required this.value});
-
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final safeValue = value.trim();
-    final displayValue = safeValue.isEmpty ? '---' : safeValue;
-    final bars = List.generate(
-        (safeValue.isEmpty ? 8 : safeValue.length * 2) + 4, (index) {
-      final isDark = (index + displayValue.length) % 3 == 0 || index % 2 == 0;
-      return Expanded(
-        child: Container(
-          height: 38,
-          color: isDark ? Colors.black : Colors.white,
-        ),
-      );
-    });
-
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 1.2),
-      ),
-      child: Column(
-        children: [
-          Row(children: bars),
-          const SizedBox(height: 4),
-          Text(
-            displayValue,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 7, color: Colors.black87),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _PlaceholderTab extends StatelessWidget {
   const _PlaceholderTab({required this.title, required this.subtitle});
 
@@ -2083,6 +1946,237 @@ class _PlaceholderTab extends StatelessWidget {
       ),
     );
   }
+}
+
+class _FabricRollLabelsTab extends StatefulWidget {
+  const _FabricRollLabelsTab({required this.baseUrl, required this.auth});
+
+  final String baseUrl;
+  final AuthState auth;
+
+  @override
+  State<_FabricRollLabelsTab> createState() => _FabricRollLabelsTabState();
+}
+
+class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
+  final _searchController = TextEditingController();
+  final Set<int> _selected = <int>{};
+  double _labelWidthMm = 70;
+  double _labelHeightMm = 50;
+  Future<List<_FabricRollLabel>>? _labels;
+
+  @override
+  void initState() {
+    super.initState();
+    _labels = _loadLabels();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Map<String, String> get _headers {
+    final token = widget.auth.token;
+    return {
+      'Accept': 'application/json',
+      if (token != null && token.trim().isNotEmpty)
+        'Authorization': 'Bearer ${token.trim()}',
+    };
+  }
+
+  Future<List<_FabricRollLabel>> _loadLabels({int? goodsReceiptItemId, String? catalogNumber, String? fabricCode}) async {
+    final query = <String>[];
+    if (goodsReceiptItemId != null) query.add('goodsReceiptItemId=$goodsReceiptItemId');
+    if (catalogNumber != null && catalogNumber.trim().isNotEmpty) {
+      query.add('catalogNumber=${Uri.encodeQueryComponent(catalogNumber.trim())}');
+    }
+    if (fabricCode != null && fabricCode.trim().isNotEmpty) {
+      query.add('fabricCode=${Uri.encodeQueryComponent(fabricCode.trim())}');
+    }
+    final uri = Uri.parse('${widget.baseUrl}/inventory/fabric-roll-labels${query.isEmpty ? '' : '?${query.join('&')}'}');
+    final response = await http.get(uri, headers: _headers);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('تعذر تحميل ملصقات الرولات.');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) return const <_FabricRollLabel>[];
+    return decoded.cast<Map<String, dynamic>>().map(_FabricRollLabel.fromJson).toList();
+  }
+
+  Future<void> _search() async {
+    final query = _searchController.text.trim();
+    setState(() {
+      _selected.clear();
+      _labels = _loadLabels(catalogNumber: query, fabricCode: query);
+    });
+  }
+
+  Future<Uint8List> _buildPdf(List<_FabricRollLabel> labels) async {
+    pw.Font? arabicFont;
+    try {
+      arabicFont = await DocumentPrintSupport.loadArabicFont();
+    } catch (_) {}
+    final pdf = pw.Document();
+    for (final label in labels) {
+      pdf.addPage(pw.Page(
+        pageFormat: PdfPageFormat(_labelWidthMm * PdfPageFormat.mm, _labelHeightMm * PdfPageFormat.mm, marginAll: 2 * PdfPageFormat.mm),
+        build: (context) {
+          final textStyle = pw.TextStyle(font: arabicFont, fontSize: 8);
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text('LUMAR', style: pw.TextStyle(font: arabicFont, fontSize: 10, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 3),
+              pw.Text('CatalogNumber: ${label.catalogNumber ?? '-'}', style: textStyle),
+              pw.Text('FabricCode: ${label.fabricCode}', style: pw.TextStyle(font: arabicFont, fontSize: 9, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 3),
+              pw.BarcodeWidget(barcode: pw.Barcode.code128(), data: label.fabricCode, width: 150, height: 35),
+              pw.Text(label.fabricCode, style: pw.TextStyle(font: arabicFont, fontSize: 8, fontWeight: pw.FontWeight.bold)),
+              if (label.fabricType.isNotEmpty)
+                pw.Text('النوع: ${label.fabricType}', style: textStyle),
+              if (label.fabricColor?.isNotEmpty == true)
+                pw.Text('اللون: ${label.fabricColor}', style: textStyle),
+              if (label.fabricWidth != null)
+                pw.Text('العرض: ${label.fabricWidth!.toStringAsFixed(2)} ${label.fabricWidthUnit ?? ''}', style: textStyle),
+              pw.Text('الكمية: ${label.quantity.toStringAsFixed(2)}', style: textStyle),
+            ],
+          );
+        },
+      ));
+    }
+    return pdf.save();
+  }
+
+  Future<void> _printLabels(List<_FabricRollLabel> labels) async {
+    if (labels.isEmpty) return;
+    try {
+      final bytes = await _buildPdf(labels);
+      await Printing.layoutPdf(onLayout: (_) async => bytes);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم تجهيز ${labels.length} ملصق للطباعة.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر تجهيز الملصقات للطباعة: $error')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  decoration: const InputDecoration(
+                    labelText: 'بحث برقم الكتالوج أو FabricCode',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                  ),
+                  onSubmitted: (_) => _search(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(onPressed: _search, icon: const Icon(Icons.search)),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              SizedBox(width: 140, child: TextField(keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'عرض الملصق مم'), onSubmitted: (v) => setState(() => _labelWidthMm = double.tryParse(v) ?? _labelWidthMm))),
+              const SizedBox(width: 8),
+              SizedBox(width: 140, child: TextField(keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'ارتفاع الملصق مم'), onSubmitted: (v) => setState(() => _labelHeightMm = double.tryParse(v) ?? _labelHeightMm))),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: FutureBuilder<List<_FabricRollLabel>>(
+            future: _labels,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+              if (snapshot.hasError) return Center(child: Text(snapshot.error.toString()));
+              final labels = snapshot.data ?? const <_FabricRollLabel>[];
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        FilledButton.icon(onPressed: () => _printLabels(labels.where((label) => _selected.contains(label.fabricRollId)).toList()), icon: const Icon(Icons.print_outlined), label: const Text('طباعة المحدد')),
+                        const SizedBox(width: 8),
+                        FilledButton.tonalIcon(onPressed: () => _printLabels(labels), icon: const Icon(Icons.print), label: const Text('طباعة الكل')),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: labels.length,
+                      itemBuilder: (context, index) {
+                        final label = labels[index];
+                        final checked = _selected.contains(label.fabricRollId);
+                        return CheckboxListTile(
+                          value: checked,
+                          onChanged: (value) => setState(() {
+                            if (value == true) {
+                              _selected.add(label.fabricRollId);
+                            } else {
+                              _selected.remove(label.fabricRollId);
+                            }
+                          }),
+                          title: Text(label.fabricCode),
+                          subtitle: Text('Catalog: ${label.catalogNumber ?? '-'} | ${label.fabricType}'),
+                          secondary: const Icon(Icons.label_outline),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FabricRollLabel {
+  const _FabricRollLabel({required this.fabricRollId, required this.goodsReceiptItemId, required this.catalogNumber, required this.fabricCode, required this.fabricType, required this.fabricColor, required this.fabricWidth, required this.fabricWidthUnit, required this.quantity, required this.unitCost});
+  factory _FabricRollLabel.fromJson(Map<String, dynamic> json) => _FabricRollLabel(
+    fabricRollId: (json['fabricRollId'] as num).toInt(),
+    goodsReceiptItemId: (json['goodsReceiptItemId'] as num).toInt(),
+    catalogNumber: json['catalogNumber']?.toString(),
+    fabricCode: (json['fabricCode'] ?? '').toString(),
+    fabricType: (json['fabricType'] ?? '').toString(),
+    fabricColor: json['fabricColor']?.toString(),
+    fabricWidth: (json['fabricWidth'] as num?)?.toDouble(),
+    fabricWidthUnit: json['fabricWidthUnit']?.toString(),
+    quantity: (json['quantity'] as num?)?.toDouble() ?? 0,
+    unitCost: (json['unitCost'] as num?)?.toDouble() ?? 0,
+  );
+  final int fabricRollId;
+  final int goodsReceiptItemId;
+  final String? catalogNumber;
+  final String fabricCode;
+  final String fabricType;
+  final String? fabricColor;
+  final double? fabricWidth;
+  final String? fabricWidthUnit;
+  final double quantity;
+  final double unitCost;
 }
 
 class _PrintingCenterState {
@@ -2331,15 +2425,6 @@ class _OrderPieceDetail {
     );
   }
 
-  static String _firstAvailableString(Iterable<dynamic> values) {
-    for (final value in values) {
-      final text = value?.toString().trim();
-      if (text != null && text.isNotEmpty) {
-        return text;
-      }
-    }
-    return '';
-  }
 
   final int pieceId;
   final String orderNumber;

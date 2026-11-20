@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
+import '../../core/app_navigation.dart';
 import '../../core/ui_palette.dart';
 import '../../models/pending_receipt_storage.dart';
+import '../../services/auth_state.dart';
+import '../printing_screen.dart';
 
 String _friendlyInventorySaveError(http.Response response) {
   final raw = response.body.trim();
@@ -966,15 +969,43 @@ class _BulkFabricEntryScreenState extends State<BulkFabricEntryScreen> {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            content: Text(isPendingStorage
-                ? 'تم تخزين بند الاستلام في المخزون بنجاح.'
-                : 'تم استلام دفعة الأقمشة بنجاح وإضافتها للمخزون (${_rolls.length} رولات).'),
-          ),
-        );
-        Navigator.of(context).pop(true);
+        if (isPendingStorage) {
+          final printLabels = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('تم تخزين الرولات بنجاح'),
+              content: const Text('تم تخزين الرولات بنجاح وأصبحت ملصقاتها جاهزة للطباعة.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('لاحقًا'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text('طباعة الملصقات'),
+                ),
+              ],
+            ),
+          );
+          if (!mounted) return;
+          if (printLabels == true) {
+            await AppNavigation.push(
+              context,
+              (_) => PrintingScreen(auth: AuthState.instance),
+            );
+          }
+          if (mounted) Navigator.of(context).pop(true);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              content: Text('تم استلام دفعة الأقمشة بنجاح وإضافتها للمخزون (${_rolls.length} رولات).'),
+            ),
+          );
+          Navigator.of(context).pop(true);
+        }
       } else {
         debugPrint('Bulk fabric receipt save failed. Status=${response.statusCode}; Body=${response.body}');
         _showMessage(_friendlyInventorySaveError(response));

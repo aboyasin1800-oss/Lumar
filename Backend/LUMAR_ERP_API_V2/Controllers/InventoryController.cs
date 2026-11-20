@@ -34,6 +34,10 @@ public sealed class InventoryController(IInventoryService service) : ControllerB
     [HttpGet("fabrics")]
     public Task<IReadOnlyList<FabricDto>> GetFabrics(CancellationToken ct) => service.GetFabricsAsync(ct);
 
+    [HttpGet("fabric-roll-labels")]
+    public Task<IReadOnlyList<FabricRollLabelDto>> GetFabricRollLabels([FromQuery] int? goodsReceiptItemId, [FromQuery] string? catalogNumber, [FromQuery] string? fabricCode, CancellationToken ct)
+        => service.GetFabricRollLabelsAsync(goodsReceiptItemId, catalogNumber, fabricCode, ct);
+
     [HttpGet("readymade")]
     public Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMade(CancellationToken ct) => service.GetReadyMadeAsync(ct);
 

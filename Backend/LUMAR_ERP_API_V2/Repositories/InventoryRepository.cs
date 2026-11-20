@@ -388,6 +388,48 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
 
         return await QueryAsync(sql, reader => new FabricDto(reader.GetString(0), reader.NullableInt32("FabricID"), reader.NullableString("FabricCode"), reader.NullableString("FabricName"), reader.NullableDecimal("FabricPrice"), reader.NullableBoolean("IsActive"), reader.NullableInt32("InventoryFabricCode"), reader.NullableString("InventoryFabricName"), reader.NullableString("Unit"), reader.NullableString("Color"), reader.NullableString("CatalogNumber"), reader.NullableDecimal("QuantityYard"), reader.NullableDecimal("QuantityInch"), reader.NullableDecimal("TotalRollCost"), reader.NullableDecimal("PricePerYard"), reader.NullableDecimal("PricePerInch"), reader.NullableDecimal("UsedQuantity"), reader.NullableDecimal("AvailableQuantity")), null, ct);
     }
+
+    public async Task<IReadOnlyList<FabricRollLabelDto>> GetFabricRollLabelsAsync(int? goodsReceiptItemId, string? catalogNumber, string? fabricCode, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT fr.FabricRollId,
+                   gri.GoodsReceiptItemId,
+                   i.Barcode AS CatalogNumber,
+                   fr.RollCode AS FabricCode,
+                   fr.FabricTypeCode AS FabricType,
+                   fr.ColorValue AS FabricColor,
+                   i.FabricWidth,
+                   i.FabricWidthUnit,
+                   fr.OriginalQuantity AS Quantity,
+                   fr.OfficialUnitCost AS UnitCost
+            FROM dbo.FabricRolls fr WITH (NOLOCK)
+            INNER JOIN dbo.InventoryItems i WITH (NOLOCK) ON i.InventoryItemID = fr.InventoryItemId
+            INNER JOIN dbo.InventoryReceiptLines l WITH (NOLOCK) ON l.FabricRollId = fr.FabricRollId
+            INNER JOIN dbo.InventoryReceiptPostings rp WITH (NOLOCK) ON rp.InventoryReceiptPostingId = l.InventoryReceiptPostingId
+            INNER JOIN dbo.GoodsReceiptItems gri WITH (NOLOCK) ON gri.GoodsReceiptItemId = rp.GoodsReceiptItemId
+            WHERE (@goodsReceiptItemId IS NULL OR gri.GoodsReceiptItemId = @goodsReceiptItemId)
+              AND (@catalogNumber IS NULL OR i.Barcode = @catalogNumber)
+              AND (@fabricCode IS NULL OR fr.RollCode = @fabricCode)
+            ORDER BY fr.FabricRollId;";
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@goodsReceiptItemId", goodsReceiptItemId.HasValue ? goodsReceiptItemId.Value : DBNull.Value);
+        command.Parameters.AddWithValue("@catalogNumber", string.IsNullOrWhiteSpace(catalogNumber) ? DBNull.Value : catalogNumber.Trim());
+        command.Parameters.AddWithValue("@fabricCode", string.IsNullOrWhiteSpace(fabricCode) ? DBNull.Value : fabricCode.Trim());
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        var items = new List<FabricRollLabelDto>();
+        while (await reader.ReadAsync(ct))
+        {
+            items.Add(new FabricRollLabelDto(
+                reader.GetInt64(0), reader.GetInt32(1), reader.NullableString("CatalogNumber"),
+                reader.GetString(3), reader.GetString(4), reader.NullableString("FabricColor"),
+                reader.NullableDecimal("FabricWidth"), reader.NullableString("FabricWidthUnit"),
+                reader.GetDecimal(8), reader.GetDecimal(9)));
+        }
+        return items;
+    }
     public Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken ct) => QueryAsync("SELECT r.ReadyMadeInventoryProductId, r.ReadyMadeProductionOrderId, r.ReadyMadeProductionOrderItemId, r.ReadyMadeProductionOrderPieceInstanceId, r.ProductTypeId, r.ProductionOrderNumber, r.ProductionName, r.PieceType, r.PieceNumber, r.TrackingCode, r.FabricCode, r.FabricType, r.FabricColor, r.CatalogNumber, r.FabricUnit, r.FabricWidth, r.FabricWidthUnit, r.ActualCost, r.SuggestedSellingPrice, r.MeasurementSnapshot, r.ReadyForSaleAt, r.Status, r.Source, r.Notes, r.IsActive, r.CreatedAt, pt.NameAr AS ProductTypeName FROM dbo.ReadyMadeInventoryProducts r LEFT JOIN dbo.PricingProductTypes pt ON pt.ProductTypeId=r.ProductTypeId ORDER BY r.ReadyForSaleAt DESC, r.ReadyMadeInventoryProductId DESC", MapReadyMade, null, ct);
     public async Task<ReadyMadeProductDto?> GetReadyMadeByIdAsync(int readyMadeInventoryProductId, CancellationToken ct) => (await QueryAsync("SELECT r.ReadyMadeInventoryProductId, r.ReadyMadeProductionOrderId, r.ReadyMadeProductionOrderItemId, r.ReadyMadeProductionOrderPieceInstanceId, r.ProductTypeId, r.ProductionOrderNumber, r.ProductionName, r.PieceType, r.PieceNumber, r.TrackingCode, r.FabricCode, r.FabricType, r.FabricColor, r.CatalogNumber, r.FabricUnit, r.FabricWidth, r.FabricWidthUnit, r.ActualCost, r.SuggestedSellingPrice, r.MeasurementSnapshot, r.ReadyForSaleAt, r.Status, r.Source, r.Notes, r.IsActive, r.CreatedAt, pt.NameAr AS ProductTypeName FROM dbo.ReadyMadeInventoryProducts r LEFT JOIN dbo.PricingProductTypes pt ON pt.ProductTypeId=r.ProductTypeId WHERE r.ReadyMadeInventoryProductId = @id", MapReadyMade, readyMadeInventoryProductId, ct)).SingleOrDefault();
     private static ReadyMadeProductDto MapReadyMade(SqlDataReader reader) => new(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.NullableInt32("ProductTypeId"), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetInt32(8), reader.GetString(9), reader.NullableString("FabricCode"), reader.NullableString("FabricType"), reader.NullableString("FabricColor"), reader.NullableString("CatalogNumber"), reader.NullableString("FabricUnit"), reader.NullableString("FabricWidth"), reader.NullableString("FabricWidthUnit"), reader.NullableDecimal("ActualCost"), reader.NullableDecimal("SuggestedSellingPrice"), reader.NullableString("MeasurementSnapshot"), reader.GetDateTime(20), reader.GetString(21), reader.GetString(22), reader.NullableString("Notes"), reader.GetBoolean(24), reader.GetDateTime(25), reader.NullableString("ProductTypeName"));

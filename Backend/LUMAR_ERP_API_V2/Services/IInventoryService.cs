@@ -10,6 +10,7 @@ public interface IInventoryService
     Task<IReadOnlyList<GoodsReceiptDifferenceDto>> GetGoodsReceiptDifferencesAsync(int goodsReceiptId, CancellationToken ct);
     Task<IReadOnlyList<PendingGoodsReceiptStorageDto>> GetPendingGoodsReceiptStorageAsync(CancellationToken ct);
     Task<IReadOnlyList<FabricDto>> GetFabricsAsync(CancellationToken ct);
+    Task<IReadOnlyList<FabricRollLabelDto>> GetFabricRollLabelsAsync(int? goodsReceiptItemId, string? catalogNumber, string? fabricCode, CancellationToken ct);
     Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken ct);
     Task<ReadyMadeProductDto?> GetReadyMadeByIdAsync(int readyMadeInventoryProductId, CancellationToken ct);
     Task<ReadyMadeProductDto?> RecordReadyMadeSaleCostAsync(int readyMadeInventoryProductId, CancellationToken ct);
