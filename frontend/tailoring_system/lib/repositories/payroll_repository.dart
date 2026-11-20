@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 
 import '../models/payroll_models.dart';
 import '../services/auth_state.dart';
@@ -11,8 +13,7 @@ class PayrollRepository {
 	final http.Client _client;
 
 	String _newSourceOperationId() {
-		final hex = DateTime.now().microsecondsSinceEpoch.toRadixString(16).padLeft(12, '0');
-		return '00000000-0000-4000-8000-$hex';
+		return const Uuid().v4();
 	}
 
 	http.Client get client => _client;
@@ -131,6 +132,19 @@ class PayrollRepository {
 		String? notes,
 		String? sourceOperationId,
 	}) async {
+		final baseUrl = _baseUrl;
+		final finalUri = Uri.parse('$baseUrl/employees/$employeeId/daily-expenses');
+		final hasReference = (referenceNumber != null && referenceNumber.trim().isNotEmpty);
+		final hasSourceOperationId = (sourceOperationId != null && sourceOperationId.trim().isNotEmpty);
+		debugPrint('FINANCE_ACTION = DAILY_EXPENSE');
+		debugPrint('EMPLOYEE_ID = $employeeId');
+		debugPrint('API_BASE_URL = $baseUrl');
+		debugPrint('REQUEST_PATH = /employees/$employeeId/daily-expenses');
+		debugPrint('CASH_ACCOUNT_ID = $cashAccountId');
+		debugPrint('AMOUNT = $amount');
+		debugPrint('REFERENCE_PRESENT = ${hasReference ? 'YES' : 'NO'}');
+		debugPrint('SOURCE_OPERATION_ID_PRESENT = ${hasSourceOperationId ? 'YES' : 'NO'}');
+
 		final body = <String, dynamic>{
 			'employeeId': employeeId,
 			'amount': amount,
@@ -141,14 +155,40 @@ class PayrollRepository {
 			'sourceOperationId': sourceOperationId ?? _newSourceOperationId(),
 			'currencyCode': 'YER',
 		};
-		final response = await _client.post(
-			Uri.parse('$_baseUrl/employees/$employeeId/daily-expenses'),
-			headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
-			body: jsonEncode(body),
-		);
-		if (response.statusCode < 200 || response.statusCode >= 300) throw PayrollApiException('/employees/$employeeId/daily-expenses', response.statusCode);
-		final decoded = jsonDecode(response.body);
-		return EmployeeFinancialActionResult.fromJson(decoded as PayrollJson);
+		final safeRequestBody = <String, dynamic>{
+			'employeeId': employeeId,
+			'amount': amount,
+			'expenseDate': body['expenseDate'],
+			'cashAccountId': cashAccountId,
+			'referenceNumber': hasReference ? referenceNumber : 'PRESENTED',
+			'notes': notes ?? 'SET',
+			'sourceOperationId': body['sourceOperationId'] ?? 'AUTO_GENERATED',
+			'currencyCode': 'YER',
+		};
+		debugPrint('HTTP_POST_START');
+		debugPrint('FINAL_URI = $finalUri');
+		debugPrint('SAFE_REQUEST_BODY = ${jsonEncode(safeRequestBody)}');
+
+		try {
+			final response = await _client.post(
+				finalUri,
+				headers: _headers(extra: {'Content-Type': 'application/json; charset=utf-8'}),
+				body: jsonEncode(body),
+			);
+			debugPrint('HTTP_STATUS = ${response.statusCode}');
+			debugPrint('HTTP_RESPONSE_RECEIVED');
+			debugPrint('RESPONSE_BODY = ${response.body}');
+			if (response.statusCode < 200 || response.statusCode >= 300) {
+				throw PayrollApiException('/employees/$employeeId/daily-expenses', response.statusCode, response.body);
+			}
+			final decoded = jsonDecode(response.body);
+			return EmployeeFinancialActionResult.fromJson(decoded as PayrollJson);
+		} on Exception catch (error, stackTrace) {
+			debugPrint('HTTP_EXCEPTION_TYPE = ${error.runtimeType}');
+			debugPrint('HTTP_EXCEPTION_MESSAGE = ${error.toString()}');
+			debugPrint('HTTP_EXCEPTION_STACK = $stackTrace');
+			rethrow;
+		}
 	}
 	Future<EmployeeFinancialActionResult> payEmployee(int employeeId, {
 		required double amount,
@@ -297,7 +337,11 @@ class PayrollRepository {
 }
 
 class PayrollApiException implements Exception {
-	const PayrollApiException(this.path, this.statusCode);
+	const PayrollApiException(this.path, this.statusCode, [this.responseBody = '']);
 	final String path;
 	final int statusCode;
+	final String responseBody;
+
+	@override
+	String toString() => 'PayrollApiException(path: $path, statusCode: $statusCode, responseBody: $responseBody)';
 }

@@ -232,7 +232,7 @@ public sealed class EmployeesController(IEmployeeService employees, IAuthenticat
             var runtime = new EmployeeAccrualRuntime();
             var reference = request.ReferenceNumber ?? $"ADV-{request.EmployeeId}-{DateTime.UtcNow:yyyyMMddHHmmss}";
             var eventId = await runtime.PostAdvanceAsync(connection, transaction, request.EmployeeId, request.AdvanceDate, request.Amount, request.CashAccountId, request.SourceOperationId, reference, user.Username ?? "system", ct);
-            var before = await new EmployeeLedgerReader().GetBalanceAsync(connection, request.EmployeeId, ct);
+            var before = await new EmployeeLedgerReader().GetBalanceAsync(connection, transaction, request.EmployeeId, ct);
             var result = new EmployeeFinancialActionResult(Math.Abs(request.SourceOperationId.GetHashCode()), eventId, request.Amount, request.AdvanceDate.ToDateTime(TimeOnly.MinValue), "Advance", reference, before.NetBalance, before.NetBalance - request.Amount, false);
             transaction.Commit();
             return StatusCode(StatusCodes.Status201Created, result);
@@ -267,7 +267,7 @@ public sealed class EmployeesController(IEmployeeService employees, IAuthenticat
             var runtime = new EmployeeAccrualRuntime();
             var reference = request.ReferenceNumber ?? $"EXP-{request.EmployeeId}-{DateTime.UtcNow:yyyyMMddHHmmss}";
             var eventId = await runtime.PostDailyExpenseAsync(connection, transaction, request.EmployeeId, request.ExpenseDate, request.Amount, request.CashAccountId, request.SourceOperationId, reference, user.Username ?? "system", ct);
-            var before = await new EmployeeLedgerReader().GetBalanceAsync(connection, request.EmployeeId, ct);
+            var before = await new EmployeeLedgerReader().GetBalanceAsync(connection, transaction, request.EmployeeId, ct);
             var result = new EmployeeFinancialActionResult(Math.Abs(request.SourceOperationId.GetHashCode()), eventId, request.Amount, request.ExpenseDate.ToDateTime(TimeOnly.MinValue), "DailyExpense", reference, before.NetBalance, before.NetBalance - request.Amount, false);
             transaction.Commit();
             return StatusCode(StatusCodes.Status201Created, result);

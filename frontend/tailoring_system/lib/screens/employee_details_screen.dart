@@ -143,58 +143,89 @@ Future<bool> _showEmployeeFinanceActionDialog(
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
               final repository = PayrollRepository();
+              debugPrint('TRACE_1_CONFIRM_BUTTON_ENTERED');
+              debugPrint('TRACE_2_VALIDATION_PASSED');
               try {
+                debugPrint('TRACE_3_REPOSITORY_CALL_ENTERED');
                 if (actionType == 'advance') {
+                  final amount = double.parse(amountController.text.trim());
+                  final reference = referenceController.text.trim().isEmpty
+                      ? 'ADV-$employeeId-${DateTime.now().millisecondsSinceEpoch}'
+                      : referenceController.text.trim();
+                  final notes = notesController.text.trim().isEmpty
+                      ? 'إضافة سلفة من شاشة الموظف'
+                      : notesController.text.trim();
+                  debugPrint('TRACE_4_URI_CREATED');
                   await repository.addEmployeeAdvance(
                     employeeId,
-                    amount: double.parse(amountController.text.trim()),
+                    amount: amount,
                     advanceDate: date,
                     cashAccountId: 1,
-                    referenceNumber: referenceController.text.trim().isEmpty
-                        ? 'ADV-$employeeId-${DateTime.now().millisecondsSinceEpoch}'
-                        : referenceController.text.trim(),
-                    notes: notesController.text.trim().isEmpty
-                        ? 'إضافة سلفة من شاشة الموظف'
-                        : notesController.text.trim(),
+                    referenceNumber: reference,
+                    notes: notes,
                   );
                 } else if (actionType == 'dailyExpense') {
+                  final amount = double.parse(amountController.text.trim());
+                  final reference = referenceController.text.trim().isEmpty
+                      ? 'EXP-$employeeId-${DateTime.now().millisecondsSinceEpoch}'
+                      : referenceController.text.trim();
+                  final notes = notesController.text.trim().isEmpty
+                      ? 'إضافة مصروف يومي من شاشة الموظف'
+                      : notesController.text.trim();
+                  debugPrint('TRACE_4_URI_CREATED');
                   await repository.addEmployeeDailyExpense(
                     employeeId,
-                    amount: double.parse(amountController.text.trim()),
+                    amount: amount,
                     expenseDate: date,
                     cashAccountId: 1,
-                    referenceNumber: referenceController.text.trim().isEmpty
-                        ? 'EXP-$employeeId-${DateTime.now().millisecondsSinceEpoch}'
-                        : referenceController.text.trim(),
-                    notes: notesController.text.trim().isEmpty
-                        ? 'إضافة مصروف يومي من شاشة الموظف'
-                        : notesController.text.trim(),
+                    referenceNumber: reference,
+                    notes: notes,
                   );
                 } else {
+                  final amount = double.parse(amountController.text.trim());
+                  final reference = referenceController.text.trim().isEmpty
+                      ? 'PAY-$employeeId-${DateTime.now().millisecondsSinceEpoch}'
+                      : referenceController.text.trim();
+                  final notes = notesController.text.trim().isEmpty
+                      ? 'دفع مستحقات الموظف'
+                      : notesController.text.trim();
+                  debugPrint('TRACE_4_URI_CREATED');
                   await repository.payEmployee(
                     employeeId,
-                    amount: double.parse(amountController.text.trim()),
+                    amount: amount,
                     paymentDate: date,
                     asOfDate: date,
                     cashAccountId: 1,
                     paymentMethod: 'Cash',
-                    referenceNumber: referenceController.text.trim().isEmpty
-                        ? 'PAY-$employeeId-${DateTime.now().millisecondsSinceEpoch}'
-                        : referenceController.text.trim(),
-                    notes: notesController.text.trim().isEmpty
-                        ? 'دفع مستحقات الموظف'
-                        : notesController.text.trim(),
+                    referenceNumber: reference,
+                    notes: notes,
                   );
                 }
+                debugPrint('TRACE_7_HTTP_RESPONSE_RECEIVED');
                 if (dialogContext.mounted) {
                   Navigator.of(dialogContext).pop(true);
                 }
-              } catch (_) {
+              } on Exception catch (error, stackTrace) {
+                debugPrint('FINANCE_ACTION = ${actionType.toUpperCase()}');
+                debugPrint('EMPLOYEE_ID = $employeeId');
+                debugPrint('API_BASE_URL = ${const String.fromEnvironment('LUMAR_API_URL', defaultValue: 'http://127.0.0.1:5093')}');
+                debugPrint('REQUEST_PATH = /employees/$employeeId/daily-expenses');
+                debugPrint('SAFE_REQUEST_BODY = ${jsonEncode({
+                  'employeeId': employeeId,
+                  'amount': amountController.text.trim(),
+                  'referencePresent': referenceController.text.trim().isNotEmpty,
+                  'notesPresent': notesController.text.trim().isNotEmpty,
+                  'cashAccountId': 1,
+                })}');
+                debugPrint('EXCEPTION_RUNTIME_TYPE = ${error.runtimeType}');
+                debugPrint('EXCEPTION_MESSAGE = ${error.toString()}');
+                debugPrint('STACK_TRACE = $stackTrace');
                 if (dialogContext.mounted) {
+                  final message = const bool.fromEnvironment('dart.vm.product')
+                      ? 'تعذر تنفيذ العملية المالية.'
+                      : 'Flutter diagnostic: ${error.runtimeType} - ${error.toString()}';
                   ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(
-                      content: Text('تعذر تنفيذ العملية المالية. راجع الخادم أو المبلغ.'),
-                    ),
+                    SnackBar(content: Text(message)),
                   );
                 }
               }
@@ -363,16 +394,30 @@ class _EmployeeFinancialSummary {
   final EmployeeSelfFinancialSummary? officialSummary;
   final List<EmployeeLedgerEntry> ledgerEntries;
 
-  double get drawTotal =>
-      draws.fold<double>(0, (sum, item) => sum + (item.amount ?? 0));
+  double get drawTotal => ledgerEntries
+      .where((entry) =>
+          entry.status.toLowerCase() == 'posted' &&
+          entry.entryType.toLowerCase() == 'advance')
+      .fold<double>(0, (sum, entry) => sum + entry.amount);
   double get settlementTotal =>
       settlements.fold<double>(0, (sum, item) => sum + item.amount);
   double get currentBalance => drawTotal - settlementTotal;
   double get pieceWageTotal =>
       pieceWages.fold<double>(0, (sum, item) => sum + item.totalWage);
   double get officialDeductionTotal =>
-      officialSummary?.deductionsAmount ?? 0;
-  double get officialNetAmount => officialSummary?.netAmount ?? 0;
+      ledgerEntries
+          .where((entry) =>
+              entry.entryType.toLowerCase().contains('dailyexpense') ||
+              entry.sourceType.toLowerCase().contains('dailyexpense') ||
+              entry.entryType.toLowerCase().contains('pieceworkerdailyexpense') ||
+              entry.entryType.toLowerCase().contains('salariedemployeedailyexpense'))
+          .fold<double>(0, (sum, entry) => sum + entry.amount);
+  double get dailyExpenseTotal => officialDeductionTotal;
+  double get currentDueBalance =>
+      ledgerEntries.fold<double>(0, (sum, entry) => sum + entry.balanceEffect);
+  double get payrollNetAmount => officialSummary?.netAmount ?? 0;
+  double get remainingWages => officialSummary?.remainingWages ?? currentDueBalance;
+  double get officialNetAmount => payrollNetAmount;
 }
 
 class EmployeeDetailsScreen extends StatefulWidget {
@@ -760,6 +805,7 @@ class _OverviewTab extends StatelessWidget {
                     label: 'إجمالي السلف',
                     value: _detailsMoney.format(financial.drawTotal),
                     accent: UiPalette.primaryBlue,
+                    useThemeValueColor: true,
                   ),
                   _MetricCard(
                     label: 'أجور القطعة',
@@ -768,13 +814,14 @@ class _OverviewTab extends StatelessWidget {
                   ),
                   _MetricCard(
                     label: 'المصروفات اليومية',
-                    value: _detailsMoney.format(financial.officialDeductionTotal),
+                    value: _detailsMoney.format(financial.dailyExpenseTotal),
                     accent: UiPalette.primaryDark,
                   ),
                   _MetricCard(
-                    label: 'الصافي الرسمي',
-                    value: _detailsMoney.format(financial.officialNetAmount),
+                    label: 'متبقي الأجور',
+                    value: _detailsMoney.format(financial.remainingWages),
                     accent: UiPalette.primaryBlue,
+                    useThemeValueColor: true,
                   ),
                 ],
               ),
@@ -901,7 +948,7 @@ class _OverviewTab extends StatelessWidget {
                             color: UiPalette.primaryBlue,
                           ),
                           title: Text(
-                            '${entry.entryType} • ${entry.referenceNumber.isEmpty ? '—' : entry.referenceNumber}',
+                            '${entry.displayEntryType} • ${entry.referenceNumber.isEmpty ? '—' : entry.referenceNumber}',
                             style: UiPalette.adaptiveTextStyle(
                               context,
                               backgroundColor: UiPalette.surfaceCard,
@@ -910,7 +957,7 @@ class _OverviewTab extends StatelessWidget {
                             ),
                           ),
                           subtitle: Text(
-                            '${_detailsDate.format(entry.effectiveDate)} • ${entry.sourceType} • ${entry.status}',
+                            '${_detailsDate.format(entry.effectiveDate)} • ${entry.displaySourceType} • ${entry.displayStatus}',
                             style: UiPalette.adaptiveTextStyle(
                               context,
                               backgroundColor: UiPalette.surfaceCard,
@@ -1182,7 +1229,7 @@ class _MonthlyTabState extends State<_MonthlyTab> {
         _filteredWages.fold<double>(0, (sum, item) => sum + item.quantity);
     final totalDraws =
         _filteredDraws.fold<double>(0, (sum, item) => sum + (item.amount ?? 0));
-    final totalDailyExpense = widget.financial.officialSummary?.deductionsAmount ?? 0;
+    final totalDailyExpense = widget.financial.dailyExpenseTotal;
     final totalSettlements =
         widget.financial.settlements.fold<double>(0, (sum, item) => sum + item.amount);
 
@@ -2166,11 +2213,13 @@ class _MetricCard extends StatelessWidget {
     required this.label,
     required this.value,
     required this.accent,
+    this.useThemeValueColor = false,
   });
 
   final String label;
   final String value;
   final Color accent;
+  final bool useThemeValueColor;
 
   @override
   Widget build(BuildContext context) {
@@ -2201,6 +2250,10 @@ class _MetricCard extends StatelessWidget {
               backgroundColor: accent,
               fontSize: 18,
               fontWeight: FontWeight.w800,
+            ).copyWith(
+              color: useThemeValueColor
+                  ? Theme.of(context).colorScheme.onSurface
+                  : null,
             ),
           ),
         ],

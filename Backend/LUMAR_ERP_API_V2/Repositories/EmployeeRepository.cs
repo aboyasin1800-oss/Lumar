@@ -242,8 +242,52 @@ WHERE EmployeeID = @id;";
             parameters.Remove("@periodId");
         }
 
-        var rows = await QueryAsync(sql, parameters, reader => new EmployeeSelfFinancialSummaryDto(reader.GetInt32(0), reader.NullableInt32("PayrollPeriodId"), reader.GetDecimal(2), reader.GetDecimal(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.NullableString("Status"), reader.NullableDateTime("CreatedAt")), ct);
-        return rows.FirstOrDefault();
+        var rows = await QueryAsync(sql, parameters, reader => new EmployeeSelfFinancialSummaryDto(
+            reader.GetInt32(0),
+            reader.NullableInt32("PayrollPeriodId"),
+            reader.GetDecimal(2),
+            reader.GetDecimal(3),
+            reader.GetDecimal(4),
+            reader.GetDecimal(5),
+            reader.GetDecimal(6),
+            reader.GetDecimal(7),
+            0m,
+            reader.NullableString("Status"),
+            reader.NullableDateTime("CreatedAt")), ct);
+
+        var summary = rows.FirstOrDefault();
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+
+        var earnedWages = await GetDecimalScalarAsync(connection, "SELECT ISNULL(SUM(CAST(TotalWage AS decimal(18,2))), 0) FROM dbo.PieceWageRecords WHERE EmployeeId = @id AND Status = 'PendingPayroll'", new Dictionary<string, object?> { ["@id"] = employeeId }, ct);
+        var reductions = await GetDecimalScalarAsync(connection, "SELECT ISNULL(SUM(CASE WHEN EntryType IN (N'PieceWorkerDailyExpense', N'SalariedEmployeeDailyExpense', N'Advance', N'EmployeePayment') THEN ABS(BalanceEffect) ELSE 0 END), 0) FROM dbo.EmployeeLedgerEntries WHERE EmployeeId = @id AND Status = N'Posted'", new Dictionary<string, object?> { ["@id"] = employeeId }, ct);
+
+        var remainingWages = earnedWages - reductions;
+        if (summary is null)
+        {
+            return new EmployeeSelfFinancialSummaryDto(
+                employeeId,
+                periodId,
+                0m,
+                earnedWages,
+                0m,
+                earnedWages,
+                reductions,
+                remainingWages,
+                remainingWages,
+                earnedWages > 0m ? "PendingPayroll" : null,
+                null);
+        }
+
+        return summary with
+        {
+            PieceWageAmount = earnedWages > 0m ? earnedWages : summary.PieceWageAmount,
+            GrossAmount = earnedWages > 0m ? earnedWages + summary.BasicSalaryAmount + summary.OvertimeAmount : summary.GrossAmount,
+            DeductionsAmount = reductions,
+            NetAmount = summary.NetAmount,
+            RemainingWages = remainingWages
+        };
     }
     public async Task<EmployeeSelfMonthlyStatementDto?> GetSelfMonthlyStatementAsync(int employeeId, int periodId, CancellationToken ct)
     {
@@ -654,5 +698,31 @@ VALUES (@employeeId, @pieceType, @stage, @rate, @effectiveFrom, @effectiveTo, @i
         }
 
         return items;
+    }
+
+    private static async Task<decimal> GetDecimalScalarAsync(SqlConnection connection, string sql, IReadOnlyDictionary<string, object?>? parameters, CancellationToken ct)
+    {
+        await using var command = new SqlCommand(sql, connection);
+        if (parameters is not null)
+        {
+            foreach (var parameter in parameters)
+            {
+                command.Parameters.AddWithValue(parameter.Key, parameter.Value ?? DBNull.Value);
+            }
+        }
+
+        var value = await command.ExecuteScalarAsync(ct);
+        return value switch
+        {
+            null => 0m,
+            decimal d => d,
+            double dbl => Convert.ToDecimal(dbl),
+            float flt => Convert.ToDecimal(flt),
+            int i => Convert.ToDecimal(i),
+            long l => Convert.ToDecimal(l),
+            short s => Convert.ToDecimal(s),
+            string s when decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed) => parsed,
+            _ => Convert.ToDecimal(value)
+        };
     }
 }

@@ -1,3 +1,5 @@
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
@@ -103,7 +105,7 @@ BEGIN TRY
         SourceType nvarchar(50) NULL,
         SourceId bigint NULL,
         SourceOperationId uniqueidentifier NULL,
-        OriginalEntryId int NULL,
+        OriginalEntryId bigint NULL,
         ReversalReason nvarchar(500) NULL,
         ReversedBy nvarchar(100) NULL,
         ReversedAt datetime2(7) NULL,

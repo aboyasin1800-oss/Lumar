@@ -130,6 +130,9 @@ public sealed class EmployeeLedgerWriter
 public sealed class EmployeeLedgerReader
 {
     public async Task<EmployeeBalance> GetBalanceAsync(SqlConnection connection, int employeeId, CancellationToken cancellationToken)
+        => await GetBalanceAsync(connection, transaction: null, employeeId, cancellationToken);
+
+    public async Task<EmployeeBalance> GetBalanceAsync(SqlConnection connection, SqlTransaction? transaction, int employeeId, CancellationToken cancellationToken)
     {
         const string sql = """
             SELECT
@@ -141,7 +144,7 @@ public sealed class EmployeeLedgerReader
             FROM dbo.EmployeeLedgerEntries
             WHERE EmployeeId=@employeeId;
             """;
-        await using var command = new SqlCommand(sql, connection);
+        await using var command = transaction is null ? new SqlCommand(sql, connection) : new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@employeeId", employeeId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         await reader.ReadAsync(cancellationToken);

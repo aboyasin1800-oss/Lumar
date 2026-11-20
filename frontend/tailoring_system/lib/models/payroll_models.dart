@@ -5,6 +5,99 @@ DateTime? _nullableDate(PayrollJson json, String key) => json[key] == null ? nul
 double _amount(PayrollJson json, String key) => (json[key] as num).toDouble();
 double? _nullableAmount(PayrollJson json, String key) => (json[key] as num?)?.toDouble();
 
+String translateEmployeeLedgerDisplayLabel(String? rawValue) {
+  final value = (rawValue ?? '').trim();
+  if (value.isEmpty) return 'حركة مالية';
+
+  final normalized = value.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+  final map = <String, String>{
+    'Advance': 'سلفة',
+    'EmployeeAdvance': 'سلفة',
+    'DailyExpense': 'مصروف يومي',
+    'PieceWorkerDailyExpense': 'مصروف يومي لموظف أجر قطعة',
+    'SalariedEmployeeDailyExpense': 'مصروف يومي لموظف راتب',
+    'EmployeeDailyExpense': 'مصروف يومي',
+    'PieceWage': 'أجر قطعة',
+    'PieceWageAccrual': 'استحقاق أجر قطعة',
+    'SalaryAccrual': 'استحقاق راتب',
+    'EmployeePayment': 'دفع مستحق الموظف',
+    'Settlement': 'تسوية مالية',
+    'FinancialSettlement': 'تسويات مالية',
+    'Payroll': 'كشف رواتب',
+    'EmployeeAccrualSource': 'مصدر استحقاق موظف',
+    'SourceType': 'نوع المصدر',
+    'Posted': 'مسجّل',
+    'Pending': 'قيد الانتظار',
+    'Approved': 'موافق عليه',
+    'Rejected': 'مرفوض',
+    'Cancelled': 'ملغى',
+    'Processed': 'تمت المعالجة',
+  };
+
+  if (map.containsKey(value)) return map[value]!;
+  if (map.containsKey(normalized)) return map[normalized]!;
+
+  final lowercase = value.toLowerCase();
+  if (lowercase.contains('dailyexpense')) return 'مصروف يومي';
+  if (lowercase.contains('advance')) return 'سلفة';
+  if (lowercase.contains('payment')) return 'دفع مستحق الموظف';
+  if (lowercase.contains('settlement')) return 'تسويات مالية';
+  if (lowercase.contains('piece')) return 'أجر قطعة';
+  if (lowercase.contains('salary')) return 'راتب';
+  if (lowercase.contains('accrual')) return 'استحقاق';
+  if (lowercase.contains('posted')) return 'مسجّل';
+  if (lowercase.contains('pending')) return 'قيد الانتظار';
+  if (lowercase.contains('approved')) return 'موافق عليه';
+  if (lowercase.contains('rejected')) return 'مرفوض';
+  if (lowercase.contains('cancelled')) return 'ملغى';
+
+  return 'حركة مالية';
+}
+
+String translateEmployeeLedgerSourceType(String? rawValue) {
+  final value = (rawValue ?? '').trim();
+  if (value.isEmpty) return 'مصدر غير محدد';
+
+  final normalized = value.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+  final map = <String, String>{
+    'EmployeeAccrualSource': 'مصدر استحقاق موظف',
+    'EmployeeAdvance': 'مصدر سلفة',
+    'EmployeeDailyExpense': 'مصدر مصروف يومي',
+    'EmployeePayment': 'مصدر دفع مستحق موظف',
+    'PieceWorkerDailyExpense': 'مصدر مصروف يومي لموظف أجر قطعة',
+    'SalariedEmployeeDailyExpense': 'مصدر مصروف يومي لموظف راتب',
+    'PayrollRecord': 'سجل الرواتب',
+    'CashAccount': 'حساب نقدي',
+  };
+
+  if (map.containsKey(value)) return map[value]!;
+  if (map.containsKey(normalized)) return map[normalized]!;
+
+  final translated = translateEmployeeLedgerDisplayLabel(value);
+  if (translated == 'حركة مالية') {
+    return 'مصدر غير محدد';
+  }
+  return translated;
+}
+
+String translateEmployeeLedgerStatusLabel(String? rawValue) {
+  final value = (rawValue ?? '').trim();
+  if (value.isEmpty) return 'غير محدد';
+  final map = <String, String>{
+    'Posted': 'مسجّل',
+    'Pending': 'قيد الانتظار',
+    'Approved': 'موافق عليه',
+    'Rejected': 'مرفوض',
+    'Cancelled': 'ملغى',
+    'Succeeded': 'نجح',
+    'Failed': 'فشل',
+    'Active': 'نشط',
+    'Inactive': 'غير نشط',
+  };
+  if (map.containsKey(value)) return map[value]!;
+  return translateEmployeeLedgerDisplayLabel(value);
+}
+
 class PayrollPeriod {
 	const PayrollPeriod({required this.id, required this.code, required this.startDate, required this.endDate, required this.status, required this.notes, required this.generatedAt, required this.approvedAt, required this.createdAt});
 	factory PayrollPeriod.fromJson(PayrollJson json) => PayrollPeriod(id: json['payrollPeriodId'] as int, code: json['periodCode'] as String, startDate: _date(json, 'startDate'), endDate: _date(json, 'endDate'), status: json['status'] as String, notes: json['notes'] as String?, generatedAt: _nullableDate(json, 'generatedAt'), approvedAt: _nullableDate(json, 'approvedAt'), createdAt: _date(json, 'createdAt'));
@@ -223,6 +316,10 @@ class EmployeeLedgerEntry {
   final String status;
   final String? createdBy;
   final DateTime occurredAt;
+
+  String get displayEntryType => translateEmployeeLedgerDisplayLabel(entryType);
+  String get displaySourceType => translateEmployeeLedgerSourceType(sourceType);
+  String get displayStatus => translateEmployeeLedgerStatusLabel(status);
 }
 
 class EmployeeFinancialActionResult {
@@ -271,6 +368,7 @@ class EmployeeSelfFinancialSummary {
     required this.grossAmount,
     required this.deductionsAmount,
     required this.netAmount,
+    this.remainingWages,
     required this.status,
     required this.createdAt,
   });
@@ -284,6 +382,7 @@ class EmployeeSelfFinancialSummary {
         grossAmount: _amount(json, 'grossAmount'),
         deductionsAmount: _amount(json, 'deductionsAmount'),
         netAmount: _amount(json, 'netAmount'),
+        remainingWages: _nullableAmount(json, 'remainingWages') ?? _nullableAmount(json, 'currentDueBalance') ?? 0,
         status: json['status'] as String?,
         createdAt: _nullableDate(json, 'createdAt'),
       );
@@ -296,6 +395,7 @@ class EmployeeSelfFinancialSummary {
   final double grossAmount;
   final double deductionsAmount;
   final double netAmount;
+  final double? remainingWages;
   final String? status;
   final DateTime? createdAt;
 }

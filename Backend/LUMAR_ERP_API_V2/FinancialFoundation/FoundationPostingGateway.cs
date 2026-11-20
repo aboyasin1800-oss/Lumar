@@ -64,6 +64,82 @@ public static class FoundationPostingGateway
                 await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        private static async Task EnsureEmployeeExpenseContractAsync(SqlConnection connection, SqlTransaction transaction, byte accountingEventType, string sourceType, CancellationToken cancellationToken)
+        {
+                if ((accountingEventType != 24 && accountingEventType != 25) || !string.Equals(sourceType, "EmployeeLedgerEntry", StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                await using var command = new SqlCommand(@" 
+                        DECLARE @cashId int = (SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE AccountCode = N'1000' AND IsActive = 1 ORDER BY LedgerAccountId);
+                        DECLARE @salaryExpenseId int = (SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE AccountCode = N'5100' AND IsActive = 1 ORDER BY LedgerAccountId);
+                        DECLARE @employeeLiabilityId int = (SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE AccountCode = N'2100' AND IsActive = 1 ORDER BY LedgerAccountId);
+                        DECLARE @employeeDailyExpenseId int = (SELECT TOP (1) LedgerAccountId FROM dbo.LedgerAccounts WITH (UPDLOCK, HOLDLOCK) WHERE AccountCode = N'5200' AND IsActive = 1 ORDER BY LedgerAccountId);
+
+                        IF @cashId IS NULL OR @employeeLiabilityId IS NULL OR @employeeDailyExpenseId IS NULL
+                            THROW 51985, N'Employee expense contract is unavailable: required ledger accounts are missing.', 1;
+
+                        IF NOT EXISTS (SELECT 1 FROM dbo.AccountRoleMappings WITH (UPDLOCK, HOLDLOCK) WHERE AccountRole = N'Cash')
+                            INSERT dbo.AccountRoleMappings(AccountRole, LedgerAccountId, IsEnabled) VALUES (N'Cash', @cashId, 1);
+                        ELSE
+                            UPDATE dbo.AccountRoleMappings WITH (UPDLOCK, HOLDLOCK) SET LedgerAccountId = @cashId, IsEnabled = 1 WHERE AccountRole = N'Cash';
+
+                        IF NOT EXISTS (SELECT 1 FROM dbo.AccountRoleMappings WITH (UPDLOCK, HOLDLOCK) WHERE AccountRole = N'EmployeeLiability')
+                            INSERT dbo.AccountRoleMappings(AccountRole, LedgerAccountId, IsEnabled) VALUES (N'EmployeeLiability', @employeeLiabilityId, 1);
+                        ELSE
+                            UPDATE dbo.AccountRoleMappings WITH (UPDLOCK, HOLDLOCK) SET LedgerAccountId = @employeeLiabilityId, IsEnabled = 1 WHERE AccountRole = N'EmployeeLiability';
+
+                        IF NOT EXISTS (SELECT 1 FROM dbo.AccountRoleMappings WITH (UPDLOCK, HOLDLOCK) WHERE AccountRole = N'EmployeeDailyExpense')
+                            INSERT dbo.AccountRoleMappings(AccountRole, LedgerAccountId, IsEnabled) VALUES (N'EmployeeDailyExpense', @employeeDailyExpenseId, 1);
+                        ELSE
+                            UPDATE dbo.AccountRoleMappings WITH (UPDLOCK, HOLDLOCK) SET LedgerAccountId = @employeeDailyExpenseId, IsEnabled = 1 WHERE AccountRole = N'EmployeeDailyExpense';
+
+                        IF @salaryExpenseId IS NOT NULL
+                        BEGIN
+                            IF NOT EXISTS (SELECT 1 FROM dbo.AccountRoleMappings WITH (UPDLOCK, HOLDLOCK) WHERE AccountRole = N'SalaryExpense')
+                                INSERT dbo.AccountRoleMappings(AccountRole, LedgerAccountId, IsEnabled) VALUES (N'SalaryExpense', @salaryExpenseId, 1);
+                            ELSE
+                                UPDATE dbo.AccountRoleMappings WITH (UPDLOCK, HOLDLOCK) SET LedgerAccountId = @salaryExpenseId, IsEnabled = 1 WHERE AccountRole = N'SalaryExpense';
+                        END;
+
+                        IF NOT EXISTS (SELECT 1 FROM dbo.AccountingEventDefinitions WITH (UPDLOCK, HOLDLOCK) WHERE AccountingEventType = 24)
+                            INSERT dbo.AccountingEventDefinitions (AccountingEventType, EventName, SourceType, DebitAccountRole, CreditAccountRole, CashDirection, RequiresCashMovement, LiabilityImpact, ExpenseImpact, InventoryImpact, IsEnabled, IsBusinessRuntimeEnabled)
+                            VALUES (24, N'SalariedEmployeeDailyExpense', N'EmployeeLedgerEntry', N'EmployeeDailyExpense', N'Cash', 2, 1, 0, 1, 0, 1, 0);
+                        ELSE
+                            UPDATE dbo.AccountingEventDefinitions WITH (UPDLOCK, HOLDLOCK)
+                            SET EventName = N'SalariedEmployeeDailyExpense',
+                                SourceType = N'EmployeeLedgerEntry',
+                                DebitAccountRole = N'EmployeeDailyExpense',
+                                CreditAccountRole = N'Cash',
+                                CashDirection = 2,
+                                RequiresCashMovement = 1,
+                                LiabilityImpact = 0,
+                                ExpenseImpact = 1,
+                                InventoryImpact = 0,
+                                IsEnabled = 1,
+                                IsBusinessRuntimeEnabled = 0
+                            WHERE AccountingEventType = 24;
+
+                        IF NOT EXISTS (SELECT 1 FROM dbo.AccountingEventDefinitions WITH (UPDLOCK, HOLDLOCK) WHERE AccountingEventType = 25)
+                            INSERT dbo.AccountingEventDefinitions (AccountingEventType, EventName, SourceType, DebitAccountRole, CreditAccountRole, CashDirection, RequiresCashMovement, LiabilityImpact, ExpenseImpact, InventoryImpact, IsEnabled, IsBusinessRuntimeEnabled)
+                            VALUES (25, N'PieceWorkerDailyExpense', N'EmployeeLedgerEntry', N'EmployeeLiability', N'Cash', 2, 1, 0, 0, 0, 1, 0);
+                        ELSE
+                            UPDATE dbo.AccountingEventDefinitions WITH (UPDLOCK, HOLDLOCK)
+                            SET EventName = N'PieceWorkerDailyExpense',
+                                SourceType = N'EmployeeLedgerEntry',
+                                DebitAccountRole = N'EmployeeLiability',
+                                CreditAccountRole = N'Cash',
+                                CashDirection = 2,
+                                RequiresCashMovement = 1,
+                                LiabilityImpact = 0,
+                                ExpenseImpact = 0,
+                                InventoryImpact = 0,
+                                IsEnabled = 1,
+                                IsBusinessRuntimeEnabled = 0
+                            WHERE AccountingEventType = 25;", connection, transaction);
+
+                await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         internal static async Task<FoundationPostingResult> ReverseFabricPartialAsync(
                 SqlConnection connection, SqlTransaction transaction, long reversalId, long originalEventId,
                 Guid operationId, string reference, string reason, string actor, CancellationToken cancellationToken)
@@ -117,6 +193,7 @@ public static class FoundationPostingGateway
     public static async Task<FoundationPostingResult> PostAsync(SqlConnection connection, SqlTransaction transaction, FoundationPostingRequest request, CancellationToken cancellationToken)
     {
         await EnsureSupplierInvoiceContractAsync(connection, transaction, request.AccountingEventType, request.SourceType, cancellationToken);
+        await EnsureEmployeeExpenseContractAsync(connection, transaction, request.AccountingEventType, request.SourceType, cancellationToken);
 
         await using var command = new SqlCommand("dbo.usp_PostFoundationAccountingEvent", connection, transaction) { CommandType = CommandType.StoredProcedure };
         command.Parameters.Add("@AccountingEventType", SqlDbType.TinyInt).Value = request.AccountingEventType;

@@ -31,7 +31,7 @@ BEGIN TRY
     IF COL_LENGTH(N'dbo.SupplierLedgerEntries', N'SourceOperationId') IS NULL
         ALTER TABLE dbo.SupplierLedgerEntries ADD SourceOperationId uniqueidentifier NULL;
     IF COL_LENGTH(N'dbo.SupplierLedgerEntries', N'OriginalEntryId') IS NULL
-        ALTER TABLE dbo.SupplierLedgerEntries ADD OriginalEntryId int NULL;
+        ALTER TABLE dbo.SupplierLedgerEntries ADD OriginalEntryId bigint NULL;
     IF COL_LENGTH(N'dbo.SupplierLedgerEntries', N'ReversalReason') IS NULL
         ALTER TABLE dbo.SupplierLedgerEntries ADD ReversalReason nvarchar(500) NULL;
     IF COL_LENGTH(N'dbo.SupplierLedgerEntries', N'ReversedBy') IS NULL

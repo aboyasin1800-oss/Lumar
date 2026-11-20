@@ -1,6 +1,7 @@
 using LUMAR_ERP_API_V2.Configuration;
 using LUMAR_ERP_API_V2.Data;
 using LUMAR_ERP_API_V2.DTOs.Employees;
+using LUMAR_ERP_API_V2.DTOs.Payroll;
 using LUMAR_ERP_API_V2.Monitoring;
 using LUMAR_ERP_API_V2.Repositories;
 using LUMAR_ERP_API_V2.Services;
@@ -585,6 +586,104 @@ VALUES (N'كوت', N'Cutting', 120.00, 1, N'Test rate', SYSDATETIME(), SYSDATETI
     }
 
     [Fact]
+    public async Task RemainingWages_PayrollTransition_CountsPendingPieceWageOnce()
+    {
+        var connectionString = GetProofConnectionString();
+        var employeeRepository = CreateRepository(connectionString);
+        var payrollRepository = new PayrollRepository(
+            new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+            new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+        var departmentId = await EnsureActiveDepartmentAsync(connectionString, "Order85RemainingWages");
+        var employeeCode = CreateUniqueEmployeeCode("O85-RW");
+        await SeedOfficialPieceRatesAsync(connectionString, [("كوت", "Cutting")]);
+
+        var created = await employeeRepository.CreateAsync(new CreateEmployeeDto
+        {
+            EmployeeCode = employeeCode,
+            FullName = "موظف متبقي أجور الأمر 85",
+            DepartmentId = departmentId,
+            BasicSalary = 0m,
+            HireDate = new DateTime(2025, 1, 1),
+            Status = "Active",
+            SalaryType = "PieceWage",
+            PieceRates =
+            [
+                new EmployeePieceRateAssignmentInputDto("كوت", "Cutting", 2000m, null, null, true)
+            ]
+        }, CancellationToken.None);
+
+        Assert.NotNull(created);
+
+        try
+        {
+            var proofTrackingCode = $"O85-{Guid.NewGuid():N}"[..20];
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                var orderId = await InsertOrderAsync(connection, $"O85-{Guid.NewGuid():N}"[..20]);
+                var orderItemId = await InsertOrderItemAsync(connection, orderId, "كوت", proofTrackingCode);
+                var pieceId = await InsertPieceAsync(connection, orderItemId, proofTrackingCode, "Completed", 85);
+                var trackingEventId = await InsertTrackingEventAsync(connection, orderId, orderItemId, pieceId, proofTrackingCode, "Cutting", "Completed", employeeCode, created!.EmployeeId);
+
+                await using var insertWage = new SqlCommand(@"
+                    INSERT INTO dbo.PieceWageRecords
+                        (OrderID, OrderItemID, PieceID, TrackingEventID, EmployeeId, EmployeeCode, PieceType, Stage, Quantity, WageRate, TotalWage, PayrollPeriodId, PayrollRecordId, Status, Notes, CreatedAt)
+                    VALUES
+                        (@orderId, @orderItemId, @pieceId, @trackingEventId, @employeeId, @employeeCode, N'كوت', N'Cutting', 1, 2000, 2000, NULL, NULL, N'PendingPayroll', N'Order85 isolated proof', SYSDATETIME());", connection);
+                insertWage.Parameters.AddWithValue("@orderId", orderId);
+                insertWage.Parameters.AddWithValue("@orderItemId", orderItemId);
+                insertWage.Parameters.AddWithValue("@pieceId", pieceId);
+                insertWage.Parameters.AddWithValue("@trackingEventId", trackingEventId);
+                insertWage.Parameters.AddWithValue("@employeeId", created.EmployeeId);
+                insertWage.Parameters.AddWithValue("@employeeCode", employeeCode);
+                await insertWage.ExecuteNonQueryAsync();
+            }
+
+            var before = await employeeRepository.GetSelfFinancialSummaryAsync(created.EmployeeId, null, CancellationToken.None);
+            Assert.NotNull(before);
+            Assert.Equal(2000m, before!.PieceWageAmount);
+            Assert.Equal(2000m, before.RemainingWages);
+
+            var now = DateTime.UtcNow.Date;
+            var result = await payrollRepository.GenerateAsync(new GeneratePayrollRequestDto(
+                now,
+                now,
+                $"O85-{Guid.NewGuid():N}",
+                "Isolated remaining wages proof"), CancellationToken.None);
+
+            Assert.Contains(created.EmployeeId, await GetPayrollEmployeeIdsAsync(connectionString, result.PayrollPeriodId));
+
+            var after = await employeeRepository.GetSelfFinancialSummaryAsync(created.EmployeeId, null, CancellationToken.None);
+            Assert.NotNull(after);
+            Assert.Equal(2000m, after!.PieceWageAmount);
+
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                await using var count = new SqlCommand(@"
+                    SELECT COUNT(*)
+                    FROM dbo.PieceWageRecords
+                    WHERE EmployeeId = @employeeId
+                      AND TotalWage = 2000
+                      AND PayrollRecordId IS NOT NULL
+                      AND Status = N'Generated';", connection);
+                count.Parameters.AddWithValue("@employeeId", created.EmployeeId);
+                Assert.Equal(1, Convert.ToInt32(await count.ExecuteScalarAsync()));
+            }
+
+            Assert.Equal(0m, after.RemainingWages);
+        }
+        finally
+        {
+            await DeletePieceWageAndPayrollForEmployeeAsync(connectionString, created.EmployeeId);
+            await DeleteProofTrackingFixtureAsync(connectionString, employeeCode);
+            await DeleteEmployeeByCodeAsync(connectionString, employeeCode);
+            await DeleteOfficialPieceRatesAsync(connectionString, [("كوت", "Cutting")]);
+            await DeleteDepartmentByCodeAsync(connectionString, "Order85RemainingWages");
+        }
+    }
+
+    [Fact]
     public async Task GetSelfFinancialSummaryAsync_WithPeriodId_ReturnsSummary_WithoutArgumentException()
     {
         var connectionString = GetConnectionString();
@@ -791,6 +890,74 @@ VALUES (N'كوت', N'Cutting', 120.00, 1, N'Test rate', SYSDATETIME(), SYSDATETI
                 return (employeeId, insertedPayrollPeriodId);
             }
         }
+    }
+
+    private static async Task<IReadOnlyList<int>> GetPayrollEmployeeIdsAsync(string connectionString, int periodId)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("SELECT EmployeeId FROM dbo.PayrollRecords WHERE PayrollPeriodId = @periodId", connection);
+        command.Parameters.AddWithValue("@periodId", periodId);
+        await using var reader = await command.ExecuteReaderAsync();
+        var ids = new List<int>();
+        while (await reader.ReadAsync()) ids.Add(reader.GetInt32(0));
+        return ids;
+    }
+
+    private static async Task DeletePieceWageAndPayrollForEmployeeAsync(string connectionString, int employeeId)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        await using var wage = new SqlCommand("DELETE FROM dbo.PieceWageRecords WHERE EmployeeId = @employeeId", connection);
+        wage.Parameters.AddWithValue("@employeeId", employeeId);
+        await wage.ExecuteNonQueryAsync();
+
+        await using var periodIds = new SqlCommand("SELECT DISTINCT PayrollPeriodId FROM dbo.PayrollRecords WHERE EmployeeId = @employeeId", connection);
+        periodIds.Parameters.AddWithValue("@employeeId", employeeId);
+        await using var reader = await periodIds.ExecuteReaderAsync();
+        var ids = new List<int>();
+        while (await reader.ReadAsync()) ids.Add(reader.GetInt32(0));
+        await reader.DisposeAsync();
+
+        await using var records = new SqlCommand("DELETE FROM dbo.PayrollRecords WHERE EmployeeId = @employeeId", connection);
+        records.Parameters.AddWithValue("@employeeId", employeeId);
+        await records.ExecuteNonQueryAsync();
+
+        foreach (var periodId in ids)
+        {
+            await using var period = new SqlCommand("DELETE FROM dbo.PayrollPeriods WHERE PayrollPeriodId = @periodId", connection);
+            period.Parameters.AddWithValue("@periodId", periodId);
+            await period.ExecuteNonQueryAsync();
+        }
+    }
+
+    private static async Task DeleteProofTrackingFixtureAsync(string connectionString, string employeeCode)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var deleteEvents = new SqlCommand("DELETE FROM dbo.TrackingEvents WHERE EmployeeCode = @employeeCode", connection);
+        deleteEvents.Parameters.AddWithValue("@employeeCode", employeeCode);
+        await deleteEvents.ExecuteNonQueryAsync();
+        await using var deletePieces = new SqlCommand(@"
+            DELETE p FROM dbo.Pieces p
+            INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = p.OrderItemID
+            INNER JOIN dbo.Orders o ON o.OrderID = oi.OrderID
+            WHERE o.OrderNumber LIKE N'O85-%';", connection);
+        await deletePieces.ExecuteNonQueryAsync();
+        await using var deleteItems = new SqlCommand("DELETE oi FROM dbo.OrderItems oi INNER JOIN dbo.Orders o ON o.OrderID = oi.OrderID WHERE o.OrderNumber LIKE N'O85-%';", connection);
+        await deleteItems.ExecuteNonQueryAsync();
+        await using var deleteOrders = new SqlCommand("DELETE FROM dbo.Orders WHERE OrderNumber LIKE N'O85-%';", connection);
+        await deleteOrders.ExecuteNonQueryAsync();
+    }
+
+    private static async Task DeleteDepartmentByCodeAsync(string connectionString, string code)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("DELETE FROM dbo.Departments WHERE DepartmentCode = @code", connection);
+        command.Parameters.AddWithValue("@code", code);
+        await command.ExecuteNonQueryAsync();
     }
 
     private static async Task DeletePayrollRecordAsync(string connectionString, int employeeId)
