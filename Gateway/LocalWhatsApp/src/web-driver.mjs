@@ -87,6 +87,18 @@ export class WebDriver extends EventEmitter {
     this._boundClient = this.client;
   }
 
+  getAckStatus(providerMessageId) {
+    if (!providerMessageId || !isSafeProviderValue(providerMessageId)) return null;
+    const current = this.knownProviderIds.get(providerMessageId);
+    if (!current) return null;
+    return {
+      providerMessageId,
+      ackLevel: current.ackLevel,
+      status: current.ackLevel >= 2 ? 'Delivered' : current.ackLevel === 1 ? 'Sent' : current.status,
+      occurredAtUtc: new Date(current.seenAt).toISOString(),
+    };
+  }
+
   trackKnownProviderId(providerMessageId) {
     if (!providerMessageId || !isSafeProviderValue(providerMessageId)) return;
     const current = this.knownProviderIds.get(providerMessageId) ?? { status: 'Sent', ackLevel: null, seenAt: Date.now() };

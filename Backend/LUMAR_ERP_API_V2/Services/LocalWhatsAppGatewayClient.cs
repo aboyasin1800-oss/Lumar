@@ -30,6 +30,14 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
         return Sanitize(await RequestAsync<LocalWhatsAppSessionResponse>(HttpMethod.Post, $"session/{action}", cancellationToken));
     }
 
+    public async Task<LocalWhatsAppAckStatusResponse?> AckStatusAsync(string providerMessageId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(providerMessageId) || providerMessageId.Length > 200)
+            return null;
+        return await RequestAsync<LocalWhatsAppAckStatusResponse>(HttpMethod.Get,
+            "session/ack-status/" + Uri.EscapeDataString(providerMessageId), cancellationToken);
+    }
+
     public async Task<LocalWhatsAppLinkResponse> LinkMaterialAsync(CancellationToken cancellationToken)
     {
         var result = await RequestAsync<LocalWhatsAppLinkResponse>(HttpMethod.Get, "session/link-material", cancellationToken);
@@ -182,6 +190,8 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
 
     private sealed record GatewaySendResponse(string? Outcome, string? ProviderMessageId, string? Code);
 }
+
+public sealed record LocalWhatsAppAckStatusResponse(string? ProviderMessageId, int? AckLevel, string? Status, DateTime? OccurredAtUtc);
 
 public sealed class LocalWhatsAppGatewayException(int statusCode = 503) : Exception("Local WhatsApp gateway is unavailable or the session action cannot be completed.")
 {

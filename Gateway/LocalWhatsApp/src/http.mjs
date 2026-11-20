@@ -113,6 +113,9 @@ export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin 
         reply(200, { healthy: true, contractVersion: 1, operationalActivation: false });
       } else if (request.method === 'GET' && path === '/session/status') {
         reply(200, manager.status());
+      } else if (request.method === 'GET' && path?.startsWith('/session/ack-status/') && path.length > 20) {
+        const providerMessageId = decodeURIComponent(path.slice('/session/ack-status/'.length));
+        reply(200, manager.ackStatus(providerMessageId));
       } else if (request.method === 'GET' && path === '/session/link-material') {
         reply(200, manager.linkMaterial());
       } else if (request.method === 'POST' && path?.startsWith('/session/') && actions.has(path.slice(9))) {

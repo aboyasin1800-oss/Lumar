@@ -507,8 +507,8 @@ WHERE MessageTemplateID = @id;";
         const string sql = @"
             UPDATE dbo.CustomerMessages
             SET DeliveryStatus = CASE
-                    WHEN @status = N'Sent' AND DeliveryStatus IN (N'Pending', N'Processing', N'Failed', N'Sent') THEN N'Sent'
-                    WHEN @status = N'Delivered' AND DeliveryStatus IN (N'Pending', N'Processing', N'Failed', N'Sent', N'Delivered') THEN N'Delivered'
+                    WHEN @status = N'Sent' AND DeliveryStatus IN (N'Pending', N'Processing', N'Unconfirmed', N'Failed', N'Sent') THEN N'Sent'
+                    WHEN @status = N'Delivered' AND DeliveryStatus IN (N'Pending', N'Processing', N'Unconfirmed', N'Failed', N'Sent', N'Delivered') THEN N'Delivered'
                     WHEN @status = N'Read' AND DeliveryStatus IN (N'Pending', N'Processing', N'Failed', N'Sent', N'Delivered', N'Read') THEN N'Read'
                     WHEN @status = N'Failed' THEN N'Failed'
                     ELSE DeliveryStatus

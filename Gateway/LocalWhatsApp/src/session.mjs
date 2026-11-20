@@ -154,6 +154,11 @@ export class SessionManager {
     await this.exclusive(() => this.closeDriver());
   }
 
+  ackStatus(providerMessageId) {
+    if (!this.driver || typeof this.driver.getAckStatus !== 'function') return null;
+    return this.driver.getAckStatus(providerMessageId);
+  }
+
   async send(message) {
     return this.exclusive(async () => {
       if (this.state !== 'Connected' || !this.driver) throw new GatewayError('NOT_CONNECTED', 503);
