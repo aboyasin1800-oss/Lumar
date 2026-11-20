@@ -161,6 +161,9 @@ export class WebDriver extends EventEmitter {
     });
 
     this.trackKnownProviderId(providerMessageId);
+    if (this.pendingCustomerMessageId != null) {
+      this.emit('provider-id', providerMessageId, this.pendingCustomerMessageId);
+    }
 
     const request = this.pendingConfirmations.find(item => !item.resolved && item.eligible(message));
     if (!request) {
@@ -227,7 +230,8 @@ export class WebDriver extends EventEmitter {
     }));
   }
 
-  async send({ recipient, text, media }) {
+  async send({ recipient, text, media, customerMessageId }) {
+    this.pendingCustomerMessageId = customerMessageId == null ? null : String(customerMessageId);
     this.ensureClientBindings();
     const chatId = `${recipient}@c.us`;
     const mediaFileName = media?.filename || 'lumar-image';
@@ -269,6 +273,9 @@ export class WebDriver extends EventEmitter {
       this.lastSendDiagnostics.SEND_EXCEPTION_TYPE = null;
       if (providerMessageId) {
         this.trackKnownProviderId(providerMessageId);
+        if (this.pendingCustomerMessageId != null) {
+          this.emit('provider-id', providerMessageId, this.pendingCustomerMessageId);
+        }
         const request = this.pendingConfirmations.find(item => !item.resolved && item.recipient === normalizeChatRecipient(recipient) && item.text === String(text ?? '').trim() && item.mediaSignature === (media ? `${media.mimeType}:${media.filename}:${Buffer.byteLength(media.base64, 'base64')}` : null));
         if (request) {
           request.resolved = true;
@@ -287,7 +294,12 @@ export class WebDriver extends EventEmitter {
       if (providerMessageId) return providerMessageId;
 
       const confirmedId = await confirmationWait;
-      if (confirmedId) this.trackKnownProviderId(confirmedId);
+      if (confirmedId) {
+        this.trackKnownProviderId(confirmedId);
+        if (this.pendingCustomerMessageId != null) {
+          this.emit('provider-id', confirmedId, this.pendingCustomerMessageId);
+        }
+      }
       this.lastSendDiagnostics.EXTRACTED_PROVIDER_ID_PRESENT = confirmedId ? 'YES' : 'NO';
       console.error(JSON.stringify({
         marker: 'LOCAL_WA_SAFE_OBSERVABILITY',

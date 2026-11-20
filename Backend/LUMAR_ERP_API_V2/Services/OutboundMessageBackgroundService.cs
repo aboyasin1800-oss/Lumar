@@ -40,10 +40,24 @@ public sealed class OutboundMessageBackgroundService(
                 var messages = await messageRepository.GetCustomerMessagesAsync(stoppingToken);
                 foreach (var message in messages.Where(message =>
                     message.Channel == "LocalWhatsApp"
-                    && !string.IsNullOrWhiteSpace(message.ProviderMessageId)
                     && (message.DeliveryStatus == "Sent" || message.DeliveryStatus == "Unconfirmed")))
                 {
-                    var ack = await gateway.AckStatusAsync(message.ProviderMessageId!, stoppingToken);
+                    LocalWhatsAppAckStatusResponse? ack;
+                    if (!string.IsNullOrWhiteSpace(message.ProviderMessageId))
+                    {
+                        ack = await gateway.AckStatusAsync(message.ProviderMessageId!, stoppingToken);
+                    }
+                    else
+                    {
+                        var providerStatus = await gateway.ProviderStatusAsync(message.CustomerMessageId, stoppingToken);
+                        if (string.IsNullOrWhiteSpace(providerStatus?.ProviderMessageId)) continue;
+                        await messageRepository.MarkSentAsync(message.CustomerMessageId, providerStatus.ProviderMessageId, providerStatus.OccurredAtUtc ?? DateTime.UtcNow, stoppingToken);
+                        ack = new LocalWhatsAppAckStatusResponse(
+                            providerStatus.ProviderMessageId,
+                            providerStatus.AckLevel,
+                            providerStatus.Status,
+                            providerStatus.OccurredAtUtc);
+                    }
                     if (ack?.AckLevel is null || string.IsNullOrWhiteSpace(ack.Status)) continue;
 
                     var normalizedStatus = ack.Status switch

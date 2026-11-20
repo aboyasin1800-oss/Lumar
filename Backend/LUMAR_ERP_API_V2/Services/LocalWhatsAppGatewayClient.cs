@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -28,6 +29,13 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
         if (action is not ("link" or "disconnect" or "logout" or "reconnect" or "replace"))
             throw new ArgumentException("Unsupported local session action.", nameof(action));
         return Sanitize(await RequestAsync<LocalWhatsAppSessionResponse>(HttpMethod.Post, $"session/{action}", cancellationToken));
+    }
+
+    public async Task<LocalWhatsAppProviderStatusResponse?> ProviderStatusAsync(int customerMessageId, CancellationToken cancellationToken)
+    {
+        if (customerMessageId <= 0) return null;
+        return await RequestAsync<LocalWhatsAppProviderStatusResponse>(HttpMethod.Get,
+            "session/provider-id/" + customerMessageId.ToString(CultureInfo.InvariantCulture), cancellationToken);
     }
 
     public async Task<LocalWhatsAppAckStatusResponse?> AckStatusAsync(string providerMessageId, CancellationToken cancellationToken)
@@ -100,24 +108,24 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { throw new LocalWhatsAppGatewayException(); }
     }
 
-    public async Task<OutboundAdapterResult> SendAsync(string recipient, string text, string? imageUrl, CancellationToken cancellationToken)
+    public async Task<OutboundAdapterResult> SendAsync(string recipient, string text, string? imageUrl, CancellationToken cancellationToken, int? customerMessageId = null)
     {
-        return await SendInternalAsync(recipient, text, imageUrl, null, cancellationToken);
+        return await SendInternalAsync(recipient, text, imageUrl, null, cancellationToken, customerMessageId);
     }
 
-    public async Task<OutboundAdapterResult> SendAsync(string recipient, string text, LocalCampaignMediaPayload? media, CancellationToken cancellationToken)
+    public async Task<OutboundAdapterResult> SendAsync(string recipient, string text, LocalCampaignMediaPayload? media, CancellationToken cancellationToken, int? customerMessageId = null)
     {
-        return await SendInternalAsync(recipient, text, null, media, cancellationToken);
+        return await SendInternalAsync(recipient, text, null, media, cancellationToken, customerMessageId);
     }
 
-    private static LocalWhatsAppSendRequest CreateSendPayload(string recipient, string text, string? imageUrl, LocalCampaignMediaPayload? media)
-        => new(recipient, text, imageUrl, media);
+    private static LocalWhatsAppSendRequest CreateSendPayload(string recipient, string text, string? imageUrl, LocalCampaignMediaPayload? media, int? customerMessageId)
+        => new(recipient, text, imageUrl, media, customerMessageId);
 
-    private async Task<OutboundAdapterResult> SendInternalAsync(string recipient, string text, string? imageUrl, LocalCampaignMediaPayload? media, CancellationToken cancellationToken)
+    private async Task<OutboundAdapterResult> SendInternalAsync(string recipient, string text, string? imageUrl, LocalCampaignMediaPayload? media, CancellationToken cancellationToken, int? customerMessageId = null)
     {
         try
         {
-            var payload = CreateSendPayload(recipient, text, imageUrl, media);
+            var payload = CreateSendPayload(recipient, text, imageUrl, media, customerMessageId);
             var options = new JsonSerializerOptions
             {
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -186,10 +194,12 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
     private static OutboundAdapterResult Unconfirmed() => new(OutboundDispatchOutcome.Unconfirmed,
         FailureReason: "Local WhatsApp outcome is unconfirmed; automatic retry is unsafe.", Retryable: false);
 
-    private sealed record LocalWhatsAppSendRequest(string Recipient, string Text, string? ImageUrl, LocalCampaignMediaPayload? Media);
+    private sealed record LocalWhatsAppSendRequest(string Recipient, string Text, string? ImageUrl, LocalCampaignMediaPayload? Media, int? CustomerMessageId);
 
     private sealed record GatewaySendResponse(string? Outcome, string? ProviderMessageId, string? Code);
 }
+
+public sealed record LocalWhatsAppProviderStatusResponse(int? CustomerMessageId, string? ProviderMessageId, int? AckLevel, string? Status, DateTime? OccurredAtUtc);
 
 public sealed record LocalWhatsAppAckStatusResponse(string? ProviderMessageId, int? AckLevel, string? Status, DateTime? OccurredAtUtc);
 

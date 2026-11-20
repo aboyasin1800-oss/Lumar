@@ -18,6 +18,7 @@ export class SessionManager {
     this.driver = null;
     this.busy = false;
     this.saved = store.read();
+    this.providerIdsByCustomerMessageId = new Map();
     if (this.saved.linked) this.state = 'Disconnected';
     if (this.saved.loggedOut) this.state = 'LoggedOut';
   }
@@ -133,6 +134,10 @@ export class SessionManager {
       this.lastError = loggedOut ? 'SESSION_LOGGED_OUT' : 'CONNECTION_LOST';
       if (loggedOut) this.persist({ linked: false, connect: false, loggedOut: true });
     }));
+    driver.on('provider-id', safely((providerMessageId, customerMessageId) => {
+      if (!providerMessageId || customerMessageId == null) return;
+      this.providerIdsByCustomerMessageId.set(String(customerMessageId), providerMessageId);
+    }));
     driver.on('failure', safely(() => {
       this.state = 'Error';
       this.currentNumber = null;
@@ -152,6 +157,11 @@ export class SessionManager {
 
   async stop() {
     await this.exclusive(() => this.closeDriver());
+  }
+
+  providerIdStatus(customerMessageId) {
+    const providerMessageId = this.providerIdsByCustomerMessageId.get(String(customerMessageId));
+    return providerMessageId ? this.ackStatus(providerMessageId) : null;
   }
 
   ackStatus(providerMessageId) {

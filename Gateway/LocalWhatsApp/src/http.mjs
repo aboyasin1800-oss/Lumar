@@ -113,6 +113,11 @@ export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin 
         reply(200, { healthy: true, contractVersion: 1, operationalActivation: false });
       } else if (request.method === 'GET' && path === '/session/status') {
         reply(200, manager.status());
+      } else if (request.method === 'GET' && path?.startsWith('/session/provider-id/') && path.length > 21) {
+        const customerMessageId = path.slice('/session/provider-id/'.length);
+        const ack = manager.providerIdStatus(customerMessageId);
+        const providerMessageId = ack?.providerMessageId ?? null;
+        reply(200, { customerMessageId: Number(customerMessageId), providerMessageId, ackLevel: ack?.ackLevel ?? null, status: ack?.status ?? null, occurredAtUtc: ack?.occurredAtUtc ?? null });
       } else if (request.method === 'GET' && path?.startsWith('/session/ack-status/') && path.length > 20) {
         const providerMessageId = decodeURIComponent(path.slice('/session/ack-status/'.length));
         reply(200, manager.ackStatus(providerMessageId));
@@ -125,7 +130,7 @@ export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin 
       } else if (request.method === 'POST' && path === '/messages/send') {
         const body = await jsonBody(request);
         if (!body || typeof body !== 'object' || Array.isArray(body)
-          || Object.keys(body).some(key => !['recipient', 'text', 'imageUrl', 'media'].includes(key))
+          || Object.keys(body).some(key => !['recipient', 'text', 'imageUrl', 'media', 'customerMessageId'].includes(key))
           || typeof body.recipient !== 'string' || !/^[1-9][0-9]{7,14}$/.test(body.recipient)
           || typeof body.text !== 'string' || !body.text.trim()
           || (body.text.length > 4096 ? (() => { throw new GatewayError('INVALID_MESSAGE', 413); })() : false)
@@ -160,7 +165,7 @@ export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin 
         }
 
         safeStageLog('send-gateway', { status: 'before-send-message' });
-        const result = await manager.send({ recipient: body.recipient, text: body.text, media });
+        const result = await manager.send({ recipient: body.recipient, text: body.text, media, customerMessageId: body.customerMessageId });
         safeStageLog('send-gateway', { status: 'after-send-message', outcome: result?.outcome ?? 'unknown' });
         reply(200, result);
       } else {

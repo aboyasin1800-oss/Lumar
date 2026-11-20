@@ -22,13 +22,13 @@ public sealed class LocalWhatsAppMessageChannel(LocalWhatsAppGatewayClient gatew
         {
             if (campaignMediaStorage.TryResolveLocalCampaignMedia(message.CampaignImageUrl, out var media))
             {
-                return gateway.SendAsync(message.PhoneNumber, message.Body, media, cancellationToken);
+                return gateway.SendAsync(message.PhoneNumber, message.Body, media, cancellationToken, message.CustomerMessageId);
             }
 
             return Task.FromResult(new OutboundAdapterResult(OutboundDispatchOutcome.PermanentFailure,
                 FailureReason: "Local WhatsApp campaign image is unavailable or invalid; no send attempted.", Retryable: false));
         }
 
-        return gateway.SendAsync(message.PhoneNumber, message.Body, message.CampaignImageUrl, cancellationToken);
+        return gateway.SendAsync(message.PhoneNumber, message.Body, message.CampaignImageUrl, cancellationToken, message.CustomerMessageId);
     }
 }
