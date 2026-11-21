@@ -14,6 +14,7 @@ public sealed class InventoryService(IInventoryRepository repository) : IInvento
     public Task<IReadOnlyList<PendingGoodsReceiptStorageDto>> GetPendingGoodsReceiptStorageAsync(CancellationToken ct) => repository.GetPendingGoodsReceiptStorageAsync(ct);
     public Task<IReadOnlyList<FabricDto>> GetFabricsAsync(CancellationToken ct) => repository.GetFabricsAsync(ct);
     public Task<IReadOnlyList<FabricRollLabelDto>> GetFabricRollLabelsAsync(int? goodsReceiptItemId, string? catalogNumber, string? fabricCode, CancellationToken ct) => repository.GetFabricRollLabelsAsync(goodsReceiptItemId, catalogNumber, fabricCode, ct);
+    public Task<RecordFabricRollLabelPrintResult> RecordFabricRollLabelPrintAsync(RecordFabricRollLabelPrintRequest request, int? printedByUserId, CancellationToken ct) => repository.RecordFabricRollLabelPrintAsync(request, printedByUserId, ct);
     public Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken ct) => repository.GetReadyMadeAsync(ct);
     public Task<ReadyMadeProductDto?> GetReadyMadeByIdAsync(int readyMadeInventoryProductId, CancellationToken ct) => repository.GetReadyMadeByIdAsync(readyMadeInventoryProductId, ct);
     public Task<ReadyMadeProductDto?> RecordReadyMadeSaleCostAsync(int readyMadeInventoryProductId, CancellationToken ct) => repository.RecordReadyMadeSaleCostAsync(readyMadeInventoryProductId, ct);

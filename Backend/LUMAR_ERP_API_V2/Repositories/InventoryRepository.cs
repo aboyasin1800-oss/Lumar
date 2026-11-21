@@ -401,12 +401,24 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                    i.FabricWidth,
                    i.FabricWidthUnit,
                    fr.OriginalQuantity AS Quantity,
-                   fr.OfficialUnitCost AS UnitCost
+                   fr.OfficialUnitCost AS UnitCost,
+                   CAST(CASE WHEN ph.FabricRollId IS NULL THEN 0 ELSE 1 END AS bit) AS IsPrinted,
+                   ph.LastPrintedAtUtc,
+                   ph.PrintCount
             FROM dbo.FabricRolls fr WITH (NOLOCK)
             INNER JOIN dbo.InventoryItems i WITH (NOLOCK) ON i.InventoryItemID = fr.InventoryItemId
             INNER JOIN dbo.InventoryReceiptLines l WITH (NOLOCK) ON l.FabricRollId = fr.FabricRollId
             INNER JOIN dbo.InventoryReceiptPostings rp WITH (NOLOCK) ON rp.InventoryReceiptPostingId = l.InventoryReceiptPostingId
             INNER JOIN dbo.GoodsReceiptItems gri WITH (NOLOCK) ON gri.GoodsReceiptItemId = rp.GoodsReceiptItemId
+            OUTER APPLY
+            (
+                SELECT COUNT(*) AS PrintCount,
+                       MAX(h.PrintedAtUtc) AS LastPrintedAtUtc,
+                       h.FabricRollId
+                FROM dbo.FabricRollLabelPrintHistory h WITH (NOLOCK)
+                WHERE h.FabricRollId = fr.FabricRollId
+                GROUP BY h.FabricRollId
+            ) ph
             WHERE (@goodsReceiptItemId IS NULL OR gri.GoodsReceiptItemId = @goodsReceiptItemId)
               AND (@catalogNumber IS NULL OR i.Barcode = @catalogNumber)
               AND (@fabricCode IS NULL OR fr.RollCode = @fabricCode)
@@ -426,10 +438,61 @@ public sealed partial class InventoryRepository(ReadOnlySqlConnectionFactory con
                 reader.GetInt64(0), reader.GetInt32(1), reader.NullableString("CatalogNumber"),
                 reader.GetString(3), reader.GetString(4), reader.NullableString("FabricColor"),
                 reader.NullableDecimal("FabricWidth"), reader.NullableString("FabricWidthUnit"),
-                reader.GetDecimal(8), reader.GetDecimal(9)));
+                reader.GetDecimal(8), reader.GetDecimal(9),
+                reader.GetBoolean(10), reader.NullableDateTime("LastPrintedAtUtc"),
+                reader.NullableInt32("PrintCount") ?? 0));
         }
         return items;
     }
+
+    public async Task<RecordFabricRollLabelPrintResult> RecordFabricRollLabelPrintAsync(RecordFabricRollLabelPrintRequest request, int? printedByUserId, CancellationToken ct)
+    {
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+
+        try
+        {
+            var recorded = 0;
+            foreach (var fabricRollId in request.FabricRollIds.Distinct())
+            {
+                await using var exists = new SqlCommand(
+                    "SELECT COUNT(*) FROM dbo.FabricRolls WITH (UPDLOCK, HOLDLOCK) WHERE FabricRollId = @fabricRollId;",
+                    connection, transaction);
+                exists.Parameters.AddWithValue("@fabricRollId", fabricRollId);
+                if (Convert.ToInt32(await exists.ExecuteScalarAsync(ct)) != 1)
+                    throw new InvalidOperationException($"Fabric roll {fabricRollId} does not exist.");
+
+                await using var insert = new SqlCommand(@"
+                    IF NOT EXISTS
+                    (
+                        SELECT 1 FROM dbo.FabricRollLabelPrintHistory
+                        WHERE FabricRollId = @fabricRollId AND PrintOperationId = @operationId
+                    )
+                    BEGIN
+                        INSERT INTO dbo.FabricRollLabelPrintHistory
+                            (FabricRollId, PrintedAtUtc, PrintOperationId, PrintedByUserId)
+                        VALUES
+                            (@fabricRollId, SYSUTCDATETIME(), @operationId, @printedByUserId);
+                    END;",
+                    connection, transaction);
+                insert.Parameters.AddWithValue("@fabricRollId", fabricRollId);
+                insert.Parameters.AddWithValue("@operationId", request.PrintOperationId);
+                insert.Parameters.AddWithValue("@printedByUserId", (object?)printedByUserId ?? DBNull.Value);
+                var affected = await insert.ExecuteNonQueryAsync(ct);
+                if (affected > 0) recorded++;
+            }
+
+            await transaction.CommitAsync(ct);
+            return new RecordFabricRollLabelPrintResult(recorded);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
     public Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken ct) => QueryAsync("SELECT r.ReadyMadeInventoryProductId, r.ReadyMadeProductionOrderId, r.ReadyMadeProductionOrderItemId, r.ReadyMadeProductionOrderPieceInstanceId, r.ProductTypeId, r.ProductionOrderNumber, r.ProductionName, r.PieceType, r.PieceNumber, r.TrackingCode, r.FabricCode, r.FabricType, r.FabricColor, r.CatalogNumber, r.FabricUnit, r.FabricWidth, r.FabricWidthUnit, r.ActualCost, r.SuggestedSellingPrice, r.MeasurementSnapshot, r.ReadyForSaleAt, r.Status, r.Source, r.Notes, r.IsActive, r.CreatedAt, pt.NameAr AS ProductTypeName FROM dbo.ReadyMadeInventoryProducts r LEFT JOIN dbo.PricingProductTypes pt ON pt.ProductTypeId=r.ProductTypeId ORDER BY r.ReadyForSaleAt DESC, r.ReadyMadeInventoryProductId DESC", MapReadyMade, null, ct);
     public async Task<ReadyMadeProductDto?> GetReadyMadeByIdAsync(int readyMadeInventoryProductId, CancellationToken ct) => (await QueryAsync("SELECT r.ReadyMadeInventoryProductId, r.ReadyMadeProductionOrderId, r.ReadyMadeProductionOrderItemId, r.ReadyMadeProductionOrderPieceInstanceId, r.ProductTypeId, r.ProductionOrderNumber, r.ProductionName, r.PieceType, r.PieceNumber, r.TrackingCode, r.FabricCode, r.FabricType, r.FabricColor, r.CatalogNumber, r.FabricUnit, r.FabricWidth, r.FabricWidthUnit, r.ActualCost, r.SuggestedSellingPrice, r.MeasurementSnapshot, r.ReadyForSaleAt, r.Status, r.Source, r.Notes, r.IsActive, r.CreatedAt, pt.NameAr AS ProductTypeName FROM dbo.ReadyMadeInventoryProducts r LEFT JOIN dbo.PricingProductTypes pt ON pt.ProductTypeId=r.ProductTypeId WHERE r.ReadyMadeInventoryProductId = @id", MapReadyMade, readyMadeInventoryProductId, ct)).SingleOrDefault();
     private static ReadyMadeProductDto MapReadyMade(SqlDataReader reader) => new(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.NullableInt32("ProductTypeId"), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetInt32(8), reader.GetString(9), reader.NullableString("FabricCode"), reader.NullableString("FabricType"), reader.NullableString("FabricColor"), reader.NullableString("CatalogNumber"), reader.NullableString("FabricUnit"), reader.NullableString("FabricWidth"), reader.NullableString("FabricWidthUnit"), reader.NullableDecimal("ActualCost"), reader.NullableDecimal("SuggestedSellingPrice"), reader.NullableString("MeasurementSnapshot"), reader.GetDateTime(20), reader.GetString(21), reader.GetString(22), reader.NullableString("Notes"), reader.GetBoolean(24), reader.GetDateTime(25), reader.NullableString("ProductTypeName"));

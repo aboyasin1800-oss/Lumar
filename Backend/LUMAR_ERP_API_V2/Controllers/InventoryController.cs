@@ -38,6 +38,15 @@ public sealed class InventoryController(IInventoryService service) : ControllerB
     public Task<IReadOnlyList<FabricRollLabelDto>> GetFabricRollLabels([FromQuery] int? goodsReceiptItemId, [FromQuery] string? catalogNumber, [FromQuery] string? fabricCode, CancellationToken ct)
         => service.GetFabricRollLabelsAsync(goodsReceiptItemId, catalogNumber, fabricCode, ct);
 
+    [HttpPost("fabric-roll-labels/prints")]
+    public async Task<ActionResult<RecordFabricRollLabelPrintResult>> RecordFabricRollLabelPrint([FromBody] RecordFabricRollLabelPrintRequest request, CancellationToken ct)
+    {
+        if (request == null || request.PrintOperationId == Guid.Empty || request.FabricRollIds is null || request.FabricRollIds.Count == 0)
+            return BadRequest("Fabric roll print operation is incomplete.");
+        var result = await service.RecordFabricRollLabelPrintAsync(request, null, ct);
+        return Ok(result);
+    }
+
     [HttpGet("readymade")]
     public Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMade(CancellationToken ct) => service.GetReadyMadeAsync(ct);
 

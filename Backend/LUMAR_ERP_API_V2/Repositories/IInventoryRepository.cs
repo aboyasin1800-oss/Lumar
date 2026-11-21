@@ -13,6 +13,7 @@ public interface IInventoryRepository
     Task<IReadOnlyList<PendingGoodsReceiptStorageDto>> GetPendingGoodsReceiptStorageAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<FabricDto>> GetFabricsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<FabricRollLabelDto>> GetFabricRollLabelsAsync(int? goodsReceiptItemId, string? catalogNumber, string? fabricCode, CancellationToken cancellationToken);
+    Task<RecordFabricRollLabelPrintResult> RecordFabricRollLabelPrintAsync(RecordFabricRollLabelPrintRequest request, int? printedByUserId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ReadyMadeProductDto>> GetReadyMadeAsync(CancellationToken cancellationToken);
     Task<ReadyMadeProductDto?> GetReadyMadeByIdAsync(int readyMadeInventoryProductId, CancellationToken cancellationToken);
     Task<ReadyMadeProductDto?> RecordReadyMadeSaleCostAsync(int readyMadeInventoryProductId, CancellationToken cancellationToken);

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:uuid/uuid.dart';
 
 import '../core/measurement_snapshot.dart';
 import '../core/document_printing.dart';
@@ -43,14 +44,20 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
   );
 
   late final TabController _tabController;
-  late Future<_PrintingCenterState> _future;
+  int _activeTabIndex = 0;
+  Future<List<_FabricRollLabel>>? _fabricLabelsCache;
   final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, initialIndex: widget.initialTabIndex.clamp(0, 4), vsync: this);
-    _future = _loadCenter();
+    _activeTabIndex = widget.initialTabIndex.clamp(0, 4);
+    _tabController = TabController(length: 5, initialIndex: _activeTabIndex, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) return;
+      if (_activeTabIndex == _tabController.index) return;
+      setState(() => _activeTabIndex = _tabController.index);
+    });
   }
 
   @override
@@ -60,121 +67,8 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
     super.dispose();
   }
 
-  Map<String, String> get _authHeaders {
-    final token = widget.auth.token;
-    return {
-      'Accept': 'application/json',
-      if (token != null && token.trim().isNotEmpty)
-        'Authorization': 'Bearer ${token.trim()}',
-    };
-  }
-
-  Future<_PrintingCenterState> _loadCenter() async {
-    final ordersResponse = await http.get(
-      Uri.parse('$_baseUrl/orders'),
-      headers: _authHeaders,
-    );
-    if (ordersResponse.statusCode < 200 || ordersResponse.statusCode >= 300) {
-      throw Exception('تعذر تحميل الطلبات.');
-    }
-    final readyOrdersResponse = await http.get(
-      Uri.parse('$_baseUrl/production/readymade-orders'),
-      headers: _authHeaders,
-    );
-
-    final customersResponse = await http.get(
-      Uri.parse('$_baseUrl/customers'),
-      headers: _authHeaders,
-    );
-    final Map<int, _CustomerSnapshot> customers = {};
-    if (customersResponse.statusCode >= 200 &&
-        customersResponse.statusCode < 300) {
-      final body = jsonDecode(customersResponse.body);
-      if (body is List) {
-        for (final item in body) {
-          if (item is Map<String, dynamic>) {
-            final id = (item['customerId'] as int?) ?? 0;
-            if (id > 0) {
-              customers[id] = _CustomerSnapshot(
-                name: (item['customerName'] ?? '').toString(),
-                phone: (item['phoneNumber'] ?? '').toString(),
-              );
-            }
-          }
-        }
-      }
-    }
-
-    final orderList = (jsonDecode(ordersResponse.body) as List)
-        .cast<Map<String, dynamic>>()
-        .map((entry) => _OrderSummary.fromJson(entry, customers))
-        .toList()
-      ..sort((a, b) => b.orderDate.compareTo(a.orderDate));
-    if (readyOrdersResponse.statusCode >= 200 &&
-        readyOrdersResponse.statusCode < 300) {
-      orderList.addAll(
-        (jsonDecode(readyOrdersResponse.body) as List)
-            .cast<Map<String, dynamic>>()
-            .map((entry) => _OrderSummary.fromReadyMadeJson(entry)),
-      );
-      orderList.sort((a, b) => b.orderDate.compareTo(a.orderDate));
-    }
-
-    final header = await _loadHeaderSettings();
-    return _PrintingCenterState(
-      orders: orderList,
-      header: header,
-    );
-  }
-
-  Future<_MeasurementHeaderSettings> _loadHeaderSettings() async {
-    final entries = <String, String>{};
-    final keys = [
-      'MeasurementCardHeaderImage',
-      'MeasurementCardHeaderUseImage',
-      'MeasurementCardHeaderName',
-      'MeasurementCardLocation',
-      'MeasurementCardPhone1',
-      'MeasurementCardPhone2',
-    ];
-
-    for (final key in keys) {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/settings/by-key/${Uri.encodeComponent(key)}'),
-        headers: _authHeaders,
-      );
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map<String, dynamic>) {
-          entries[key] = (decoded['settingValue'] ?? '').toString();
-        }
-      }
-    }
-
-    final useImage = _toBool(entries['MeasurementCardHeaderUseImage']);
-    return _MeasurementHeaderSettings(
-      useImage: useImage,
-      imageValue: entries['MeasurementCardHeaderImage'] ?? '',
-      name: entries['MeasurementCardHeaderName']?.trim().isNotEmpty == true
-          ? entries['MeasurementCardHeaderName']!
-          : 'LUMAR',
-      location: entries['MeasurementCardLocation'] ?? '',
-      phone1: entries['MeasurementCardPhone1'] ?? '',
-      phone2: entries['MeasurementCardPhone2'] ?? '',
-    );
-  }
-
-  bool _toBool(String? value) {
-    if (value == null) return false;
-    final normalized = value.trim().toLowerCase();
-    return normalized == 'true' || normalized == '1' || normalized == 'yes';
-  }
-
   Future<void> _refresh() async {
-    setState(() {
-      _future = _loadCenter();
-    });
-    await _future;
+    setState(() {});
   }
 
   @override
@@ -194,106 +88,42 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
         ],
       ),
       body: SafeArea(
-        child: FutureBuilder<_PrintingCenterState>(
-          future: _future,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline, size: 42),
-                    const SizedBox(height: 12),
-                    Text(
-                      'تعذر تحميل مركز الطباعة.\n${snapshot.error}',
-                      textAlign: TextAlign.center,
-                      style: UiPalette.adaptiveTextStyle(
-                        context,
-                        backgroundColor: UiPalette.screenBackground,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton.icon(
-                      onPressed: _refresh,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('إعادة المحاولة'),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            final state = snapshot.data!;
-            final filtered = state.orders.where((order) {
-              final query = _searchController.text.trim().toLowerCase();
-              if (query.isEmpty) return true;
-              return order.customerName.toLowerCase().contains(query) ||
-                  order.customerPhone.contains(query) ||
-                  order.orderNumber.toLowerCase().contains(query) ||
-                  order.orderId.toString().contains(query);
-            }).toList();
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TabBar(
-                  controller: _tabController,
-                  isScrollable: false,
-                  tabAlignment: TabAlignment.fill,
-                  tabs: const [
-                    Tab(icon: Icon(Icons.credit_card), text: 'بطاقات المقاسات'),
-                    Tab(
-                        icon: Icon(Icons.receipt_long_outlined),
-                        text: 'الإيصالات'),
-                    Tab(
-                        icon: Icon(Icons.description_outlined),
-                        text: 'سندات القبض'),
-                    Tab(
-                        icon: Icon(Icons.fact_check_outlined),
-                        text: 'الفواتير'),
-                    Tab(
-                        icon: Icon(Icons.label_outline),
-                        text: 'ملصقات الأقمشة'),
-                  ],
-                ),
-                const SizedBox(height: 7),
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _MeasurementCardsTab(
-                        orders: filtered,
-                        header: state.header,
-                        baseUrl: _baseUrl,
-                        auth: widget.auth,
-                        onRefresh: _refresh,
-                      ),
-                      _PlaceholderTab(
-                        title: 'طباعة الإيصالات',
-                        subtitle: 'سيتم تنفيذها في المرحلة القادمة.',
-                      ),
-                      _PlaceholderTab(
-                        title: 'طباعة سندات القبض',
-                        subtitle: 'سيتم تنفيذها في المرحلة القادمة.',
-                      ),
-                      _PlaceholderTab(
-                        title: 'طباعة الفواتير',
-                        subtitle: 'سيتم تنفيذها في المرحلة القادمة.',
-                      ),
-                      _FabricRollLabelsTab(
-                        baseUrl: _baseUrl,
-                        auth: widget.auth,
-                      ),
-                    ],
-                  ),
-                ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TabBar(
+              controller: _tabController,
+              isScrollable: false,
+              tabAlignment: TabAlignment.fill,
+              tabs: const [
+                Tab(icon: Icon(Icons.credit_card), text: 'بطاقات المقاسات'),
+                Tab(icon: Icon(Icons.receipt_long_outlined), text: 'الإيصالات'),
+                Tab(icon: Icon(Icons.description_outlined), text: 'سندات القبض'),
+                Tab(icon: Icon(Icons.fact_check_outlined), text: 'الفواتير'),
+                Tab(icon: Icon(Icons.label_outline), text: 'ملصقات الأقمشة'),
               ],
-            );
-          },
+            ),
+            const SizedBox(height: 7),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _MeasurementCardsTab(
+                    active: _activeTabIndex == 0,
+                    orders: const <_OrderSummary>[],
+                    header: const _MeasurementHeaderSettings(useImage: false, imageValue: '', name: 'LUMAR', location: '', phone1: '', phone2: ''),
+                    baseUrl: _baseUrl,
+                    auth: widget.auth,
+                    onRefresh: _refresh,
+                  ),
+                  const _PlaceholderTab(title: 'طباعة الإيصالات', subtitle: 'سيتم تنفيذها في المرحلة القادمة.'),
+                  const _PlaceholderTab(title: 'طباعة سندات القبض', subtitle: 'سيتم تنفيذها في المرحلة القادمة.'),
+                  const _PlaceholderTab(title: 'طباعة الفواتير', subtitle: 'سيتم تنفيذها في المرحلة القادمة.'),
+                  _FabricRollLabelsTab(baseUrl: _baseUrl, auth: widget.auth, cachedLabels: _fabricLabelsCache),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -302,6 +132,7 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
 
 class _MeasurementCardsTab extends StatefulWidget {
   const _MeasurementCardsTab({
+    required this.active,
     required this.orders,
     required this.header,
     required this.baseUrl,
@@ -309,6 +140,7 @@ class _MeasurementCardsTab extends StatefulWidget {
     required this.onRefresh,
   });
 
+  final bool active;
   final List<_OrderSummary> orders;
   final _MeasurementHeaderSettings header;
   final String baseUrl;
@@ -329,19 +161,77 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   bool _loadingPrintAction = false;
   int _allUnprintedCards = 0;
   final Map<int, List<_PrintHistoryRecord>> _printHistoryCache = {};
+  List<_OrderSummary> _orders = const [];
+  _MeasurementHeaderSettings _header = const _MeasurementHeaderSettings(useImage: false, imageValue: '', name: 'LUMAR', location: '', phone1: '', phone2: '');
+
+  bool _startedLazyLoad = false;
+
+  void _startLazyLoad() {
+    if (!widget.active || _startedLazyLoad) return;
+    _startedLazyLoad = true;
+    _loadMeasurementData();
+  }
+
+  Future<void> _loadMeasurementData() async {
+    if (!mounted) return;
+    try {
+      final customersResponse = await http.get(Uri.parse('${widget.baseUrl}/customers'), headers: _authHeaders);
+      final customers = <int, _CustomerSnapshot>{};
+      if (customersResponse.statusCode >= 200 && customersResponse.statusCode < 300) {
+        final body = jsonDecode(customersResponse.body);
+        if (body is List) {
+          for (final item in body.whereType<Map<String, dynamic>>()) {
+            final id = (item['customerId'] as num?)?.toInt() ?? 0;
+            if (id > 0) customers[id] = _CustomerSnapshot(name: (item['customerName'] ?? '').toString(), phone: (item['phoneNumber'] ?? '').toString());
+          }
+        }
+      }
+      final responses = await Future.wait([
+        http.get(Uri.parse('${widget.baseUrl}/orders'), headers: _authHeaders),
+        http.get(Uri.parse('${widget.baseUrl}/production/readymade-orders'), headers: _authHeaders),
+      ]);
+      final ordersResponse = responses[0];
+      final readyOrdersResponse = responses[1];
+      final orderList = <_OrderSummary>[];
+      if (ordersResponse.statusCode >= 200 && ordersResponse.statusCode < 300) {
+        orderList.addAll((jsonDecode(ordersResponse.body) as List).whereType<Map<String, dynamic>>().map((entry) => _OrderSummary.fromJson(entry, customers)));
+      }
+      if (readyOrdersResponse.statusCode >= 200 && readyOrdersResponse.statusCode < 300) {
+        orderList.addAll((jsonDecode(readyOrdersResponse.body) as List).whereType<Map<String, dynamic>>().map(_OrderSummary.fromReadyMadeJson));
+      }
+      orderList.sort((a, b) => b.orderDate.compareTo(a.orderDate));
+
+      final headerKeys = <String>['MeasurementCardHeaderImage','MeasurementCardHeaderUseImage','MeasurementCardHeaderName','MeasurementCardLocation','MeasurementCardPhone1','MeasurementCardPhone2'];
+      final headerResponses = await Future.wait(headerKeys.map((key) => http.get(Uri.parse('${widget.baseUrl}/settings/by-key/${Uri.encodeComponent(key)}'), headers: _authHeaders)));
+      final entries = <String, String>{};
+      for (var i = 0; i < headerKeys.length; i++) {
+        final response = headerResponses[i];
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) entries[headerKeys[i]] = (decoded['settingValue'] ?? '').toString();
+        }
+      }
+      final useImage = entries['MeasurementCardHeaderUseImage']?.trim().toLowerCase() == 'true';
+      final header = _MeasurementHeaderSettings(useImage: useImage, imageValue: entries['MeasurementCardHeaderImage'] ?? '', name: entries['MeasurementCardHeaderName']?.trim().isNotEmpty == true ? entries['MeasurementCardHeaderName']! : 'LUMAR', location: entries['MeasurementCardLocation'] ?? '', phone1: entries['MeasurementCardPhone1'] ?? '', phone2: entries['MeasurementCardPhone2'] ?? '');
+      if (!mounted) return;
+      setState(() { _orders = orderList; _header = header; });
+      await _refreshUnprintedSummary();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() { _orders = const []; _allUnprintedCards = 0; });
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _refreshUnprintedSummary();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startLazyLoad());
   }
 
   @override
   void didUpdateWidget(covariant _MeasurementCardsTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.orders != widget.orders) {
-      _refreshUnprintedSummary();
-    }
+    if (widget.active && !oldWidget.active) _startLazyLoad();
   }
 
   @override
@@ -359,7 +249,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     try {
       int totalUnprintedCards = 0;
 
-      for (final order in widget.orders) {
+      for (final order in _orders) {
         if (order.isCancelled) continue;
         final pieces = await _fetchOrderPiecesOnce(order);
         for (final piece in pieces) {
@@ -969,7 +859,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
       await _PrintService.execute(
         context: context,
         piece: piece,
-        header: widget.header,
+        header: _header,
         target: target,
         copyNumber: copyNumber,
       );
@@ -1093,7 +983,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         title: 'طباعة جميع البطاقات النشطة غير المطبوعة');
     if (target == null || !mounted) return;
 
-    for (final order in widget.orders) {
+    for (final order in _orders) {
       if (order.isCancelled) continue;
       final pieces = await _fetchOrderPiecesOnce(order);
       for (final piece in pieces.where((entry) => !_isPiecePrinted(entry))) {
@@ -1312,7 +1202,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = widget.orders.where((order) {
+    final filtered = _orders.where((order) {
       final query = _searchController.text.trim().toLowerCase();
       if (query.isEmpty) return true;
       return order.customerName.toLowerCase().contains(query) ||
@@ -1951,10 +1841,11 @@ class _PlaceholderTab extends StatelessWidget {
 }
 
 class _FabricRollLabelsTab extends StatefulWidget {
-  const _FabricRollLabelsTab({required this.baseUrl, required this.auth});
+  const _FabricRollLabelsTab({required this.baseUrl, required this.auth, this.cachedLabels});
 
   final String baseUrl;
   final AuthState auth;
+  final Future<List<_FabricRollLabel>>? cachedLabels;
 
   @override
   State<_FabricRollLabelsTab> createState() => _FabricRollLabelsTabState();
@@ -1963,6 +1854,7 @@ class _FabricRollLabelsTab extends StatefulWidget {
 class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
   final _searchController = TextEditingController();
   final Set<int> _selected = <int>{};
+  final Set<int> _selectedGroups = <int>{};
   double _labelWidthMm = 70;
   double _labelHeightMm = 50;
   late final TextEditingController _widthController;
@@ -1974,7 +1866,7 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
     super.initState();
     _widthController = TextEditingController(text: _labelWidthMm.toStringAsFixed(0));
     _heightController = TextEditingController(text: _labelHeightMm.toStringAsFixed(0));
-    _labels = _loadLabels();
+    _labels = widget.cachedLabels ?? _loadLabels();
   }
 
   @override
@@ -2021,7 +1913,7 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
     });
   }
 
-  Future<Uint8List> _buildPdf(List<_FabricRollLabel> labels) async {
+  Future<Uint8List> _buildPdf(List<_FabricRollLabel> labels, {bool includeCatalogLabels = true}) async {
     pw.Font? arabicFont;
     try {
       arabicFont = await DocumentPrintSupport.loadArabicFont();
@@ -2035,7 +1927,8 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
     );
 
     final catalogs = <String>{};
-    for (final label in labels) {
+    if (includeCatalogLabels) {
+      for (final label in labels) {
       final catalog = label.catalogNumber?.trim();
       if (catalog != null && catalog.isNotEmpty && catalogs.add(catalog)) {
         pdf.addPage(pw.Page(
@@ -2054,6 +1947,7 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
             ),
           ),
         ));
+      }
       }
     }
 
@@ -2110,12 +2004,40 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
     return pdf.save();
   }
 
-  Future<void> _printLabels(List<_FabricRollLabel> labels) async {
+  Future<void> _printLabels(List<_FabricRollLabel> labels, {bool includeCatalogLabels = true}) async {
     if (labels.isEmpty) return;
+    final alreadyPrinted = labels.where((label) => label.isPrinted).toList();
+    if (alreadyPrinted.isNotEmpty) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('إعادة الطباعة'),
+          content: const Text('سبق طباعة هذا الملصق. هل تريد إعادة الطباعة؟'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('إعادة الطباعة')),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
     try {
-      final bytes = await _buildPdf(labels);
+      final bytes = await _buildPdf(labels, includeCatalogLabels: includeCatalogLabels);
       await Printing.layoutPdf(onLayout: (_) async => bytes);
       if (!mounted) return;
+      final printOperationId = const Uuid().v4();
+      final printRecordResponse = await http.post(
+        Uri.parse('${widget.baseUrl}/inventory/fabric-roll-labels/prints'),
+        headers: {..._headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(<String, dynamic>{'fabricRollIds': labels.map((label) => label.fabricRollId).toList(), 'printOperationId': printOperationId}),
+      );
+      if (!mounted) return;
+      if (printRecordResponse.statusCode < 200 || printRecordResponse.statusCode >= 300) {
+        throw Exception('تعذر تسجيل نجاح الطباعة.');
+      }
+      setState(() {
+        _labels = _loadLabels();
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تم تجهيز ${labels.length} ملصق للطباعة.')),
       );
@@ -2175,34 +2097,114 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: Row(
                       children: [
-                        FilledButton.icon(onPressed: () => _printLabels(labels.where((label) => _selected.contains(label.fabricRollId)).toList()), icon: const Icon(Icons.print_outlined), label: const Text('طباعة المحدد')),
+                        FilledButton.icon(
+                          onPressed: () {
+                            final selectedLabels = labels.where((label) => _selected.contains(label.fabricRollId)).toList();
+                            _printLabels(selectedLabels, includeCatalogLabels: selectedLabels.length != 1);
+                          },
+                          icon: const Icon(Icons.print_outlined),
+                          label: const Text('طباعة المحدد'),
+                        ),
                         const SizedBox(width: 8),
-                        FilledButton.tonalIcon(onPressed: () => _printLabels(labels), icon: const Icon(Icons.print), label: const Text('طباعة الكل')),
+                        FilledButton.tonalIcon(onPressed: () => _printLabels(labels), icon: const Icon(Icons.print), label: const Text('طباعة جميع رولات المخزن')),
                       ],
                     ),
                   ),
                   const SizedBox(height: 8),
                   Expanded(
-                    child: ListView.builder(
-                      itemCount: labels.length,
-                      itemBuilder: (context, index) {
-                        final label = labels[index];
-                        final checked = _selected.contains(label.fabricRollId);
-                        return CheckboxListTile(
-                          value: checked,
-                          onChanged: (value) => setState(() {
-                            if (value == true) {
-                              _selected.add(label.fabricRollId);
-                            } else {
-                              _selected.remove(label.fabricRollId);
-                            }
-                          }),
-                          title: Text(label.fabricCode),
-                          subtitle: Text('Catalog: ${label.catalogNumber ?? '-'} | ${label.fabricType}'),
-                          secondary: const Icon(Icons.label_outline),
-                        );
-                      },
-                    ),
+                    child: Builder(builder: (context) {
+                      final groups = <int, List<_FabricRollLabel>>{};
+                      for (final label in labels) {
+                        groups.putIfAbsent(label.goodsReceiptItemId, () => <_FabricRollLabel>[]).add(label);
+                      }
+                      final entries = groups.entries.toList()
+                        ..sort((a, b) => a.key.compareTo(b.key));
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: entries.length,
+                        itemBuilder: (context, index) {
+                          final entry = entries[index];
+                          final groupLabels = entry.value;
+                          final first = groupLabels.first;
+                          final selectedCount = groupLabels.where((label) => _selected.contains(label.fabricRollId)).length;
+                          final allSelected = selectedCount == groupLabels.length;
+                          final printedCount = groupLabels.where((label) => label.isPrinted).length;
+                          final groupStatus = printedCount == 0
+                              ? 'غير مطبوع'
+                              : printedCount == groupLabels.length
+                                  ? 'تمت طباعة جميع الرولات'
+                                  : 'مطبوع جزئيًا';
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Checkbox(
+                                        value: allSelected,
+                                        onChanged: (value) => setState(() {
+                                          if (value == true) {
+                                            _selected.addAll(groupLabels.map((label) => label.fabricRollId));
+                                            _selectedGroups.add(entry.key);
+                                          } else {
+                                            _selected.removeAll(groupLabels.map((label) => label.fabricRollId));
+                                            _selectedGroups.remove(entry.key);
+                                          }
+                                        }),
+                                      ),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(first.catalogNumber ?? '-', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                            Text('${first.fabricType}${first.fabricColor == null || first.fabricColor!.isEmpty ? '' : ' • ${first.fabricColor}'}'),
+                                          ],
+                                        ),
+                                      ),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          Text('${groupLabels.length} رول', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                          Text(groupStatus, style: TextStyle(color: printedCount == 0 ? Colors.grey : Colors.green, fontSize: 12)),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  FilledButton.tonalIcon(
+                                    onPressed: () => _printLabels(groupLabels),
+                                    icon: const Icon(Icons.print_outlined),
+                                    label: const Text('طباعة البند كاملًا'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...groupLabels.map((label) {
+                                    final checked = _selected.contains(label.fabricRollId);
+                                    final printed = label.isPrinted;
+                                    return CheckboxListTile(
+                                      value: checked,
+                                      onChanged: (value) => setState(() {
+                                        if (value == true) {
+                                          _selected.add(label.fabricRollId);
+                                        } else {
+                                          _selected.remove(label.fabricRollId);
+                                        }
+                                      }),
+                                      title: Text(label.fabricCode),
+                                      subtitle: Text('Catalog: ${label.catalogNumber ?? '-'} | ${label.fabricType}', style: TextStyle(color: printed ? Colors.green : null)),
+                                      secondary: printed
+                                          ? const Chip(label: Text('تمت الطباعة'))
+                                          : const Icon(Icons.label_outline),
+                                    );
+                                  }),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    }),
                   ),
                 ],
               );
@@ -2215,7 +2217,7 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
 }
 
 class _FabricRollLabel {
-  const _FabricRollLabel({required this.fabricRollId, required this.goodsReceiptItemId, required this.catalogNumber, required this.fabricCode, required this.fabricType, required this.fabricColor, required this.fabricWidth, required this.fabricWidthUnit, required this.quantity, required this.unitCost});
+  const _FabricRollLabel({required this.fabricRollId, required this.goodsReceiptItemId, required this.catalogNumber, required this.fabricCode, required this.fabricType, required this.fabricColor, required this.fabricWidth, required this.fabricWidthUnit, required this.quantity, required this.unitCost, required this.isPrinted, required this.lastPrintedAt, required this.printCount});
   factory _FabricRollLabel.fromJson(Map<String, dynamic> json) => _FabricRollLabel(
     fabricRollId: (json['fabricRollId'] as num).toInt(),
     goodsReceiptItemId: (json['goodsReceiptItemId'] as num).toInt(),
@@ -2227,6 +2229,9 @@ class _FabricRollLabel {
     fabricWidthUnit: json['fabricWidthUnit']?.toString(),
     quantity: (json['quantity'] as num?)?.toDouble() ?? 0,
     unitCost: (json['unitCost'] as num?)?.toDouble() ?? 0,
+    isPrinted: json['isPrinted'] == true,
+    lastPrintedAt: json['lastPrintedAt']?.toString(),
+    printCount: (json['printCount'] as num?)?.toInt() ?? 0,
   );
   final int fabricRollId;
   final int goodsReceiptItemId;
@@ -2238,13 +2243,9 @@ class _FabricRollLabel {
   final String? fabricWidthUnit;
   final double quantity;
   final double unitCost;
-}
-
-class _PrintingCenterState {
-  const _PrintingCenterState({required this.orders, required this.header});
-
-  final List<_OrderSummary> orders;
-  final _MeasurementHeaderSettings header;
+  final bool isPrinted;
+  final String? lastPrintedAt;
+  final int printCount;
 }
 
 class _MeasurementHeaderSettings {
