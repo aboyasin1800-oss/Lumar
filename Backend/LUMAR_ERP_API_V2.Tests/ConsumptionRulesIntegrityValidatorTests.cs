@@ -53,6 +53,18 @@ public class ConsumptionRulesIntegrityValidatorTests
     }
 
     [Fact]
+    public void ShouldMatchOpenMinimumAtAnyPositiveValue()
+    {
+        var rules = new[]
+        {
+            new ConsumptionRuleIntegrityCandidate(1, 58, 1, "chest", 1, null, 28, "sleeve * 2.0 + 5.0", "Active")
+        };
+
+        Assert.Equal(1, ConsumptionRuleRangePolicy.FindMatches(rules, 1, "chest", 27m, 58).Single().SizeClassId);
+        Assert.Empty(ConsumptionRuleRangePolicy.FindMatches(rules, 1, "chest", 28m, 58));
+    }
+
+    [Fact]
     public void ShouldMatchOnlyTheHalfOpenRangeForDecimalValues()
     {
         var rules = new[]

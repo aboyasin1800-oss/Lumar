@@ -1,14 +1,16 @@
 namespace LUMAR_ERP_API_V2.Utilities;
 
-public readonly record struct ConsumptionRuleRange(decimal MinimumValue, decimal? MaximumValue)
+public readonly record struct ConsumptionRuleRange(decimal? MinimumValue, decimal? MaximumValue)
 {
-    public bool Contains(decimal value) => MinimumValue <= value && (!MaximumValue.HasValue || value < MaximumValue.Value);
+    public bool Contains(decimal value) =>
+        (!MinimumValue.HasValue || MinimumValue.Value <= value)
+        && (!MaximumValue.HasValue || value < MaximumValue.Value);
 }
 
 public static class ConsumptionRuleRangePolicy
 {
     public static bool IsValid(decimal? minimumValue, decimal? maximumValue)
-        => minimumValue.HasValue && (!maximumValue.HasValue || minimumValue.Value < maximumValue.Value);
+        => (!minimumValue.HasValue || !maximumValue.HasValue || minimumValue.Value < maximumValue.Value);
 
     public static bool Overlaps(decimal minimumValue, decimal? maximumValue, decimal otherMinimumValue, decimal? otherMaximumValue)
     {
@@ -43,7 +45,7 @@ public static class ConsumptionRuleRangePolicy
             .Where(candidate => candidate.ProductTypeId == productTypeId)
             .Where(candidate => string.Equals(candidate.MeasurementKey.Trim(), normalizedMeasurementKey, StringComparison.OrdinalIgnoreCase))
             .Where(candidate => !fabricWidth.HasValue || candidate.FabricWidth == fabricWidth)
-            .Where(candidate => candidate.MinValue.HasValue && new ConsumptionRuleRange(candidate.MinValue.Value, candidate.MaxValue).Contains(value))
+            .Where(candidate => new ConsumptionRuleRange(candidate.MinValue, candidate.MaxValue).Contains(value))
             .ToList();
     }
 

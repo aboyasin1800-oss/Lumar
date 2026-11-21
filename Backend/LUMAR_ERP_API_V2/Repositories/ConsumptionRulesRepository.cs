@@ -178,8 +178,7 @@ public sealed class ConsumptionRulesRepository(ReadOnlySqlConnectionFactory conn
         var rangedMatches = rules
             .Where(rule => !string.IsNullOrWhiteSpace(rule.MeasurementCode))
             .Where(rule => values.TryGetValue(rule.MeasurementCode!, out var value)
-                && rule.MinimumValue.HasValue
-                && rule.MinimumValue.Value <= value
+                && (!rule.MinimumValue.HasValue || rule.MinimumValue.Value <= value)
                 && (!rule.MaximumValue.HasValue || value < rule.MaximumValue.Value))
             .ToList();
         var candidates = rangedMatches.Count > 0
@@ -982,7 +981,6 @@ public sealed class ConsumptionRulesRepository(ReadOnlySqlConnectionFactory conn
         const string sql = @"
             SELECT SizeClassId, ProductTypeId, Code, NameAr, MeasurementCode, MinimumValue, MaximumValue, Sequence, Status, IsActive
             FROM dbo.PricingSizeClasses WITH (NOLOCK)
-            WHERE IsActive = 1
             ORDER BY ProductTypeId, Sequence, SizeClassId;";
 
         await using var command = new SqlCommand(sql, connection);
@@ -1491,7 +1489,7 @@ public sealed class ConsumptionRulesRepository(ReadOnlySqlConnectionFactory conn
         const string sql = @"
             SELECT SizeClassId, ProductTypeId, Code, NameAr, MeasurementCode, MinimumValue, MaximumValue, Sequence, Status, IsActive
             FROM dbo.PricingSizeClasses WITH (UPDLOCK,HOLDLOCK)
-            WHERE SizeClassId = @SizeClassId AND IsActive = 1;";
+            WHERE SizeClassId = @SizeClassId;";
 
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@SizeClassId", sizeClassId);
@@ -1514,7 +1512,7 @@ public sealed class ConsumptionRulesRepository(ReadOnlySqlConnectionFactory conn
                 MaximumValue = @MaximumValue,
                 UpdatedAt = SYSDATETIME(),
                 ChangeReason = N'Updated via consumption rules settings'
-            WHERE SizeClassId = @SizeClassId AND IsActive = 1;";
+            WHERE SizeClassId = @SizeClassId;";
 
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@SizeClassId", sizeClassId);

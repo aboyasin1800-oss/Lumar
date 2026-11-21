@@ -2084,7 +2084,8 @@ class _RuleDraft {
     if (rule.productTypeId <= 0 || rule.status.isEmpty) return true;
     if (formula.trim().isEmpty) return true;
     if (fields.isEmpty) return false;
-    final hasKnownField = fields.any((field) => formula.contains(field.code));
+    final hasKnownField = fields.any((field) =>
+        formula.toLowerCase().contains(field.code.toLowerCase()));
     if (!hasKnownField && rule.formula.isNotEmpty) {
       return true;
     }
