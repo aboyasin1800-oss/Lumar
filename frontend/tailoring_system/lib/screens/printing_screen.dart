@@ -16,18 +16,20 @@ import '../repositories/finance_repository.dart';
 import '../services/auth_state.dart';
 
 class PrintingScreen extends StatelessWidget {
-  const PrintingScreen({required this.auth, super.key});
+  const PrintingScreen({required this.auth, this.initialTabIndex = 0, super.key});
 
   final AuthState auth;
+  final int initialTabIndex;
 
   @override
-  Widget build(BuildContext context) => PrintingCenterScreen(auth: auth);
+  Widget build(BuildContext context) => PrintingCenterScreen(auth: auth, initialTabIndex: initialTabIndex);
 }
 
 class PrintingCenterScreen extends StatefulWidget {
-  const PrintingCenterScreen({required this.auth, super.key});
+  const PrintingCenterScreen({required this.auth, this.initialTabIndex = 0, super.key});
 
   final AuthState auth;
+  final int initialTabIndex;
 
   @override
   State<PrintingCenterScreen> createState() => _PrintingCenterScreenState();
@@ -47,7 +49,7 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 5, initialIndex: widget.initialTabIndex.clamp(0, 4), vsync: this);
     _future = _loadCenter();
   }
 
@@ -1963,17 +1965,23 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
   final Set<int> _selected = <int>{};
   double _labelWidthMm = 70;
   double _labelHeightMm = 50;
+  late final TextEditingController _widthController;
+  late final TextEditingController _heightController;
   Future<List<_FabricRollLabel>>? _labels;
 
   @override
   void initState() {
     super.initState();
+    _widthController = TextEditingController(text: _labelWidthMm.toStringAsFixed(0));
+    _heightController = TextEditingController(text: _labelHeightMm.toStringAsFixed(0));
     _labels = _loadLabels();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _widthController.dispose();
+    _heightController.dispose();
     super.dispose();
   }
 
@@ -2018,30 +2026,83 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
     try {
       arabicFont = await DocumentPrintSupport.loadArabicFont();
     } catch (_) {}
+
     final pdf = pw.Document();
+    final pageFormat = PdfPageFormat(
+      _labelWidthMm * PdfPageFormat.mm,
+      _labelHeightMm * PdfPageFormat.mm,
+      marginAll: 2 * PdfPageFormat.mm,
+    );
+
+    final catalogs = <String>{};
+    for (final label in labels) {
+      final catalog = label.catalogNumber?.trim();
+      if (catalog != null && catalog.isNotEmpty && catalogs.add(catalog)) {
+        pdf.addPage(pw.Page(
+          pageFormat: pageFormat,
+          build: (_) => pw.Directionality(
+            textDirection: pw.TextDirection.rtl,
+            child: pw.Center(
+              child: pw.Text(
+                catalog,
+                style: pw.TextStyle(
+                  font: arabicFont,
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ));
+      }
+    }
+
     for (final label in labels) {
       pdf.addPage(pw.Page(
-        pageFormat: PdfPageFormat(_labelWidthMm * PdfPageFormat.mm, _labelHeightMm * PdfPageFormat.mm, marginAll: 2 * PdfPageFormat.mm),
-        build: (context) {
-          final textStyle = pw.TextStyle(font: arabicFont, fontSize: 8);
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text('LUMAR', style: pw.TextStyle(font: arabicFont, fontSize: 10, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 3),
-              pw.Text('CatalogNumber: ${label.catalogNumber ?? '-'}', style: textStyle),
-              pw.Text('FabricCode: ${label.fabricCode}', style: pw.TextStyle(font: arabicFont, fontSize: 9, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 3),
-              pw.BarcodeWidget(barcode: pw.Barcode.code128(), data: label.fabricCode, width: 150, height: 35),
-              pw.Text(label.fabricCode, style: pw.TextStyle(font: arabicFont, fontSize: 8, fontWeight: pw.FontWeight.bold)),
-              if (label.fabricType.isNotEmpty)
-                pw.Text('النوع: ${label.fabricType}', style: textStyle),
-              if (label.fabricColor?.isNotEmpty == true)
-                pw.Text('اللون: ${label.fabricColor}', style: textStyle),
-              if (label.fabricWidth != null)
-                pw.Text('العرض: ${label.fabricWidth!.toStringAsFixed(2)} ${label.fabricWidthUnit ?? ''}', style: textStyle),
-              pw.Text('الكمية: ${label.quantity.toStringAsFixed(2)}', style: textStyle),
-            ],
+        pageFormat: pageFormat,
+        build: (_) {
+          final bodyStyle = pw.TextStyle(font: arabicFont, fontSize: 7);
+          return pw.Directionality(
+            textDirection: pw.TextDirection.rtl,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+              children: [
+                pw.Text(
+                  label.catalogNumber ?? '-',
+                  style: pw.TextStyle(font: arabicFont, fontSize: 9, fontWeight: pw.FontWeight.bold),
+                  textDirection: pw.TextDirection.rtl,
+                ),
+                pw.SizedBox(height: 1),
+                pw.Text(
+                  label.fabricCode,
+                  style: pw.TextStyle(font: arabicFont, fontSize: 11, fontWeight: pw.FontWeight.bold),
+                  textDirection: pw.TextDirection.ltr,
+                ),
+                pw.SizedBox(height: 1),
+                pw.BarcodeWidget(
+                  barcode: pw.Barcode.code128(),
+                  data: label.fabricCode,
+                  width: 150,
+                  height: 24,
+                  drawText: false,
+                ),
+                pw.SizedBox(height: 1),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('نوع القماش: ${label.fabricType}', style: bodyStyle, textDirection: pw.TextDirection.rtl),
+                    pw.Text('اللون: ${label.fabricColor ?? '-'}', style: bodyStyle, textDirection: pw.TextDirection.rtl),
+                  ],
+                ),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('العرض: ${label.fabricWidth?.toStringAsFixed(2) ?? '-'} ${label.fabricWidthUnit == 'Inch' ? 'إنش' : (label.fabricWidthUnit ?? '')}', style: bodyStyle, textDirection: pw.TextDirection.rtl),
+                    pw.Text('الكمية: ${label.quantity.toStringAsFixed(2)}', style: bodyStyle, textDirection: pw.TextDirection.rtl),
+                  ],
+                ),
+              ],
+            ),
           );
         },
       ));
@@ -2094,9 +2155,9 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             children: [
-              SizedBox(width: 140, child: TextField(keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'عرض الملصق مم'), onSubmitted: (v) => setState(() => _labelWidthMm = double.tryParse(v) ?? _labelWidthMm))),
+              SizedBox(width: 140, child: TextField(controller: _widthController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'عرض الملصق (مم)'), onChanged: (v) { final value = double.tryParse(v); if (value != null && value > 0) setState(() => _labelWidthMm = value); })),
               const SizedBox(width: 8),
-              SizedBox(width: 140, child: TextField(keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'ارتفاع الملصق مم'), onSubmitted: (v) => setState(() => _labelHeightMm = double.tryParse(v) ?? _labelHeightMm))),
+              SizedBox(width: 140, child: TextField(controller: _heightController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'ارتفاع الملصق (مم)'), onChanged: (v) { final value = double.tryParse(v); if (value != null && value > 0) setState(() => _labelHeightMm = value); })),
             ],
           ),
         ),

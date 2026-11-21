@@ -11,6 +11,8 @@ import 'inventory/bulk_fabric_entry_screen.dart';
 import 'inventory/imported_product_entry_screen.dart';
 import 'inventory/inventory_issuance_screen.dart';
 import 'inventory/tool_entry_screen.dart';
+import 'printing_screen.dart';
+import '../services/auth_state.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});
@@ -654,6 +656,15 @@ class _InventoryScreenState extends State<InventoryScreen>
                         onPressed: () => _addToTab('fabric'),
                         icon: const Icon(Icons.add),
                         label: const Text('إضافة قماش'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => AppNavigation.push(
+                          context,
+                          (_) => PrintingScreen(auth: AuthState.instance, initialTabIndex: 4),
+                        ),
+                        icon: const Icon(Icons.print_outlined),
+                        label: const Text('ملصقات الأقمشة'),
                       ),
                     ],
                   ),

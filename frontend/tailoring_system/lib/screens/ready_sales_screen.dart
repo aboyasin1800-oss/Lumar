@@ -224,6 +224,7 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
     }
     if (paymentType == 'Cash' && selectedCashAccountId == null) {
       await _loadGeneralCashAccountDefault();
+      if (!mounted) return;
       if (selectedCashAccountId == null) {
         final message = switch (cashAccountAvailability) {
           CashAccountAvailability.failed =>

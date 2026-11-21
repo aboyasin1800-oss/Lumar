@@ -345,6 +345,7 @@ class _SupplierPurchasingOperationsScreenState
   Future<void> _run(Future<void> Function() action,
       {String success = 'تم تنفيذ العملية بنجاح.'}) async {
     debugPrint('SUPPLIER_INVOICE_TRACE: _run start busy=$_busy');
+    if (!mounted || _busy) return;
     setState(() => _busy = true);
     try {
       debugPrint('SUPPLIER_INVOICE_TRACE: _run invoking action');
@@ -906,6 +907,7 @@ class _SupplierPurchasingOperationsScreenState
                         return;
                       }
                       final shouldDiscard = await _confirmUnsavedDialog(dialogContext);
+                      if (!dialogContext.mounted) return;
                       if (shouldDiscard) {
                         Navigator.of(dialogContext).pop(false);
                       }
@@ -932,6 +934,7 @@ class _SupplierPurchasingOperationsScreenState
       },
     );
     if (save == true && supplier != null) {
+      if (_busy) return;
       final duplicate = _invoices.any((item) =>
           item.supplierId == supplier!.id &&
           item.number.trim().toLowerCase() == number.text.trim().toLowerCase());
