@@ -242,6 +242,43 @@ test('web driver supports the installed whatsapp-web.js message contract and blo
   assert.equal(JSON.stringify(session.status()).includes('secret'), false);
 });
 
+test('customer message id correlates early replay without cross-correlation', async () => {
+  const driver = new WebDriver('test-data');
+  const client = new EventEmitter();
+  driver.client = client;
+
+  client.sendMessage = async () => ({ id: { fromMe: true } });
+  const first = driver.send({ recipient: '967777123456', text: 'same text', customerMessageId: 33 });
+  client.emit('message_create', {
+    fromMe: true,
+    body: 'same text',
+    to: { _serialized: '967777123456@c.us' },
+    id: { fromMe: true, id: 'provider-33', _serialized: 'wamid.provider-33' },
+  });
+  assert.equal(await first, 'wamid.provider-33');
+  assert.equal(driver.knownProviderIds.has('wamid.provider-33'), true);
+  assert.equal(driver.recentOfficialMessageCreates.some(item => item.providerMessageId === 'wamid.provider-33'), false);
+});
+
+test('successful recovery clears only SEND_UNCONFIRMED and preserves real session errors', () => {
+  const { manager, drivers } = fixture();
+  manager.state = 'Connected';
+  manager.currentNumber = '967777123456';
+  manager.saved.linked = true;
+  manager.lastError = 'SEND_UNCONFIRMED';
+
+  manager.providerIdsByCustomerMessageId.set('33', 'wamid.provider-33');
+  manager.driver = {
+    getAckStatus: () => ({ providerMessageId: 'wamid.provider-33', ackLevel: 2, status: 'Delivered', occurredAtUtc: '2026-11-22T00:00:00Z' }),
+  };
+  assert.equal(manager.providerIdStatus(33)?.status, 'Delivered');
+  assert.equal(manager.status().lastError, null);
+
+  manager.lastError = 'SESSION_CONNECTION_FAILED';
+  assert.equal(manager.providerIdStatus(33)?.status, 'Delivered');
+  assert.equal(manager.status().lastError, 'SESSION_CONNECTION_FAILED');
+});
+
 test('gateway send logs are tagged and safe when the send is unconfirmed', async () => {
   const originalError = console.error;
   const messages = [];

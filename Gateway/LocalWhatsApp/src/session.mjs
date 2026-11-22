@@ -160,8 +160,15 @@ export class SessionManager {
   }
 
   providerIdStatus(customerMessageId) {
-    const providerMessageId = this.providerIdsByCustomerMessageId.get(String(customerMessageId));
-    return providerMessageId ? this.ackStatus(providerMessageId) : null;
+    const normalizedCustomerMessageId = String(customerMessageId);
+    const providerMessageId = this.providerIdsByCustomerMessageId.get(normalizedCustomerMessageId);
+    if (!providerMessageId) return null;
+    const ack = this.ackStatus(providerMessageId);
+    if (ack && (ack.status === 'Sent' || ack.status === 'Delivered')
+      && this.lastError === 'SEND_UNCONFIRMED') {
+      this.lastError = null;
+    }
+    return ack;
   }
 
   ackStatus(providerMessageId) {

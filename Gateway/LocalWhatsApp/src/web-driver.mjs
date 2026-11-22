@@ -156,6 +156,7 @@ export class WebDriver extends EventEmitter {
     this.recentOfficialMessageCreates = this.recentOfficialMessageCreates.filter(item => Date.now() - item.createdAt < this.confirmationTimeoutMs);
     this.recentOfficialMessageCreates.push({
       ...messageKey,
+      customerMessageId: this.pendingCustomerMessageId,
       providerMessageId,
       createdAt: Date.now(),
     });
@@ -165,7 +166,10 @@ export class WebDriver extends EventEmitter {
       this.emit('provider-id', providerMessageId, this.pendingCustomerMessageId);
     }
 
-    const request = this.pendingConfirmations.find(item => !item.resolved && item.eligible(message));
+    const request = this.pendingConfirmations.find(item =>
+      !item.resolved && item.customerMessageId != null
+      && item.customerMessageId === this.pendingCustomerMessageId
+    ) ?? this.pendingConfirmations.find(item => !item.resolved && item.eligible(message));
     if (!request) {
       console.error(JSON.stringify({
         marker: 'LOCAL_WA_SAFE_OBSERVABILITY',
@@ -237,7 +241,7 @@ export class WebDriver extends EventEmitter {
     const mediaFileName = media?.filename || 'lumar-image';
     const mediaPayload = media ? new MessageMedia(media.mimeType, media.base64, mediaFileName) : null;
     const sendOptions = media ? { caption: text, sendSeen: false, waitUntilMsgSent: true } : undefined;
-    const confirmationWait = this.waitForOfficialSendConfirmation({ recipient, text, media });
+    const confirmationWait = this.waitForOfficialSendConfirmation({ recipient, text, media, customerMessageId });
 
     this.lastSendDiagnostics = {
       SEND_MESSAGE_RETURNED: 'NO',
@@ -276,7 +280,11 @@ export class WebDriver extends EventEmitter {
         if (this.pendingCustomerMessageId != null) {
           this.emit('provider-id', providerMessageId, this.pendingCustomerMessageId);
         }
-        const request = this.pendingConfirmations.find(item => !item.resolved && item.recipient === normalizeChatRecipient(recipient) && item.text === String(text ?? '').trim() && item.mediaSignature === (media ? `${media.mimeType}:${media.filename}:${Buffer.byteLength(media.base64, 'base64')}` : null));
+        const request = this.pendingConfirmations.find(item =>
+          !item.resolved
+          && item.customerMessageId != null
+          && item.customerMessageId === (customerMessageId == null ? null : String(customerMessageId))
+        ) ?? this.pendingConfirmations.find(item => !item.resolved && item.recipient === normalizeChatRecipient(recipient) && item.text === String(text ?? '').trim() && item.mediaSignature === (media ? `${media.mimeType}:${media.filename}:${Buffer.byteLength(media.base64, 'base64')}` : null));
         if (request) {
           request.resolved = true;
           clearTimeout(request.timer);
@@ -327,9 +335,10 @@ export class WebDriver extends EventEmitter {
     }
   }
 
-  waitForOfficialSendConfirmation({ recipient, text, media }) {
+  waitForOfficialSendConfirmation({ recipient, text, media, customerMessageId }) {
     return new Promise(resolve => {
       const request = {
+        customerMessageId: customerMessageId == null ? null : String(customerMessageId),
         recipient: normalizeChatRecipient(recipient),
         text: typeof text === 'string' ? text.trim() : '',
         mediaSignature: media ? `${media.mimeType}:${media.filename}:${Buffer.byteLength(media.base64, 'base64')}` : null,
@@ -365,6 +374,10 @@ export class WebDriver extends EventEmitter {
       }
 
       const replay = this.recentOfficialMessageCreates.find(item =>
+        request.customerMessageId != null
+        && item.customerMessageId === request.customerMessageId
+        && Date.now() - item.createdAt < this.confirmationTimeoutMs
+      ) ?? this.recentOfficialMessageCreates.find(item =>
         item.recipient === request.recipient
         && item.text === request.text
         && item.mediaSignature === request.mediaSignature
