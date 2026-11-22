@@ -107,7 +107,8 @@ public sealed class WhatsAppWebhookController(
                                     failureReason = string.Join("; ", errors.EnumerateArray().Select(e => e.TryGetProperty("title", out var title) ? title.GetString() : e.ToString()));
                                 }
 
-                                await messageRepository.UpdateDeliveryStatusByProviderIdAsync(providerMessageId, MapStatus(statusName), occurredAtUtc, failureReason, cancellationToken);
+                                if (!string.IsNullOrWhiteSpace(providerMessageId))
+                                    await messageRepository.UpdateDeliveryStatusByProviderIdAsync(providerMessageId, MapStatus(statusName), occurredAtUtc, failureReason, cancellationToken);
                             }
                         }
 

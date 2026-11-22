@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/app_navigation.dart';
+import '../core/ui_palette.dart';
 import '../services/auth_state.dart';
 import 'order_details_screen.dart';
 
@@ -163,13 +164,22 @@ class _OrdersScreenState extends State<OrdersScreen>
   }
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return ColoredBox(
+      color: isLight ? const Color(0xFFF4F7FA) : UiPalette.screenBackground,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(children: [
             Expanded(
                 child: Text('الطلبات',
-                    style: Theme.of(context).textTheme.headlineSmall)),
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: isLight ? const Color(0xFF172033) : UiPalette.textMain,
+                      fontWeight: FontWeight.w700,
+                    ))),
             IconButton(
                 tooltip: 'تحديث',
                 onPressed: _refresh,
@@ -181,6 +191,10 @@ class _OrdersScreenState extends State<OrdersScreen>
           TabBar(
             controller: _tabController,
             isScrollable: true,
+            dividerColor: isLight ? const Color(0xFFCBD5E1) : UiPalette.borderSoft,
+            indicatorColor: isLight ? const Color(0xFF168F86) : UiPalette.primaryBlue,
+            labelColor: isLight ? const Color(0xFF168F86) : UiPalette.textMain,
+            unselectedLabelColor: isLight ? const Color(0xFF5B687A) : UiPalette.textSoft,
             tabs: OrdersScreen.orderTabs
                 .map((tab) => Tab(icon: Icon(tab.icon), text: tab.title))
                 .toList(),
@@ -211,9 +225,14 @@ class _OrdersScreenState extends State<OrdersScreen>
             ),
           ),
         ],
-      );
+      ),
+      ),
+    );
+  }
 
-  Widget _buildSearch() => Column(
+  Widget _buildSearch() {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TextField(
@@ -221,6 +240,8 @@ class _OrdersScreenState extends State<OrdersScreen>
             onChanged: _onSearchChanged,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
+              filled: true,
+              fillColor: isLight ? const Color(0xFFFFFFFF) : UiPalette.surfaceCard,
               labelText: 'بحث باسم العميل أو رقم الهاتف أو كود العميل',
               hintText: 'اكتب اسم العميل أو الهاتف أو الكود',
               prefixIcon: const Icon(Icons.search),
@@ -246,7 +267,7 @@ class _OrdersScreenState extends State<OrdersScreen>
             ),
         ],
       );
-
+  }
 }
 
 class OrderSummary {
@@ -332,8 +353,11 @@ class _CustomerSuggestions extends StatelessWidget {
   final ValueChanged<_CustomerSuggestion> onSelected;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return Card(
         clipBehavior: Clip.antiAlias,
+        color: isLight ? const Color(0xFFFFFFFF) : null,
         child: FutureBuilder<List<_CustomerSuggestion>>(
           future: future,
           builder: (context, snapshot) {
@@ -377,6 +401,7 @@ class _CustomerSuggestions extends StatelessWidget {
           },
         ),
       );
+  }
 }
 
 class _OrderList extends StatelessWidget {
@@ -403,7 +428,13 @@ class _OrderList extends StatelessWidget {
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final order = orders[index];
+                  final isLight = Theme.of(context).brightness == Brightness.light;
                   return Card(
+                    color: isLight ? const Color(0xFFFFFFFF) : null,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(color: isLight ? const Color(0xFFCBD5E1) : UiPalette.borderSoft),
+                    ),
                     child: ListTile(
                       onTap: onDelivery == null
                           ? () => onOpen(order)

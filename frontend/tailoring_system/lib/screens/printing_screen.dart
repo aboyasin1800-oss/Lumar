@@ -73,12 +73,19 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return Scaffold(
-      backgroundColor: UiPalette.screenBackground,
+      backgroundColor: isLight ? const Color(0xFFF4F7FA) : UiPalette.screenBackground,
       appBar: AppBar(
-        backgroundColor: UiPalette.surfaceCard,
-        foregroundColor: UiPalette.adaptiveTextColor(UiPalette.surfaceCard),
-        title: const Text('مركز الطباعة'),
+        backgroundColor: isLight ? const Color(0xFFFFFFFF) : UiPalette.surfaceCard,
+        foregroundColor: isLight ? const Color(0xFF172033) : UiPalette.adaptiveTextColor(UiPalette.surfaceCard),
+        title: Text(
+          'مركز الطباعة',
+          style: TextStyle(
+            color: isLight ? const Color(0xFF172033) : UiPalette.textMain,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         actions: [
           IconButton(
             tooltip: 'تحديث',
@@ -95,6 +102,10 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
               controller: _tabController,
               isScrollable: false,
               tabAlignment: TabAlignment.fill,
+              dividerColor: isLight ? const Color(0xFFCBD5E1) : null,
+              labelColor: isLight ? const Color(0xFF168F86) : null,
+              unselectedLabelColor: isLight ? const Color(0xFF5B687A) : null,
+              indicatorColor: isLight ? const Color(0xFF168F86) : null,
               tabs: const [
                 Tab(icon: Icon(Icons.credit_card), text: 'بطاقات المقاسات'),
                 Tab(icon: Icon(Icons.receipt_long_outlined), text: 'الإيصالات'),
@@ -1005,8 +1016,10 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         final order = filtered[index];
         final isSelected = order.orderId == _selectedOrder?.orderId &&
             order.isReadyMade == _selectedOrder?.isReadyMade;
-        final backgroundColor =
-            isSelected ? UiPalette.primaryDark : UiPalette.surfaceCard;
+        final isLight = Theme.of(context).brightness == Brightness.light;
+        final backgroundColor = isLight
+            ? (isSelected ? const Color(0xFFE8F5F2) : const Color(0xFFFFFFFF))
+            : (isSelected ? UiPalette.primaryDark : UiPalette.surfaceCard);
         final secondaryText = order.customerPhone.trim().isEmpty
             ? 'بدون رقم هاتف'
             : order.customerPhone;
@@ -1161,7 +1174,9 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         final statusText = isPrinted ? 'مطبوعة - إعادة الطباعة متاحة' : 'غير مطبوعة';
 
         return Material(
-          color: UiPalette.surfaceCard,
+          color: Theme.of(context).brightness == Brightness.light
+              ? const Color(0xFFFFFFFF)
+              : UiPalette.surfaceCard,
           borderRadius: BorderRadius.circular(12),
           child: ListTile(
             contentPadding:
@@ -1220,7 +1235,9 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
               filled: true,
-              fillColor: UiPalette.surfaceCard,
+              fillColor: Theme.of(context).brightness == Brightness.light
+                  ? const Color(0xFFF8FAFC)
+                  : UiPalette.surfaceCard,
               prefixIcon: const Icon(Icons.search_outlined),
               hintText: 'ابحث باسم العميل أو رقم الهاتف أو رقم الطلب',
               border: OutlineInputBorder(
@@ -1287,7 +1304,9 @@ class _PrintService {
     final selectedPath = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
+        final isLight = Theme.of(dialogContext).brightness == Brightness.light;
         return AlertDialog(
+          backgroundColor: isLight ? const Color(0xFFFFFFFF) : UiPalette.surfaceCard,
           title: const Text('مسار حفظ ملفات PDF'),
           content: SizedBox(
             width: 420,
@@ -1806,19 +1825,23 @@ class _PlaceholderTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return ColoredBox(
+      color: isLight ? const Color(0xFFF4F7FA) : UiPalette.screenBackground,
+      child: Center(
       child: Container(
         padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.construction_outlined, size: 42),
+            Icon(Icons.construction_outlined,
+                size: 42,
+                color: isLight ? const Color(0xFF168F86) : null),
             const SizedBox(height: 12),
             Text(
               title,
-              style: UiPalette.adaptiveTextStyle(
-                context,
-                backgroundColor: UiPalette.screenBackground,
+              style: TextStyle(
+                color: isLight ? const Color(0xFF172033) : UiPalette.textMain,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
@@ -1827,14 +1850,14 @@ class _PlaceholderTab extends StatelessWidget {
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: UiPalette.adaptiveTextStyle(
-                context,
-                backgroundColor: UiPalette.screenBackground,
+              style: TextStyle(
+                color: isLight ? const Color(0xFF5B687A) : UiPalette.textSoft,
                 fontSize: 14,
               ),
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -2010,14 +2033,18 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
     if (alreadyPrinted.isNotEmpty) {
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) {
+          final isLight = Theme.of(dialogContext).brightness == Brightness.light;
+          return AlertDialog(
+          backgroundColor: isLight ? const Color(0xFFFFFFFF) : UiPalette.surfaceCard,
           title: const Text('إعادة الطباعة'),
           content: const Text('سبق طباعة هذا الملصق. هل تريد إعادة الطباعة؟'),
           actions: [
             TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('إلغاء')),
             FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('إعادة الطباعة')),
           ],
-        ),
+          );
+        },
       );
       if (confirmed != true) return;
     }
@@ -2060,10 +2087,28 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
               Expanded(
                 child: TextField(
                   controller: _searchController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'بحث برقم الكتالوج أو FabricCode',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true,
+                    fillColor: Theme.of(context).brightness == Brightness.light
+                        ? const Color(0xFFF8FAFC)
+                        : null,
+                    border: OutlineInputBorder(
+                      borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? const Color(0xFFCBD5E1)
+                            : UiPalette.borderSoft,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? const Color(0xFF168F86)
+                            : UiPalette.primaryBlue,
+                        width: 1.5,
+                      ),
+                    ),
                   ),
                   onSubmitted: (_) => _search(),
                 ),
@@ -2077,9 +2122,9 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             children: [
-              SizedBox(width: 140, child: TextField(controller: _widthController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'عرض الملصق (مم)'), onChanged: (v) { final value = double.tryParse(v); if (value != null && value > 0) setState(() => _labelWidthMm = value); })),
+              SizedBox(width: 140, child: TextField(controller: _widthController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'عرض الملصق (مم)', filled: true, fillColor: Theme.of(context).brightness == Brightness.light ? const Color(0xFFFFFFFF) : null, labelStyle: TextStyle(color: Theme.of(context).brightness == Brightness.light ? const Color(0xFF172033) : null), enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.light ? const Color(0xFFCBD5E1) : UiPalette.borderSoft)), focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.light ? const Color(0xFF168F86) : UiPalette.primaryBlue, width: 1.5))), onChanged: (v) { final value = double.tryParse(v); if (value != null && value > 0) setState(() => _labelWidthMm = value); })),
               const SizedBox(width: 8),
-              SizedBox(width: 140, child: TextField(controller: _heightController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'ارتفاع الملصق (مم)'), onChanged: (v) { final value = double.tryParse(v); if (value != null && value > 0) setState(() => _labelHeightMm = value); })),
+              SizedBox(width: 140, child: TextField(controller: _heightController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'ارتفاع الملصق (مم)', filled: true, fillColor: Theme.of(context).brightness == Brightness.light ? const Color(0xFFFFFFFF) : null, labelStyle: TextStyle(color: Theme.of(context).brightness == Brightness.light ? const Color(0xFF172033) : null), enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.light ? const Color(0xFFCBD5E1) : UiPalette.borderSoft)), focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.light ? const Color(0xFF168F86) : UiPalette.primaryBlue, width: 1.5))), onChanged: (v) { final value = double.tryParse(v); if (value != null && value > 0) setState(() => _labelHeightMm = value); })),
             ],
           ),
         ),
@@ -2134,8 +2179,16 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
                               : printedCount == groupLabels.length
                                   ? 'تمت طباعة جميع الرولات'
                                   : 'مطبوع جزئيًا';
+                          final isLight = Theme.of(context).brightness == Brightness.light;
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
+                            color: isLight ? const Color(0xFFFFFFFF) : null,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: isLight ? const Color(0xFFCBD5E1) : UiPalette.borderSoft,
+                              ),
+                            ),
                             child: Padding(
                               padding: const EdgeInsets.all(12),
                               child: Column(

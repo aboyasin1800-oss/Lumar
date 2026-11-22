@@ -713,8 +713,14 @@ class _PieceCardState extends State<_PieceCard> {
           'Delivery': Icons.local_shipping_outlined,
         };
 
+        final isLight = Theme.of(context).brightness == Brightness.light;
         return Card(
           margin: const EdgeInsets.only(bottom: 10),
+          color: isLight ? const Color(0xFFFFFFFF) : null,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(color: isLight ? const Color(0xFFCBD5E1) : Theme.of(context).colorScheme.outlineVariant),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: Column(

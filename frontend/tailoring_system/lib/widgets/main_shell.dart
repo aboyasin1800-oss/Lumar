@@ -111,12 +111,15 @@ class _WorkspaceHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     final active = workspace.activeRouteId == null
         ? null
         : workspace.definitionFor(workspace.activeRouteId!);
     return SizedBox(
       height: 48,
-      child: Padding(
+      child: ColoredBox(
+        color: isLight ? const Color(0xFFFFFFFF) : const Color.fromARGB(255, 25, 34, 49),
+        child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 6, 64, 6),
         child: Row(
           children: [
@@ -129,7 +132,12 @@ class _WorkspaceHeader extends StatelessWidget {
             Expanded(
               child: Text(
                 active?.title ?? 'لوحة التحكم',
-                style: Theme.of(context).textTheme.titleLarge,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: isLight
+                      ? const Color(0xFF172033)
+                      : UiPalette.textMain,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             const CircleAvatar(
@@ -148,6 +156,7 @@ class _WorkspaceHeader extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

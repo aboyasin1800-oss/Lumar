@@ -58,7 +58,7 @@ public sealed class OutboundMessageBackgroundService(
                             providerStatus.Status,
                             providerStatus.OccurredAtUtc);
                     }
-                    if (ack?.AckLevel is null || string.IsNullOrWhiteSpace(ack.Status)) continue;
+                    if (ack?.AckLevel is null || string.IsNullOrWhiteSpace(ack.Status) || string.IsNullOrWhiteSpace(ack.ProviderMessageId)) continue;
 
                     var normalizedStatus = ack.Status switch
                     {

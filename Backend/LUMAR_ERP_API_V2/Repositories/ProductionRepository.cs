@@ -2217,6 +2217,7 @@ public sealed class ProductionRepository(
                        MAX(te.EventTime) AS LastTrackingEventAt,
                        COUNT(DISTINCT te.TrackingEventID) AS TrackingEventCount
                 FROM dbo.TrackingEvents te WITH (NOLOCK)
+                WHERE te.IsReverted = 0
                 GROUP BY te.OrderID
             )
             SELECT
@@ -2238,7 +2239,7 @@ public sealed class ProductionRepository(
             INNER JOIN dbo.Customers c WITH (NOLOCK) ON c.CustomerID = o.CustomerID
             LEFT JOIN piece_stats ps ON ps.OrderID = o.OrderID
             LEFT JOIN tracking_stats ts ON ts.OrderID = o.OrderID
-            WHERE o.OrderStatus <> N'Cancelled'
+            WHERE o.OrderStatus NOT IN (N'Cancelled', N'Delivered')
             ORDER BY o.DeliveryDate, o.OrderID DESC;";
 
         const string pieceSql = @"
@@ -2249,7 +2250,7 @@ public sealed class ProductionRepository(
                        te.EventTime,
                        ROW_NUMBER() OVER (PARTITION BY te.PieceID ORDER BY te.EventTime DESC, te.TrackingEventID DESC) AS rn
                 FROM dbo.TrackingEvents te WITH (NOLOCK)
-                WHERE te.PieceID IS NOT NULL
+                WHERE te.PieceID IS NOT NULL AND te.IsReverted = 0
             )
             SELECT
                 p.PieceID,
@@ -2330,7 +2331,13 @@ public sealed class ProductionRepository(
             var progressPercent = summary.TotalPieces == 0 ? 0 : Convert.ToInt32(Math.Round((summary.CompletedPieces / (decimal)summary.TotalPieces) * 100m, MidpointRounding.AwayFromZero));
             var pieceSnapshots = pieceSnapshotsByOrder.TryGetValue(summary.OrderId, out var orderPieces) ? orderPieces : [];
             var delayPiece = FactoryMonitoringEngine.ResolveDelayPiece(pieceSnapshots);
-            var classification = summary.TotalPieces > 0 && summary.IncompletePieces == 0
+            var officialReadyForDelivery = string.Equals(
+                summary.OrderStatus,
+                "ReadyForDelivery",
+                StringComparison.OrdinalIgnoreCase);
+            var classification = officialReadyForDelivery
+                ? new FactoryMonitoringClassificationResult("ReadyForDelivery", "حالة الطلب الرسمية جاهزة للتسليم.")
+                : summary.TotalPieces > 0 && summary.IncompletePieces == 0
                 ? new FactoryMonitoringClassificationResult("ReadyForDelivery", "كل القطع مكتملة وجاهزة للتسليم.")
                 : FactoryMonitoringEngine.ClassifyOrder(
                     summary.TotalPieces,
@@ -2374,7 +2381,7 @@ public sealed class ProductionRepository(
                     stalledOrders.Add(dto); break;
                 case "Blocked":
                     blockedOrders.Add(dto); break;
-                default:
+                case "ReadyForDelivery":
                     readyForDeliveryOrders.Add(dto); break;
             }
         }

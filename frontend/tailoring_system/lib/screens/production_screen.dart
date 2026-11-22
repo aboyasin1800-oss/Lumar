@@ -285,7 +285,9 @@ class _ProductionScreenState extends State<ProductionScreen>
               deliveries: [],
             );
 
-        return Column(
+        return ColoredBox(
+          color: isDark ? UiPalette.screenBackground : const Color(0xFFF4F7FA),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
@@ -297,14 +299,13 @@ class _ProductionScreenState extends State<ProductionScreen>
                       controller: tabs,
                       isScrollable: false,
                       labelPadding: const EdgeInsets.symmetric(horizontal: 10),
-                      indicatorColor: UiPalette.primaryBlue,
-                      labelColor: Theme.of(context).colorScheme.onSurface,
-                      unselectedLabelColor: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.7),
+                      indicatorColor: isDark ? UiPalette.primaryBlue : const Color(0xFF168F86),
+                      labelColor: isDark ? Theme.of(context).colorScheme.onSurface : const Color(0xFF168F86),
+                      unselectedLabelColor: isDark
+                          ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
+                          : const Color(0xFF5B687A),
                       indicatorWeight: 3,
-                      dividerColor: Theme.of(context).dividerColor,
+                      dividerColor: isDark ? Theme.of(context).dividerColor : const Color(0xFFCBD5E1),
                       tabs: const [
                         Tab(text: 'إنتاج طلبات التفصيل'),
                         Tab(text: 'إجمالي عدد القطع'),
@@ -370,6 +371,7 @@ class _ProductionScreenState extends State<ProductionScreen>
               ),
             ),
           ],
+        ),
         );
       },
     );
@@ -423,6 +425,17 @@ class ProductionStatistics extends StatelessWidget {
               return SizedBox(
                   width: 180,
                   child: Card(
+                      color: Theme.of(context).brightness == Brightness.light
+                          ? const Color(0xFFFFFFFF)
+                          : null,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(
+                          color: Theme.of(context).brightness == Brightness.light
+                              ? const Color(0xFFCBD5E1)
+                              : UiPalette.borderSoft,
+                        ),
+                      ),
                       child: Padding(
                           padding: const EdgeInsets.all(4),
                           child: Row(children: [
@@ -603,6 +616,10 @@ class _ProductionOrdersRootTabState extends State<_ProductionOrdersRootTab>
             textInputAction: TextInputAction.search,
             textAlign: TextAlign.right,
             decoration: InputDecoration(
+              filled: true,
+              fillColor: Theme.of(context).brightness == Brightness.light
+                  ? const Color(0xFFFFFFFF)
+                  : null,
               labelText: 'اسم العميل أو رقم الطلب أو كود القطعة',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _searchQuery.isEmpty
@@ -615,7 +632,28 @@ class _ProductionOrdersRootTabState extends State<_ProductionOrdersRootTab>
                       },
                       icon: const Icon(Icons.clear),
                     ),
-              border: const OutlineInputBorder(),
+              border: OutlineInputBorder(
+                borderSide: BorderSide(
+                  color: Theme.of(context).brightness == Brightness.light
+                      ? const Color(0xFFCBD5E1)
+                      : UiPalette.borderSoft,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                  color: Theme.of(context).brightness == Brightness.light
+                      ? const Color(0xFFCBD5E1)
+                      : UiPalette.borderSoft,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                  color: Theme.of(context).brightness == Brightness.light
+                      ? const Color(0xFF168F86)
+                      : UiPalette.primaryBlue,
+                  width: 1.5,
+                ),
+              ),
               isDense: true,
             ),
           ),
@@ -628,11 +666,20 @@ class _ProductionOrdersRootTabState extends State<_ProductionOrdersRootTab>
         TabBar(
           controller: _tabController,
           isScrollable: true,
-          indicatorColor: UiPalette.primaryBlue,
-          labelColor: UiPalette.textMain,
-          unselectedLabelColor: UiPalette.textSoft,
+          padding: EdgeInsets.zero,
+          indicatorColor: Theme.of(context).brightness == Brightness.light
+              ? const Color(0xFF168F86)
+              : UiPalette.primaryBlue,
+          labelColor: Theme.of(context).brightness == Brightness.light
+              ? const Color(0xFF168F86)
+              : UiPalette.textMain,
+          unselectedLabelColor: Theme.of(context).brightness == Brightness.light
+              ? const Color(0xFF5B687A)
+              : UiPalette.textSoft,
           indicatorWeight: 3,
-          dividerColor: UiPalette.borderSoft,
+          dividerColor: Theme.of(context).brightness == Brightness.light
+              ? const Color(0xFFCBD5E1)
+              : UiPalette.borderSoft,
           tabs: const [
             Tab(text: 'كل الطلبات'),
             Tab(text: 'الطلبات الجديدة'),
@@ -2002,15 +2049,36 @@ class _PeriodField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return TextField(
       controller: controller,
       textAlign: TextAlign.right,
       keyboardType: TextInputType.datetime,
       onSubmitted: (_) => onSubmitted(),
+      style: TextStyle(color: isLight ? const Color(0xFF172033) : null),
       decoration: InputDecoration(
-        border: const OutlineInputBorder(),
+        filled: true,
+        fillColor: isLight ? const Color(0xFFFFFFFF) : null,
+        border: OutlineInputBorder(
+          borderSide: BorderSide(
+            color: isLight ? const Color(0xFFCBD5E1) : UiPalette.borderSoft,
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(
+            color: isLight ? const Color(0xFFCBD5E1) : UiPalette.borderSoft,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: BorderSide(
+            color: isLight ? const Color(0xFF168F86) : UiPalette.primaryBlue,
+            width: 1.5,
+          ),
+        ),
         hintText: hint,
+        hintStyle: TextStyle(color: isLight ? const Color(0xFF64748B) : null),
         labelText: label,
+        labelStyle: TextStyle(color: isLight ? const Color(0xFF475569) : null),
         isDense: true,
       ),
     );
@@ -3537,10 +3605,50 @@ class _ReadyMadeTabState extends State<ReadyMadeTab> {
             controller: _searchController,
             onChanged: (_) => setState(() {}),
             textAlign: TextAlign.right,
-            decoration: const InputDecoration(
+            style: TextStyle(
+              color: Theme.of(context).brightness == Brightness.light
+                  ? const Color(0xFF172033)
+                  : null,
+            ),
+            decoration: InputDecoration(
               hintText: 'الاسم / الكود / الرقم',
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
+              hintStyle: TextStyle(
+                color: Theme.of(context).brightness == Brightness.light
+                    ? const Color(0xFF64748B)
+                    : null,
+              ),
+              prefixIcon: Icon(
+                Icons.search,
+                color: Theme.of(context).brightness == Brightness.light
+                    ? const Color(0xFF475569)
+                    : null,
+              ),
+              filled: true,
+              fillColor: Theme.of(context).brightness == Brightness.light
+                  ? const Color(0xFFFFFFFF)
+                  : null,
+              border: OutlineInputBorder(
+                borderSide: BorderSide(
+                  color: Theme.of(context).brightness == Brightness.light
+                      ? const Color(0xFFCBD5E1)
+                      : UiPalette.borderSoft,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                  color: Theme.of(context).brightness == Brightness.light
+                      ? const Color(0xFFCBD5E1)
+                      : UiPalette.borderSoft,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                  color: Theme.of(context).brightness == Brightness.light
+                      ? const Color(0xFF168F86)
+                      : UiPalette.primaryBlue,
+                  width: 1.5,
+                ),
+              ),
               isDense: true,
             ),
           ),

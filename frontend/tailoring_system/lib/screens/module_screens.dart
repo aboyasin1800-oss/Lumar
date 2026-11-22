@@ -583,7 +583,7 @@ class DashboardScreen extends StatelessWidget {
     final cardTextColor = isLightMode ? _lightCardText : _darkCardText;
     final cardShadows = _dashboardShadows(isLightMode);
 
-    return GridView.builder(
+    final grid = GridView.builder(
       padding: const EdgeInsets.all(6),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 164,
@@ -668,6 +668,10 @@ class DashboardScreen extends StatelessWidget {
         );
       },
     );
+
+    return isLightMode
+        ? ColoredBox(color: const Color(0xFFFFFFFF), child: grid)
+        : grid;
   }
 
   List<BoxShadow> _dashboardShadows(bool isLightMode) => [

@@ -127,11 +127,38 @@ class _MeasurementEntryScreenState extends State<MeasurementEntryScreen> {
                                           _save();
                                         }
                                       },
-                                      decoration: InputDecoration(
-                                        labelText: field,
-                                        suffixText: 'بوصة',
-                                        border: const OutlineInputBorder(),
-                                      ),
+                                      decoration: () {
+                                        final isLight = Theme.of(context).brightness == Brightness.light;
+                                        final normalBorder = isLight
+                                            ? const Color(0xFFCBD5E1)
+                                            : const Color(0xFF2B6865);
+                                        final focusedBorder = isLight
+                                            ? const Color(0xFF168F86)
+                                            : const Color(0xFF02E1B4);
+                                        return InputDecoration(
+                                          labelText: field,
+                                          suffixText: 'بوصة',
+                                          filled: true,
+                                          fillColor: isLight
+                                              ? const Color(0xFFF8FAFC)
+                                              : const Color(0xFF0D131C),
+                                          labelStyle: TextStyle(
+                                            fontSize: 13,
+                                            color: isLight
+                                                ? const Color(0xFF475569)
+                                                : const Color(0xFFB7C7DA),
+                                          ),
+                                          border: OutlineInputBorder(
+                                            borderSide: BorderSide(color: normalBorder),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderSide: BorderSide(color: normalBorder),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderSide: BorderSide(color: focusedBorder, width: 1.5),
+                                          ),
+                                        );
+                                      }(),
                                     ),
                                   ))
                               .toList(),
@@ -157,7 +184,8 @@ class _MeasurementEntryScreenState extends State<MeasurementEntryScreen> {
                                   child:
                                       CircularProgressIndicator(strokeWidth: 2))
                               : const Icon(Icons.save_outlined),
-                          label: const Text('حفظ المقاسات'),
+                          label: const Text('حفظ المقاسات',
+                              style: TextStyle(fontWeight: FontWeight.w700)),
                         ),
                       ],
                     ),
@@ -453,7 +481,11 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return ColoredBox(
+      color: isLight ? const Color(0xFFF4F7FA) : Theme.of(context).scaffoldBackgroundColor,
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('قياسات العميل', style: Theme.of(context).textTheme.titleLarge),
@@ -476,9 +508,28 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                   }
                 },
                 onSubmitted: (_) => onSubmitted(),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: isLight ? const Color(0xFFFFFFFF) : null,
                   labelText: 'اسم العميل أو الكود أو رقم الهاتف',
-                  prefixIcon: Icon(Icons.person_search_outlined),
+                  labelStyle: TextStyle(
+                    color: isLight ? const Color(0xFF475569) : null,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.person_search_outlined,
+                    color: isLight ? const Color(0xFF475569) : null,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                      color: isLight ? const Color(0xFFCBD5E1) : const Color(0xFF2B6865),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                      color: isLight ? const Color(0xFF168F86) : const Color(0xFF02E1B4),
+                      width: 1.5,
+                    ),
+                  ),
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -657,7 +708,9 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                         );
                       })),
         ],
-      );
+      ),
+    );
+  }
 }
 
 class CustomerMeasurement {

@@ -22,7 +22,7 @@ public sealed class FactoryMonitoringEngineTests
             orderStatus: "InProduction");
 
         Assert.Equal("AtRisk", result.Classification);
-        Assert.Contains("قريب", result.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("يومين", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public sealed class FactoryMonitoringEngineTests
             orderStatus: "InProduction");
 
         Assert.Equal("Stalled", result.Classification);
-        Assert.Contains("بطيء", result.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("3 أيام", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -60,7 +60,136 @@ public sealed class FactoryMonitoringEngineTests
             orderStatus: "New");
 
         Assert.Equal("Blocked", result.Classification);
-        Assert.Contains("عالق", result.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("لم يبدأ", result.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("Delivered")]
+    [InlineData("Cancelled")]
+    public void ClassifyOrder_ReturnsExcluded_ForTerminalStatus(string status)
+    {
+        var result = FactoryMonitoringEngine.ClassifyOrder(
+            totalPieces: 3,
+            completedPieces: 3,
+            incompletePieces: 0,
+            deliveredPieces: status == "Delivered" ? 3 : 0,
+            inProgressPieces: 0,
+            deliveryDate: DateTime.UtcNow.AddDays(-10),
+            lastTrackingEventAt: DateTime.UtcNow.AddDays(-20),
+            progressPercent: 100m,
+            hasAnyTrackingEvents: true,
+            orderStatus: status);
+
+        Assert.Equal("Excluded", result.Classification);
+    }
+
+    [Fact]
+    public void ClassifyOrder_ReturnsReadyForDelivery_WhenAllPiecesCompleted()
+    {
+        var result = FactoryMonitoringEngine.ClassifyOrder(
+            totalPieces: 4,
+            completedPieces: 4,
+            incompletePieces: 0,
+            deliveredPieces: 0,
+            inProgressPieces: 0,
+            deliveryDate: DateTime.UtcNow.AddDays(5),
+            lastTrackingEventAt: DateTime.UtcNow,
+            progressPercent: 100m,
+            hasAnyTrackingEvents: true,
+            orderStatus: "ReadyForDelivery");
+
+        Assert.Equal("ReadyForDelivery", result.Classification);
+    }
+
+    [Fact]
+    public void ClassifyOrder_ReadyForDeliveryWinsOverOverdueOrAtRiskRules()
+    {
+        var result = FactoryMonitoringEngine.ClassifyOrder(
+            totalPieces: 1,
+            completedPieces: 0,
+            incompletePieces: 1,
+            deliveredPieces: 0,
+            inProgressPieces: 1,
+            deliveryDate: DateTime.UtcNow.AddDays(-20),
+            lastTrackingEventAt: DateTime.UtcNow.AddDays(-30),
+            progressPercent: 10m,
+            hasAnyTrackingEvents: true,
+            orderStatus: "ReadyForDelivery");
+
+        Assert.Equal("ReadyForDelivery", result.Classification);
+        Assert.DoesNotContain(result.Classification, new[] { "AtRisk", "Stalled", "Blocked" });
+    }
+
+    [Fact]
+    public void ClassifyOrder_DoesNotAtRisk_WhenMoreThanTwoDaysRemain()
+    {
+        var result = FactoryMonitoringEngine.ClassifyOrder(
+            totalPieces: 4,
+            completedPieces: 2,
+            incompletePieces: 2,
+            deliveredPieces: 0,
+            inProgressPieces: 1,
+            deliveryDate: DateTime.UtcNow.AddDays(3),
+            lastTrackingEventAt: DateTime.UtcNow,
+            progressPercent: 50m,
+            hasAnyTrackingEvents: true,
+            orderStatus: "InProduction");
+
+        Assert.Equal("Normal", result.Classification);
+    }
+
+    [Fact]
+    public void ClassifyOrder_ReturnsStalled_WhenStartedAndStoppedForThreeDays()
+    {
+        var result = FactoryMonitoringEngine.ClassifyOrder(
+            totalPieces: 4,
+            completedPieces: 1,
+            incompletePieces: 3,
+            deliveredPieces: 0,
+            inProgressPieces: 2,
+            deliveryDate: DateTime.UtcNow.AddDays(10),
+            lastTrackingEventAt: DateTime.UtcNow.AddDays(-3),
+            progressPercent: 25m,
+            hasAnyTrackingEvents: true,
+            orderStatus: "InProduction");
+
+        Assert.Equal("Stalled", result.Classification);
+    }
+
+    [Fact]
+    public void ClassifyOrder_ReturnsBlocked_WhenNeverStarted()
+    {
+        var result = FactoryMonitoringEngine.ClassifyOrder(
+            totalPieces: 4,
+            completedPieces: 0,
+            incompletePieces: 4,
+            deliveredPieces: 0,
+            inProgressPieces: 0,
+            deliveryDate: DateTime.UtcNow.AddDays(10),
+            lastTrackingEventAt: null,
+            progressPercent: 0m,
+            hasAnyTrackingEvents: false,
+            orderStatus: "New");
+
+        Assert.Equal("Blocked", result.Classification);
+    }
+
+    [Fact]
+    public void ClassifyOrder_ReturnsNormal_ForActiveOrderWithoutOperationalWarning()
+    {
+        var result = FactoryMonitoringEngine.ClassifyOrder(
+            totalPieces: 4,
+            completedPieces: 2,
+            incompletePieces: 2,
+            deliveredPieces: 0,
+            inProgressPieces: 1,
+            deliveryDate: DateTime.UtcNow.AddDays(10),
+            lastTrackingEventAt: DateTime.UtcNow,
+            progressPercent: 50m,
+            hasAnyTrackingEvents: true,
+            orderStatus: "InProduction");
+
+        Assert.Equal("Normal", result.Classification);
     }
 
     [Fact]

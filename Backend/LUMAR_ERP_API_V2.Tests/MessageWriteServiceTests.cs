@@ -1500,6 +1500,21 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public async Task UpdateDeliveryStatusByProviderIdAsync_MissingProviderId_IsNoOp()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
+            ?? throw new InvalidOperationException("Lumar__ConnectionString must be set for validation testing.");
+
+        var repo = new MessageRepository(
+            new ReadOnlySqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })),
+            new OperationalSqlConnectionFactory(Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+        await repo.UpdateDeliveryStatusByProviderIdAsync(null!, "Delivered", DateTime.UtcNow, null, CancellationToken.None);
+        await repo.UpdateDeliveryStatusByProviderIdAsync(string.Empty, "Delivered", DateTime.UtcNow, null, CancellationToken.None);
+        await repo.UpdateDeliveryStatusByProviderIdAsync("   ", "Delivered", DateTime.UtcNow, null, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task MessageRepository_UpdateDeliveryStatusByProviderIdAsync_RespectsDeliveryLifecycle_WithoutDowngrades()
     {
         var connectionString = Environment.GetEnvironmentVariable("Lumar__ConnectionString")

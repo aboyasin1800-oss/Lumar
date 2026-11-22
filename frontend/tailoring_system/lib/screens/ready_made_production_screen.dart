@@ -1068,8 +1068,13 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 	Widget _stockStatusField(_ReadyMadeDraftItem item) {
 		final colorScheme = Theme.of(context).colorScheme;
 		final shortage = item.stockStatusController.text == 'الكمية غير كافية';
-		final background = shortage ? colorScheme.errorContainer : colorScheme.surfaceContainerHighest;
-		final foreground = shortage ? colorScheme.onErrorContainer : colorScheme.onSurfaceVariant;
+		final isLight = Theme.of(context).brightness == Brightness.light;
+		final background = shortage
+			? (isLight ? const Color(0xFFFDECEC) : colorScheme.errorContainer)
+			: (isLight ? const Color(0xFFF1F5F9) : colorScheme.surfaceContainerHighest);
+		final foreground = shortage
+			? (isLight ? const Color(0xFF8B1E1E) : colorScheme.onErrorContainer)
+			: (isLight ? const Color(0xFF475569) : colorScheme.onSurfaceVariant);
 		return InputDecorator(
 			decoration: InputDecoration(
 				labelText: 'حالة المخزون',
@@ -1132,8 +1137,22 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 					labelText: label,
 					filled: true,
 					fillColor: readOnly
-						? Theme.of(context).colorScheme.surfaceContainerHighest
-						: null,
+						? (Theme.of(context).brightness == Brightness.light
+							? const Color(0xFFF1F5F9)
+							: Theme.of(context).colorScheme.surfaceContainerHighest)
+						: (Theme.of(context).brightness == Brightness.light
+							? const Color(0xFFFFFFFF)
+							: null),
+					enabledBorder: OutlineInputBorder(
+						borderSide: BorderSide(
+							color: Theme.of(context).brightness == Brightness.light
+								? const Color(0xFFCBD5E1)
+								: Theme.of(context).colorScheme.outline,
+						),
+					),
+					focusedBorder: const OutlineInputBorder(
+						borderSide: BorderSide(color: Color(0xFF168F86), width: 1.5),
+					),
 				),
 				style: AppTypography.body.copyWith(
 					color: Theme.of(context).colorScheme.onSurface,
@@ -1154,6 +1173,16 @@ class _ReadyMadeOrderCreateScreenState extends State<ReadyMadeOrderCreateScreen>
 				decoration: InputDecoration(
 					labelText: label,
 					filled: true,
+					fillColor: Theme.of(context).brightness == Brightness.light
+						? const Color(0xFFFFFFFF)
+						: null,
+					enabledBorder: OutlineInputBorder(
+						borderSide: BorderSide(
+							color: Theme.of(context).brightness == Brightness.light
+								? const Color(0xFFCBD5E1)
+								: Theme.of(context).colorScheme.outline,
+						),
+					),
 				),
 				items: items,
 				onChanged: onChanged,

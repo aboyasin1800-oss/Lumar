@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
@@ -22,6 +24,13 @@ class _PricingScreenState extends State<PricingScreen> {
   final _consumption = TextEditingController();
   final _globalProfit = TextEditingController();
   late Future<_PricingData> _dataFuture;
+  late final ScrollController _scrollController;
+  final _pricingListKey = GlobalKey();
+  _PricingData? _lastData;
+  double _wheelTargetOffset = 0;
+  double? _pendingRestoreOffset;
+  int? _pendingRestoreProductTypeId;
+  int? _pendingRestoreIndex;
   final _results = <int, _PricingResult>{};
   int _calculationVersion = 0;
   bool _calculating = false;
@@ -30,11 +39,13 @@ class _PricingScreenState extends State<PricingScreen> {
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
     _dataFuture = _loadData();
   }
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _fabricCode.dispose();
     _consumption.dispose();
     _globalProfit.dispose();
@@ -72,13 +83,88 @@ class _PricingScreenState extends State<PricingScreen> {
         costs: costs, globalProfit: global, productProfits: productProfits);
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({int? editedProductTypeId, int? editedIndex}) async {
+    if (_scrollController.hasClients) {
+      _pendingRestoreOffset = _scrollController.offset;
+    }
+    _pendingRestoreProductTypeId = editedProductTypeId;
+    _pendingRestoreIndex = editedIndex;
+
     setState(() {
       _error = null;
       _results.clear();
       _dataFuture = _loadData();
     });
-    await _dataFuture;
+
+    try {
+      final loaded = await _dataFuture;
+      if (!mounted) return;
+      setState(() => _lastData = loaded);
+      _restoreScrollPosition(loaded);
+    } catch (_) {
+      rethrow;
+    }
+  }
+
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+    if (HardwareKeyboard.instance.isControlPressed) return;
+
+    if (!mounted || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final delta = event.scrollDelta.dy * 0.5;
+    _wheelTargetOffset = (_scrollController.offset + delta)
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+    _scrollController.animateTo(
+      _wheelTargetOffset,
+      duration: const Duration(milliseconds: 140),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _restoreScrollPosition(_PricingData data) {
+    if (_pendingRestoreOffset == null) return;
+    final offset = _pendingRestoreOffset!;
+    final productTypeId = _pendingRestoreProductTypeId;
+    final previousIndex = _pendingRestoreIndex;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+
+      final currentIndex = productTypeId == null
+          ? -1
+          : data.costs.indexWhere((item) => item.productTypeId == productTypeId);
+      final samePosition = previousIndex != null &&
+          currentIndex == previousIndex &&
+          productTypeId != null;
+
+      if (samePosition) {
+        _scrollController.jumpTo(offset.clamp(
+          position.minScrollExtent,
+          position.maxScrollExtent,
+        ).toDouble());
+      } else if (currentIndex >= 0) {
+        final key = GlobalObjectKey(productTypeId!);
+        final cardContext = key.currentContext;
+        final listContext = _pricingListKey.currentContext;
+        final cardObject = cardContext?.findRenderObject();
+        final listObject = listContext?.findRenderObject();
+        if (cardObject is RenderBox && listObject is RenderBox) {
+          final cardTop = cardObject.localToGlobal(Offset.zero).dy;
+          final listTop = listObject.localToGlobal(Offset.zero).dy;
+          final target = (_scrollController.offset + cardTop - listTop)
+              .clamp(position.minScrollExtent, position.maxScrollExtent)
+              .toDouble();
+          _scrollController.jumpTo(target);
+        }
+      }
+
+      _pendingRestoreOffset = null;
+      _pendingRestoreProductTypeId = null;
+      _pendingRestoreIndex = null;
+    });
   }
 
   Future<void> _saveGlobal() async {
@@ -99,11 +185,16 @@ class _PricingScreenState extends State<PricingScreen> {
     }
   }
 
-  Future<void> _saveProductProfit(_PieceCostSetting item, double value) async {
+  Future<void> _saveProductProfit(_PricingData data, _PieceCostSetting item, double value) async {
+    final editedIndex = data.costs
+        .indexWhere((candidate) => candidate.productTypeId == item.productTypeId);
     await _save(
         '$_baseUrl/pricing-engine/profit-settings/product-type/${item.productTypeId}',
         value);
-    await _refresh();
+    await _refresh(
+      editedProductTypeId: item.productTypeId,
+      editedIndex: editedIndex,
+    );
     await _calculate();
   }
 
@@ -171,7 +262,7 @@ class _PricingScreenState extends State<PricingScreen> {
             pieceName: item.pieceName));
     if (value == null || !mounted) return;
     try {
-      await _saveProductProfit(item, value);
+      await _saveProductProfit(data, item, value);
     } catch (exception) {
       if (mounted) {
         setState(() =>
@@ -185,13 +276,28 @@ class _PricingScreenState extends State<PricingScreen> {
         future: _dataFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
+            if (_lastData != null) {
+              final data = _lastData!;
+              return _buildPricingWorkspace(context, data);
+            }
             return const Center(child: CircularProgressIndicator());
           }
-          if (snapshot.hasError) return _LoadError(onRetry: _refresh);
+          if (snapshot.hasError) {
+            if (_lastData != null) {
+              return _buildPricingWorkspace(context, _lastData!);
+            }
+            return _LoadError(onRetry: _refresh);
+          }
           final data = snapshot.data!;
-          return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+          _lastData = data;
+          return _buildPricingWorkspace(context, data);
+        },
+      );
+
+  Widget _buildPricingWorkspace(BuildContext context, _PricingData data) =>
+      Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
                 Row(children: [
                   Expanded(
                       child: Column(
@@ -235,22 +341,27 @@ class _PricingScreenState extends State<PricingScreen> {
                               color: Theme.of(context).colorScheme.error))),
                 const SizedBox(height: 14),
                 Expanded(
-                    child: ListView.separated(
-                        itemCount: data.costs.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, index) {
-                          final item = data.costs[index];
-                          return _PricingCard(
-                              item: item,
-                              profit:
-                                  data.productProfits[item.productTypeId] ?? 0,
-                              globalProfit: data.globalProfit,
-                              result: _results[item.productTypeId],
-                              onEdit: () => _editProfit(data, item));
-                        })),
-              ]);
-        },
-      );
+                    child: Listener(
+                        onPointerSignal: _handlePointerSignal,
+                        child: ListView.separated(
+                            key: _pricingListKey,
+                            controller: _scrollController,
+                            itemCount: data.costs.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (_, index) {
+                              final item = data.costs[index];
+                              return _PricingCard(
+                                  key: GlobalObjectKey(item.productTypeId),
+                                  item: item,
+                                  profit: data.productProfits[item.productTypeId] ??
+                                      0,
+                                  globalProfit: data.globalProfit,
+                                  result: _results[item.productTypeId],
+                                  onEdit: () => _editProfit(data, item));
+                            }))),
+          ]);
+
 }
 
 class _SimulationPanel extends StatelessWidget {
@@ -324,7 +435,8 @@ class _SimulationPanel extends StatelessWidget {
 
 class _PricingCard extends StatelessWidget {
   const _PricingCard(
-      {required this.item,
+      {super.key,
+      required this.item,
       required this.profit,
       required this.globalProfit,
       required this.result,

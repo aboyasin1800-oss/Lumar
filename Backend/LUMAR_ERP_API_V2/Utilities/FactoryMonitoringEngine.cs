@@ -31,26 +31,43 @@ public static class FactoryMonitoringEngine
         string? orderStatus)
     {
         var normalizedOrderStatus = NormalizeOrderStatus(orderStatus);
-        var dueSoon = IsDueSoon(deliveryDate);
-        var noRealMovement = !hasAnyTrackingEvents || lastTrackingEventAt is null || (DateTime.UtcNow - lastTrackingEventAt.Value).TotalDays >= 7;
-        var slowProgress = inProgressPieces > 0 && progressPercent < 60m && (DateTime.UtcNow - (lastTrackingEventAt ?? DateTime.UtcNow)).TotalDays >= 3;
 
-        if (dueSoon && incompletePieces > 0)
+        if (string.Equals(normalizedOrderStatus, "Delivered", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalizedOrderStatus, "Cancelled", StringComparison.OrdinalIgnoreCase))
         {
-            return new FactoryMonitoringClassificationResult("AtRisk", "موعد التسليم قريب وهناك قطع غير مكتملة.");
+            return new FactoryMonitoringClassificationResult("Excluded", "الطلب انتهى وتخرج من مراقبة الإنتاج.");
         }
 
-        if (inProgressPieces > 0 && slowProgress)
+        if (string.Equals(normalizedOrderStatus, "ReadyForDelivery", StringComparison.OrdinalIgnoreCase)
+            || (totalPieces > 0 && incompletePieces == 0))
         {
-            return new FactoryMonitoringClassificationResult("Stalled", "يوجد تقدم لكنه بطيء ومؤخر نسبياً.");
+            return new FactoryMonitoringClassificationResult("ReadyForDelivery", "حالة الطلب جاهزة للتسليم أو اكتملت قطعه الفعلية.");
         }
 
-        if (noRealMovement || (totalPieces > 0 && inProgressPieces == 0 && completedPieces == 0 && deliveredPieces == 0 && string.Equals(normalizedOrderStatus, "New", StringComparison.OrdinalIgnoreCase)))
+        if (IsDueSoon(deliveryDate) && incompletePieces > 0)
         {
-            return new FactoryMonitoringClassificationResult("Blocked", "لا توجد حركة إنتاج حقيقية أو الطلب عالق منذ فترة طويلة.");
+            return new FactoryMonitoringClassificationResult("AtRisk", "موعد التسليم خلال يومين والطلب غير مكتمل.");
         }
 
-        return new FactoryMonitoringClassificationResult("AtRisk", "حالة الطلب تحتاج متابعة.");
+        var stoppedForThreeDays = hasAnyTrackingEvents
+            && lastTrackingEventAt.HasValue
+            && (DateTime.UtcNow - lastTrackingEventAt.Value).TotalDays >= 3;
+        if (inProgressPieces > 0 && stoppedForThreeDays)
+        {
+            return new FactoryMonitoringClassificationResult("Stalled", "بدأ الإنتاج ولم تسجل حركة إنتاج منذ 3 أيام.");
+        }
+
+        var neverStarted = totalPieces > 0
+            && inProgressPieces == 0
+            && completedPieces == 0
+            && deliveredPieces == 0
+            && !hasAnyTrackingEvents;
+        if (neverStarted)
+        {
+            return new FactoryMonitoringClassificationResult("Blocked", "لم يبدأ الإنتاج ولا توجد حركة إنتاج حقيقية.");
+        }
+
+        return new FactoryMonitoringClassificationResult("Normal", "الطلب نشط ولا ينطبق عليه تحذير تشغيلي حالي.");
     }
 
     public static FactoryMonitoringPieceSnapshot? ResolveDelayPiece(IEnumerable<FactoryMonitoringPieceSnapshot> pieces)
@@ -115,7 +132,7 @@ public static class FactoryMonitoringEngine
     {
         if (!deliveryDate.HasValue) return false;
         var remaining = DaysRemaining(deliveryDate);
-        return remaining <= 3 && remaining >= 0;
+        return remaining <= 2 && remaining >= 0;
     }
 
     private static string NormalizeOrderStatus(string? orderStatus)

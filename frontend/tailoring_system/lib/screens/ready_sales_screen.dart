@@ -22,11 +22,10 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
     'LUMAR_API_URL',
     defaultValue: 'http://127.0.0.1:5093',
   );
-  static const _background = Color(0xFF101414);
-  static const _panel = Color(0xFF171B1B);
-  static const _field = Color(0xFF202525);
-  static const _border = Color.fromARGB(255, 40, 105, 92);
-  static const _accent = Color.fromARGB(255, 78, 201, 176);
+  _ReadySalesPalette _colors(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.light
+          ? const _ReadySalesPalette.light()
+          : const _ReadySalesPalette.dark();
 
   final productSearch = TextEditingController();
   final customerSearch = TextEditingController();
@@ -438,7 +437,7 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
 
   @override
   Widget build(BuildContext context) => ColoredBox(
-        color: _background,
+        color: _colors(context).background,
         child: FutureBuilder<List<_ReadyProduct>>(
           future: productsFuture,
           builder: (context, snapshot) {
@@ -754,15 +753,17 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(7),
       decoration: BoxDecoration(
-          color: _panel,
+          color: _colors(context).panel,
           borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: _border)),
+          border: Border.all(color: _colors(context).border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(title,
-              style: const TextStyle(
-                  color: _accent, fontSize: 12, fontWeight: FontWeight.bold)),
+              style: TextStyle(
+                  color: _colors(context).accent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold)),
           const SizedBox(height: 5),
           if (expand) Expanded(child: child) else child,
         ],
@@ -774,25 +775,56 @@ class _ReadySalesScreenState extends State<ReadySalesScreen> {
   InputDecoration _decoration(String label, {IconData? prefixIcon}) =>
       InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(fontSize: 10),
+        labelStyle: TextStyle(
+          fontSize: 11,
+          color: _colors(context).textSoft,
+        ),
         prefixIcon: prefixIcon == null ? null : Icon(prefixIcon, size: 17),
         filled: true,
-        fillColor: _field,
+        fillColor: _colors(context).field,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(5),
-            borderSide: const BorderSide(color: _border)),
+            borderSide: BorderSide(color: _colors(context).border)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(5),
-            borderSide: const BorderSide(color: _accent)),
+            borderSide: BorderSide(color: _colors(context).accent, width: 1.4)),
       );
 
   BoxDecoration _boxDecoration() => BoxDecoration(
-      color: _field,
+      color: _colors(context).field,
       borderRadius: BorderRadius.circular(5),
-      border: Border.all(color: _border));
+      border: Border.all(color: _colors(context).border));
+}
+
+class _ReadySalesPalette {
+  const _ReadySalesPalette.light()
+      : background = const Color(0xFFF4F7FA),
+        panel = const Color(0xFFFFFFFF),
+        field = const Color(0xFFF8FAFC),
+        border = const Color(0xFFCBD5E1),
+        accent = const Color(0xFF168F86),
+        textMain = const Color(0xFF172033),
+        textSoft = const Color(0xFF5B687A);
+
+  const _ReadySalesPalette.dark()
+      : background = const Color(0xFF101414),
+        panel = const Color(0xFF171B1B),
+        field = const Color(0xFF202525),
+        border = const Color.fromARGB(255, 40, 105, 92),
+        accent = const Color.fromARGB(255, 78, 201, 176),
+        textMain = const Color(0xFFEAF2FF),
+        textSoft = const Color(0xFFB7C7DA);
+
+  final Color background;
+  final Color panel;
+  final Color field;
+  final Color border;
+  final Color accent;
+  final Color textMain;
+  final Color textSoft;
 }
 
 class _ReadyProduct {

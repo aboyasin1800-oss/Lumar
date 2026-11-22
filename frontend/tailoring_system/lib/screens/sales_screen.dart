@@ -84,11 +84,15 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   static const _supportingFontSize = 16.0;
   static const _buttonFontSize = 16.0;
 
-  static const Color _surfaceCard = Color.fromARGB(255, 18, 28, 40);
   static const Color _primaryBlue = Color.fromARGB(255, 2, 225, 180);
   static const Color _textMain = Color(0xFFEAF2FF);
   static const Color _textSoft = Color(0xFFB7C7DA);
   static const Color _borderSoft = Color.fromARGB(255, 43, 104, 101);
+
+  static _SalesColorPalette _colors(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.light
+          ? const _SalesColorPalette.light()
+          : const _SalesColorPalette.dark();
 
   int piecesCount = 1;
   int currentCustomerId = 0;
@@ -2067,10 +2071,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final isLightTheme = Theme.of(context).brightness == Brightness.light;
-    final screenBackground = isLightTheme
-        ? const Color(0xFFF5F7FB)
-        : const Color.fromARGB(255, 12, 20, 32);
+    final colors = _colors(context);
+    final screenBackground = colors.screenBackground;
     final currentMode = salesViewModeNotifier.value;
     if (_salesViewMode != currentMode) {
       _salesViewMode = currentMode;
@@ -2099,15 +2101,15 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           if (_isInitialLoading)
             Positioned.fill(
               child: ColoredBox(
-                color: Color(0xB30C1420),
+                color: colors.loadingOverlay,
                 child: Center(
                   child: Container(
                     width: 112,
                     height: 112,
                     decoration: BoxDecoration(
-                      color: _surfaceCard,
+                      color: colors.cardSurface,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: _primaryBlue, width: 1.2),
+                      border: Border.all(color: colors.focusedBorder, width: 1.2),
                       boxShadow: const [
                         BoxShadow(
                           color: Color(0x66000000),
@@ -2116,13 +2118,13 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                         ),
                       ],
                     ),
-                    child: const Center(
+                    child: Center(
                       child: SizedBox(
                         width: 46,
                         height: 46,
                         child: CircularProgressIndicator(
                           strokeWidth: 4,
-                          color: _primaryBlue,
+                          color: colors.primaryAction,
                         ),
                       ),
                     ),
@@ -2140,9 +2142,9 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     final isLightTheme = theme.brightness == Brightness.light;
     final headerColors = isLightTheme
         ? <Color>[
-            const Color(0xFFEAF3FF),
-            const Color(0xFFDBF4EF),
-            const Color(0xFFDDECF7)
+            const Color(0xFFFFFFFF),
+            const Color(0xFFF7FAFC),
+            const Color(0xFFF1F5F9)
           ]
         : const <Color>[
             Color.fromARGB(255, 10, 16, 22),
@@ -2180,9 +2182,13 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           splashRadius: 18,
           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
           style: IconButton.styleFrom(
-            backgroundColor: const Color.fromARGB(255, 13, 36, 34),
-            side: const BorderSide(
-              color: Color.fromARGB(255, 2, 225, 180),
+            backgroundColor: isLightTheme
+                ? const Color(0xFFE8F5F2)
+                : const Color.fromARGB(255, 13, 36, 34),
+            side: BorderSide(
+              color: isLightTheme
+                  ? const Color(0xFF168F86)
+                  : const Color.fromARGB(255, 2, 225, 180),
               width: 1,
             ),
             shape: RoundedRectangleBorder(
@@ -2245,6 +2251,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                   ? draft.customerName
                   : 'جلسة ${draft.number}';
 
+              final colors = _colors(context);
               return InkWell(
                 onTap: () => _restoreDraft(index),
                 borderRadius: BorderRadius.circular(5),
@@ -2253,9 +2260,9 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A2633),
+                    color: colors.cardSurface,
                     borderRadius: BorderRadius.circular(5),
-                    border: Border.all(color: const Color(0xFF32475E)),
+                    border: Border.all(color: colors.normalBorder),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -2716,15 +2723,19 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       String? suffix,
       ValueChanged<String>? onChanged}) {
     final theme = Theme.of(context);
+    final colors = _colors(context);
+    final isLightTheme = theme.brightness == Brightness.light;
     return SizedBox(
       height: _dashboardCardHeight,
       child: Card(
         elevation: 0,
-        color: theme.colorScheme.surfaceContainer,
+        color: colors.cardSurface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(5),
           side: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
+              color: isLightTheme
+                  ? colors.normalBorder
+                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -2736,9 +2747,9 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
             keyboardType: TextInputType.number,
             style: UiPalette.adaptiveTextStyle(
               context,
-              backgroundColor: const Color.fromARGB(255, 18, 28, 40),
+              backgroundColor: colors.cardSurface,
               fontSize: _kpiValueFontSize,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w600,
             ),
             decoration: _statDecoration(context, label, suffix),
           ),
@@ -2749,15 +2760,19 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
 
   Widget _statValue(BuildContext context, String label, String value) {
     final theme = Theme.of(context);
+    final colors = _colors(context);
+    final isLightTheme = theme.brightness == Brightness.light;
     return SizedBox(
       height: _dashboardCardHeight,
       child: Card(
         elevation: 0,
-        color: theme.colorScheme.surfaceContainer,
+        color: colors.cardSurface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(5),
           side: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
+              color: isLightTheme
+                  ? colors.normalBorder
+                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -2767,7 +2782,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                 child: Text(value,
                     style: theme.textTheme.bodyMedium?.copyWith(
                         fontSize: _kpiValueFontSize,
-                        fontWeight: FontWeight.bold))),
+                        color: colors.primaryText,
+                        fontWeight: FontWeight.w600))),
           ),
         ),
       ),
@@ -2777,23 +2793,36 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   InputDecoration _statDecoration(
       BuildContext context, String label, String? suffix) {
     final theme = Theme.of(context);
+    final colors = _colors(context);
+    final isLightTheme = theme.brightness == Brightness.light;
     return InputDecoration(
       labelText: label,
       suffixText: suffix,
       floatingLabelBehavior: FloatingLabelBehavior.always,
+      filled: true,
+      fillColor: isLightTheme ? colors.cardSurface : const Color.fromARGB(255, 18, 28, 40),
       labelStyle: theme.textTheme.labelSmall
-          ?.copyWith(fontSize: _fieldLabelFontSize, color: _textSoft),
+          ?.copyWith(
+            fontSize: _fieldLabelFontSize,
+            color: isLightTheme ? const Color(0xFF475569) : _textSoft,
+          ),
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(5),
-          borderSide:
-              const BorderSide(color: Color.fromARGB(255, 207, 211, 211))),
+          borderSide: BorderSide(
+              color: isLightTheme
+                  ? const Color(0xFFCBD5E1)
+                  : const Color.fromARGB(255, 207, 211, 211))),
       enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(5),
-          borderSide:
-              const BorderSide(color: Color.fromARGB(255, 44, 105, 103))),
+          borderSide: BorderSide(
+              color: isLightTheme
+                  ? const Color(0xFFCBD5E1)
+                  : const BorderSide(color: _borderSoft).color)),
       focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(5),
-          borderSide: const BorderSide(color: _primaryBlue, width: 1.6)),
+          borderSide: BorderSide(
+              color: isLightTheme ? colors.focusedBorder : _primaryBlue,
+              width: 1.6)),
       isDense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
     );
@@ -2937,6 +2966,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       TextInputType? keyboardType,
       List<TextInputFormatter>? inputFormatters}) {
     final theme = Theme.of(context);
+    final colors = _colors(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: TextFormField(
@@ -2953,26 +2983,25 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           labelText: label,
           labelStyle: TextStyle(
             fontSize: _fieldLabelFontSize,
-            color: UiPalette.adaptiveTextColor(_surfaceCard),
+            color: colors.labelText,
           ),
           filled: true,
-          fillColor: const Color.fromARGB(255, 13, 19, 28),
+          fillColor: readOnly ? colors.readOnlyFieldSurface : colors.fieldSurface,
           isDense: true,
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
           border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(5),
-              borderSide:
-                  const BorderSide(color: Color.fromARGB(255, 43, 104, 101))),
+              borderSide: BorderSide(color: colors.normalBorder)),
           enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(5),
-              borderSide: const BorderSide(color: _borderSoft)),
+              borderSide: BorderSide(color: colors.normalBorder)),
           focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(5),
-              borderSide: const BorderSide(color: _primaryBlue, width: 1.5)),
+              borderSide: BorderSide(color: colors.focusedBorder, width: 1.5)),
         ),
         style: theme.textTheme.bodyMedium
-            ?.copyWith(fontSize: _fieldFontSize, color: _textMain),
+            ?.copyWith(fontSize: _fieldFontSize, color: colors.primaryText),
       ),
     );
   }
@@ -3135,10 +3164,12 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     final isMeasurementsHidden = _hiddenMeasurementRows[pieceIndex] ?? false;
     final canToggleMeasurements = pieceType.isNotEmpty;
 
+    final colors = _colors(context);
+    final isLightTheme = Theme.of(context).brightness == Brightness.light;
     return Card(
-      elevation: 1.5,
-      color: _surfaceCard,
-      shadowColor: Colors.black.withValues(alpha: 0.12),
+      elevation: isLightTheme ? 0.6 : 1.5,
+      color: colors.pieceCardSurface,
+      shadowColor: Colors.black.withValues(alpha: isLightTheme ? 0.06 : 0.12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(5),
         side: BorderSide(
@@ -3168,16 +3199,16 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: const Color.fromARGB(255, 10, 18, 28),
+                      color: colors.pieceHeaderSurface,
                       border: Border.all(
-                          color: const Color(0xFF7DE7D1), width: 1.2),
+                          color: colors.normalBorder, width: 1.2),
                       borderRadius: BorderRadius.circular(5),
                     ),
                     child: Text(
                       'قطعة رقم $index',
                       style: UiPalette.adaptiveTextStyle(
                         context,
-                        backgroundColor: const Color.fromARGB(255, 10, 18, 28),
+                        backgroundColor: colors.pieceHeaderSurface,
                         fontSize: _sectionTitleFontSize,
                         fontWeight: FontWeight.w700,
                       ),
@@ -3219,9 +3250,9 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                     Container(
                       decoration: BoxDecoration(
                         border: Border.all(
-                            color: const Color(0xFF7DE7D1), width: 1.2),
+                            color: colors.normalBorder, width: 1.2),
                         borderRadius: BorderRadius.circular(5),
-                        color: const Color.fromARGB(255, 10, 18, 28),
+                        color: colors.pieceHeaderSurface,
                       ),
                       child: IconButton(
                         tooltip: isMeasurementsHidden
@@ -3273,9 +3304,9 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                   Container(
                     decoration: BoxDecoration(
                       border: Border.all(
-                          color: const Color(0xFF7DE7D1), width: 1.2),
+                          color: colors.normalBorder, width: 1.2),
                       borderRadius: BorderRadius.circular(5),
-                      color: const Color.fromARGB(255, 10, 18, 28),
+                      color: colors.pieceHeaderSurface,
                     ),
                     child: IconButton(
                       key: ValueKey('sales-remove-piece-$pieceIndex'),
@@ -3323,9 +3354,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
                                 style:
                                     TextStyle(fontSize: _fieldLabelFontSize)),
                             isExpanded: true,
-                            dropdownColor: const Color(0xFF101820),
+                            dropdownColor: colors.dropdownSurface,
                             style: theme.textTheme.bodySmall?.copyWith(
-                                fontSize: _fieldFontSize, color: _textMain),
+                                fontSize: _fieldFontSize,
+                                color: colors.dropdownText),
                             decoration: _pieceDecoration(context, 'نوع القطعة',
                                 contentPadding: row1ContentPadding),
                             items: _pieceTypeOptions
@@ -3550,8 +3582,12 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       padding: const EdgeInsets.all(1),
       decoration: BoxDecoration(
         color: isShortage
-            ? const Color.fromARGB(255, 160, 11, 0)
-            : const Color.fromARGB(255, 101, 224, 165),
+            ? (Theme.of(context).brightness == Brightness.light
+                ? const Color(0xFFFDECEC)
+                : const Color.fromARGB(255, 160, 11, 0))
+            : (Theme.of(context).brightness == Brightness.light
+                ? const Color(0xFFEAF7F2)
+                : const Color.fromARGB(255, 101, 224, 165)),
         borderRadius: BorderRadius.circular(5),
         border: Border.all(
           color: isShortage
@@ -3563,9 +3599,7 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       child: InputDecorator(
         decoration: _pieceDecoration(context, 'الكمية المتوفرة').copyWith(
           filled: true,
-          fillColor: isShortage
-              ? const Color.fromARGB(255, 1, 16, 31)
-              : const Color.fromARGB(255, 1, 16, 31),
+          fillColor: _colors(context).fieldSurface,
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         ),
@@ -3747,16 +3781,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   InputDecoration _pieceDecoration(BuildContext context, String label,
       {bool selected = false, EdgeInsets? contentPadding}) {
     final theme = Theme.of(context);
-    final isLightTheme = theme.brightness == Brightness.light;
-    final borderColor = selected
-        ? const Color(0xFF7DE7D1)
-        : (isLightTheme
-            ? const Color(0xFFB7C9D9)
-            : const Color.fromARGB(255, 46, 93, 100));
-    final fillColor = isLightTheme
-        ? const Color(0xFFF8FAFC)
-        : const Color.fromARGB(255, 3, 15, 28);
-    final labelColor = isLightTheme ? const Color(0xFF475569) : _textSoft;
+    final colors = _colors(context);
+    final borderColor = selected ? colors.focusedBorder : colors.normalBorder;
+    final fillColor = colors.fieldSurface;
+    final labelColor = colors.labelText;
     return InputDecoration(
       labelText: label,
       labelStyle: theme.textTheme.labelSmall
@@ -3781,15 +3809,16 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
 
   Widget _darkCard(BuildContext context, Widget child) {
     final isLightTheme = Theme.of(context).brightness == Brightness.light;
+    final colors = _colors(context);
     return Card(
       elevation: 1.5,
-      color: isLightTheme ? const Color(0xFFFFFFFF) : _surfaceCard,
+      color: colors.cardSurface,
       shadowColor: Colors.black.withValues(alpha: isLightTheme ? 0.04 : 0.10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(5),
         side: BorderSide(
-            color: (isLightTheme ? const Color(0xFFE2EAF5) : _borderSoft)
-                .withValues(alpha: 0.7)),
+            color: (isLightTheme ? colors.normalBorder : _borderSoft)
+                .withValues(alpha: isLightTheme ? 0.85 : 0.7)),
       ),
       child: Padding(padding: const EdgeInsets.all(10), child: child),
     );
@@ -3803,6 +3832,82 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       fontWeight: FontWeight.w700,
     );
   }
+}
+
+class _SalesColorPalette {
+  const _SalesColorPalette.light()
+      : screenBackground = const Color(0xFFF4F7FA),
+        headerBackground = const Color(0xFFFFFFFF),
+        cardSurface = const Color(0xFFFFFFFF),
+        pieceCardSurface = const Color(0xFFFFFFFF),
+        pieceHeaderSurface = const Color(0xFFF7FAFC),
+        fieldSurface = const Color(0xFFFFFFFF),
+        readOnlyFieldSurface = const Color(0xFFF1F5F9),
+        primaryText = const Color(0xFF172033),
+        secondaryText = const Color(0xFF5B687A),
+        labelText = const Color(0xFF475569),
+        normalBorder = const Color(0xFFCBD5E1),
+        focusedBorder = const Color(0xFF168F86),
+        selectedBorder = const Color(0xFF168F86),
+        disabledSurface = const Color(0xFFE9EEF4),
+        disabledText = const Color(0xFF7A8696),
+        primaryAction = const Color(0xFF168F86),
+        onPrimaryAction = const Color(0xFFFFFFFF),
+        danger = const Color(0xFFC43D3D),
+        warning = const Color(0xFFB7791F),
+        success = const Color(0xFF18855B),
+        loadingOverlay = const Color(0xCCF4F7FA),
+        dropdownSurface = const Color(0xFFFFFFFF),
+        dropdownText = const Color(0xFF172033);
+
+  const _SalesColorPalette.dark()
+      : screenBackground = const Color.fromARGB(255, 12, 20, 32),
+        headerBackground = const Color.fromARGB(255, 18, 28, 40),
+        cardSurface = const Color.fromARGB(255, 18, 28, 40),
+        pieceCardSurface = const Color.fromARGB(255, 18, 28, 40),
+        pieceHeaderSurface = const Color.fromARGB(255, 10, 18, 28),
+        fieldSurface = const Color.fromARGB(255, 13, 19, 28),
+        readOnlyFieldSurface = const Color.fromARGB(255, 13, 19, 28),
+        primaryText = const Color(0xFFEAF2FF),
+        secondaryText = const Color(0xFFB7C7DA),
+        labelText = const Color(0xFFB7C7DA),
+        normalBorder = const Color.fromARGB(255, 43, 104, 101),
+        focusedBorder = const Color.fromARGB(255, 2, 225, 180),
+        selectedBorder = const Color(0xFF7DE7D1),
+        disabledSurface = const Color.fromARGB(255, 18, 28, 40),
+        disabledText = const Color(0xFF7F93A8),
+        primaryAction = const Color.fromARGB(255, 2, 225, 180),
+        onPrimaryAction = const Color(0xFF000001),
+        danger = const Color(0xFFEF5350),
+        warning = const Color(0xFFFFD166),
+        success = const Color(0xFF65E0A5),
+        loadingOverlay = const Color(0xB30C1420),
+        dropdownSurface = const Color(0xFF101820),
+        dropdownText = const Color(0xFFEAF2FF);
+
+  final Color screenBackground;
+  final Color headerBackground;
+  final Color cardSurface;
+  final Color pieceCardSurface;
+  final Color pieceHeaderSurface;
+  final Color fieldSurface;
+  final Color readOnlyFieldSurface;
+  final Color primaryText;
+  final Color secondaryText;
+  final Color labelText;
+  final Color normalBorder;
+  final Color focusedBorder;
+  final Color selectedBorder;
+  final Color disabledSurface;
+  final Color disabledText;
+  final Color primaryAction;
+  final Color onPrimaryAction;
+  final Color danger;
+  final Color warning;
+  final Color success;
+  final Color loadingOverlay;
+  final Color dropdownSurface;
+  final Color dropdownText;
 }
 
 class _FabricStockSnapshot {

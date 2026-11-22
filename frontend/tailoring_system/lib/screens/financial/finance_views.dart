@@ -62,7 +62,11 @@ class _FinancialScreenState extends State<FinancialScreen>
               isScrollable: true,
               tabAlignment: TabAlignment.start,
               tabs: const [
-                Tab(icon: Icon(Icons.query_stats_outlined), text: 'الإحصاء'),
+          Container(
+            color: Theme.of(context).brightness == Brightness.light
+                ? const Color(0xFFF4F7FA)
+                : Theme.of(context).scaffoldBackgroundColor,
+            child:       Tab(icon: Icon(Icons.query_stats_outlined), text: 'الإحصاء'),
                 Tab(
                     icon: Icon(Icons.assessment_outlined),
                     text: 'القوائم والتقارير'),
@@ -92,7 +96,8 @@ class _FinancialScreenState extends State<FinancialScreen>
 }
 
 class _FinanceStatisticsTab extends StatelessWidget {
-  const _FinanceStatisticsTab({required this.provider});
+  const _FinanceS
+          ),tatisticsTab({required this.provider});
   final FinanceProvider provider;
   @override
   Widget build(BuildContext context) {

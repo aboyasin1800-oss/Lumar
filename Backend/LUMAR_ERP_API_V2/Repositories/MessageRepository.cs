@@ -504,6 +504,9 @@ WHERE MessageTemplateID = @id;";
 
     public async Task UpdateDeliveryStatusByProviderIdAsync(string providerMessageId, string status, DateTime occurredAtUtc, string? failureReason, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(providerMessageId))
+            return;
+
         const string sql = @"
             UPDATE dbo.CustomerMessages
             SET DeliveryStatus = CASE

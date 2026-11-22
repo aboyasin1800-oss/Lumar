@@ -198,7 +198,10 @@ class _CustomerPageState extends State<CustomerPage> {
     await showDialog<void>(
         context: context,
         builder: (context) => StatefulBuilder(
-            builder: (context, setDialogState) => AlertDialog(
+            builder: (context, setDialogState) {
+              final isLight = Theme.of(context).brightness == Brightness.light;
+              return AlertDialog(
+                  backgroundColor: isLight ? const Color(0xFFFFFFFF) : null,
                   title: const Text('تعديل العميل'),
                   content: SizedBox(
                       width: 460,
@@ -229,7 +232,8 @@ class _CustomerPageState extends State<CustomerPage> {
                         onPressed: () => save(context),
                         child: const Text('حفظ'))
                   ],
-                )));
+                );
+            }));
   }
 
   Widget _field(TextEditingController controller, String label,
@@ -254,7 +258,32 @@ class _CustomerPageState extends State<CustomerPage> {
                 }
               },
               decoration: InputDecoration(
-                  labelText: label, border: const OutlineInputBorder()),
+                  filled: true,
+                  fillColor: Theme.of(context).brightness == Brightness.light
+                      ? const Color(0xFFFFFFFF)
+                      : null,
+                  labelText: label,
+                  labelStyle: TextStyle(
+                    color: Theme.of(context).brightness == Brightness.light
+                        ? const Color(0xFF475569)
+                        : null,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                      color: Theme.of(context).brightness == Brightness.light
+                          ? const Color(0xFFCBD5E1)
+                          : const Color(0xFF2B6865),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                      color: Theme.of(context).brightness == Brightness.light
+                          ? const Color(0xFF168F86)
+                          : const Color(0xFF02E1B4),
+                      width: 1.5,
+                    ),
+                  ),
+                  border: const OutlineInputBorder()),
               validator: required
                   ? (value) => value == null || value.trim().isEmpty
                       ? 'حقل $label مطلوب'
@@ -262,18 +291,41 @@ class _CustomerPageState extends State<CustomerPage> {
                   : null));
 
   @override
-  Widget build(BuildContext context) => Column(children: [
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return ColoredBox(
+      color: isLight ? const Color(0xFFF4F7FA) : Theme.of(context).scaffoldBackgroundColor,
+      child: Column(children: [
         Row(children: [
           Expanded(
               child: TextField(
                   controller: search,
                   onChanged: _onSearchChanged,
                   onSubmitted: (value) => _load(value),
-                  decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
+                  decoration: InputDecoration(
+                      filled: true,
+                      fillColor: isLight ? const Color(0xFFFFFFFF) : null,
+                      prefixIcon: Icon(
+                        Icons.search,
+                        color: isLight ? const Color(0xFF475569) : null,
+                      ),
                       labelText:
                           'ابحث بالرمز أو الاسم أو الهاتف أو رمز الإحالة',
-                      border: OutlineInputBorder()))),
+                      labelStyle: TextStyle(
+                        color: isLight ? const Color(0xFF475569) : null,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(
+                          color: isLight ? const Color(0xFFCBD5E1) : const Color(0xFF2B6865),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(
+                          color: isLight ? const Color(0xFF168F86) : const Color(0xFF02E1B4),
+                          width: 1.5,
+                        ),
+                      ),
+                      border: const OutlineInputBorder()))),
           const SizedBox(width: 8),
           IconButton(
               tooltip: 'إنشاء عميل',
@@ -383,8 +435,9 @@ class _CustomerPageState extends State<CustomerPage> {
                     ],
                   );
                 }))
-      ]);
-
+      ]),
+    );
+  }
 }
 
 class _CustomerSuggestions extends StatelessWidget {

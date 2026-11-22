@@ -1,17 +1,13 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
-
 import '../../core/ui_palette.dart';
 import '../../models/customer_creation_models.dart';
 import '../../repositories/customer_creation_repository.dart';
 
 class CustomerCreateScreen extends StatefulWidget {
   const CustomerCreateScreen({super.key, this.initialPhone, this.repository});
-
   final String? initialPhone;
   final CustomerCreationRepository? repository;
-
   @override
   State<CustomerCreateScreen> createState() => _CustomerCreateScreenState();
 }
@@ -36,7 +32,6 @@ class _CustomerCreateScreenState extends State<CustomerCreateScreen> {
   String _relationshipChoice = '';
   bool _hasReferrer = false;
   bool _saving = false;
-
   static const _relationships = [
     'أب',
     'أم',
@@ -50,7 +45,6 @@ class _CustomerCreateScreenState extends State<CustomerCreateScreen> {
     'عميل سابق',
     'أخرى',
   ];
-
   @override
   void initState() {
     super.initState();
@@ -129,7 +123,6 @@ class _CustomerCreateScreenState extends State<CustomerCreateScreen> {
         candidate.customerName,
         candidate.customerCode
       ].where((value) => value?.trim().isNotEmpty == true).join(' - ');
-
   String? _relationshipValue() {
     if (_relationshipChoice == 'أخرى') {
       final value = _otherRelationshipController.text.trim();
@@ -216,7 +209,6 @@ class _CustomerCreateScreenState extends State<CustomerCreateScreen> {
           ),
         ),
       );
-
   Widget _buildIdentitySection() => _section(
         title: 'بيانات العميل',
         child: Column(
@@ -225,9 +217,24 @@ class _CustomerCreateScreenState extends State<CustomerCreateScreen> {
               controller: _phoneController,
               keyboardType: TextInputType.phone,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'رقم الهاتف *',
-                prefixIcon: Icon(Icons.phone_outlined),
+                prefixIcon: const Icon(Icons.phone_outlined),
+                filled: true,
+                fillColor: Theme.of(context).brightness == Brightness.light
+                    ? const Color(0xFFF8FAFC)
+                    : null,
+                enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? const Color(0xFFCBD5E1)
+                            : const Color(0xFF2B6865))),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? const Color(0xFF168F86)
+                            : const Color(0xFF02E1B4),
+                        width: 1.5)),
               ),
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
@@ -240,9 +247,24 @@ class _CustomerCreateScreenState extends State<CustomerCreateScreen> {
             TextFormField(
               controller: _nameController,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'اسم العميل *',
-                prefixIcon: Icon(Icons.person_outline),
+                prefixIcon: const Icon(Icons.person_outline),
+                filled: true,
+                fillColor: Theme.of(context).brightness == Brightness.light
+                    ? const Color(0xFFF8FAFC)
+                    : null,
+                enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? const Color(0xFFCBD5E1)
+                            : const Color(0xFF2B6865))),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? const Color(0xFF168F86)
+                            : const Color(0xFF02E1B4),
+                        width: 1.5)),
               ),
               validator: _validateCustomerName,
             ),
@@ -250,9 +272,24 @@ class _CustomerCreateScreenState extends State<CustomerCreateScreen> {
             TextFormField(
               controller: _addressController,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'العنوان',
-                prefixIcon: Icon(Icons.location_on_outlined),
+                prefixIcon: const Icon(Icons.location_on_outlined),
+                filled: true,
+                fillColor: Theme.of(context).brightness == Brightness.light
+                    ? const Color(0xFFF8FAFC)
+                    : null,
+                enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? const Color(0xFFCBD5E1)
+                            : const Color(0xFF2B6865))),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? const Color(0xFF168F86)
+                            : const Color(0xFF02E1B4),
+                        width: 1.5)),
               ),
             ),
             const SizedBox(height: 12),
@@ -260,15 +297,29 @@ class _CustomerCreateScreenState extends State<CustomerCreateScreen> {
               controller: _notesController,
               maxLines: 3,
               textInputAction: TextInputAction.newline,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'ملاحظات',
-                prefixIcon: Icon(Icons.notes_outlined),
+                prefixIcon: const Icon(Icons.notes_outlined),
+                filled: true,
+                fillColor: Theme.of(context).brightness == Brightness.light
+                    ? const Color(0xFFF8FAFC)
+                    : null,
+                enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? const Color(0xFFCBD5E1)
+                            : const Color(0xFF2B6865))),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? const Color(0xFF168F86)
+                            : const Color(0xFF02E1B4),
+                        width: 1.5)),
               ),
             ),
           ],
         ),
       );
-
   Widget _buildReferralSection() => _section(
         title: 'بيانات الإحالة',
         child: Column(
@@ -353,7 +404,6 @@ class _CustomerCreateScreenState extends State<CustomerCreateScreen> {
           ],
         ),
       );
-
   Widget _buildSuggestions() => Card(
         margin: const EdgeInsets.only(top: 8),
         child: Column(
@@ -376,7 +426,6 @@ class _CustomerCreateScreenState extends State<CustomerCreateScreen> {
               .toList(),
         ),
       );
-
   Widget _buildSelectedReferrer() {
     final candidate = _selectedReferrer!;
     return Card(
