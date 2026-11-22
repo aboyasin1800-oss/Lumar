@@ -62,6 +62,8 @@ public sealed class MessageWriteService(
             var values = route.Values;
             var title = renderer.Render(template.Title, values);
             var body = renderer.Render(template.Body, values);
+            if (ContainsKnownUnresolvedVariable(title) || ContainsKnownUnresolvedVariable(body))
+                continue;
 
             int? messageId = null;
             int? notificationId = null;
@@ -198,6 +200,16 @@ public sealed class MessageWriteService(
         return templateText.Contains("friday", StringComparison.OrdinalIgnoreCase)
             || eventText.Contains("friday", StringComparison.OrdinalIgnoreCase)
             || templateText.Contains("greeting", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ContainsKnownUnresolvedVariable(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        return text.Contains("{{customer_name}}", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("{{CustomerName}}", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("{{HijriDate}}", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsCampaignRequest(MessageWriteRequest request)

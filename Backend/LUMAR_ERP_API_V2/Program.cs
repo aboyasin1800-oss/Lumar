@@ -164,6 +164,8 @@ builder.Services.AddScoped<ISupplierFinancialWorkflowCoordinator, SupplierFinanc
 builder.Services.AddScoped<IGoodsReceiptWorkflowCoordinator, GoodsReceiptWorkflowCoordinator>();
 builder.Services.AddScoped<IOrderLoyaltyIntegrationService, OrderLoyaltyIntegrationService>();
 builder.Services.AddHostedService<OutboundMessageBackgroundService>();
+builder.Services.AddSingleton<IHijriDateProvider, HijriDateProvider>();
+builder.Services.AddHostedService<FridayGreetingBackgroundService>();
 builder.Services.AddScoped<IOutboundMessageDispatcher, OutboundMessageDispatcher>();
 builder.Services.AddScoped<IOutboundMessageChannel, InAppMessageChannel>();
 builder.Services.AddScoped<IOutboundMessageChannel, WhatsAppCloudMessageChannel>();

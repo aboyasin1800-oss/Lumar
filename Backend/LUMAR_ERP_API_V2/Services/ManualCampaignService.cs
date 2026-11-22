@@ -150,7 +150,8 @@ public sealed class ManualCampaignService(
     ICustomerRepository customerRepository,
     IMessageWriteService messageWriteService,
     IYemenPhoneNumberNormalizer phoneNormalizer,
-    ISettingsRepository settingsRepository) : IManualCampaignService
+    ISettingsRepository settingsRepository,
+    IHijriDateProvider? hijriDateProvider = null) : IManualCampaignService
 {
     private readonly Dictionary<string, HashSet<int>> _seenCampaignCustomers = new(StringComparer.OrdinalIgnoreCase);
 
@@ -208,6 +209,8 @@ public sealed class ManualCampaignService(
                     Context: new Dictionary<string, object?>
                     {
                         ["CustomerName"] = customer.CustomerName,
+                        ["customer_name"] = customer.CustomerName,
+                        ["HijriDate"] = (hijriDateProvider ?? new HijriDateProvider()).FormatForSanaa(DateOnly.FromDateTime(FridayGreetingBackgroundService.GetSanaaNow(DateTimeOffset.UtcNow).Date)),
                         ["CampaignReference"] = request.CampaignReference,
                         ["MessageText"] = request.MessageText,
                         ["Title"] = request.Title,

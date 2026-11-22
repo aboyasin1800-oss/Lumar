@@ -315,6 +315,49 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public void FridaySchedule_SanaaContract_BeforeAndAfterOneAM()
+    {
+        Assert.False(FridayGreetingBackgroundService.ShouldSendForSanaaDate(DayOfWeek.Thursday, TimeSpan.FromHours(1)));
+        Assert.False(FridayGreetingBackgroundService.ShouldSendForSanaaDate(DayOfWeek.Friday, TimeSpan.FromHours(0, 59, 59)));
+        Assert.True(FridayGreetingBackgroundService.ShouldSendForSanaaDate(DayOfWeek.Friday, TimeSpan.FromHours(1)));
+        Assert.False(FridayGreetingBackgroundService.ShouldSendForSanaaDate(DayOfWeek.Saturday, TimeSpan.FromHours(8)));
+
+        var utc = new DateTimeOffset(2026, 11, 22, 21, 30, 0, TimeSpan.Zero); // Sunday 00:30 Sana'a
+        var sanaa = FridayGreetingBackgroundService.GetSanaaNow(utc);
+        Assert.Equal(TimeSpan.FromHours(3), sanaa.Offset);
+        Assert.Equal(new DateTime(2026, 11, 23, 0, 30, 0), sanaa.DateTime);
+    }
+
+    [Fact]
+    public void HijriProvider_RendersArabicSanaaDate()
+    {
+        var formatted = new HijriDateProvider().FormatForSanaa(new DateOnly(2026, 11, 22));
+        Assert.False(string.IsNullOrWhiteSpace(formatted));
+        Assert.Contains("هـ", formatted);
+    }
+
+    [Fact]
+    public void ManualCampaign_ContextHasSeparateCustomerNameAndHijriDateAliases()
+    {
+        var requestContext = new Dictionary<string, object?>
+        {
+            ["CustomerName"] = "أحمد",
+            ["customer_name"] = "أحمد",
+            ["HijriDate"] = "1 محرم 1448 هـ",
+        };
+        var secondContext = new Dictionary<string, object?>
+        {
+            ["CustomerName"] = "محمد",
+            ["customer_name"] = "محمد",
+            ["HijriDate"] = "1 محرم 1448 هـ",
+        };
+
+        Assert.Equal("أحمد", requestContext["CustomerName"]);
+        Assert.Equal("محمد", secondContext["CustomerName"]);
+        Assert.NotEqual(requestContext["CustomerName"], secondContext["CustomerName"]);
+    }
+
+    [Fact]
     public async Task CustomerMobileSession_CannotReadGlobalNotificationsList_OrOtherCustomerNotifications()
     {
         var currentUser = new CurrentUserDto(
