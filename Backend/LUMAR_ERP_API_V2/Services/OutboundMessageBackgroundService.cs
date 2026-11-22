@@ -43,20 +43,33 @@ public sealed class OutboundMessageBackgroundService(
                     && (message.DeliveryStatus == "Sent" || message.DeliveryStatus == "Unconfirmed")))
                 {
                     LocalWhatsAppAckStatusResponse? ack;
-                    if (!string.IsNullOrWhiteSpace(message.ProviderMessageId))
+                    var effectiveProviderId = message.ProviderMessageId?.Trim();
+                    try
                     {
-                        ack = await gateway.AckStatusAsync(message.ProviderMessageId!, stoppingToken);
+                        if (!string.IsNullOrWhiteSpace(effectiveProviderId))
+                        {
+                            ack = await gateway.AckStatusAsync(effectiveProviderId, stoppingToken);
+                        }
+                        else
+                        {
+                            var providerStatus = await gateway.ProviderStatusAsync(message.CustomerMessageId, stoppingToken);
+                            if (string.IsNullOrWhiteSpace(providerStatus?.ProviderMessageId)) continue;
+                            effectiveProviderId = providerStatus.ProviderMessageId.Trim();
+                            await messageRepository.MarkSentAsync(message.CustomerMessageId, effectiveProviderId, providerStatus.OccurredAtUtc ?? DateTime.UtcNow, stoppingToken);
+                            ack = new LocalWhatsAppAckStatusResponse(
+                                effectiveProviderId,
+                                providerStatus.AckLevel,
+                                providerStatus.Status,
+                                providerStatus.OccurredAtUtc);
+                        }
                     }
-                    else
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                     {
-                        var providerStatus = await gateway.ProviderStatusAsync(message.CustomerMessageId, stoppingToken);
-                        if (string.IsNullOrWhiteSpace(providerStatus?.ProviderMessageId)) continue;
-                        await messageRepository.MarkSentAsync(message.CustomerMessageId, providerStatus.ProviderMessageId, providerStatus.OccurredAtUtc ?? DateTime.UtcNow, stoppingToken);
-                        ack = new LocalWhatsAppAckStatusResponse(
-                            providerStatus.ProviderMessageId,
-                            providerStatus.AckLevel,
-                            providerStatus.Status,
-                            providerStatus.OccurredAtUtc);
+                        throw;
+                    }
+                    catch (LocalWhatsAppGatewayException)
+                    {
+                        continue;
                     }
                     if (ack?.AckLevel is null || string.IsNullOrWhiteSpace(ack.Status) || string.IsNullOrWhiteSpace(ack.ProviderMessageId)) continue;
 
@@ -69,7 +82,7 @@ public sealed class OutboundMessageBackgroundService(
                     if (normalizedStatus is null) continue;
 
                     await messageRepository.UpdateDeliveryStatusByProviderIdAsync(
-                        message.ProviderMessageId!,
+                        effectiveProviderId!,
                         normalizedStatus,
                         ack.OccurredAtUtc ?? DateTime.UtcNow,
                         null,

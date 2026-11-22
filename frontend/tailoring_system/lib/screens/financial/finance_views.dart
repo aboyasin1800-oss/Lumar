@@ -45,28 +45,49 @@ class _FinancialScreenState extends State<FinancialScreen>
         animation: provider,
         builder: (context, _) =>
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
+          ColoredBox(
+            color: Theme.of(context).brightness == Brightness.light
+                ? const Color(0xFFFFFFFF)
+                : Theme.of(context).scaffoldBackgroundColor,
+            child: Row(children: [
             Expanded(
                 child: Text('الإدارة المالية',
-                    style: Theme.of(context).textTheme.headlineSmall)),
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: Theme.of(context).brightness == Brightness.light
+                          ? const Color(0xFF172033)
+                          : null,
+                      fontWeight: FontWeight.w700,
+                    ))),
             IconButton(
                 tooltip: 'تحديث البيانات',
                 onPressed: provider.state == FinanceLoadState.loading
                     ? null
                     : provider.loadOverview,
                 icon: const Icon(Icons.refresh))
-          ]),
+          ])),
           const SizedBox(height: 12),
-          TabBar(
+          ColoredBox(
+            color: Theme.of(context).brightness == Brightness.light
+                ? const Color(0xFFFFFFFF)
+                : Theme.of(context).scaffoldBackgroundColor,
+            child: TabBar(
               controller: tabs,
               isScrollable: true,
               tabAlignment: TabAlignment.start,
+              dividerColor: Theme.of(context).brightness == Brightness.light
+                  ? const Color(0xFFCBD5E1)
+                  : null,
+              indicatorColor: Theme.of(context).brightness == Brightness.light
+                  ? const Color(0xFF168F86)
+                  : null,
+              labelColor: Theme.of(context).brightness == Brightness.light
+                  ? const Color(0xFF168F86)
+                  : null,
+              unselectedLabelColor: Theme.of(context).brightness == Brightness.light
+                  ? const Color(0xFF5B687A)
+                  : null,
               tabs: const [
-          Container(
-            color: Theme.of(context).brightness == Brightness.light
-                ? const Color(0xFFF4F7FA)
-                : Theme.of(context).scaffoldBackgroundColor,
-            child:       Tab(icon: Icon(Icons.query_stats_outlined), text: 'الإحصاء'),
+                Tab(icon: Icon(Icons.query_stats_outlined), text: 'الإحصاء'),
                 Tab(
                     icon: Icon(Icons.assessment_outlined),
                     text: 'القوائم والتقارير'),
@@ -80,9 +101,14 @@ class _FinancialScreenState extends State<FinancialScreen>
                 Tab(icon: Icon(Icons.menu_book_outlined), text: 'القيود'),
                 Tab(icon: Icon(Icons.account_tree_outlined), text: 'الأستاذ'),
               ]),
+          ),
           const SizedBox(height: 8),
           Expanded(
-              child: TabBarView(controller: tabs, children: [
+              child: ColoredBox(
+                color: Theme.of(context).brightness == Brightness.light
+                    ? const Color(0xFFF4F7FA)
+                    : Theme.of(context).scaffoldBackgroundColor,
+                child: TabBarView(controller: tabs, children: [
             _FinanceStatisticsTab(provider: provider),
             const _FinancialReportsTab(),
             const FinancialTransactionsScreen(embedded: true),
@@ -90,14 +116,15 @@ class _FinancialScreenState extends State<FinancialScreen>
             const CashAccountsScreen(embedded: true),
             const JournalEntriesScreen(embedded: true),
             const LedgerAccountsScreen(embedded: true),
-          ])),
+          ]),
+              ),
+          ),
         ]),
       );
 }
 
 class _FinanceStatisticsTab extends StatelessWidget {
-  const _FinanceS
-          ),tatisticsTab({required this.provider});
+  const _FinanceStatisticsTab({required this.provider});
   final FinanceProvider provider;
   @override
   Widget build(BuildContext context) {
@@ -489,17 +516,65 @@ class _FinancialTransactionsScreenState
                     child: TextField(
                         controller: search,
                         onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.search),
+                        decoration: InputDecoration(
+                            filled: true,
+                            fillColor: Theme.of(context).brightness == Brightness.light
+                                ? const Color(0xFFFFFFFF)
+                                : null,
+                            prefixIcon: const Icon(Icons.search),
                             labelText: 'بحث بالمرجع أو الوصف',
-                            border: OutlineInputBorder()))),
+                            labelStyle: TextStyle(
+                              color: Theme.of(context).brightness == Brightness.light
+                                  ? const Color(0xFF475569)
+                                  : null,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: Theme.of(context).brightness == Brightness.light
+                                    ? const Color(0xFFCBD5E1)
+                                    : const Color(0xFF2B6865),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: Theme.of(context).brightness == Brightness.light
+                                    ? const Color(0xFF168F86)
+                                    : const Color(0xFF02E1B4),
+                                width: 1.5,
+                              ),
+                            ),
+                            border: const OutlineInputBorder()))),
                 SizedBox(
                     width: 210,
                     child: DropdownButtonFormField<String>(
                         initialValue: type,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
+                            filled: true,
+                            fillColor: Theme.of(context).brightness == Brightness.light
+                                ? const Color(0xFFFFFFFF)
+                                : null,
                             labelText: 'نوع الحركة',
-                            border: OutlineInputBorder()),
+                            labelStyle: TextStyle(
+                              color: Theme.of(context).brightness == Brightness.light
+                                  ? const Color(0xFF475569)
+                                  : null,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: Theme.of(context).brightness == Brightness.light
+                                    ? const Color(0xFFCBD5E1)
+                                    : const Color(0xFF2B6865),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: Theme.of(context).brightness == Brightness.light
+                                    ? const Color(0xFF168F86)
+                                    : const Color(0xFF02E1B4),
+                                width: 1.5,
+                              ),
+                            ),
+                            border: const OutlineInputBorder()),
                         items: [
                           const DropdownMenuItem(
                               value: null, child: Text('كل الأنواع')),
@@ -1242,8 +1317,32 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
             onSubmitted: onSearchChanged,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
+                filled: true,
+                fillColor: Theme.of(context).brightness == Brightness.light
+                    ? const Color(0xFFFFFFFF)
+                    : null,
                 labelText: 'ابحث بكود العميل أو الاسم أو رقم الهاتف',
+                labelStyle: TextStyle(
+                  color: Theme.of(context).brightness == Brightness.light
+                      ? const Color(0xFF475569)
+                      : null,
+                ),
                 prefixIcon: const Icon(Icons.person_search_outlined),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: Theme.of(context).brightness == Brightness.light
+                        ? const Color(0xFFCBD5E1)
+                        : const Color(0xFF2B6865),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: Theme.of(context).brightness == Brightness.light
+                        ? const Color(0xFF168F86)
+                        : const Color(0xFF02E1B4),
+                    width: 1.5,
+                  ),
+                ),
                 suffixIcon: searching
                     ? const Padding(
                         padding: EdgeInsets.all(12),

@@ -42,8 +42,34 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
     {
         if (string.IsNullOrWhiteSpace(providerMessageId) || providerMessageId.Length > 200)
             return null;
-        return await RequestAsync<LocalWhatsAppAckStatusResponse>(HttpMethod.Get,
-            "session/ack-status/" + Uri.EscapeDataString(providerMessageId), cancellationToken);
+
+        try
+        {
+            using var response = await http.GetAsync(
+                "session/ack-status/" + Uri.EscapeDataString(providerMessageId), cancellationToken);
+            await response.Content.LoadIntoBufferAsync(65536, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+                throw new LocalWhatsAppGatewayException((int)response.StatusCode == 409 ? 409 : 503);
+
+            var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(raw) || string.Equals(raw.Trim(), "null", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            return await response.Content.ReadFromJsonAsync<LocalWhatsAppAckStatusResponse>(cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            throw new LocalWhatsAppGatewayException();
+        }
+        catch (JsonException)
+        {
+            throw new LocalWhatsAppGatewayException();
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new LocalWhatsAppGatewayException();
+        }
     }
 
     public async Task<LocalWhatsAppLinkResponse> LinkMaterialAsync(CancellationToken cancellationToken)

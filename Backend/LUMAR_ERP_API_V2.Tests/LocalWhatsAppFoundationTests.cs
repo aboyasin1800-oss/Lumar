@@ -50,6 +50,36 @@ public sealed class LocalWhatsAppFoundationTests
     }
 
     [Fact]
+    public async Task AckStatusAsync_Http200Null_ReturnsNoAckWithoutGatewayException()
+    {
+        using var handler = new GatewayHandler { ResponseStatus = HttpStatusCode.OK, ResponseBody = "null" };
+        using var http = Client(handler);
+
+        var ack = await new LocalWhatsAppGatewayClient(http).AckStatusAsync("provider-unknown", CancellationToken.None);
+
+        Assert.Null(ack);
+        Assert.Equal("/session/ack-status/provider-unknown", handler.Path);
+    }
+
+    [Fact]
+    public async Task AckStatusAsync_Http200Delivered_ReturnsAckAndProviderId()
+    {
+        using var handler = new GatewayHandler
+        {
+            ResponseStatus = HttpStatusCode.OK,
+            ResponseBody = "{\"providerMessageId\":\"provider-valid\",\"ackLevel\":3,\"status\":\"Delivered\",\"occurredAtUtc\":\"2026-11-22T00:00:00Z\"}"
+        };
+        using var http = Client(handler);
+
+        var ack = await new LocalWhatsAppGatewayClient(http).AckStatusAsync("provider-valid", CancellationToken.None);
+
+        Assert.NotNull(ack);
+        Assert.Equal("provider-valid", ack!.ProviderMessageId);
+        Assert.Equal(3, ack.AckLevel);
+        Assert.Equal("Delivered", ack.Status);
+    }
+
+    [Fact]
     public async Task StatusContract_UsesCentralReadyToSend_AndOwnerActionSignals()
     {
         using var handler = new GatewayHandler { ResponseBody = "{\"state\":\"Reconnecting\",\"currentNumber\":\"967777123456\",\"linked\":true,\"lastError\":null}" };
