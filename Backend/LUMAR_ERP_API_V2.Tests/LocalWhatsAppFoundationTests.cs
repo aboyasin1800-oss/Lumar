@@ -50,6 +50,19 @@ public sealed class LocalWhatsAppFoundationTests
     }
 
     [Fact]
+    public async Task SendAsync_ResponseEnded_IsMappedToUnconfirmedWithoutRetry()
+    {
+        var handler = new PrematureResponseHandler();
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5094/") };
+        var client = new LocalWhatsAppGatewayClient(http);
+
+        var result = await client.SendAsync("967775106545", "hello", null, CancellationToken.None, 68);
+
+        Assert.Equal(OutboundDispatchOutcome.Unconfirmed, result.Outcome);
+        Assert.False(result.Retryable);
+    }
+
+    [Fact]
     public async Task AckStatusAsync_Http200Null_ReturnsNoAckWithoutGatewayException()
     {
         using var handler = new GatewayHandler { ResponseStatus = HttpStatusCode.OK, ResponseBody = "null" };
@@ -742,6 +755,12 @@ public sealed class LocalWhatsAppFoundationTests
             try { process.Dispose(); }
             catch { }
         }
+    }
+
+    private sealed class PrematureResponseHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => throw new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely.");
     }
 
     private sealed class GatewayHandler : HttpMessageHandler

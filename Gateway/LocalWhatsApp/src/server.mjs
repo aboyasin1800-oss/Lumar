@@ -16,6 +16,17 @@ let server;
 let stopping = false;
 let startupStage = 'INSTANCE_LOCK';
 
+process.on('unhandledRejection', reason => {
+  const name = reason && typeof reason === 'object' && typeof reason.name === 'string' ? reason.name : 'UnhandledRejection';
+  console.error(JSON.stringify({ stage: 'process-observability', type: 'unhandledRejection', pid: process.pid, errorName: name }));
+});
+
+process.on('uncaughtException', error => {
+  const name = error && typeof error.name === 'string' ? error.name : 'UncaughtException';
+  console.error(JSON.stringify({ stage: 'process-observability', type: 'uncaughtException', pid: process.pid, errorName: name }));
+  void shutdown().finally(() => process.exit(1));
+});
+
 async function shutdown() {
   if (stopping) return;
   stopping = true;

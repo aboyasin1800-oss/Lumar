@@ -10,7 +10,8 @@ public sealed class OrderService(
     IOrderLoyaltyIntegrationService orderLoyaltyIntegrationService,
     IMessageWriteService? messageWriteService = null,
     ICustomerRepository? customerRepository = null,
-    ISettingsRepository? settingsRepository = null) : IOrderService
+    ISettingsRepository? settingsRepository = null,
+    ILogger<OrderService>? logger = null) : IOrderService
 {
     public Task<IReadOnlyList<OrderListDto>> GetListAsync(CancellationToken cancellationToken) => repository.GetListAsync(cancellationToken);
     public Task<OrderDetailsDto?> GetByIdAsync(int orderId, CancellationToken cancellationToken) => repository.GetByIdAsync(orderId, cancellationToken);
@@ -47,11 +48,16 @@ public sealed class OrderService(
                         "Order",
                         messageContext);
 
+                    logger?.LogInformation("OrderCreated TryCreate start. OrderId={OrderId} CustomerId={CustomerId} TemplateKey={TemplateKey}", created.OrderId, created.CustomerId, messageRequest.TemplateKey);
                     await messageWriteService.TryCreateAsync(messageRequest, cancellationToken);
+                    logger?.LogInformation("OrderCreated TryCreate completed. OrderId={OrderId} CustomerId={CustomerId}", created.OrderId, created.CustomerId);
                 }
-                catch
+                catch (Exception exception)
                 {
-                    // The order commit remains valid even when the internal message side is unavailable.
+                    logger?.LogWarning(exception,
+                        "OrderCreated side message failed safely. OrderId={OrderId} CustomerId={CustomerId}",
+                        created.OrderId,
+                        created.CustomerId);
                 }
             }
         }
@@ -158,11 +164,30 @@ public sealed class OrderService(
             ["StoreName"] = await GetRequiredSettingValueAsync("StoreName", cancellationToken),
             ["CustomerCode"] = await GetCustomerCodeAsync(order.CustomerId, cancellationToken),
             ["PointsEarned"] = loyaltyResult?.BuyerDelta,
+            ["CustomerPointsEarned"] = loyaltyResult?.BuyerDelta,
             ["PointsBalance"] = loyaltyResult?.BuyerAccount.CurrentPoints,
+            ["CustomerPointsBalance"] = loyaltyResult?.BuyerAccount.CurrentPoints,
         };
 
         var items = await repository.GetItemsAsync(order.OrderId, cancellationToken);
         context["OrderDetails"] = string.Join(", ", items.Select(item => item.PieceType).Where(static value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase));
+
+        var referralReward = loyaltyResult?.ReferralRewards.FirstOrDefault();
+        if (referralReward is not null && customerRepository is not null)
+        {
+            var referrer = await customerRepository.GetByIdAsync(referralReward.ReferrerCustomerId, cancellationToken);
+            if (referrer is not null)
+            {
+                var referrerAccount = loyaltyResult?.LoyaltyAccounts
+                    .FirstOrDefault(account => account.CustomerId == referralReward.ReferrerCustomerId);
+                context["ReferrerCustomerId"] = referralReward.ReferrerCustomerId;
+                context["ReferrerName"] = referrer.CustomerName;
+                context["ReferrerCode"] = referrer.CustomerCode;
+                context["ReferralPointsEarned"] = referralReward.Delta;
+                context["ReferrerPointsBalance"] = referrerAccount?.CurrentPoints;
+                context["ReferralIntroduction"] = referrer.CustomerName;
+            }
+        }
 
         return context;
     }

@@ -38,7 +38,18 @@ export class SessionStore {
     if (!existsSync(this.path)) return { linked: false, connect: false, loggedOut: false };
     const state = JSON.parse(readFileSync(this.path, 'utf8'));
     if (['linked', 'connect', 'loggedOut'].some(key => typeof state[key] !== 'boolean')) throw new Error('INVALID_SESSION_STATE');
-    return { linked: state.linked, connect: state.connect, loggedOut: state.loggedOut };
+    const providerIdsByCustomerMessageId = state.providerIdsByCustomerMessageId && typeof state.providerIdsByCustomerMessageId === 'object'
+      ? state.providerIdsByCustomerMessageId
+      : {};
+    const ackByProviderId = state.ackByProviderId && typeof state.ackByProviderId === 'object'
+      ? state.ackByProviderId
+      : {};
+    const result = { linked: state.linked, connect: state.connect, loggedOut: state.loggedOut };
+    if (Object.keys(providerIdsByCustomerMessageId).length > 0)
+      result.providerIdsByCustomerMessageId = providerIdsByCustomerMessageId;
+    if (Object.keys(ackByProviderId).length > 0)
+      result.ackByProviderId = ackByProviderId;
+    return result;
   }
 
   write(value) {

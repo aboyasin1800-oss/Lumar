@@ -19,8 +19,14 @@ async function host(context, options = {}) {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  return { call, url, manager };
+  return { call, url, manager, server };
 }
+
+test('gateway HTTP request timeout is longer than the 15-second confirmation wait', async context => {
+  const { server } = await host(context);
+  assert.equal(server.requestTimeout, 30000);
+  assert.equal(server.headersTimeout, 15000);
+});
 
 test('every route requires a token including health; browser-origin requests are rejected', async context => {
   const { call } = await host(context);

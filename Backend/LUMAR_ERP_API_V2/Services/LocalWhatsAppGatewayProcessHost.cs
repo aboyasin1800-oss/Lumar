@@ -15,6 +15,9 @@ public sealed class LocalWhatsAppGatewayProcessHost(
     private string _approvedTestRecipient = string.Empty;
     private bool _enabled;
     private int _port;
+    private readonly List<string> _stdoutTail = new();
+    private readonly List<string> _stderrTail = new();
+    private DateTimeOffset? _processStartedAtUtc;
 
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -183,6 +186,8 @@ public sealed class LocalWhatsAppGatewayProcessHost(
             if (existing is not null)
             {
                 _process = existing;
+                _processStartedAtUtc = DateTimeOffset.UtcNow;
+                AttachProcessObservability(existing);
                 if (await WaitForGatewayHealthAsync())
                 {
                     logger.LogInformation("Reused Local WhatsApp gateway process PID {Pid} on port {Port}.", _process.Id, _port);
@@ -228,23 +233,13 @@ public sealed class LocalWhatsAppGatewayProcessHost(
                 }
 
                 _process = candidate;
+                _processStartedAtUtc = DateTimeOffset.UtcNow;
+                AttachProcessObservability(candidate);
                 logger.LogInformation("Started Local WhatsApp gateway process with PID {Pid} on port {Port} (attempt {Attempt}).", candidate.Id, _port, attempt);
 
                 var ready = await WaitForGatewayHealthAsync();
                 if (ready)
                 {
-                    _process.OutputDataReceived += (_, args) =>
-                    {
-                        if (string.IsNullOrWhiteSpace(args.Data)) return;
-                        logger.LogInformation("LOCAL_WA_SAFE_OBSERVABILITY stdout {Output}", args.Data.Trim());
-                    };
-                    _process.ErrorDataReceived += (_, args) =>
-                    {
-                        if (string.IsNullOrWhiteSpace(args.Data)) return;
-                        logger.LogWarning("LOCAL_WA_SAFE_OBSERVABILITY stderr {Output}", args.Data.Trim());
-                    };
-                    _process.BeginOutputReadLine();
-                    _process.BeginErrorReadLine();
                     return;
                 }
 
@@ -292,6 +287,77 @@ public sealed class LocalWhatsAppGatewayProcessHost(
         psi.Environment["LUMAR_LOCAL_MEDIA_ORIGIN"] = ResolveMediaOrigin(configuration);
 
         return Process.Start(psi);
+    }
+
+    private void AttachProcessObservability(Process process)
+    {
+        process.EnableRaisingEvents = true;
+        process.OutputDataReceived += (_, args) =>
+        {
+            if (string.IsNullOrWhiteSpace(args.Data)) return;
+            var safe = SanitizeProcessOutput(args.Data);
+            lock (_stdoutTail)
+            {
+                _stdoutTail.Add(safe);
+                if (_stdoutTail.Count > 20) _stdoutTail.RemoveAt(0);
+            }
+            logger.LogInformation("LOCAL_WA_SAFE_OBSERVABILITY stdout pid={Pid} output={Output}", process.Id, safe);
+        };
+        process.ErrorDataReceived += (_, args) =>
+        {
+            if (string.IsNullOrWhiteSpace(args.Data)) return;
+            var safe = SanitizeProcessOutput(args.Data);
+            lock (_stderrTail)
+            {
+                _stderrTail.Add(safe);
+                if (_stderrTail.Count > 20) _stderrTail.RemoveAt(0);
+            }
+            logger.LogWarning("LOCAL_WA_SAFE_OBSERVABILITY stderr pid={Pid} output={Output}", process.Id, safe);
+        };
+        process.Exited += (_, _) =>
+        {
+            var exitedAt = DateTimeOffset.UtcNow;
+            var exitCode = TryGetExitCode(process);
+            string[] stdout;
+            string[] stderr;
+            lock (_stdoutTail)
+            {
+                stdout = _stdoutTail.ToArray();
+            }
+            lock (_stderrTail)
+            {
+                stderr = _stderrTail.ToArray();
+            }
+            logger.LogWarning(
+                "LOCAL_WA_SAFE_OBSERVABILITY process-exit pid={Pid} startedAtUtc={StartedAtUtc} exitedAtUtc={ExitedAtUtc} exitCode={ExitCode} unexpected={Unexpected} stdoutTail={StdoutTail} stderrTail={StderrTail}",
+                process.Id,
+                _processStartedAtUtc?.ToString("O") ?? "NOT_RECORDED",
+                exitedAt.ToString("O"),
+                exitCode,
+                exitCode != 0,
+                string.Join(" | ", stdout),
+                string.Join(" | ", stderr));
+        };
+        try
+        {
+            if (process.StartInfo.RedirectStandardOutput)
+                process.BeginOutputReadLine();
+            if (process.StartInfo.RedirectStandardError)
+                process.BeginErrorReadLine();
+        }
+        catch (InvalidOperationException)
+        {
+            logger.LogDebug("Gateway process PID {Pid} has no redirected output streams for tail capture.", process.Id);
+        }
+    }
+
+    private static string SanitizeProcessOutput(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        var safe = value;
+        safe = System.Text.RegularExpressions.Regex.Replace(safe, @"(?i)(authorization|access[_-]?token|cookie|session[_-]?secret|token)\s*[:=]\s*[^\s,;}]+", "$1=[REDACTED]");
+        safe = System.Text.RegularExpressions.Regex.Replace(safe, @"\b[1-9][0-9]{7,14}\b", m => "****" + m.Value[^4..]);
+        return safe.Length <= 512 ? safe : safe[..512];
     }
 
     private async Task<bool> WaitForGatewayHealthAsync()

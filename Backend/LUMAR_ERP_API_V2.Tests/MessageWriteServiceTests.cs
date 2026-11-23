@@ -2157,6 +2157,56 @@ public sealed class MessageWriteServiceTests
     }
 
     [Fact]
+    public void ReferrerSmartTemplate_Order17FourValuesPassSmartGuard()
+    {
+        var values = new Dictionary<string, object?>
+        {
+            ["ReferrerName"] = "ياسين امين علي ياسين",
+            ["ReferralPointsEarned"] = 50m,
+            ["ReferrerPointsBalance"] = 1150m,
+            ["ReferrerCode"] = "C-JKJ0P-HJJHP-D6HD",
+        };
+
+        Assert.Equal("ياسين امين علي ياسين", values["ReferrerName"]);
+        Assert.Equal(50m, values["ReferralPointsEarned"]);
+        Assert.Equal(1150m, values["ReferrerPointsBalance"]);
+        Assert.Equal("C-JKJ0P-HJJHP-D6HD", values["ReferrerCode"]);
+    }
+
+    [Fact]
+    public void ReferrerSmartTemplate_RequiredValuesComeFromOfficialAliases()
+    {
+        var values = new Dictionary<string, object?>
+        {
+            ["ReferrerName"] = "المعرّف الرسمي",
+            ["ReferredCustomerName"] = "العميل الذي عرّفته",
+            ["ReferralPointsEarned"] = 100m,
+            ["ReferrerPointsBalance"] = 400m,
+            ["ReferrerCode"] = "REF-8",
+        };
+
+        Assert.Equal("المعرّف الرسمي", values["ReferrerName"]);
+        Assert.Equal("العميل الذي عرّفته", values["ReferredCustomerName"]);
+        Assert.Equal(100m, values["ReferralPointsEarned"]);
+        Assert.Equal(400m, values["ReferrerPointsBalance"]);
+        Assert.Equal("REF-8", values["ReferrerCode"]);
+    }
+
+    [Theory]
+    [InlineData("200.00000", "200")]
+    [InlineData("200.00", "200")]
+    [InlineData("12.50000", "12.50")]
+    [InlineData("12.34567", "12.35")]
+    public void MessageTemplateRenderer_FormatsPointsForDisplayOnly(string input, string expected)
+    {
+        var renderer = new MessageTemplateRenderer();
+        Assert.Equal(expected, renderer.Render("{{Points}}", new Dictionary<string, object?>
+        {
+            ["Points"] = decimal.Parse(input, System.Globalization.CultureInfo.InvariantCulture),
+        }));
+    }
+
+    [Fact]
     public void MessageTemplateRenderer_RendersLifecycleTokensWithoutUnresolvedPlaceholders()
     {
         var renderer = new MessageTemplateRenderer();

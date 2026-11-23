@@ -12,7 +12,7 @@ public sealed class ReadyMadeSalesService(
     public async Task<ReadyMadeSaleResultDto> CreateAsync(CreateReadyMadeSaleDto sale, CancellationToken cancellationToken)
     {
         var result = await repository.CreateAsync(sale, cancellationToken);
-        await orderLoyaltyIntegrationService.ProcessIfEligibleAsync(result.OrderId, cancellationToken);
+        var loyaltyResult = await orderLoyaltyIntegrationService.ProcessIfEligibleAsync(result.OrderId, cancellationToken);
         await TrySendMessageAsync(
             result.CustomerId,
             result.OrderId,
@@ -22,6 +22,9 @@ public sealed class ReadyMadeSalesService(
             result.OrderNumber,
             result.TotalAmount,
             result.NetAmount,
+            result.PaidAmount,
+            result.RemainingAmount,
+            loyaltyResult,
             cancellationToken);
         return result;
     }
@@ -35,6 +38,9 @@ public sealed class ReadyMadeSalesService(
         string orderNumber,
         decimal totalAmount,
         decimal netAmount,
+        decimal paidAmount,
+        decimal remainingAmount,
+        OrderLoyaltyProcessingResult? loyaltyResult,
         CancellationToken cancellationToken)
     {
         if (messageWriteService is null || customerId <= 0)
@@ -57,6 +63,10 @@ public sealed class ReadyMadeSalesService(
                     ["OrderId"] = orderId,
                     ["Amount"] = totalAmount,
                     ["NetAmount"] = netAmount,
+                    ["PaidAmount"] = paidAmount,
+                    ["RemainingAmount"] = remainingAmount,
+                    ["PointsEarned"] = loyaltyResult?.BuyerDelta,
+                    ["PointsBalance"] = loyaltyResult?.BuyerAccount.CurrentPoints,
                     ["ReferenceId"] = orderNumber,
                 });
 

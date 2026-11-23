@@ -2,6 +2,7 @@ using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.DTOs.Settings;
 using LUMAR_ERP_API_V2.DTOs.WhatsApp;
 using LUMAR_ERP_API_V2.Repositories;
+using System.Globalization;
 
 namespace LUMAR_ERP_API_V2.Services;
 
@@ -10,7 +11,8 @@ public sealed class MessageWriteService(
     IMessageTemplateRenderer renderer,
     ISettingsRepository? settingsRepository = null,
     IYemenPhoneNumberNormalizer? phoneNormalizer = null,
-    IWhatsAppProviderStore? providerStore = null) : IMessageWriteService
+    IWhatsAppProviderStore? providerStore = null,
+    ILogger<MessageWriteService>? logger = null) : IMessageWriteService
 {
     private readonly IYemenPhoneNumberNormalizer _phoneNormalizer = phoneNormalizer ?? new YemenPhoneNumberNormalizer();
 
@@ -62,8 +64,37 @@ public sealed class MessageWriteService(
             var values = route.Values;
             var title = renderer.Render(template.Title, values);
             var body = renderer.Render(template.Body, values);
-            if (ContainsKnownUnresolvedVariable(title) || ContainsKnownUnresolvedVariable(body))
+            var titleUnresolved = ContainsKnownUnresolvedVariable(title);
+            var bodyUnresolved = ContainsKnownUnresolvedVariable(body);
+            var missingRequiredValue = IsMissingRequiredSmartReferralValue(route.TemplateKey, values);
+            if (titleUnresolved || bodyUnresolved || missingRequiredValue)
+            {
+                var unresolvedNames = GetUnresolvedVariableNames(title, body);
+                var requiredValueState = GetReferrerRequiredValueState(route.TemplateKey, values);
+                var exactBlockReason = titleUnresolved ? "TITLE_UNRESOLVED"
+                    : bodyUnresolved ? "BODY_UNRESOLVED"
+                    : "MISSING_REQUIRED_VALUE";
+                logger?.LogWarning(
+                    "SMART_TEMPLATE_BLOCKED_BEFORE_INSERT EventType={EventType} TemplateKey={TemplateKey} TARGET_CUSTOMER_ID={CustomerId} TITLE_UNRESOLVED={TitleUnresolved} BODY_UNRESOLVED={BodyUnresolved} MISSING_REQUIRED_VALUE={MissingRequiredValue} CONTEXT_KEY_NAMES={ContextKeys} ReferrerName_PRESENT={ReferrerNamePresent} ReferrerName_EMPTY={ReferrerNameEmpty} ReferralPointsEarned_PRESENT={ReferralPointsEarnedPresent} ReferralPointsEarned_EMPTY={ReferralPointsEarnedEmpty} ReferrerPointsBalance_PRESENT={ReferrerPointsBalancePresent} ReferrerPointsBalance_EMPTY={ReferrerPointsBalanceEmpty} ReferrerCode_PRESENT={ReferrerCodePresent} ReferrerCode_EMPTY={ReferrerCodeEmpty} UNRESOLVED_VARIABLE_NAMES={UnresolvedVariables} EXACT_BLOCK_REASON={ExactBlockReason}",
+                    request.EventType,
+                    route.TemplateKey,
+                    route.CustomerId,
+                    titleUnresolved ? "YES" : "NO",
+                    bodyUnresolved ? "YES" : "NO",
+                    missingRequiredValue ? "YES" : "NO",
+                    string.Join(',', values.Keys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase)),
+                    requiredValueState.ReferrerNamePresent,
+                    requiredValueState.ReferrerNameEmpty,
+                    requiredValueState.ReferralPointsEarnedPresent,
+                    requiredValueState.ReferralPointsEarnedEmpty,
+                    requiredValueState.ReferrerPointsBalancePresent,
+                    requiredValueState.ReferrerPointsBalanceEmpty,
+                    requiredValueState.ReferrerCodePresent,
+                    requiredValueState.ReferrerCodeEmpty,
+                    unresolvedNames.Count == 0 ? "NONE" : string.Join(',', unresolvedNames),
+                    exactBlockReason);
                 continue;
+            }
 
             int? messageId = null;
             int? notificationId = null;
@@ -202,14 +233,81 @@ public sealed class MessageWriteService(
             || templateText.Contains("greeting", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static IReadOnlyList<string> GetUnresolvedVariableNames(string title, string body)
+    {
+        var names = new List<string>();
+        foreach (var text in new[] { title, body })
+        {
+            foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(text, @"\{\{([^{}]+)\}\}"))
+            {
+                var name = match.Groups[1].Value.Trim();
+                if (!string.IsNullOrWhiteSpace(name) && !names.Contains(name, StringComparer.OrdinalIgnoreCase))
+                    names.Add(name);
+            }
+        }
+        return names;
+    }
+
+    private sealed record ReferralRequiredValueState(
+        string ReferrerNamePresent,
+        string ReferrerNameEmpty,
+        string ReferralPointsEarnedPresent,
+        string ReferralPointsEarnedEmpty,
+        string ReferrerPointsBalancePresent,
+        string ReferrerPointsBalanceEmpty,
+        string ReferrerCodePresent,
+        string ReferrerCodeEmpty);
+
+    private static ReferralRequiredValueState GetReferrerRequiredValueState(string templateKey, IReadOnlyDictionary<string, object?> values)
+    {
+        (string present, string empty) State(string key)
+        {
+            if (!values.TryGetValue(key, out var value) || value is null)
+                return ("NO", "YES");
+            var text = Convert.ToString(value, CultureInfo.InvariantCulture);
+            return ("YES", string.IsNullOrWhiteSpace(text) ? "YES" : "NO");
+        }
+
+        if (!string.Equals(templateKey, "referrer-points-earned-smart", StringComparison.OrdinalIgnoreCase))
+            return new ReferralRequiredValueState("N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A");
+
+        var name = State("ReferrerName");
+        var points = State("ReferralPointsEarned");
+        var balance = State("ReferrerPointsBalance");
+        var code = State("ReferrerCode");
+        return new ReferralRequiredValueState(name.present, name.empty, points.present, points.empty, balance.present, balance.empty, code.present, code.empty);
+    }
+
+    private static bool IsMissingRequiredSmartReferralValue(string templateKey, IReadOnlyDictionary<string, object?> values)
+    {
+        if (!string.Equals(templateKey, "referrer-points-earned-smart", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var requiredKeys = new[]
+        {
+            "ReferrerName", "ReferralPointsEarned", "ReferrerPointsBalance", "ReferrerCode"
+        };
+        return requiredKeys.Any(key =>
+            !values.TryGetValue(key, out var value)
+            || value is null
+            || string.IsNullOrWhiteSpace(Convert.ToString(value, CultureInfo.InvariantCulture)));
+    }
+
     private static bool ContainsKnownUnresolvedVariable(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return false;
 
-        return text.Contains("{{customer_name}}", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("{{CustomerName}}", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("{{HijriDate}}", StringComparison.OrdinalIgnoreCase);
+        var officialVariables = new[]
+        {
+            "customer_name", "CustomerName", "HijriDate", "OrderNumber", "OrderDetails",
+            "TotalAmount", "CurrencyName", "PaidAmount", "RemainingAmount", "DeliveryDate",
+            "PointsEarned", "CustomerPointsEarned", "PointsBalance", "CustomerPointsBalance",
+            "CustomerCode", "ReferrerName", "ReferrerCode", "ReferralIntroduction",
+            "ReferralPointsEarned", "ReferrerPointsBalance", "RelationLine"
+        };
+        return officialVariables.Any(variable =>
+            text.Contains("{{" + variable + "}}", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsCampaignRequest(MessageWriteRequest request)
@@ -230,8 +328,24 @@ public sealed class MessageWriteService(
         var trimmed = requestedTemplateKey.Trim();
         var normalized = trimmed.ToLowerInvariant();
 
-        if (normalized is "ordercreated" or "order-created" or "order-created-customer-smart" or "order-referrer-combined-smart" or "referrer-points-earned-smart")
+        if (normalized is "loyaltyearned" or "loyalty-earned" or "loyaltypointsearned" or "loyalty-points-earned" or "loyalty_points_earned")
+            return "loyalty-earned";
+
+        if (normalized is "referralearned" or "referral-earned")
+            return "referral-earned";
+
+        if (normalized is "referralpointsearned" or "referralpoints-earned" or "referral-points-earned" or "referrer-points-earned-smart")
+            return "referrer-points-earned-smart";
+
+        if (normalized is "ordercreated" or "order-created" or "order-created-customer-smart" or "order-referrer-combined-smart")
             return smartTemplateKey;
+
+        if (normalized is "referralearned" or "referral-earned")
+            return "referral-earned";
+
+
+        if (normalized is "readymadesalecompleted" or "ready-made-sale" or "readymadesale")
+            return "ready-made-sale";
 
         if (normalized is "orderready" or "order-ready")
             return "order-ready";

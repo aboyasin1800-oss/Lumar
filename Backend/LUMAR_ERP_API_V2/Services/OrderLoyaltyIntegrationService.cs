@@ -36,7 +36,9 @@ public sealed class OrderLoyaltyIntegrationService(
     ILoyaltyRepository loyaltyRepository,
     ILoyaltyAccountLifecycleService? lifecycleService = null,
     IVipLevelEvaluationService? vipLevelEvaluationService = null,
-    IMessageWriteService? messageWriteService = null) : IOrderLoyaltyIntegrationService
+    IMessageWriteService? messageWriteService = null,
+    ICustomerRepository? customerRepository = null,
+    ILogger<OrderLoyaltyIntegrationService>? logger = null) : IOrderLoyaltyIntegrationService
 {
     private const string EngineVersion = "RL3-R1";
 
@@ -177,22 +179,8 @@ public sealed class OrderLoyaltyIntegrationService(
             cancellationToken,
             allowFrozenQualifyingPurchase: buyerWasFrozen);
 
-        await TrySendMessageAsync(
-            buyerCustomerId,
-            orderId,
-            "LoyaltyPointsEarned",
-            "LoyaltyPointsEarned",
-            order.CustomerName,
-            order.OrderNumber,
-            order.PhoneNumber ?? string.Empty,
-            new Dictionary<string, object?>
-            {
-                ["CustomerName"] = order.CustomerName ?? "Customer",
-                ["OrderNumber"] = order.OrderNumber,
-                ["OrderId"] = orderId,
-                ["PointsEarned"] = buyerDelta,
-            },
-            cancellationToken);
+        // Loyalty points are rendered inside order-created-customer-smart.
+        // A separate LoyaltyPointsEarned message is not created for this order transaction.
 
         var rewards = new List<OrderReferralRewardResult>();
         var rewardTransactions = new List<ReferralTransactionDto>();
@@ -305,20 +293,31 @@ public sealed class OrderLoyaltyIntegrationService(
             loyaltyAdjustments.Add(adjustResult.Transaction);
             loyaltyAccountUpdates.Add(adjustResult.Account);
 
+            var referrer = customerRepository is null
+                ? null
+                : await customerRepository.GetByIdAsync(levelEntry.ReferrerCustomerId, cancellationToken);
             await TrySendMessageAsync(
                 levelEntry.ReferrerCustomerId,
                 orderId,
                 "ReferralPointsEarned",
                 "ReferralPointsEarned",
-                null,
+                referrer?.CustomerName,
                 order.OrderNumber,
-                string.Empty,
+                referrer?.PhoneNumber ?? string.Empty,
                 new Dictionary<string, object?>
                 {
-                    ["CustomerName"] = "Referrer",
+                    ["CustomerName"] = referrer?.CustomerName ?? "المعرف",
+                    ["ReferrerName"] = referrer?.CustomerName ?? "المعرف",
+                    ["ReferrerCode"] = referrer?.CustomerCode,
+                    ["ReferredCustomerName"] = order.CustomerName ?? "عميل",
+                    ["ReferralIntroduction"] = $"العميل الذي عرّفته: {order.CustomerName ?? "عميل"}",
                     ["OrderNumber"] = order.OrderNumber,
                     ["OrderId"] = orderId,
                     ["PointsEarned"] = deltaPoints,
+                    ["ReferralPointsEarned"] = deltaPoints,
+                    ["ReferrerPointsBalance"] = adjustResult.Account.CurrentPoints,
+                    ["ReferralIntroduction"] = $"العميل الذي عرّفته: {order.CustomerName ?? "عميل"}",
+                    ["ReferredCustomerName"] = order.CustomerName ?? "عميل",
                     ["ReferrerCustomerId"] = levelEntry.ReferrerCustomerId,
                 },
                 cancellationToken,
@@ -385,9 +384,12 @@ public sealed class OrderLoyaltyIntegrationService(
                     ["OrderId"] = orderId,
                 }), cancellationToken);
         }
-        catch
+        catch (Exception exception)
         {
-            // Intentionally ignore internal message-side failures so the business result stays durable.
+            logger?.LogWarning(exception,
+                "ReferralPointsEarned side message failed safely. ReferrerCustomerId={ReferrerCustomerId} OrderId={OrderId}",
+                customerId,
+                orderId);
         }
     }
 

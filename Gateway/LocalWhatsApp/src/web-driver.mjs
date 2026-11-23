@@ -224,6 +224,12 @@ export class WebDriver extends EventEmitter {
       }));
       return;
     }
+    this.emit('ack', providerMessageId, {
+      providerMessageId,
+      ackLevel: known.ackLevel,
+      status: known.status,
+      occurredAtUtc: new Date(known.seenAt).toISOString(),
+    });
     console.error(JSON.stringify({
       marker: 'LOCAL_WA_SAFE_OBSERVABILITY',
       stage: 'message-ack',

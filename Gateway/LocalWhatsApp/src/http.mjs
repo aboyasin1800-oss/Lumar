@@ -101,7 +101,7 @@ function normalizeInternalMedia(bodyMedia) {
 
 export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin = '' }) {
   if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('INVALID_GATEWAY_TOKEN');
-  return createServer({ requestTimeout: 15000, headersTimeout: 10000, maxHeaderSize: 8192 }, async (request, response) => {
+  return createServer({ requestTimeout: 30000, headersTimeout: 15000, maxHeaderSize: 8192 }, async (request, response) => {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Content-Type', 'application/json');
@@ -167,9 +167,19 @@ export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin 
           safeStageLog('media-validation', { status: 'remote-media-ready', mimeType: media.mimeType, bytes: Buffer.byteLength(media.base64, 'base64') });
         }
 
-        safeStageLog('send-gateway', { status: 'before-send-message' });
+        safeStageLog('send-gateway', {
+          status: 'before-send-message',
+          pid: process.pid,
+          customerMessageId: body.customerMessageId == null ? null : String(body.customerMessageId),
+        });
         const result = await manager.send({ recipient: body.recipient, text: body.text, media, customerMessageId: body.customerMessageId });
-        safeStageLog('send-gateway', { status: 'after-send-message', outcome: result?.outcome ?? 'unknown' });
+        safeStageLog('send-gateway', {
+          status: 'after-send-message',
+          pid: process.pid,
+          customerMessageId: body.customerMessageId == null ? null : String(body.customerMessageId),
+          outcome: result?.outcome ?? 'unknown',
+          providerMessageIdPresent: Boolean(result?.providerMessageId),
+        });
         reply(200, result);
       } else {
         reply(404, { code: 'NOT_FOUND' });

@@ -211,6 +211,10 @@ public sealed class LocalWhatsAppGatewayClient(HttpClient http)
         {
             return Unconfirmed();
         }
+        catch (IOException)
+        {
+            return Unconfirmed();
+        }
         catch (JsonException)
         {
             return Unconfirmed();

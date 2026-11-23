@@ -47,7 +47,9 @@ public sealed class MessageTemplateRenderer : IMessageTemplateRenderer
             return offset.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
         if (value is decimal d)
-            return d.ToString(CultureInfo.InvariantCulture);
+            return d == decimal.Truncate(d)
+                ? decimal.Truncate(d).ToString("0", CultureInfo.InvariantCulture)
+                : decimal.Round(d, 2).ToString("0.00", CultureInfo.InvariantCulture);
 
         if (value is double doubleValue)
             return doubleValue.ToString(CultureInfo.InvariantCulture);

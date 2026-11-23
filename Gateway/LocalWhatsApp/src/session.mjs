@@ -18,7 +18,8 @@ export class SessionManager {
     this.driver = null;
     this.busy = false;
     this.saved = store.read();
-    this.providerIdsByCustomerMessageId = new Map();
+    this.ackByProviderId = new Map(Object.entries(this.saved.ackByProviderId ?? {}));
+    this.providerIdsByCustomerMessageId = new Map(Object.entries(this.saved.providerIdsByCustomerMessageId ?? {}));
     if (this.saved.linked) this.state = 'Disconnected';
     if (this.saved.loggedOut) this.state = 'LoggedOut';
   }
@@ -137,6 +138,12 @@ export class SessionManager {
     driver.on('provider-id', safely((providerMessageId, customerMessageId) => {
       if (!providerMessageId || customerMessageId == null) return;
       this.providerIdsByCustomerMessageId.set(String(customerMessageId), providerMessageId);
+      this.persist({ providerIdsByCustomerMessageId: Object.fromEntries(this.providerIdsByCustomerMessageId) });
+    }));
+    driver.on('ack', safely((providerMessageId, ack) => {
+      if (!providerMessageId || !ack) return;
+      this.ackByProviderId.set(String(providerMessageId), ack);
+      this.persist({ ackByProviderId: Object.fromEntries(this.ackByProviderId) });
     }));
     driver.on('failure', safely(() => {
       this.state = 'Error';
@@ -172,8 +179,11 @@ export class SessionManager {
   }
 
   ackStatus(providerMessageId) {
-    if (!this.driver || typeof this.driver.getAckStatus !== 'function') return null;
-    return this.driver.getAckStatus(providerMessageId);
+    if (this.driver && typeof this.driver.getAckStatus === 'function') {
+      const live = this.driver.getAckStatus(providerMessageId);
+      if (live) return live;
+    }
+    return this.ackByProviderId.get(String(providerMessageId)) ?? null;
   }
 
   async send(message) {
