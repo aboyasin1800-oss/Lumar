@@ -1,3 +1,4 @@
+using LUMAR_ERP_API_V2.DTOs.Messages;
 using LUMAR_ERP_API_V2.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -8,6 +9,24 @@ public sealed class OutboundMessageBackgroundService(
     ILogger<OutboundMessageBackgroundService> logger,
     IConfiguration configuration) : BackgroundService
 {
+    private static readonly TimeSpan LocalWhatsAppPollingWindow = TimeSpan.FromSeconds(120);
+
+    internal static bool IsWithinLocalWhatsAppPollingWindow(CustomerMessageDto message, DateTime utcNow)
+    {
+        var referenceTimeUtc = message.DeliveryStatus switch
+        {
+            "Sent" => message.SentAtUtc ?? message.CreatedAtUtc,
+            "Unconfirmed" => message.CreatedAtUtc,
+            _ => (DateTime?)null
+        };
+
+        if (referenceTimeUtc is null)
+            return false;
+
+        var elapsed = utcNow - referenceTimeUtc.Value;
+        return elapsed >= TimeSpan.Zero && elapsed <= LocalWhatsAppPollingWindow;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var pollIntervalSeconds = configuration.GetValue("OutboundMessaging:PollIntervalSeconds", 30);
@@ -38,9 +57,11 @@ public sealed class OutboundMessageBackgroundService(
                 }
 
                 var messages = await messageRepository.GetCustomerMessagesAsync(stoppingToken);
+                var utcNow = DateTime.UtcNow;
                 foreach (var message in messages.Where(message =>
                     message.Channel == "LocalWhatsApp"
-                    && (message.DeliveryStatus == "Sent" || message.DeliveryStatus == "Unconfirmed")))
+                    && (message.DeliveryStatus == "Sent" || message.DeliveryStatus == "Unconfirmed")
+                    && IsWithinLocalWhatsAppPollingWindow(message, utcNow)))
                 {
                     LocalWhatsAppAckStatusResponse? ack;
                     var effectiveProviderId = message.ProviderMessageId?.Trim();

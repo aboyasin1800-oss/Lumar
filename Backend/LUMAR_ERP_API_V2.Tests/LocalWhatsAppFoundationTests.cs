@@ -56,7 +56,7 @@ public sealed class LocalWhatsAppFoundationTests
         using var http = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5094/") };
         var client = new LocalWhatsAppGatewayClient(http);
 
-        var result = await client.SendAsync("967775106545", "hello", null, CancellationToken.None, 68);
+        var result = await client.SendAsync("967775106545", "hello", (LocalCampaignMediaPayload?)null, CancellationToken.None, 68);
 
         Assert.Equal(OutboundDispatchOutcome.Unconfirmed, result.Outcome);
         Assert.False(result.Retryable);
