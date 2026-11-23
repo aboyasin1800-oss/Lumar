@@ -336,6 +336,39 @@ public sealed class MessageWriteServiceTests
         Assert.Contains("هـ", formatted);
     }
 
+    [Theory]
+    [InlineData("967711234567", "967711234567")]
+    [InlineData("+967711234567", "967711234567")]
+    [InlineData("00967711234567", "967711234567")]
+    [InlineData("711234567", "967711234567")]
+    [InlineData("966501234567", "966501234567")]
+    [InlineData("+966501234567", "966501234567")]
+    [InlineData("00966501234567", "966501234567")]
+    [InlineData("971501234567", "971501234567")]
+    [InlineData("96892123456", "96892123456")]
+    [InlineData("97433123456", "97433123456")]
+    [InlineData("96550012345", "96550012345")]
+    [InlineData("97333001234", "97333001234")]
+    public void InternationalPhoneNormalizer_NormalizesSupportedFormats(string input, string expected)
+    {
+        var normalizer = new YemenPhoneNumberNormalizer();
+        Assert.Equal(expected, normalizer.TryNormalizeMobileNumber(input));
+    }
+
+    [Theory]
+    [InlineData("05xxxxxxxx")]
+    [InlineData("15551234567")]
+    [InlineData("123")]
+    [InlineData("966123")]
+    [InlineData("96650123456700")]
+    [InlineData("96650123AB4567")]
+    [InlineData("+10000000000")]
+    public void InternationalPhoneNormalizer_RejectsAmbiguousOrInvalidValues(string input)
+    {
+        var normalizer = new YemenPhoneNumberNormalizer();
+        Assert.Null(normalizer.TryNormalizeMobileNumber(input));
+    }
+
     [Fact]
     public void ManualCampaign_ContextHasSeparateCustomerNameAndHijriDateAliases()
     {

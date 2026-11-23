@@ -11,7 +11,7 @@ function safeStageLog(stage, detail = {}) {
   console.error(JSON.stringify({ stage, ...detail }));
 }
 
-function normalizeYemenMobileNumber(phoneNumber) {
+function normalizeSupportedMobileNumber(phoneNumber) {
   if (typeof phoneNumber !== 'string') return null;
   const digitsOnly = phoneNumber.replace(/\D+/g, '');
   if (!digitsOnly) return null;
@@ -22,6 +22,9 @@ function normalizeYemenMobileNumber(phoneNumber) {
     return null;
   }
   if (trimmed.length === 9 && trimmed.startsWith('7')) return `967${trimmed}`;
+  if (['966', '971', '968', '974', '965', '973'].some(code => trimmed.startsWith(code))) {
+    return trimmed;
+  }
   return null;
 }
 
@@ -139,9 +142,9 @@ export function gatewayServer(manager, { token, testRecipient = '', mediaOrigin 
           safeStageLog('message-validation', { status: 'invalid-input' });
           throw new GatewayError('INVALID_MESSAGE', 400);
         }
-        const normalizedRecipient = normalizeYemenMobileNumber(body.recipient);
+        const normalizedRecipient = normalizeSupportedMobileNumber(body.recipient);
         if (!normalizedRecipient) {
-          safeStageLog('message-validation', { status: 'recipient-rejected', normalizedRecipient: null, approvedRecipient: normalizeYemenMobileNumber(testRecipient) ?? null });
+          safeStageLog('message-validation', { status: 'recipient-rejected', normalizedRecipient: null, approvedRecipient: normalizeSupportedMobileNumber(testRecipient) ?? null });
           throw new GatewayError('INVALID_MESSAGE', 400);
         }
 

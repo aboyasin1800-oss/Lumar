@@ -4,10 +4,7 @@ using LUMAR_ERP_API_V2.Repositories;
 namespace LUMAR_ERP_API_V2.Services;
 
 public sealed class FridayGreetingBackgroundService(
-    ICustomerRepository customerRepository,
-    IMessageWriteService messageWriteService,
-    ISettingsRepository settingsRepository,
-    IHijriDateProvider hijriDateProvider,
+    IServiceScopeFactory scopeFactory,
     ILogger<FridayGreetingBackgroundService> logger) : BackgroundService
 {
     public static readonly string SanaaTimeZoneId = "Asia/Aden (UTC+03:00)";
@@ -34,6 +31,12 @@ public sealed class FridayGreetingBackgroundService(
             var sanaaNow = GetSanaaNow(DateTimeOffset.UtcNow);
             if (!ShouldSendForSanaaDate(sanaaNow.DayOfWeek, sanaaNow.TimeOfDay))
                 return;
+
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var customerRepository = scope.ServiceProvider.GetRequiredService<ICustomerRepository>();
+            var messageWriteService = scope.ServiceProvider.GetRequiredService<IMessageWriteService>();
+            var settingsRepository = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
+            var hijriDateProvider = scope.ServiceProvider.GetRequiredService<IHijriDateProvider>();
 
             var settings = await settingsRepository.GetMessageSettingsAsync(cancellationToken);
             if (!settings.MessageMasterEnabled || !settings.FridayGreetingEnabled)

@@ -83,6 +83,7 @@ builder.Services.AddScoped<IPurchasingRepository, PurchasingRepository>();
 builder.Services.AddScoped<ISupplierInvoiceLineRepository, SupplierInvoiceLineRepository>();
 builder.Services.AddScoped<IMessageRepository, MessageRepository>();
 builder.Services.AddScoped<IMessageWriteService, MessageWriteService>();
+builder.Services.AddScoped<IPhoneNumberNormalizer, YemenPhoneNumberNormalizer>();
 builder.Services.AddScoped<IYemenPhoneNumberNormalizer, YemenPhoneNumberNormalizer>();
 builder.Services.AddScoped<IManualCampaignService, ManualCampaignService>();
 builder.Services.AddScoped<IMessageTemplateRenderer, MessageTemplateRenderer>();

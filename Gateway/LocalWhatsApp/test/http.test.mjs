@@ -59,6 +59,9 @@ test('valid official customer numbers accept equivalent local and international 
   const { call } = await host(context);
   const localApproved = await call('/messages/send', { recipient: '775106545', text: 'final body' });
   const internationalApproved = await call('/messages/send', { recipient: '967775106545', text: 'final body' });
+  const saudi = await call('/messages/send', { recipient: '966548987290', text: 'final body' });
+  const uae = await call('/messages/send', { recipient: '971501234567', text: 'final body' });
+  const localAmbiguous = await call('/messages/send', { recipient: '0551234567', text: 'final body' });
   const invalid = await call('/messages/send', { recipient: '967775106546x', text: 'final body' });
   const missing = await call('/messages/send', { recipient: '', text: 'final body' });
   const deleted = await call('/messages/send', { text: 'final body' });
@@ -67,6 +70,12 @@ test('valid official customer numbers accept equivalent local and international 
   assert.equal((await localApproved.json()).code, 'NOT_CONNECTED');
   assert.equal(internationalApproved.status, 503);
   assert.equal((await internationalApproved.json()).code, 'NOT_CONNECTED');
+  assert.equal(saudi.status, 503);
+  assert.equal((await saudi.json()).code, 'NOT_CONNECTED');
+  assert.equal(uae.status, 503);
+  assert.equal((await uae.json()).code, 'NOT_CONNECTED');
+  assert.equal(localAmbiguous.status, 400);
+  assert.equal((await localAmbiguous.json()).code, 'INVALID_MESSAGE');
   assert.equal(invalid.status, 400);
   assert.equal((await invalid.json()).code, 'INVALID_MESSAGE');
   assert.equal(missing.status, 400);
