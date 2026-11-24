@@ -4,6 +4,11 @@ namespace LUMAR_ERP_API_V2.Services;
 public sealed class AuthService(IAuthRepository repository) : IAuthService
 {
     public Task<SessionDto?> LoginAsync(LoginDto login, CancellationToken ct) => repository.LoginAsync(login, ct);
+    public Task<bool> VerifyAdministrativePasswordAsync(string username, string password, CancellationToken ct) => repository.VerifyAdministrativePasswordAsync(username, password, ct);
+    public Task<ProtectedAreasStatusDto> GetProtectedAreasStatusAsync(CancellationToken ct) => repository.GetProtectedAreasStatusAsync(ct);
+    public Task<bool> VerifyProtectedAreasPasswordAsync(string password, CancellationToken ct) => repository.VerifyProtectedAreasPasswordAsync(password, ct);
+    public Task<bool> SetProtectedAreasPasswordAsync(ProtectedAreasPasswordSetupDto request, CancellationToken ct) => repository.SetProtectedAreasPasswordAsync(request, ct);
+    public Task<bool> UpdateProtectedAreasDurationAsync(ProtectedAreasDurationDto request, string currentProtectionPassword, CancellationToken ct) => repository.UpdateProtectedAreasDurationAsync(request, currentProtectionPassword, ct);
     public Task<SessionDto> RegisterMobileCustomerAsync(MobileCustomerRegistrationDto request, CancellationToken ct) => repository.RegisterMobileCustomerAsync(request, ct);
     public Task<EmployeeProvisioningResult?> ProvisionOfficialEmployeeAccountAsync(EmployeeProvisioningRequest request, CancellationToken ct) => repository.ProvisionOfficialEmployeeAccountAsync(request, ct);
     public Task<SupplierProvisioningResult?> ProvisionOfficialSupplierAccountAsync(SupplierProvisioningRequest request, CancellationToken ct) => repository.ProvisionOfficialSupplierAccountAsync(request, ct);

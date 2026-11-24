@@ -81,7 +81,8 @@ class AuthState extends ChangeNotifier {
       if (_token != null) {
         final currentUser = await _me(_token!);
         if (currentUser == null ||
-            (currentUser.accountType == 'Employee' && currentUser.employeeId == null)) {
+            (currentUser.accountType == 'Employee' &&
+                currentUser.employeeId == null)) {
           await _storage.delete(key: _tokenKey);
           user = null;
         } else {
@@ -123,7 +124,8 @@ class AuthState extends ChangeNotifier {
       final token = json['token'] as String;
       final currentUser =
           AuthUser.fromJson(json['user'] as Map<String, dynamic>);
-      if (currentUser.accountType == 'Employee' && currentUser.employeeId == null) {
+      if (currentUser.accountType == 'Employee' &&
+          currentUser.employeeId == null) {
         return 'هذا الحساب غير مرتبط بموظف فعلي في النظام.';
       }
       if (rememberMe) {
@@ -147,6 +149,113 @@ class AuthState extends ChangeNotifier {
     }
   }
 
+  Future<({bool passwordConfigured, bool manualOnly, int durationMinutes})?>
+      getProtectedAreasStatus() async {
+    if (_token == null) return null;
+    try {
+      final response =
+          await _request('GET', '/auth/protected-areas/status', token: _token)
+              .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return null;
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return (
+        passwordConfigured: json['passwordConfigured'] == true,
+        manualOnly: json['durationMode'] == 'manual',
+        durationMinutes: (json['durationMinutes'] as num?)?.toInt() ?? 30,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> verifyProtectedAreasPassword(String password) async {
+    if (_token == null || password.isEmpty) return false;
+    try {
+      final response = await _request(
+        'POST',
+        '/auth/protected-areas/verify',
+        token: _token,
+        body: {'password': password},
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return false;
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return json['verified'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> setProtectedAreasPassword({
+    required String password,
+    required String confirmPassword,
+  }) async {
+    if (_token == null) return false;
+    try {
+      final response = await _request(
+        'POST',
+        '/auth/protected-areas/password',
+        token: _token,
+        body: {
+          'password': password,
+          'confirmPassword': confirmPassword,
+        },
+      ).timeout(const Duration(seconds: 12));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> updateProtectedAreasDuration({
+    required bool manualOnly,
+    required int durationMinutes,
+    required String currentProtectionPassword,
+  }) async {
+    if (_token == null) return false;
+    try {
+      final response = await _request(
+        'PUT',
+        '/auth/protected-areas/duration',
+        token: _token,
+        body: {
+          'manualOnly': manualOnly,
+          'durationMinutes': durationMinutes,
+          'currentProtectionPassword': currentProtectionPassword,
+        },
+      ).timeout(const Duration(seconds: 12));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> verifyAdministrativePassword(
+      String username, String password) async {
+    if (_token == null || username.trim().isEmpty || password.isEmpty) {
+      return false;
+    }
+    try {
+      final response = await _request(
+        'POST',
+        '/auth/admin/verify-password',
+        token: _token,
+        body: {
+          'username': username.trim(),
+          'password': password,
+        },
+      ).timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } on TimeoutException {
+      return false;
+    } on SocketException {
+      return false;
+    } on HttpException {
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<String?> registerCustomer({
     required String username,
     required String password,
@@ -161,7 +270,8 @@ class AuthState extends ChangeNotifier {
     bool rememberMe = true,
   }) async {
     try {
-      final response = await _request('POST', '/auth/mobile/customer/register', body: {
+      final response =
+          await _request('POST', '/auth/mobile/customer/register', body: {
         'username': username.trim(),
         'password': password,
         'confirmPassword': confirmPassword,
@@ -178,7 +288,8 @@ class AuthState extends ChangeNotifier {
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
         final token = json['token'] as String;
-        final currentUser = AuthUser.fromJson(json['user'] as Map<String, dynamic>);
+        final currentUser =
+            AuthUser.fromJson(json['user'] as Map<String, dynamic>);
         if (rememberMe) {
           await _storage.write(key: _tokenKey, value: token);
           await _storage.write(key: _usernameKey, value: username.trim());
@@ -215,9 +326,11 @@ class AuthState extends ChangeNotifier {
     bool rememberMe = true,
   }) async {
     try {
-      final response = await _request('POST', '/auth/mobile/employee/provision', body: {
+      final response =
+          await _request('POST', '/auth/mobile/employee/provision', body: {
         'employeeCode': employeeCode.trim(),
-        if ((phoneNumber ?? '').trim().isNotEmpty) 'phoneNumber': phoneNumber!.trim(),
+        if ((phoneNumber ?? '').trim().isNotEmpty)
+          'phoneNumber': phoneNumber!.trim(),
         'preferredUsername': preferredUsername?.trim(),
         'rememberMe': rememberMe,
       }).timeout(const Duration(seconds: 12));
@@ -237,11 +350,20 @@ class AuthState extends ChangeNotifier {
 
       return {'statusCode': statusCode, 'message': message};
     } on TimeoutException {
-      return {'statusCode': 500, 'message': 'انتهت مهلة الاتصال بالخادم أثناء إنشاء حساب الموظف.'};
+      return {
+        'statusCode': 500,
+        'message': 'انتهت مهلة الاتصال بالخادم أثناء إنشاء حساب الموظف.'
+      };
     } on SocketException {
-      return {'statusCode': 500, 'message': 'تعذر الاتصال بالخادم أثناء إنشاء حساب الموظف.'};
+      return {
+        'statusCode': 500,
+        'message': 'تعذر الاتصال بالخادم أثناء إنشاء حساب الموظف.'
+      };
     } on HttpException {
-      return {'statusCode': 500, 'message': 'تعذر الاتصال بالخادم أثناء إنشاء حساب الموظف.'};
+      return {
+        'statusCode': 500,
+        'message': 'تعذر الاتصال بالخادم أثناء إنشاء حساب الموظف.'
+      };
     } catch (_) {
       return {'statusCode': 500, 'message': 'تعذر إنشاء حساب الموظف الرسمي.'};
     }
@@ -253,7 +375,8 @@ class AuthState extends ChangeNotifier {
     required String confirmPassword,
   }) async {
     try {
-      final response = await _request('POST', '/auth/mobile/employee/password-setup', body: {
+      final response =
+          await _request('POST', '/auth/mobile/employee/password-setup', body: {
         'setupToken': setupToken,
         'newPassword': newPassword,
         'confirmPassword': confirmPassword,
@@ -353,7 +476,10 @@ class AuthState extends ChangeNotifier {
     } on TimeoutException {
       return {'success': false, 'message': 'انتهت مهلة طلب استعادة الحساب.'};
     } on SocketException {
-      return {'success': false, 'message': 'تعذر الاتصال بالخادم أثناء استعادة الحساب.'};
+      return {
+        'success': false,
+        'message': 'تعذر الاتصال بالخادم أثناء استعادة الحساب.'
+      };
     } catch (_) {
       return {'success': false, 'message': 'تعذر بدء استعادة الحساب.'};
     }
@@ -365,7 +491,10 @@ class AuthState extends ChangeNotifier {
     required String confirmPassword,
   }) async {
     if (_disposed || _token == null) {
-      return {'success': false, 'message': 'جلسة الإدارة مطلوبة لإكمال الاستعادة.'};
+      return {
+        'success': false,
+        'message': 'جلسة الإدارة مطلوبة لإكمال الاستعادة.'
+      };
     }
 
     try {
@@ -389,7 +518,10 @@ class AuthState extends ChangeNotifier {
     } on TimeoutException {
       return {'success': false, 'message': 'انتهت مهلة إكمال استعادة الحساب.'};
     } on SocketException {
-      return {'success': false, 'message': 'تعذر الاتصال بالخادم أثناء إكمال الاستعادة.'};
+      return {
+        'success': false,
+        'message': 'تعذر الاتصال بالخادم أثناء إكمال الاستعادة.'
+      };
     } catch (_) {
       return {'success': false, 'message': 'تعذر إكمال استعادة الحساب.'};
     }
@@ -450,7 +582,3 @@ class ApiResponse {
   final int statusCode;
   final String body;
 }
-
-
-
-

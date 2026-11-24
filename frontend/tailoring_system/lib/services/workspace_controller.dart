@@ -3,7 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../core/app_navigation.dart';
 import 'auth_state.dart';
+import 'sensitive_area_lock.dart';
+import 'protected_areas_key_controller.dart';
 import 'theme_state.dart';
 import 'ui_scale_state.dart';
 
@@ -90,7 +93,8 @@ abstract interface class WorkspacePreferences {
 }
 
 class SecureWorkspacePreferences implements WorkspacePreferences {
-  const SecureWorkspacePreferences({FlutterSecureStorage storage = const FlutterSecureStorage()})
+  const SecureWorkspacePreferences(
+      {FlutterSecureStorage storage = const FlutterSecureStorage()})
       : _storage = storage;
 
   final FlutterSecureStorage _storage;
@@ -99,12 +103,15 @@ class SecureWorkspacePreferences implements WorkspacePreferences {
   Future<String?> read(String key) => _storage.read(key: key);
 
   @override
-  Future<void> write(String key, String value) => _storage.write(key: key, value: value);
+  Future<void> write(String key, String value) =>
+      _storage.write(key: key, value: value);
 }
 
 class WorkspaceTask {
   WorkspaceTask({required this.definition, required this.isPinned})
-      : state = isPinned ? WorkspaceTaskState.pinnedClosed : WorkspaceTaskState.closed;
+      : state = isPinned
+            ? WorkspaceTaskState.pinnedClosed
+            : WorkspaceTaskState.closed;
 
   final WorkspaceRouteDefinition definition;
   Widget? widget;
@@ -113,7 +120,9 @@ class WorkspaceTask {
   bool isDirty = false;
   WorkspaceTaskState? stateBeforeClosing;
 
-  bool get isOpen => state != WorkspaceTaskState.pinnedClosed && state != WorkspaceTaskState.closed;
+  bool get isOpen =>
+      state != WorkspaceTaskState.pinnedClosed &&
+      state != WorkspaceTaskState.closed;
 }
 
 class WorkspaceController extends ChangeNotifier {
@@ -133,6 +142,8 @@ class WorkspaceController extends ChangeNotifier {
   final ThemeState themeState;
   final UiScaleState uiScale;
   final WorkspacePreferences _preferences;
+  late final ProtectedAreasKeyController protectedAreasKey =
+      ProtectedAreasKeyController(auth: auth);
   final List<WorkspaceTask> _tasks = [];
   bool _disposed = false;
 
@@ -155,7 +166,9 @@ class WorkspaceController extends ChangeNotifier {
         _tasks.where((task) => task.isOpen),
       );
   List<String> get pinnedRouteIds => List.unmodifiable(
-        _tasks.where((task) => task.isPinned).map((task) => task.definition.routeId),
+        _tasks
+            .where((task) => task.isPinned)
+            .map((task) => task.definition.routeId),
       );
 
   void _notifyIfActive() {
@@ -164,7 +177,8 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
-  WorkspaceRouteDefinition? definitionFor(String routeId) => _definitions[routeId];
+  WorkspaceRouteDefinition? definitionFor(String routeId) =>
+      _definitions[routeId];
 
   WorkspaceTask? taskFor(String routeId) {
     for (final task in _tasks) {
@@ -178,7 +192,8 @@ class WorkspaceController extends ChangeNotifier {
     final pinnedIds = _decodeRouteIds(savedPins);
     for (final routeId in pinnedIds) {
       if (_definitions.containsKey(routeId)) {
-        _tasks.add(WorkspaceTask(definition: _definitions[routeId]!, isPinned: true));
+        _tasks.add(
+            WorkspaceTask(definition: _definitions[routeId]!, isPinned: true));
       }
     }
     _taskbarSize = WorkspaceTaskbarSizeValues.fromStorage(
@@ -200,13 +215,31 @@ class WorkspaceController extends ChangeNotifier {
     );
   }
 
-  void open(String routeId) {
+  void clearLockedAccess() {
+    protectedAreasKey.close();
+  }
+
+  Future<void> open(String routeId) async {
     if (_disposed) return;
     if (routeId == '/dashboard') {
+      protectedAreasKey.loadStatus();
       _minimizeActiveWithoutNotification();
       _activeRouteId = null;
       _notifyIfActive();
       return;
+    }
+
+    if (SensitiveAreaLock.isLockedRoute(routeId)) {
+      if (!protectedAreasKey.unlocked) {
+        final context = AppNavigation.navigatorKey.currentContext;
+        if (context == null) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'المناطق المحمية مقفلة. افتح المفتاح المركزي من الشاشة الرئيسية.')),
+        );
+        return;
+      }
     }
 
     final definition = _definitions[routeId];
@@ -252,7 +285,11 @@ class WorkspaceController extends ChangeNotifier {
 
   void cancelClose(String routeId) {
     final task = taskFor(routeId);
-    if (_disposed || task == null || task.state != WorkspaceTaskState.closingPending) return;
+    if (_disposed ||
+        task == null ||
+        task.state != WorkspaceTaskState.closingPending) {
+      return;
+    }
     task.state = task.stateBeforeClosing ?? WorkspaceTaskState.openInactive;
     task.stateBeforeClosing = null;
     _notifyIfActive();
@@ -334,6 +371,7 @@ class WorkspaceController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    protectedAreasKey.dispose();
     _tasks.clear();
     super.dispose();
   }
@@ -348,7 +386,9 @@ class WorkspaceController extends ChangeNotifier {
   void _removeTask(WorkspaceTask task) {
     if (_activeRouteId == task.definition.routeId) _activeRouteId = null;
     task.widget = null;
-    task.state = task.isPinned ? WorkspaceTaskState.pinnedClosed : WorkspaceTaskState.closed;
+    task.state = task.isPinned
+        ? WorkspaceTaskState.pinnedClosed
+        : WorkspaceTaskState.closed;
     task.stateBeforeClosing = null;
     if (!task.isPinned) _tasks.remove(task);
   }

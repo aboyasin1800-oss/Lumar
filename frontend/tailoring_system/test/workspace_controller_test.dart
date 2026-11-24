@@ -6,6 +6,7 @@ import 'package:tailoring_system/services/theme_state.dart';
 import 'package:tailoring_system/services/ui_scale_state.dart';
 import 'package:tailoring_system/services/workspace_controller.dart';
 import 'package:tailoring_system/services/workspace_registry.dart';
+import 'package:tailoring_system/services/sensitive_area_lock.dart';
 import 'package:tailoring_system/screens/module_screens.dart';
 
 class _MemoryPreferences implements WorkspacePreferences {
@@ -32,6 +33,7 @@ WorkspaceController _controller(_MemoryPreferences preferences) =>
         _definition(WorkspaceRouteIds.dashboard, 'لوحة التحكم'),
         _definition('/customers', 'العملاء'),
         _definition('/reports', 'التقارير'),
+        _definition('/messages', 'الرسائل'),
       ],
       auth: AuthState(),
       themeState: ThemeState(),
@@ -40,22 +42,107 @@ WorkspaceController _controller(_MemoryPreferences preferences) =>
     );
 
 void main() {
-  test('central registry uses unique stable RouteIds and keeps Dashboard out of taskbar', () {
-    final routeIds = workspaceRegistry.map((definition) => definition.routeId).toList();
+  test('protected key manual mode stays unlocked across dashboard navigation',
+      () {
+    final controller = _controller(_MemoryPreferences());
+    final key = controller.protectedAreasKey;
+    key.manualOnly = true;
+
+    key.unlock();
+    expect(key.unlocked, isTrue);
+    expect(key.expiresAtUtc, isNull);
+
+    controller.open('/dashboard');
+    expect(key.unlocked, isTrue);
+  });
+
+  test('protected key timed mode keeps one expiry across dashboard navigation',
+      () {
+    final controller = _controller(_MemoryPreferences());
+    final key = controller.protectedAreasKey;
+    key.manualOnly = false;
+    key.durationMinutes = 30;
+
+    key.unlock();
+    final expiry = key.expiresAtUtc;
+    expect(key.unlocked, isTrue);
+    expect(expiry, isNotNull);
+
+    controller.open('/dashboard');
+    expect(key.unlocked, isTrue);
+    expect(key.expiresAtUtc, expiry);
+
+    key.close();
+    expect(key.unlocked, isFalse);
+    expect(key.expiresAtUtc, isNull);
+  });
+
+  TestWidgetsFlutterBinding.ensureInitialized();
+  test('approved operational routes remain open by default', () {
+    for (final routeId in const [
+      '/customers',
+      '/sales',
+      '/orders',
+      '/measurements',
+      '/production',
+      '/printing',
+      '/ready-made-production',
+      '/delivery-dashboard',
+      '/messages',
+      '/factory-monitoring',
+      '/referral-dashboard',
+      '/loyalty-dashboard',
+      '/loyalty-transactions',
+      '/loyalty-redemption',
+    ]) {
+      expect(SensitiveAreaLock.isLockedRoute(routeId), isFalse,
+          reason: routeId);
+    }
+  });
+
+  test('all unlisted sensitive routes are locked by default', () {
+    for (final routeId in const [
+      '/inventory',
+      '/purchasing',
+      '/employees',
+      '/payroll',
+      '/finance',
+      '/pricing',
+      '/reports',
+      '/administration',
+      '/settings'
+    ]) {
+      expect(SensitiveAreaLock.isLockedRoute(routeId), isTrue, reason: routeId);
+    }
+  });
+
+  test(
+      'central registry uses unique stable RouteIds and keeps Dashboard out of taskbar',
+      () {
+    final routeIds =
+        workspaceRegistry.map((definition) => definition.routeId).toList();
 
     expect(routeIds.toSet(), hasLength(routeIds.length));
     expect(routeIds, contains(WorkspaceRouteIds.dashboard));
-    expect(workspaceRegistry.any((definition) => definition.routeId == WorkspaceRouteIds.dashboard), isTrue);
+    expect(
+        workspaceRegistry.any(
+            (definition) => definition.routeId == WorkspaceRouteIds.dashboard),
+        isTrue);
   });
 
-  test('registry keeps stable RouteIds and excludes Dashboard from taskbar', () async {
+  test('registry keeps stable RouteIds and excludes Dashboard from taskbar',
+      () async {
     final controller = _controller(_MemoryPreferences());
     await controller.initialize();
 
     controller.open('/customers');
 
-    expect(controller.taskbarTasks.map((task) => task.definition.routeId), ['/customers']);
-    expect(controller.taskbarTasks.any((task) => task.definition.routeId == WorkspaceRouteIds.dashboard), isFalse);
+    expect(controller.taskbarTasks.map((task) => task.definition.routeId),
+        ['/customers']);
+    expect(
+        controller.taskbarTasks.any(
+            (task) => task.definition.routeId == WorkspaceRouteIds.dashboard),
+        isFalse);
   });
 
   test('opening an existing route activates one preserved task', () async {
@@ -93,14 +180,17 @@ void main() {
     final controller = _controller(_MemoryPreferences());
     await controller.initialize();
     controller.open('/customers');
-    controller.open('/reports');
+    controller.open('/messages');
 
-    expect(controller.activeRouteId, '/reports');
-    expect(controller.taskFor('/customers')!.state, WorkspaceTaskState.openInactive);
-    expect(controller.taskFor('/reports')!.state, WorkspaceTaskState.openActive);
+    expect(controller.activeRouteId, '/messages');
+    expect(controller.taskFor('/customers')!.state,
+        WorkspaceTaskState.openInactive);
+    expect(
+        controller.taskFor('/messages')!.state, WorkspaceTaskState.openActive);
   });
 
-  test('close disposes the task widget and dashboard becomes the fallback', () async {
+  test('close disposes the task widget and dashboard becomes the fallback',
+      () async {
     final controller = _controller(_MemoryPreferences());
     await controller.initialize();
     controller.open('/customers');
@@ -114,7 +204,8 @@ void main() {
     expect(controller.dashboardVisible, isTrue);
   });
 
-  test('pinning persists closed shortcuts without creating screen state', () async {
+  test('pinning persists closed shortcuts without creating screen state',
+      () async {
     final preferences = _MemoryPreferences();
     final first = _controller(preferences);
     await first.initialize();
@@ -126,11 +217,13 @@ void main() {
     await second.initialize();
 
     expect(second.pinnedRouteIds, ['/customers']);
-    expect(second.taskFor('/customers')!.state, WorkspaceTaskState.pinnedClosed);
+    expect(
+        second.taskFor('/customers')!.state, WorkspaceTaskState.pinnedClosed);
     expect(second.taskFor('/customers')!.widget, isNull);
   });
 
-  test('unpin removes a closed shortcut and keeps an open task until close', () async {
+  test('unpin removes a closed shortcut and keeps an open task until close',
+      () async {
     final controller = _controller(_MemoryPreferences());
     await controller.initialize();
     await controller.pin('/customers');
@@ -143,16 +236,19 @@ void main() {
     expect(controller.taskFor('/customers'), isNull);
   });
 
-  test('dirty tasks enter ClosingPending and require explicit confirmation', () async {
+  test('dirty tasks enter ClosingPending and require explicit confirmation',
+      () async {
     final controller = _controller(_MemoryPreferences());
     await controller.initialize();
     controller.open('/customers');
     controller.markDirty('/customers', true);
 
     expect(controller.beginClose('/customers'), isTrue);
-    expect(controller.taskFor('/customers')!.state, WorkspaceTaskState.closingPending);
+    expect(controller.taskFor('/customers')!.state,
+        WorkspaceTaskState.closingPending);
     controller.cancelClose('/customers');
-    expect(controller.taskFor('/customers')!.state, WorkspaceTaskState.openActive);
+    expect(
+        controller.taskFor('/customers')!.state, WorkspaceTaskState.openActive);
 
     controller.close('/customers');
     expect(controller.taskFor('/customers'), isNotNull);
@@ -160,7 +256,8 @@ void main() {
     expect(controller.taskFor('/customers'), isNull);
   });
 
-  test('taskbar size and pinned order restore from local preferences', () async {
+  test('taskbar size and pinned order restore from local preferences',
+      () async {
     final preferences = _MemoryPreferences();
     final first = _controller(preferences);
     await first.initialize();
@@ -176,7 +273,8 @@ void main() {
     expect(second.pinnedRouteIds, ['/reports', '/customers']);
   });
 
-  test('opening Dashboard clears the active task and keeps the task available', () async {
+  test('opening Dashboard clears the active task and keeps the task available',
+      () async {
     final controller = _controller(_MemoryPreferences());
     await controller.initialize();
     controller.open('/customers');
@@ -184,7 +282,8 @@ void main() {
 
     expect(controller.dashboardVisible, isTrue);
     expect(controller.tasks, hasLength(1));
-    expect(controller.taskFor('/customers')!.state, WorkspaceTaskState.minimized);
+    expect(
+        controller.taskFor('/customers')!.state, WorkspaceTaskState.minimized);
   });
 
   test('state notifies no listeners after disposal', () async {

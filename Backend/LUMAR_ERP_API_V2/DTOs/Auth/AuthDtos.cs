@@ -1,6 +1,7 @@
 namespace LUMAR_ERP_API_V2.DTOs.Auth;
 
 public sealed record LoginDto(string Username, string Password, bool RememberMe);
+public sealed record AdministrativePasswordVerificationDto(string Username, string Password);
 public sealed record MobileCustomerRegistrationDto(
     string Username,
     string Password,

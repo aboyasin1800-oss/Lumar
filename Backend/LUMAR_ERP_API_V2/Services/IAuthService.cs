@@ -3,6 +3,11 @@ namespace LUMAR_ERP_API_V2.Services;
 public interface IAuthService
 {
     Task<SessionDto?> LoginAsync(LoginDto login, CancellationToken ct);
+    Task<bool> VerifyAdministrativePasswordAsync(string username, string password, CancellationToken ct);
+    Task<ProtectedAreasStatusDto> GetProtectedAreasStatusAsync(CancellationToken ct);
+    Task<bool> VerifyProtectedAreasPasswordAsync(string password, CancellationToken ct);
+    Task<bool> SetProtectedAreasPasswordAsync(ProtectedAreasPasswordSetupDto request, CancellationToken ct);
+    Task<bool> UpdateProtectedAreasDurationAsync(ProtectedAreasDurationDto request, string currentProtectionPassword, CancellationToken ct);
     Task<SessionDto> RegisterMobileCustomerAsync(MobileCustomerRegistrationDto request, CancellationToken ct);
     Task<EmployeeProvisioningResult?> ProvisionOfficialEmployeeAccountAsync(EmployeeProvisioningRequest request, CancellationToken ct);
     Task<SupplierProvisioningResult?> ProvisionOfficialSupplierAccountAsync(SupplierProvisioningRequest request, CancellationToken ct);

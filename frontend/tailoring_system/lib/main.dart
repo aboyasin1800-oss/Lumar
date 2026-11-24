@@ -60,7 +60,7 @@ class _LumarAppState extends State<LumarApp> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-      listenable: Listenable.merge([auth, themeState, uiScale, workspace]),
+      listenable: Listenable.merge([auth, themeState, uiScale]),
       builder: (context, _) => MaterialApp(
             title: 'لومار لإدارة الأعمال',
             navigatorKey: AppNavigation.navigatorKey,

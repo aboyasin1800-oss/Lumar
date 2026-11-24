@@ -149,6 +149,124 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         }
     }
 
+    private const string ProtectedAreasPasswordHashSetting = "ProtectedAreasPasswordHash";
+    private const string ProtectedAreasDurationModeSetting = "ProtectedAreasDurationMode";
+    private const string ProtectedAreasDurationMinutesSetting = "ProtectedAreasDurationMinutes";
+
+    public async Task<ProtectedAreasStatusDto> GetProtectedAreasStatusAsync(CancellationToken ct)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+
+        var hash = await ReadSystemSettingAsync(connection, ProtectedAreasPasswordHashSetting, ct);
+        var mode = await ReadSystemSettingAsync(connection, ProtectedAreasDurationModeSetting, ct);
+        var minutesRaw = await ReadSystemSettingAsync(connection, ProtectedAreasDurationMinutesSetting, ct);
+
+        var manualOnly = string.Equals(mode?.Trim(), "manual", StringComparison.OrdinalIgnoreCase);
+        var minutes = manualOnly ? 0 : int.TryParse(minutesRaw, out var parsed) && parsed is >= 1 and <= 1440 ? parsed : 30;
+
+        return new ProtectedAreasStatusDto(
+            PasswordConfigured: !string.IsNullOrWhiteSpace(hash),
+            DurationMode: manualOnly ? "manual" : "timed",
+            DurationMinutes: minutes);
+    }
+
+    public async Task<bool> VerifyProtectedAreasPasswordAsync(string password, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(password)) return false;
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        var hash = await ReadSystemSettingAsync(connection, ProtectedAreasPasswordHashSetting, ct);
+        return !string.IsNullOrWhiteSpace(hash) && PasswordsMatch(password, hash, string.Empty);
+    }
+
+    public async Task<bool> SetProtectedAreasPasswordAsync(ProtectedAreasPasswordSetupDto request, CancellationToken ct)
+    {
+        if (request is null
+            || string.IsNullOrWhiteSpace(request.Password)
+            || request.Password.Length < 4
+            || !string.Equals(request.Password, request.ConfirmPassword, StringComparison.Ordinal))
+            return false;
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        await UpsertSystemSettingAsync(connection, null, ProtectedAreasPasswordHashSetting,
+            HashPassword(request.Password), "Protected areas password PBKDF2 fingerprint", ct);
+        return true;
+    }
+
+    public async Task<bool> UpdateProtectedAreasDurationAsync(ProtectedAreasDurationDto request, string currentProtectionPassword, CancellationToken ct)
+    {
+        if (!await VerifyProtectedAreasPasswordAsync(currentProtectionPassword, ct)) return false;
+        if (request.ManualOnly)
+        {
+            await using var connection = connections.Create();
+            await connection.OpenAsync(ct);
+            await UpsertSystemSettingAsync(connection, null, ProtectedAreasDurationModeSetting, "manual", "Protected areas unlock duration mode", ct);
+            await UpsertSystemSettingAsync(connection, null, ProtectedAreasDurationMinutesSetting, "0", "Protected areas timed unlock duration in minutes", ct);
+            return true;
+        }
+
+        if (request.DurationMinutes is < 1 or > 1440) return false;
+
+        await using var timedConnection = connections.Create();
+        await timedConnection.OpenAsync(ct);
+        await UpsertSystemSettingAsync(timedConnection, null, ProtectedAreasDurationModeSetting, "timed", "Protected areas unlock duration mode", ct);
+        await UpsertSystemSettingAsync(timedConnection, null, ProtectedAreasDurationMinutesSetting, request.DurationMinutes.ToString(), "Protected areas timed unlock duration in minutes", ct);
+        return true;
+    }
+
+    private static async Task<string?> ReadSystemSettingAsync(SqlConnection connection, string key, CancellationToken ct)
+    {
+        await using var command = new SqlCommand(
+            "SELECT TOP (1) SettingValue FROM dbo.System_Settings WITH (NOLOCK) WHERE SettingName=@key",
+            connection);
+        command.Parameters.AddWithValue("@key", key);
+        var value = await command.ExecuteScalarAsync(ct);
+        return value is null || value is DBNull ? null : value.ToString();
+    }
+
+    private static async Task UpsertSystemSettingAsync(SqlConnection connection, SqlTransaction? transaction, string key, string value, string description, CancellationToken ct)
+    {
+        await using var command = new SqlCommand("""
+            UPDATE dbo.System_Settings SET SettingValue=@value, Description=@description WHERE SettingName=@key;
+            IF @@ROWCOUNT=0
+                INSERT INTO dbo.System_Settings (SettingName, SettingValue, Description) VALUES (@key,@value,@description);
+            """, connection, transaction);
+        command.Parameters.AddWithValue("@key", key);
+        command.Parameters.AddWithValue("@value", value);
+        command.Parameters.AddWithValue("@description", description);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    public async Task<bool> VerifyAdministrativePasswordAsync(string username, string password, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+            return false;
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+
+        await using var command = new SqlCommand(
+            "SELECT UserID, IsActive, UserRole FROM dbo.Users WHERE Username = @username",
+            connection);
+        command.Parameters.AddWithValue("@username", username.Trim());
+
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return false;
+
+        var userId = reader.GetInt32(0);
+        var isActive = reader.GetBoolean(1);
+        var role = reader.IsDBNull(2) ? null : reader.GetString(2);
+
+        if (!isActive || !IsAdministrativeRole(role))
+            return false;
+
+        return await VerifyCurrentPasswordAsync(userId, password, ct);
+    }
+
     public async Task<SessionDto?> LoginAsync(LoginDto login, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(login.Username) || string.IsNullOrWhiteSpace(login.Password))

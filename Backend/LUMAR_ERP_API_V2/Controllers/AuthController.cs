@@ -1,11 +1,74 @@
+using LUMAR_ERP_API_V2.Authorization;
 using LUMAR_ERP_API_V2.DTOs.Auth;
 using LUMAR_ERP_API_V2.Services;
 using Microsoft.AspNetCore.Mvc;
 namespace LUMAR_ERP_API_V2.Controllers;
 [ApiController, Route("auth")]
-public sealed class AuthController(IAuthService service, ILogger<AuthController> logger) : ControllerBase
+public sealed class AuthController(IAuthService service, ILogger<AuthController> logger, IAuthenticatedUserContext? userContext = null) : ControllerBase
 {
     [HttpPost("login")] public async Task<ActionResult<SessionDto>> Login(LoginDto request,CancellationToken ct){var result=await service.LoginAsync(request,ct);return result is null?Unauthorized("Invalid username or password."):Ok(result);}
+    [HttpGet("protected-areas/status")]
+    public async Task<ActionResult<ProtectedAreasStatusDto>> ProtectedAreasStatus(CancellationToken ct)
+    {
+        var currentUser = await ResolveBearerUserAsync(ct);
+        if (currentUser is null) return Unauthorized(new { message = "جلسة الدخول مطلوبة." });
+        return Ok(await service.GetProtectedAreasStatusAsync(ct));
+    }
+
+    [HttpPost("protected-areas/verify")]
+    public async Task<ActionResult<ProtectedAreasVerificationResultDto>> VerifyProtectedAreasPassword([FromBody] ProtectedAreasVerifyDto request, CancellationToken ct)
+    {
+        var currentUser = await ResolveBearerUserAsync(ct);
+        if (currentUser is null) return Unauthorized(new { message = "جلسة الدخول مطلوبة." });
+        if (request is null || string.IsNullOrWhiteSpace(request.Password))
+            return Ok(new ProtectedAreasVerificationResultDto(false));
+        return Ok(new ProtectedAreasVerificationResultDto(await service.VerifyProtectedAreasPasswordAsync(request.Password, ct)));
+    }
+
+    [HttpPost("protected-areas/password")]
+    public async Task<ActionResult> SetProtectedAreasPassword([FromBody] ProtectedAreasPasswordSetupDto request, CancellationToken ct)
+    {
+        var currentUser = await ResolveBearerUserAsync(ct);
+        if (currentUser is null) return Unauthorized(new { message = "جلسة الدخول مطلوبة." });
+        if (!IsAdministrativeRole(currentUser.Role)) return StatusCode(StatusCodes.Status403Forbidden, new { message = "يتطلب إعداد الحماية حساب مسؤول فعلي." });
+        if (request is null || !await service.SetProtectedAreasPasswordAsync(request, ct))
+            return Unauthorized(new { message = "تعذر إعداد حماية المناطق." });
+        return Ok(new { configured = true });
+    }
+
+    [HttpPut("protected-areas/duration")]
+    public async Task<ActionResult> UpdateProtectedAreasDuration([FromBody] ProtectedAreasDurationUpdateRequest request, CancellationToken ct)
+    {
+        var currentUser = await ResolveBearerUserAsync(ct);
+        if (currentUser is null) return Unauthorized(new { message = "جلسة الدخول مطلوبة." });
+        if (!IsAdministrativeRole(currentUser.Role)) return StatusCode(StatusCodes.Status403Forbidden, new { message = "يتطلب تعديل المدة حساب مسؤول فعلي." });
+        if (request is null) return BadRequest(new { message = "بيانات المدة غير صالحة." });
+        var updated = await service.UpdateProtectedAreasDurationAsync(
+            new ProtectedAreasDurationDto(request.ManualOnly, request.DurationMinutes),
+            request.CurrentProtectionPassword,
+            ct);
+        if (!updated) return Unauthorized(new { message = "تعذر تحديث مدة المناطق المحمية." });
+        return Ok(new { updated = true });
+    }
+
+    [HttpPost("admin/verify-password")]
+    public async Task<ActionResult> VerifyAdministrativePassword([FromBody] AdministrativePasswordVerificationDto request, CancellationToken ct)
+    {
+        var currentUser = userContext is null
+            ? null
+            : await userContext.GetCurrentUserAsync(ct);
+        if (currentUser is null)
+            return Unauthorized(new { message = "تعذر التحقق من حسابك." });
+
+        if (request is null || string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+            return Unauthorized(new { message = "كلمة مرور المدير غير صحيحة." });
+
+        var verified = await service.VerifyAdministrativePasswordAsync(request.Username, request.Password, ct);
+        if (!verified)
+            return Unauthorized(new { message = "كلمة مرور المدير غير صحيحة." });
+
+        return Ok(new { verified = true });
+    }
     [HttpPost("mobile/customer/register")] public async Task<ActionResult<SessionDto>> RegisterMobileCustomer(MobileCustomerRegistrationDto request,CancellationToken ct){try{var result=await service.RegisterMobileCustomerAsync(request,ct);return Ok(result);}catch(ArgumentException ex){return BadRequest(ex.Message);}catch(Microsoft.Data.SqlClient.SqlException ex) when(ex.Number is 2601 or 2627){return Conflict("Username or customer already exists.");}}
     [HttpPost("mobile/employee/provision")] public async Task<ActionResult<object>> ProvisionOfficialEmployeeAccount(EmployeeProvisioningRequest request,CancellationToken ct){if (request is null){var correlationId = HttpContext.TraceIdentifier;logger.LogWarning("Employee provisioning request was null. CorrelationId={CorrelationId}", correlationId);return BadRequest(new { message = "بيانات الموظف غير صالحة.", correlationId });}var correlationId2 = HttpContext.TraceIdentifier;var employeeCodeMasked = MaskValue(request.EmployeeCode);var phoneProvided = !string.IsNullOrWhiteSpace(request.PhoneNumber);var preferredUsernameProvided = !string.IsNullOrWhiteSpace(request.PreferredUsername);logger.LogInformation("Employee provisioning request started. CorrelationId={CorrelationId} EmployeeCode={EmployeeCode} PhoneNumberProvided={PhoneNumberProvided} PreferredUsernameProvided={PreferredUsernameProvided}", correlationId2, employeeCodeMasked, phoneProvided, preferredUsernameProvided);try{var result=await service.ProvisionOfficialEmployeeAccountAsync(request,ct);return result is null ? NotFound(new { message = "لم يتم العثور على موظف بهذا الكود.", correlationId = correlationId2 }) : Ok(result);}catch(KeyNotFoundException ex){logger.LogWarning(ex, "Employee provisioning lookup failed. CorrelationId={CorrelationId}", correlationId2);return NotFound(new { message = "لم يتم العثور على موظف بهذا الكود.", correlationId = correlationId2 });}catch(ArgumentException ex){logger.LogWarning(ex, "Employee provisioning validation failed. CorrelationId={CorrelationId}", correlationId2);return BadRequest(new { message = TranslateEmployeeProvisioningError(ex.Message), correlationId = correlationId2 });}catch(Microsoft.Data.SqlClient.SqlException ex) when(ex.Number is 2601 or 2627){logger.LogWarning(ex, "Employee provisioning conflict. CorrelationId={CorrelationId}", correlationId2);return Conflict(new { message = "اسم المستخدم مستخدم مسبقاً. اختر اسماً آخر.", correlationId = correlationId2 });}catch(Exception ex){logger.LogError(ex, "Unexpected employee provisioning failure. CorrelationId={CorrelationId}", correlationId2);return StatusCode(StatusCodes.Status500InternalServerError, new { message = $"حدث خطأ في الخادم أثناء إنشاء الحساب. رقم المتابعة: {correlationId2}", correlationId = correlationId2 });}}
     [HttpPost("mobile/employee/password-setup")] public async Task<IActionResult> CompleteEmployeePasswordSetup([FromBody] PasswordSetupDto request,CancellationToken ct){var correlationId = HttpContext.TraceIdentifier;if(request is null || string.IsNullOrWhiteSpace(request.SetupToken)) return BadRequest(new { message = "رمز إعداد كلمة المرور مطلوب.", correlationId });var ok=await service.CompleteEmployeePasswordSetupAsync(request.SetupToken, request.NewPassword, request.ConfirmPassword, ct);if (!ok) {logger.LogWarning("Employee password setup failed or token expired. CorrelationId={CorrelationId}", correlationId); return BadRequest(new { message = "تعذر إعداد كلمة المرور أو الرمز غير صالح.", correlationId });}logger.LogInformation("Employee password setup completed. CorrelationId={CorrelationId}", correlationId);return NoContent();}
@@ -18,6 +81,16 @@ public sealed class AuthController(IAuthService service, ILogger<AuthController>
     [HttpPost("logout")] public async Task<IActionResult> Logout(CancellationToken ct)=>await service.LogoutAsync(Token,ct)?NoContent():Unauthorized();
     [HttpPut("username")] public async Task<ActionResult<SessionDto>> Username(ChangeUsernameDto request,CancellationToken ct){try{var result=await service.ChangeUsernameAsync(Token,request,ct);return result is null?BadRequest("Unable to change username."):Ok(result);}catch(ArgumentException){return Conflict("Username already exists.");}}
     [HttpPut("password")] public async Task<IActionResult> Password(ChangePasswordDto request,CancellationToken ct)=>await service.ChangePasswordAsync(Token,request,ct)?NoContent():BadRequest("Unable to change password.");
+    private async Task<CurrentUserDto?> ResolveBearerUserAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(Token)) return null;
+        return await service.GetCurrentUserAsync(Token, ct);
+    }
+
+    private static bool IsAdministrativeRole(string? role)
+        => string.Equals(role?.Trim(), "Admin", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(role?.Trim(), "System Administrator", StringComparison.OrdinalIgnoreCase);
+
     private string Token => Request.Headers.Authorization.ToString().StartsWith("Bearer ",StringComparison.OrdinalIgnoreCase)?Request.Headers.Authorization.ToString()[7..]:string.Empty;
     private static string MaskValue(string? value) => string.IsNullOrWhiteSpace(value) ? "<empty>" : value.Length <= 2 ? "*" : $"{value[..2]}***{value[^2..]}";
     private static string TranslateEmployeeProvisioningError(string message)

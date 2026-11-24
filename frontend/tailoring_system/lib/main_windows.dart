@@ -21,7 +21,8 @@ class LumarOriginalWindowsApp extends StatefulWidget {
   const LumarOriginalWindowsApp({super.key});
 
   @override
-  State<LumarOriginalWindowsApp> createState() => _LumarOriginalWindowsAppState();
+  State<LumarOriginalWindowsApp> createState() =>
+      _LumarOriginalWindowsAppState();
 }
 
 class _LumarOriginalWindowsAppState extends State<LumarOriginalWindowsApp> {
@@ -56,7 +57,7 @@ class _LumarOriginalWindowsAppState extends State<LumarOriginalWindowsApp> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: Listenable.merge([auth, themeState, uiScale, workspace]),
+        listenable: Listenable.merge([auth, themeState, uiScale]),
         builder: (context, _) => MaterialApp(
           title: 'لومار لإدارة الأعمال',
           navigatorKey: AppNavigation.navigatorKey,
@@ -69,12 +70,13 @@ class _LumarOriginalWindowsAppState extends State<LumarOriginalWindowsApp> {
             GlobalCupertinoLocalizations.delegate,
           ],
           builder: (context, child) => AppNavigationRegion(
-            onBackMouseButton: () => workspace.open(WorkspaceRouteIds.dashboard),
+            onBackMouseButton: () =>
+                workspace.open(WorkspaceRouteIds.dashboard),
             onCloseWorkspaceTask: (context) =>
                 WorkspaceTaskCloseButton.closeActiveTask(
-                  AppNavigation.navigatorKey.currentContext ?? context,
-                  workspace,
-                ),
+              AppNavigation.navigatorKey.currentContext ?? context,
+              workspace,
+            ),
             showWorkspaceCloseButton: workspace.activeRouteId != null,
             child: KeyboardPolicy(
               uiScale: uiScale,

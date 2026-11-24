@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../screens/inventory/bulk_fabric_entry_screen.dart';
 import '../screens/login_screen.dart';
 import '../services/auth_state.dart';
 import '../services/theme_state.dart';
@@ -74,8 +73,11 @@ class AppRoutes {
 
     if (settings.name == '/structure/إدخال الأقمشة بالجملة' ||
         settings.name == '/inventory/bulk-entry') {
-      return MaterialPageRoute(
-        builder: (_) => const BulkFabricEntryScreen(),
+      return MaterialPageRoute<void>(
+        builder: (_) => _WorkspaceRedirectScreen(
+          routeId: '/inventory',
+          workspace: workspace,
+        ),
         settings: settings,
       );
     }

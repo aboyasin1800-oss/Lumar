@@ -22,6 +22,7 @@ import 'settings/piece_cost_management_screen.dart';
 import 'settings/scanner_management_screen.dart';
 import 'settings/test_data_reset_screen.dart';
 import 'settings/whatsapp_provider_management_screen.dart';
+import 'settings/protected_areas_settings_screen.dart';
 
 const Color _settingsAccent = UiPalette.primaryBorder;
 
@@ -76,6 +77,18 @@ class _SettingsHomeScreenState extends State<SettingsHomeScreen> {
   }
 
   List<_SettingsSection> get _sections => [
+        _SettingsSection(
+          title: 'حماية المناطق الحساسة',
+          description: 'كلمة حماية المناطق\nمدة الفتح والإغلاق',
+          keywords: const [
+            'حماية المناطق الحساسة',
+            'المناطق المحمية',
+            'المفتاح المركزي',
+            'مدة فتح المناطق'
+          ],
+          icon: Icons.key_outlined,
+          builder: (_) => ProtectedAreasSettingsScreen(auth: widget.auth),
+        ),
         _SettingsSection(
           title: 'الحساب والمستخدم',
           description: 'اسم المستخدم\nكلمة المرور\nالبيانات الشخصية',
@@ -305,7 +318,11 @@ class _SettingsHomeScreenState extends State<SettingsHomeScreen> {
           title: 'تنظيف بيانات الاختبار',
           description:
               'إعادة بيانات الاختبار التشغيلية إلى الحالة النظيفة المعتمدة مع الحفاظ على إعدادات وتعريفات النظام.',
-          keywords: const ['تنظيف بيانات الاختبار', 'بيانات الاختبار', 'أدوات التطوير'],
+          keywords: const [
+            'تنظيف بيانات الاختبار',
+            'بيانات الاختبار',
+            'أدوات التطوير'
+          ],
           icon: Icons.cleaning_services_outlined,
           builder: (_) => const TestDataResetScreen(),
         ),
@@ -391,7 +408,7 @@ class _SettingsHomeScreenState extends State<SettingsHomeScreen> {
       ),
       body: Column(
         children: [
-                 Padding(
+          Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
             child: Theme(
               data: theme,
@@ -614,7 +631,8 @@ class _SettingsSectionCardState extends State<_SettingsSectionCard> {
                     BoxShadow(
                       color: isLightMode
                           ? Colors.white.withValues(alpha: isInset ? 0.1 : 0.08)
-                          : Colors.black.withValues(alpha: isInset ? 0.2 : 0.15),
+                          : Colors.black
+                              .withValues(alpha: isInset ? 0.2 : 0.15),
                       blurRadius: isInset ? 5 : 4,
                       spreadRadius: -1,
                       offset:
@@ -863,7 +881,8 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     );
     if (!mounted) return;
 
-    setState(() => message = result['message'] as String? ?? 'تعذر إكمال الاستعادة.');
+    setState(() =>
+        message = result['message'] as String? ?? 'تعذر إكمال الاستعادة.');
     if (result['success'] == true) {
       adminTargetUsername.clear();
       adminRecoveryToken.clear();
@@ -1258,7 +1277,10 @@ class _MeasurementsSettingsScreenState
     try {
       final decoded = jsonDecode(response.body);
       if (decoded is Map<String, dynamic>) {
-        final message = (decoded['message'] ?? decoded['title'] ?? decoded['detail'] ?? decoded['error'])
+        final message = (decoded['message'] ??
+                decoded['title'] ??
+                decoded['detail'] ??
+                decoded['error'])
             .toString()
             .trim();
         if (message.isNotEmpty && message.toLowerCase() != 'null') {
@@ -1270,9 +1292,7 @@ class _MeasurementsSettingsScreenState
       }
     } catch (_) {}
 
-    final raw = response.body
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+    final raw = response.body.replaceAll(RegExp(r'\s+'), ' ').trim();
     return raw.isNotEmpty && raw.toLowerCase() != 'null' ? raw : fallback;
   }
 
@@ -1407,8 +1427,8 @@ class _MeasurementsSettingsScreenState
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(
-            _extractServerErrorMessage(response, fallback: 'تعذر تحديث قياسات القطعة.'));
+        throw Exception(_extractServerErrorMessage(response,
+            fallback: 'تعذر تحديث قياسات القطعة.'));
       }
 
       await _load();
