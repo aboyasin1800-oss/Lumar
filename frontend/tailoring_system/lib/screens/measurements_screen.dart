@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/app_navigation.dart';
+import 'measurement_piece_tables.dart';
 
 class MeasurementEntryScreen extends StatefulWidget {
   const MeasurementEntryScreen({
@@ -128,7 +129,9 @@ class _MeasurementEntryScreenState extends State<MeasurementEntryScreen> {
                                         }
                                       },
                                       decoration: () {
-                                        final isLight = Theme.of(context).brightness == Brightness.light;
+                                        final isLight =
+                                            Theme.of(context).brightness ==
+                                                Brightness.light;
                                         final normalBorder = isLight
                                             ? const Color(0xFFCBD5E1)
                                             : const Color(0xFF2B6865);
@@ -137,7 +140,6 @@ class _MeasurementEntryScreenState extends State<MeasurementEntryScreen> {
                                             : const Color(0xFF02E1B4);
                                         return InputDecoration(
                                           labelText: field,
-                                          suffixText: 'بوصة',
                                           filled: true,
                                           fillColor: isLight
                                               ? const Color(0xFFF8FAFC)
@@ -149,13 +151,17 @@ class _MeasurementEntryScreenState extends State<MeasurementEntryScreen> {
                                                 : const Color(0xFFB7C7DA),
                                           ),
                                           border: OutlineInputBorder(
-                                            borderSide: BorderSide(color: normalBorder),
+                                            borderSide:
+                                                BorderSide(color: normalBorder),
                                           ),
                                           enabledBorder: OutlineInputBorder(
-                                            borderSide: BorderSide(color: normalBorder),
+                                            borderSide:
+                                                BorderSide(color: normalBorder),
                                           ),
                                           focusedBorder: OutlineInputBorder(
-                                            borderSide: BorderSide(color: focusedBorder, width: 1.5),
+                                            borderSide: BorderSide(
+                                                color: focusedBorder,
+                                                width: 1.5),
                                           ),
                                         );
                                       }(),
@@ -286,15 +292,23 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
 
   Future<void> _loadOfficialMeasurementFields() async {
     try {
-      final response = await http.get(Uri.parse('http://127.0.0.1:5093/consumption-rules'));
+      final response =
+          await http.get(Uri.parse('http://127.0.0.1:5093/consumption-rules'));
       if (response.statusCode < 200 || response.statusCode >= 300) return;
       final decoded = jsonDecode(response.body);
       if (decoded is! Map<String, dynamic>) return;
 
       final byProductId = <int, List<String>>{};
       for (final item in ((decoded['measurementFields'] as List?) ?? const [])
-          .whereType<Map<String, dynamic>>()) {
-        final productTypeId = int.tryParse(item['productTypeId']?.toString() ?? '') ?? 0;
+          .whereType<Map<String, dynamic>>()
+          .toList()
+        ..sort((a, b) {
+          final sa = int.tryParse(a['sequence']?.toString() ?? '') ?? 1 << 30;
+          final sb = int.tryParse(b['sequence']?.toString() ?? '') ?? 1 << 30;
+          return sa.compareTo(sb);
+        })) {
+        final productTypeId =
+            int.tryParse(item['productTypeId']?.toString() ?? '') ?? 0;
         final name = (item['nameAr']?.toString() ?? '').trim();
         if (productTypeId <= 0 || name.isEmpty) continue;
         byProductId.putIfAbsent(productTypeId, () => <String>[]).add(name);
@@ -359,7 +373,9 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     if (official != null && official.isNotEmpty) {
       return official;
     }
-    return _fieldsByPieceType[normalized] ?? _fieldsByPieceType[pieceType] ?? const [];
+    return _fieldsByPieceType[normalized] ??
+        _fieldsByPieceType[pieceType] ??
+        const [];
   }
 
   void _loadMeasurements() {
@@ -409,45 +425,22 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     _customerSearchFocusNode.unfocus();
   }
 
-  Future<void> _editMeasurements(List<CustomerMeasurement> measurements) async {
+  Future<void> _editPieceTypeMeasurements(
+      String pieceType, List<CustomerMeasurement> allMeasurements) async {
     final customerId = _selectedCustomerId;
     if (customerId == null) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('اختر عميلًا أولًا.')));
       return;
     }
-    final pieceTypesSet = <String>{
-      ..._fieldsByPieceType.keys,
-      ...measurements.map((item) => item.pieceType),
-    };
-    if (widget.pieceType != null && widget.pieceType!.trim().isNotEmpty) {
-      pieceTypesSet.add(widget.pieceType!);
-    }
-    final pieceTypes = pieceTypesSet.where((type) => type.trim().isNotEmpty).toList();
-    var pieceType = widget.pieceType ??
-        (measurements.isNotEmpty
-            ? measurements.first.pieceType
-            : pieceTypes.first);
-    if (widget.pieceType == null) {
-      final selected = await showDialog<String>(
-          context: context,
-          builder: (context) => SimpleDialog(
-                title: const Text('اختر نوع القطعة'),
-                children: pieceTypes
-                    .map((type) => SimpleDialogOption(
-                        onPressed: () => Navigator.pop(context, type),
-                        child: Text(type)))
-                    .toList(),
-              ));
-      if (selected == null || !mounted) return;
-      pieceType = selected;
-    }
+
     final latest = _latestMeasurements(
-        measurements.where((item) => item.pieceType == pieceType));
+        allMeasurements.where((item) => item.pieceType == pieceType));
     final fields = {
       ..._resolvedFieldsForPieceType(pieceType),
       ...latest.keys,
     }.toList();
+
     final saved = await AppNavigation.push<Map<String, String>>(
         context,
         (_) => MeasurementEntryScreen(
@@ -456,12 +449,62 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
               initialValues: {
                 for (final entry in latest.entries) entry.key: entry.value.value
               },
-              onSave: (values) => _api.upsert(customerId, pieceType, values),
+              onSave: (values) async {
+                final returned =
+                    await _api.upsert(customerId, pieceType, values);
+                final persisted = await _api.getByCustomerId(customerId);
+                final persistedLatest = _latestMeasurements(
+                    persisted.where((item) => item.pieceType == pieceType));
+                for (final entry in values.entries) {
+                  final actual = persistedLatest[entry.key];
+                  if (actual == null) {
+                    throw const HttpException(
+                        'لم يُحفظ قياس المقاصة في السجل.');
+                  }
+                  final expected = entry.value;
+                  final actualValue =
+                      num.tryParse(actual.value.replaceAll(',', '.'));
+                  if (actualValue == null ||
+                      actualValue.toDouble() != expected) {
+                    throw const HttpException(
+                        'تعذر التحقق من القيمة المحفوظة في السجل.');
+                  }
+                }
+                for (final row in returned) {
+                  if (row.pieceType.trim() != pieceType.trim()) {
+                    throw const HttpException(
+                        'استجابة الحفظ تخص نوع قطعة غير مطلوب.');
+                  }
+                }
+              },
             ));
     if (saved != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم حفظ المقاسات بنجاح.')));
-      _loadMeasurements();
+      final persisted = await _api.getByCustomerId(customerId);
+      if (!mounted) return;
+      final persistedLatest = _latestMeasurements(
+          persisted.where((item) => item.pieceType == pieceType));
+      final allSaved = saved.entries.every((entry) {
+        final actual = persistedLatest[entry.key];
+        if (actual == null) return false;
+        final expected = num.tryParse(entry.value.replaceAll(',', '.'));
+        final actualValue = num.tryParse(actual.value.replaceAll(',', '.'));
+        return expected == actualValue;
+      });
+      if (!allSaved) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تعذر التحقق من حفظ المقاسات.')));
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() => _measurements = Future.value(persisted));
+        });
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم حفظ المقاسات بنجاح.')));
+        setState(() => _measurements = Future.value(persisted));
+      });
     }
   }
 
@@ -484,7 +527,9 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     return ColoredBox(
-      color: isLight ? const Color(0xFFF4F7FA) : Theme.of(context).scaffoldBackgroundColor,
+      color: isLight
+          ? const Color(0xFFF4F7FA)
+          : Theme.of(context).scaffoldBackgroundColor,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -521,12 +566,16 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderSide: BorderSide(
-                      color: isLight ? const Color(0xFFCBD5E1) : const Color(0xFF2B6865),
+                      color: isLight
+                          ? const Color(0xFFCBD5E1)
+                          : const Color(0xFF2B6865),
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderSide: BorderSide(
-                      color: isLight ? const Color(0xFF168F86) : const Color(0xFF02E1B4),
+                      color: isLight
+                          ? const Color(0xFF168F86)
+                          : const Color(0xFF02E1B4),
                       width: 1.5,
                     ),
                   ),
@@ -584,126 +633,19 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                               child: Text('تعذر تحميل قياسات العميل.'));
                         }
                         final allMeasurements = snapshot.data ?? [];
-                        final measurements = _latestMeasurements(
-                                allMeasurements.where((measurement) =>
-                                    widget.pieceType == null ||
-                                    measurement.pieceType == widget.pieceType))
-                            .values
+                        final filtered = allMeasurements
+                            .where((measurement) =>
+                                widget.pieceType == null ||
+                                measurement.pieceType == widget.pieceType)
                             .toList();
-                        return SingleChildScrollView(
-                          padding: const EdgeInsets.symmetric(vertical: 20),
-                          child: Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 760),
-                              child: Card(
-                                clipBehavior: Clip.antiAlias,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      Row(children: [
-                                        const Icon(Icons.straighten_outlined),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                            child: Text(
-                                                _selectedCustomerLabel ??
-                                                    'مقاسات العميل',
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .titleMedium)),
-                                      ]),
-                                      const Divider(height: 24),
-                                      if (measurements.isEmpty)
-                                        const Padding(
-                                            padding: EdgeInsets.symmetric(
-                                                vertical: 20),
-                                            child: Center(
-                                                child: Text(
-                                                    'لا توجد قياسات مسجلة لهذا العميل.')))
-                                      else
-                                        LayoutBuilder(
-                                            builder: (context, constraints) {
-                                          final columns =
-                                              constraints.maxWidth < 480
-                                                  ? 2
-                                                  : 3;
-                                          final width = (constraints.maxWidth -
-                                                  (columns - 1) * 8) /
-                                              columns;
-                                          return Wrap(
-                                            spacing: 8,
-                                            runSpacing: 8,
-                                            children: measurements
-                                                .map((measurement) => Container(
-                                                      width: width,
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 12,
-                                                          vertical: 10),
-                                                      decoration: BoxDecoration(
-                                                        color: Theme.of(context)
-                                                            .colorScheme
-                                                            .surfaceContainerHighest,
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(6),
-                                                      ),
-                                                      child: Column(
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .start,
-                                                          children: [
-                                                            Text(
-                                                                measurement
-                                                                    .measurementName,
-                                                                maxLines: 1,
-                                                                overflow:
-                                                                    TextOverflow
-                                                                        .ellipsis),
-                                                            const SizedBox(
-                                                                height: 4),
-                                                            Text(
-                                                                '${measurement.value} سم',
-                                                                style: Theme.of(
-                                                                        context)
-                                                                    .textTheme
-                                                                    .titleMedium
-                                                                    ?.copyWith(
-                                                                        fontWeight:
-                                                                            FontWeight.bold)),
-                                                            Text(
-                                                                '${measurement.pieceType} · مراجعة ${measurement.revisionNumber}',
-                                                                style: Theme.of(
-                                                                        context)
-                                                                    .textTheme
-                                                                    .bodySmall),
-                                                          ]),
-                                                    ))
-                                                .toList(),
-                                          );
-                                        }),
-                                      const SizedBox(height: 14),
-                                      Align(
-                                        alignment:
-                                            AlignmentDirectional.centerEnd,
-                                        child: FilledButton.icon(
-                                          onPressed: () => _editMeasurements(
-                                              allMeasurements),
-                                          icon: Icon(measurements.isEmpty
-                                              ? Icons.add
-                                              : Icons.edit_outlined),
-                                          label: Text(measurements.isEmpty
-                                              ? 'إضافة مقاسات'
-                                              : 'تحديث المقاسات'),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
+                        return Padding(
+                          padding: const EdgeInsetsDirectional.symmetric(
+                              horizontal: 16),
+                          child: MeasurementPieceTables(
+                            measurements: filtered,
+                            officialFieldOrder: _officialFieldsByPieceType,
+                            onEdit: (pieceType) =>
+                                _editPieceTypeMeasurements(pieceType, filtered),
                           ),
                         );
                       })),
@@ -802,7 +744,7 @@ class MeasurementsApi {
     }
   }
 
-  Future<void> upsert(
+  Future<List<CustomerMeasurement>> upsert(
       int customerId, String pieceType, Map<String, double> values) async {
     final client = HttpClient();
     try {
@@ -821,6 +763,21 @@ class MeasurementsApi {
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw HttpException(body.isEmpty ? 'فشل حفظ المقاسات.' : body);
       }
+      if (body.isEmpty) {
+        throw const HttpException('تعذر تأكيد حفظ المقاسات من الخادم.');
+      }
+      final saved = jsonDecode(body);
+      if (saved is! List) {
+        throw const HttpException('استجابة حفظ المقاسات غير صالحة.');
+      }
+      final returned = saved
+          .whereType<Map<String, dynamic>>()
+          .map(CustomerMeasurement.fromJson)
+          .toList();
+      if (returned.isEmpty) {
+        throw const HttpException('لم يثبت الخادم حفظ المقاسات.');
+      }
+      return returned;
     } finally {
       client.close();
     }
