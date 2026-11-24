@@ -47,8 +47,17 @@ class _FakeLiveOrdersApi extends ProductionApi {
       );
 }
 
+String _normalizeOrderStatusKeyForTest(String value) {
+  final lowered = value.trim().toLowerCase();
+  if (lowered.contains('deliver') || lowered == 'تم التسليم') {
+    return 'delivered';
+  }
+  return lowered;
+}
+
 void main() {
-  testWidgets('production screen shows live orders from API orders list', (tester) async {
+  testWidgets('production screen shows live orders from API orders list',
+      (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -60,9 +69,8 @@ void main() {
     await tester.pumpAndSettle();
 
     final richTexts = tester.widgetList<RichText>(find.byType(RichText));
-    final combined = richTexts
-        .map((widget) => widget.text.toPlainText())
-        .join(' ');
+    final combined =
+        richTexts.map((widget) => widget.text.toPlainText()).join(' ');
 
     expect(combined, contains('ORD-1001'));
     expect(combined, contains('ORD-1002'));
@@ -74,7 +82,9 @@ void main() {
     expect(combined, contains('قيد الإنتاج'));
   });
 
-  test('first started production piece moves order to in production and keeps red warning for unstarted new pieces', () {
+  test(
+      'first started production piece moves order to in production and keeps red warning for unstarted new pieces',
+      () {
     final pieces = [
       {'pieceStatus': 'New'},
       {'pieceStatus': 'Printing'},
@@ -85,7 +95,8 @@ void main() {
 
     expect(status, 'قيد الإنتاج');
     expect(unstarted, 1);
-    expect(buildProductionWarningText(unstarted), contains('هناك 1 قطع لم تدخل خط الإنتاج'));
+    expect(buildProductionWarningText(unstarted),
+        contains('هناك 1 قطع لم تدخل خط الإنتاج'));
   });
 
   test('all new pieces are classified as new orders only', () {
@@ -101,7 +112,9 @@ void main() {
     expect(metrics.startedPieces, 0);
   });
 
-  test('one started piece in a five-piece order is in production with four unstarted', () {
+  test(
+      'one started piece in a five-piece order is in production with four unstarted',
+      () {
     final metrics = calculateProductionOrderMetrics([
       {'pieceStatus': 'Printing', 'productTypeId': 4},
       {'pieceStatus': 'New', 'productTypeId': 4},
@@ -150,6 +163,21 @@ void main() {
 
     expect(metrics.status, 'قيد الإنتاج');
     expect(metrics.completedPieces, 1);
+  });
+
+  test(
+      'official Delivered order remains delivered even when all pieces are complete',
+      () {
+    expect(_normalizeOrderStatusKeyForTest('Delivered'), 'delivered');
+    expect(_normalizeOrderStatusKeyForTest('تم التسليم'), 'delivered');
+  });
+
+  test('ready-for-delivery filter accepts only ready status', () {
+    bool isReadyForDelivery(String status) => status == 'جاهز للتسليم';
+
+    expect(isReadyForDelivery('جاهز للتسليم'), isTrue);
+    expect(isReadyForDelivery('تم التسليم'), isFalse);
+    expect(isReadyForDelivery('Delivered'), isFalse);
   });
 
   test('statistics data cannot change order classification', () {

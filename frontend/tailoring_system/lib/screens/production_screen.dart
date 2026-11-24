@@ -288,90 +288,100 @@ class _ProductionScreenState extends State<ProductionScreen>
         return ColoredBox(
           color: isDark ? UiPalette.screenBackground : const Color(0xFFF4F7FA),
           child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TabBar(
-                      controller: tabs,
-                      isScrollable: false,
-                      labelPadding: const EdgeInsets.symmetric(horizontal: 10),
-                      indicatorColor: isDark ? UiPalette.primaryBlue : const Color(0xFF168F86),
-                      labelColor: isDark ? Theme.of(context).colorScheme.onSurface : const Color(0xFF168F86),
-                      unselectedLabelColor: isDark
-                          ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                          : const Color(0xFF5B687A),
-                      indicatorWeight: 3,
-                      dividerColor: isDark ? Theme.of(context).dividerColor : const Color(0xFFCBD5E1),
-                      tabs: const [
-                        Tab(text: 'إنتاج طلبات التفصيل'),
-                        Tab(text: 'إجمالي عدد القطع'),
-                        Tab(text: 'الإنتاج الجاهز للبيع'),
-                      ],
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TabBar(
+                        controller: tabs,
+                        isScrollable: false,
+                        labelPadding:
+                            const EdgeInsets.symmetric(horizontal: 10),
+                        indicatorColor: isDark
+                            ? UiPalette.primaryBlue
+                            : const Color(0xFF168F86),
+                        labelColor: isDark
+                            ? Theme.of(context).colorScheme.onSurface
+                            : const Color(0xFF168F86),
+                        unselectedLabelColor: isDark
+                            ? Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.7)
+                            : const Color(0xFF5B687A),
+                        indicatorWeight: 3,
+                        dividerColor: isDark
+                            ? Theme.of(context).dividerColor
+                            : const Color(0xFFCBD5E1),
+                        tabs: const [
+                          Tab(text: 'إنتاج طلبات التفصيل'),
+                          Tab(text: 'إجمالي عدد القطع'),
+                          Tab(text: 'الإنتاج الجاهز للبيع'),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    tooltip: isDark ? 'الوضع الفاتح' : 'الوضع الداكن',
-                    onPressed: () {
-                      if (widget.themeState != null) {
-                        final target =
-                            widget.themeState!.themeMode == ThemeMode.dark
-                                ? AppThemePreference.light
-                                : AppThemePreference.dark;
-                        widget.themeState!.setPreference(target);
-                        return;
-                      }
-                      setState(() {
-                        _fallbackDarkMode = !_fallbackDarkMode;
-                      });
-                    },
-                    icon: Icon(
-                      isDark
-                          ? Icons.light_mode_outlined
-                          : Icons.dark_mode_outlined,
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: isDark ? 'الوضع الفاتح' : 'الوضع الداكن',
+                      onPressed: () {
+                        if (widget.themeState != null) {
+                          final target =
+                              widget.themeState!.themeMode == ThemeMode.dark
+                                  ? AppThemePreference.light
+                                  : AppThemePreference.dark;
+                          widget.themeState!.setPreference(target);
+                          return;
+                        }
+                        setState(() {
+                          _fallbackDarkMode = !_fallbackDarkMode;
+                        });
+                      },
+                      icon: Icon(
+                        isDark
+                            ? Icons.light_mode_outlined
+                            : Icons.dark_mode_outlined,
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: 'تحديث',
-                    onPressed: reload,
-                    icon: const Icon(Icons.refresh),
-                  ),
-                ],
+                    IconButton(
+                      tooltip: 'تحديث',
+                      onPressed: reload,
+                      icon: const Icon(Icons.refresh),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: TabBarView(
-                controller: tabs,
-                children: [
-                  _ProductionOrdersRootTab(
-                    pieces: activeData.pieces,
-                    orders: activeData.orders,
-                    orderItems: activeData.orderItems,
-                    routesByProductTypeId: activeData.routesByProductTypeId,
-                    onRefresh: reload,
-                  ),
-                  TotalPiecesTab(
-                    pieces: activeData.pieces,
-                    orderItems: activeData.orderItems,
-                    onRefresh: reload,
-                  ),
-                  ReadyMadeTab(
-                    orders: activeData.readyOrders,
-                    inventory: activeData.readyInventory,
-                    readyPieces: activeData.readyPieces,
-                    api: _api,
-                    onRefresh: reload,
-                  ),
-                ],
+              const SizedBox(height: 10),
+              Expanded(
+                child: TabBarView(
+                  controller: tabs,
+                  children: [
+                    _ProductionOrdersRootTab(
+                      pieces: activeData.pieces,
+                      orders: activeData.orders,
+                      orderItems: activeData.orderItems,
+                      routesByProductTypeId: activeData.routesByProductTypeId,
+                      onRefresh: reload,
+                    ),
+                    TotalPiecesTab(
+                      pieces: activeData.pieces,
+                      orderItems: activeData.orderItems,
+                      onRefresh: reload,
+                    ),
+                    ReadyMadeTab(
+                      orders: activeData.readyOrders,
+                      inventory: activeData.readyInventory,
+                      readyPieces: activeData.readyPieces,
+                      api: _api,
+                      onRefresh: reload,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         );
       },
     );
@@ -431,9 +441,10 @@ class ProductionStatistics extends StatelessWidget {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                         side: BorderSide(
-                          color: Theme.of(context).brightness == Brightness.light
-                              ? const Color(0xFFCBD5E1)
-                              : UiPalette.borderSoft,
+                          color:
+                              Theme.of(context).brightness == Brightness.light
+                                  ? const Color(0xFFCBD5E1)
+                                  : UiPalette.borderSoft,
                         ),
                       ),
                       child: Padding(
@@ -870,9 +881,13 @@ class _OrdersListTabState extends State<_OrdersListTab> {
             details,
             routesByProductTypeId: widget.routesByProductTypeId,
           );
-          final status = details.isEmpty
-              ? _resolveOrderStatusFromOrder(order)
-              : metrics.status;
+          final status = _normalizeOrderStatusKey(
+                      (order['orderStatus'] ?? '').toString()) ==
+                  'delivered'
+              ? 'تم التسليم'
+              : details.isEmpty
+                  ? _resolveOrderStatusFromOrder(order)
+                  : metrics.status;
           final orderItemSummary = _buildOrderItemSummary(
             widget.orderItems
                 .where((item) =>
@@ -936,7 +951,11 @@ class _OrdersListTabState extends State<_OrdersListTab> {
                 items,
                 routesByProductTypeId: widget.routesByProductTypeId,
               );
-              final status = metrics.status;
+              final hasDeliveredPiece = items.any((item) {
+                final value = (item['pieceStatus'] ?? '').toString();
+                return _normalizeOrderStatusKey(value) == 'delivered';
+              });
+              final status = hasDeliveredPiece ? 'تم التسليم' : metrics.status;
               final summary = _buildOrderSummary(items);
               final orderId =
                   ((first['orderId'] ?? first['order_id'] ?? 0) as int?) ?? 0;
@@ -968,7 +987,7 @@ class _OrdersListTabState extends State<_OrdersListTab> {
             if (row.status != 'قيد الإنتاج') return false;
             break;
           case _OrderStateFilter.readyForDelivery:
-            if (row.status != 'جاهز للتسليم' && row.status != 'تم التسليم') {
+            if (row.status != 'جاهز للتسليم') {
               return false;
             }
             break;
@@ -3667,7 +3686,7 @@ class _ReadyMadeTabState extends State<ReadyMadeTab> {
                         title: Text(
                             '${order['productionOrderNumber']} - ${order['productionName']}'),
                         subtitle: Text(
-                          'الحالة: ${_productionDisplayLabel(order['status'])}'),
+                            'الحالة: ${_productionDisplayLabel(order['status'])}'),
                         children: [
                           FutureBuilder<List<Map<String, dynamic>>>(
                             future: widget.api.readyItems(
@@ -3739,69 +3758,76 @@ class ReadyMadeDetailsScreen extends StatelessWidget {
   final ProductionApi api;
   final VoidCallback onRefresh;
   @override
-    Widget build(BuildContext context) {
+  Widget build(BuildContext context) {
     final itemId = item['readyMadeProductionOrderItemId'] as int;
-    final knownPieces = readyPieces
-      .where((piece) => piece['orderItemId'] == itemId)
-      .toList();
+    final knownPieces =
+        readyPieces.where((piece) => piece['orderItemId'] == itemId).toList();
     return Scaffold(
-      appBar: AppBar(title: Text('${item['pieceType']}')),
-      body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: knownPieces.isNotEmpty
-          ? Future<List<Map<String, dynamic>>>.value(knownPieces)
-          : api.readyPieces(itemId),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return const ProductionError(
-                  message: 'تعذر تحميل قطع الإنتاج الجاهز.');
-            }
-            final pieces = snapshot.data!;
-            return ListView.separated(
-                padding: const EdgeInsets.all(20),
-                itemCount: pieces.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final piece = pieces[index];
-                  Map<String, dynamic>? stock;
-                  for (final row in inventory) {
-                    if (row['readyMadeProductionOrderPieceInstanceId'] ==
-                        piece['readyMadeProductionOrderPieceInstanceId']) {
-                      stock = row;
-                      break;
+        appBar: AppBar(title: Text('${item['pieceType']}')),
+        body: FutureBuilder<List<Map<String, dynamic>>>(
+            future: knownPieces.isNotEmpty
+                ? Future<List<Map<String, dynamic>>>.value(knownPieces)
+                : api.readyPieces(itemId),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return const ProductionError(
+                    message: 'تعذر تحميل قطع الإنتاج الجاهز.');
+              }
+              final pieces = snapshot.data!;
+              return ListView.separated(
+                  padding: const EdgeInsets.all(20),
+                  itemCount: pieces.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final piece = pieces[index];
+                    Map<String, dynamic>? stock;
+                    for (final row in inventory) {
+                      if (row['readyMadeProductionOrderPieceInstanceId'] ==
+                          piece['readyMadeProductionOrderPieceInstanceId']) {
+                        stock = row;
+                        break;
+                      }
                     }
-                  }
                     return InkWell(
-                      onTap: () => AppNavigation.push(
-                        context,
-                        (_) => ReadyMadePieceDetailsScreen(
-                          piece: piece,
-                          api: api,
-                          onRefreshed: onRefresh,
-                        )),
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Wrap(spacing: 18, runSpacing: 10, children: [
-                            DetailField('رقم القطعة', piece['pieceNumber']),
-                            DetailField('كود التتبع', piece['trackingCode']),
-                            DetailField('حالة القطعة',
-                                _productionDisplayLabel(piece['pieceStatus'])),
-                            DetailField('تاريخ الإنشاء',
-                                formatDate(piece['createdAt'])),
-                            DetailField('سعر البيع المقترح',
-                                stock?['suggestedSellingPrice']),
-                            DetailField(
-                              'حالة المخزون',
-                              stock == null
-                                ? 'لم تدخل المخزون'
-                                : _productionDisplayLabel(stock['status']))
-                          ]))));
-                });
+                        onTap: () => AppNavigation.push(
+                            context,
+                            (_) => ReadyMadePieceDetailsScreen(
+                                  piece: piece,
+                                  api: api,
+                                  onRefreshed: onRefresh,
+                                )),
+                        child: Card(
+                            child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Wrap(
+                                    spacing: 18,
+                                    runSpacing: 10,
+                                    children: [
+                                      DetailField(
+                                          'رقم القطعة', piece['pieceNumber']),
+                                      DetailField(
+                                          'كود التتبع', piece['trackingCode']),
+                                      DetailField(
+                                          'حالة القطعة',
+                                          _productionDisplayLabel(
+                                              piece['pieceStatus'])),
+                                      DetailField('تاريخ الإنشاء',
+                                          formatDate(piece['createdAt'])),
+                                      DetailField('سعر البيع المقترح',
+                                          stock?['suggestedSellingPrice']),
+                                      DetailField(
+                                          'حالة المخزون',
+                                          stock == null
+                                              ? 'لم تدخل المخزون'
+                                              : _productionDisplayLabel(
+                                                  stock['status']))
+                                    ]))));
+                  });
             }));
-          }
+  }
 }
 
 class ReadyMadePieceDetailsScreen extends StatefulWidget {
@@ -3817,10 +3843,12 @@ class ReadyMadePieceDetailsScreen extends StatefulWidget {
   final VoidCallback onRefreshed;
 
   @override
-  State<ReadyMadePieceDetailsScreen> createState() => _ReadyMadePieceDetailsScreenState();
+  State<ReadyMadePieceDetailsScreen> createState() =>
+      _ReadyMadePieceDetailsScreenState();
 }
 
-class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScreen> {
+class _ReadyMadePieceDetailsScreenState
+    extends State<ReadyMadePieceDetailsScreen> {
   late Future<_ReadyMadePieceDetails> _future;
   bool _busy = false;
   bool _transferredToInventory = false;
@@ -3832,7 +3860,8 @@ class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScree
   }
 
   Future<_ReadyMadePieceDetails> _load() async {
-    final pieceId = widget.piece['readyMadeProductionOrderPieceInstanceId'] as int;
+    final pieceId =
+        widget.piece['readyMadeProductionOrderPieceInstanceId'] as int;
     final results = await Future.wait([
       widget.api.getReadyMadeWorkCard(pieceId),
       widget.api.get('/production/readymade-pieces/route?pieceId=$pieceId'),
@@ -3851,12 +3880,14 @@ class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScree
     try {
       final result = await widget.api.advancePiece(
         trackingCode: (data.card['trackingCode'] ?? '').toString(),
-        pieceType: (data.route['pieceType'] ?? data.card['pieceType'] ?? '').toString(),
+        pieceType: (data.route['pieceType'] ?? data.card['pieceType'] ?? '')
+            .toString(),
         productTypeId: (data.route['productTypeId'] as num).toInt(),
         requestedStage: stage,
         scannerCode: '',
         employeeCode: '',
-        operationReference: 'ExecutionSource=ManualTest;Operation=ReadyMadeProductionAdvance',
+        operationReference:
+            'ExecutionSource=ManualTest;Operation=ReadyMadeProductionAdvance',
         isReadyMade: true,
       );
       if (result['updated'] != true) {
@@ -3938,7 +3969,8 @@ class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScree
               onPressed: () => AppNavigation.push(
                 context,
                 (_) => WorkCardPreviewScreen(
-                  pieceId: widget.piece['readyMadeProductionOrderPieceInstanceId'] as int,
+                  pieceId: widget
+                      .piece['readyMadeProductionOrderPieceInstanceId'] as int,
                   readyMade: true,
                 ),
               ),
@@ -3952,7 +3984,8 @@ class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScree
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
-              return ProductionError(onRetry: () => setState(() => _future = _load()));
+              return ProductionError(
+                  onRetry: () => setState(() => _future = _load()));
             }
             final data = snapshot.data!;
             final currentStage = (data.card['pieceStatus'] ?? 'New').toString();
@@ -3968,7 +4001,8 @@ class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScree
                   DetailField('رقم أمر الإنتاج', data.card['orderNumber']),
                 ]),
                 const SizedBox(height: 16),
-                Text('التتبع الرسمي', style: Theme.of(context).textTheme.titleLarge),
+                Text('التتبع الرسمي',
+                    style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 8),
                 ManualTrackingStepper(
                   stages: stages,
@@ -4005,9 +4039,12 @@ class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScree
                 const SizedBox(height: 16),
                 Text('القياسات', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 8),
-                MeasurementsView(values: parseMeasurements(data.card['measurementSnapshot'] as String?)),
+                MeasurementsView(
+                    values: parseMeasurements(
+                        data.card['measurementSnapshot'] as String?)),
                 const SizedBox(height: 16),
-                Text('تاريخ التتبع', style: Theme.of(context).textTheme.titleLarge),
+                Text('تاريخ التتبع',
+                    style: Theme.of(context).textTheme.titleLarge),
                 ...data.history.map((event) => ListTile(
                       title: Text(
                         '${_stageLabel((event['stage'] ?? '').toString())} - ${_productionDisplayLabel(event['status'])}',
@@ -4022,7 +4059,8 @@ class _ReadyMadePieceDetailsScreenState extends State<ReadyMadePieceDetailsScree
 }
 
 class _ReadyMadePieceDetails {
-  const _ReadyMadePieceDetails({required this.card, required this.route, required this.history});
+  const _ReadyMadePieceDetails(
+      {required this.card, required this.route, required this.history});
   final Map<String, dynamic> card;
   final Map<String, dynamic> route;
   final List<Map<String, dynamic>> history;
@@ -4368,25 +4406,30 @@ class ProductionApi {
   Future<List<Map<String, dynamic>>> readyPieces(int id) =>
       list('/production/readymade-order-items/$id/pieces');
 
-  Future<Map<String, dynamic>> getPieceRouteByTrackingCode(
-      String trackingCode, {bool readyMade = false}) async {
+  Future<Map<String, dynamic>> getPieceRouteByTrackingCode(String trackingCode,
+      {bool readyMade = false}) async {
     final encoded = Uri.encodeComponent(trackingCode.trim());
     if (readyMade) {
-      return (await get('/production/readymade-pieces/route?trackingCode=$encoded')) as Map<String, dynamic>;
+      return (await get(
+              '/production/readymade-pieces/route?trackingCode=$encoded'))
+          as Map<String, dynamic>;
     }
     try {
-      return (await get('/production/pieces/route?trackingCode=$encoded')) as Map<String, dynamic>;
+      return (await get('/production/pieces/route?trackingCode=$encoded'))
+          as Map<String, dynamic>;
     } on ProductionApiException catch (error) {
       if (error.statusCode != 404) rethrow;
-      return (await get('/production/readymade-pieces/route?trackingCode=$encoded')) as Map<String, dynamic>;
+      return (await get(
+              '/production/readymade-pieces/route?trackingCode=$encoded'))
+          as Map<String, dynamic>;
     }
   }
 
-    Future<Map<String, dynamic>> getReadyMadeWorkCard(int pieceId) async =>
+  Future<Map<String, dynamic>> getReadyMadeWorkCard(int pieceId) async =>
       (await get('/production/readymade-pieces/$pieceId/work-card'))
-        as Map<String, dynamic>;
+          as Map<String, dynamic>;
 
-    Future<List<Map<String, dynamic>>> getReadyMadePieceTracking(int pieceId) =>
+  Future<List<Map<String, dynamic>>> getReadyMadePieceTracking(int pieceId) =>
       list('/production/readymade-pieces/$pieceId/tracking');
 
   Future<Map<String, dynamic>> advancePiece({
@@ -4411,7 +4454,7 @@ class ProductionApi {
       'employeeCode': employeeCode,
       'operationReference':
           operationReference ?? 'Flutter production manual tracking',
-        'isReadyMade': isReadyMade,
+      'isReadyMade': isReadyMade,
     };
 
     final response = await http.post(
