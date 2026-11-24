@@ -11,6 +11,7 @@ import 'package:intl/intl.dart' as intl;
 import '../core/app_navigation.dart';
 import '../core/authenticated_api_client.dart';
 import '../core/tailoring_order_documents_printing.dart';
+import '../core/tailoring_order_documents_printing.dart';
 import '../core/ui_palette.dart';
 import '../models/customer_creation_models.dart';
 import '../models/sales_reference_models.dart';
@@ -138,6 +139,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
   String? savedOrderNumber;
   int? savedCustomerId;
   String? savedRequestReference;
+  int? _receiptPromptShownForOrderId;
+  bool _receiptPrintSucceededForSession = false;
   bool get _savingOrder =>
       saveState == SalesSaveState.saving ||
       saveState == SalesSaveState.updating;
@@ -709,7 +712,10 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
       savedRequestReference = _orderRequestReference;
       saveState = SalesSaveState.savedLocked;
       await _loadOrderStatistics();
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        await _showSavedReceiptPrompt(orderId);
+      }
       try {
         await _writeSavedMarker();
       } catch (error) {
@@ -1247,6 +1253,26 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
           : _SalesPricingQuote.notReady('تعذر الاتصال بمحرك التسعير المركزي.');
       _recalculateOrderTotal();
     });
+  }
+
+  Future<void> _showSavedReceiptPrompt(int orderId) async {
+    if (!mounted || _receiptPromptShownForOrderId == orderId) return;
+    _receiptPromptShownForOrderId = orderId;
+    final approved = await TailoringOrderDocumentsPrinting.confirm(
+      context,
+      'تم حفظ الطلب بنجاح. هل تريد طباعة إيصال الطلب الآن؟',
+      approveText: 'نعم، طباعة الإيصال',
+    );
+    if (!approved || !mounted) return;
+    try {
+      final printed = await TailoringOrderDocumentsPrinting.printInitialReceipt(
+          context, orderId);
+      if (printed && mounted) {
+        setState(() => _receiptPrintSucceededForSession = true);
+      }
+    } catch (_) {
+      if (mounted) _showMessage('تعذر تحميل بيانات الطلب المحفوظ.');
+    }
   }
 
   void _showMessage(String message) {
@@ -2292,13 +2318,18 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
         ),
         const SizedBox(width: 8),
         if (saveState == SalesSaveState.savedLocked &&
+            !_receiptPrintSucceededForSession &&
             savedOrderId != null &&
             savedOrderNumber != null)
           FilledButton.icon(
             onPressed: () async {
               try {
-                await TailoringOrderDocumentsPrinting.printInitialReceipt(
-                    context, savedOrderId!);
+                final printed =
+                    await TailoringOrderDocumentsPrinting.printInitialReceipt(
+                        context, savedOrderId!);
+                if (printed && mounted) {
+                  setState(() => _receiptPrintSucceededForSession = true);
+                }
               } catch (_) {
                 if (!mounted) return;
                 _showMessage('تعذر تحميل بيانات الطلب المحفوظ.');
@@ -2542,6 +2573,8 @@ class _SalesScreenState extends State<SalesScreen> with WidgetsBindingObserver {
     unawaited(_clearPersistedSession());
     setState(() {
       _clearCurrentSession();
+      _receiptPromptShownForOrderId = null;
+      _receiptPrintSucceededForSession = false;
     });
     loadMeasurementPreview();
     _showMessage(archived ? 'حُفظت الجلسة الحالية كمسودة محلية.' : 'طلب جديد.');

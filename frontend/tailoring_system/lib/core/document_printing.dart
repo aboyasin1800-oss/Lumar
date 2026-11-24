@@ -88,7 +88,8 @@ class MeasurementCardLayoutConfig {
 }
 
 class DocumentPrintSupport {
-  static const MeasurementCardLayoutConfig layout = MeasurementCardLayoutConfig();
+  static const MeasurementCardLayoutConfig layout =
+      MeasurementCardLayoutConfig();
 
   static double a5WidthMm = 148;
   static double a5HeightMm = 250;
@@ -131,7 +132,8 @@ class DocumentPrintSupport {
     final rows = <List<MapEntry<String, dynamic>>>[];
     for (var index = 0; index < entries.length; index += 6) {
       final end = index + 6;
-      rows.add(entries.sublist(index, end > entries.length ? entries.length : end));
+      rows.add(
+          entries.sublist(index, end > entries.length ? entries.length : end));
     }
     return rows;
   }

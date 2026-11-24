@@ -61,6 +61,8 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
   bool _waivingBalance = false;
   bool _partialCollectionSelected = false;
   bool _initialized = false;
+  int? _invoicePromptShownForOrderId;
+  bool _invoicePrintSucceededForSession = false;
   int? _cashAccountId;
   CashAccountAvailability _cashAccountAvailability =
       CashAccountAvailability.loading;
@@ -89,6 +91,8 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
       _partialCollectionSelected = false;
       _cashAccountId = null;
       _cashAccountAvailability = CashAccountAvailability.loading;
+      _invoicePromptShownForOrderId = null;
+      _invoicePrintSucceededForSession = false;
       _future = _repository.getDetails(widget.orderId);
     });
   }
@@ -502,6 +506,27 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
     return 'تعذر تحميل تفاصيل الطلب.';
   }
 
+  Future<void> _showDeliveredInvoicePrompt(int orderId) async {
+    final approved = await TailoringOrderDocumentsPrinting.confirm(
+      context,
+      'تم تسليم الطلب بنجاح. هل تريد طباعة الفاتورة النهائية الآن؟',
+      approveText: 'نعم، طباعة الفاتورة النهائية',
+    );
+    if (!approved || !mounted) return;
+    try {
+      final printed = await TailoringOrderDocumentsPrinting.printFinalInvoice(
+          context, orderId);
+      if (printed && mounted) {
+        setState(() => _invoicePrintSucceededForSession = true);
+      }
+    } catch (_) {
+      if (mounted) {
+        _showMessage('تعذر تحميل بيانات التسوية النهائية للطلب.',
+            isSuccess: false);
+      }
+    }
+  }
+
   Future<void> _showError(Object error) {
     if (!mounted) return Future.value();
     final currentContext = context;
@@ -576,6 +601,14 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
           _seedFields(order);
 
           final isDelivered = order.status.toLowerCase() == 'delivered';
+          if (isDelivered &&
+              order.revenueRecognized &&
+              _invoicePromptShownForOrderId != order.id) {
+            _invoicePromptShownForOrderId = order.id;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _showDeliveredInvoicePrompt(order.id);
+            });
+          }
           final isReadyForDelivery =
               order.status.toLowerCase() == 'readyfordelivery';
           final isReadyForCollection = isDelivered && order.revenueRecognized;
@@ -655,15 +688,22 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                       ],
                     ),
                   ),
-                  if (isDelivered && order.revenueRecognized) ...[
+                  if (isDelivered &&
+                      order.revenueRecognized &&
+                      !_invoicePrintSucceededForSession) ...[
                     const SizedBox(height: 16),
                     _Panel(
                       title: 'الفاتورة النهائية',
                       child: FilledButton.icon(
                         onPressed: () async {
                           try {
-                            await TailoringOrderDocumentsPrinting
-                                .printFinalInvoice(context, order.id);
+                            final printed =
+                                await TailoringOrderDocumentsPrinting
+                                    .printFinalInvoice(context, order.id);
+                            if (printed && mounted) {
+                              setState(() =>
+                                  _invoicePrintSucceededForSession = true);
+                            }
                           } catch (_) {
                             if (!mounted) return;
                             _showMessage(

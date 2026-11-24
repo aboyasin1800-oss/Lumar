@@ -2043,6 +2043,10 @@ class _TailoringOrdersPrintingTabState
                                   '${order.customerName} • ${order.customerPhone.isEmpty ? '-' : order.customerPhone}\n${order.orderStatus}'),
                               trailing: FilledButton.icon(
                                   onPressed: () async {
+                                    final confirmed =
+                                        await TailoringOrderDocumentsPrinting
+                                            .confirmReprint(context);
+                                    if (!confirmed) return;
                                     try {
                                       if (widget.finalInvoice) {
                                         await TailoringOrderDocumentsPrinting

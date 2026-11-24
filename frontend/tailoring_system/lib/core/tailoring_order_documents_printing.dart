@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -10,6 +11,7 @@ import 'package:printing/printing.dart';
 import '../models/order_models.dart';
 import '../repositories/order_repository.dart';
 import 'document_printing.dart';
+import 'ui_palette.dart';
 
 enum TailoringDocumentTarget { officePrinter, savePdf }
 
@@ -40,20 +42,66 @@ class TailoringOrderDocumentsPrinting {
         order: data.order, customer: data.customer, items: data.items);
   }
 
+  static Future<bool> confirm(BuildContext context, String title,
+      {required String approveText}) async {
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        final isLight = Theme.of(dialogContext).brightness == Brightness.light;
+        final background =
+            isLight ? const Color(0xFFFFFFFF) : UiPalette.surfaceCard;
+        final foreground = UiPalette.adaptiveTextColor(background);
+        return CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.escape): () =>
+                Navigator.of(dialogContext).pop(false),
+          },
+          child: Focus(
+            autofocus: true,
+            child: AlertDialog(
+              backgroundColor: background,
+              title: Text(title, style: TextStyle(color: foreground)),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('لاحقًا'),
+                ),
+                FilledButton(
+                  autofocus: true,
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: Text(approveText),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    return approved == true;
+  }
+
+  static Future<bool> confirmReprint(BuildContext context) =>
+      confirm(context, 'هل تريد إعادة طباعة هذا المستند؟',
+          approveText: 'نعم، إعادة الطباعة');
+
   static Future<TailoringDocumentTarget?> chooseTarget(BuildContext context,
       {required bool finalInvoice}) {
     return showModalBottomSheet<TailoringDocumentTarget>(
       context: context,
-      backgroundColor: const Color(0xFFFFFFFF),
+      backgroundColor: Theme.of(context).brightness == Brightness.light
+          ? const Color(0xFFFFFFFF)
+          : UiPalette.surfaceCard,
       builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.print_outlined),
-              title: const Text('طباعة على طابعة مكتبية'),
-              onTap: () => Navigator.of(sheetContext)
+            FilledButton.icon(
+              autofocus: true,
+              onPressed: () => Navigator.of(sheetContext)
                   .pop(TailoringDocumentTarget.officePrinter),
+              icon: const Icon(Icons.print_outlined),
+              label: const Text('طباعة على طابعة مكتبية'),
             ),
             ListTile(
               leading: const Icon(Icons.save_alt_outlined),
@@ -67,22 +115,22 @@ class TailoringOrderDocumentsPrinting {
     );
   }
 
-  static Future<void> printInitialReceipt(
+  static Future<bool> printInitialReceipt(
       BuildContext context, int orderId) async {
     final data = await load(orderId);
     final bytes = await _buildDocument(data, finalInvoice: false);
-    await _execute(context, bytes, 'إيصال طلب تفصيل',
+    return _execute(context, bytes, 'إيصال طلب تفصيل',
         'tailoring_receipt_${data.order.number}');
   }
 
-  static Future<void> printFinalInvoice(
+  static Future<bool> printFinalInvoice(
       BuildContext context, int orderId) async {
     final data = await load(orderId);
     if (data.order.status.toLowerCase() != 'delivered') {
       throw StateError('لا يمكن طباعة الفاتورة قبل نجاح تسليم الطلب.');
     }
     final bytes = await _buildDocument(data, finalInvoice: true);
-    await _execute(context, bytes, 'الفاتورة النهائية لطلب تفصيل',
+    return _execute(context, bytes, 'الفاتورة النهائية لطلب تفصيل',
         'tailoring_invoice_${data.order.number}');
   }
 
@@ -96,10 +144,25 @@ class TailoringOrderDocumentsPrinting {
     final pdf = pw.Document();
     final dateFormat = DateFormat('yyyy/MM/dd');
     final headerWidget = await DocumentPrintSupport.buildHeader(header, font);
+    final terms = finalInvoice
+        ? const [
+            'المبالغ المثبتة في الفاتورة النهائية لا تُخفض أو تُعدل إلا في حال ثبت خطأ  .',
+            'لا يمكن تغيير القطعة بعد اكتمال تجهيزها وتسليمها، وأي طلب لإعادة التنفيذ أو الاستبدال يكون على حساب العميل.',
+            'أي تغيير سبق تنفيذه بعد بدء القص أو الخياطة تُضاف تكلفته إلى الطلب وفق تكلفة القماش والعمل المنفذ.',
+          ]
+        : const [
+            'يرجى التأكد من اختيار القماش قبل بدء القص والخياطة؛ وأي تغيير بعد بدء التنفيذ يتحمل العميل تكلفة القماش والعمل المنفذ.',
+            'المبالغ المثبتة في الإيصال لا تُخفض بعد اعتماد الطلب إلا في حال خدث خطأ حسابي مثبت.',
+            'يرجى استلام الطلب خلال مدة لا تتجاوز شهرين من تاريخ الجاهزية؛ ولا تتحمل المؤسسة مسؤولية الطلبات المتروكة بعد هذه المدة.',
+            'لا يمكن تغيير القطعة بعد اكتمال تجهيزها، وأي طلب لاستبدالها أو إعادة تنفيذها يكون على حساب العميل.',
+            'تابع حالة طلبك من تطبيق LUMAR Mobile (لومار موبايل)، وستصلك رسالة عند جاهزية الطلب للاستلام لومار سعداء بخدمتكم تقبلو خالص تحياتنا شكرى لختياركم لومار.',
+          ];
 
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: DocumentPrintSupport.a5Portrait,
+        pageFormat: const PdfPageFormat(
+            148 * PdfPageFormat.mm, 210 * PdfPageFormat.mm,
+            marginAll: 8 * PdfPageFormat.mm),
         textDirection: pw.TextDirection.rtl,
         theme: pw.ThemeData.withFont(base: font, bold: font),
         header: (_) => pw.Directionality(
@@ -208,6 +271,35 @@ class TailoringOrderDocumentsPrinting {
                       'المتبقي: ${NumberFormat('#,##0.00').format(data.order.remainingAmount)}',
                       textAlign: pw.TextAlign.right,
                       style: pw.TextStyle(font: font, fontSize: 10)),
+                  pw.SizedBox(height: 10),
+                  pw.Container(
+                    decoration: pw.BoxDecoration(
+                        border: pw.Border.all(color: PdfColors.grey400)),
+                    padding: const pw.EdgeInsets.all(7),
+                    child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                        children: [
+                          pw.Text(
+                              finalInvoice
+                                  ? 'شروط الفاتورة'
+                                  : ' عزيزي العميل تنبه لهذه الشروط ',
+                              textAlign: pw.TextAlign.right,
+                              style: pw.TextStyle(
+                                  font: font,
+                                  fontSize: 11,
+                                  fontWeight: pw.FontWeight.bold)),
+                          pw.SizedBox(height: 4),
+                          for (var i = 0; i < terms.length; i++)
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.only(bottom: 3),
+                              child: pw.Text('${i + 1}. ${terms[i]}',
+                                  textAlign: pw.TextAlign.right,
+                                  textDirection: pw.TextDirection.rtl,
+                                  style:
+                                      pw.TextStyle(font: font, fontSize: 8.5)),
+                            ),
+                        ]),
+                  ),
                 ]),
           ),
         ],
@@ -217,14 +309,14 @@ class TailoringOrderDocumentsPrinting {
     return pdf.save();
   }
 
-  static Future<void> _execute(BuildContext context, Uint8List bytes,
+  static Future<bool> _execute(BuildContext context, Uint8List bytes,
       String title, String baseName) async {
     final target =
         await chooseTarget(context, finalInvoice: title.contains('الفاتورة'));
-    if (target == null) return;
+    if (target == null) return false;
     if (target == TailoringDocumentTarget.officePrinter) {
       await Printing.layoutPdf(onLayout: (_) => bytes);
-      return;
+      return true;
     }
     final defaultDirectory = Directory(r'D:\تجارب طباعة المقاسات والمستندات');
     if (!await defaultDirectory.exists()) {
@@ -233,9 +325,13 @@ class TailoringOrderDocumentsPrinting {
     final fullPath =
         '${defaultDirectory.path}${Platform.pathSeparator}$baseName.pdf';
     await File(fullPath).writeAsBytes(bytes);
-    if (!context.mounted) return;
+    if (!context.mounted) return true;
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(content: Text('تم حفظ الإيصال بصيغة PDF بنجاح.')),
+      SnackBar(
+          content: Text(title.contains('الفاتورة')
+              ? 'تم حفظ الفاتورة النهائية بصيغة PDF بنجاح.'
+              : 'تم حفظ الإيصال بصيغة PDF بنجاح.')),
     );
+    return true;
   }
 }
