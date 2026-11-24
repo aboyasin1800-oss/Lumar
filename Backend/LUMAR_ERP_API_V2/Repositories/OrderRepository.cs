@@ -384,6 +384,25 @@ public sealed partial class OrderRepository(ReadOnlySqlConnectionFactory connect
         return results.SingleOrDefault();
     }
 
+    private static async Task EnsureSettlementDiscountAccountingReadyAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
+    {
+        const string sql = @"
+            SELECT
+                (SELECT COUNT(*) FROM dbo.LedgerAccounts WHERE AccountCode = N'4210' AND IsActive = 1) AS ActiveDiscountAccounts,
+                (SELECT COUNT(*) FROM dbo.AccountRoleMappings m INNER JOIN dbo.LedgerAccounts l ON l.LedgerAccountId = m.LedgerAccountId WHERE m.AccountRole = N'SalesSettlementDiscount' AND m.IsEnabled = 1 AND l.AccountCode = N'4210' AND l.IsActive = 1) AS EnabledDiscountMappings,
+                (SELECT COUNT(*) FROM dbo.AccountingEventDefinitions WHERE AccountingEventType = 34 AND EventName = N'CustomerSettlementDiscount' AND SourceType = N'OrderSettlement' AND DebitAccountRole = N'SalesSettlementDiscount' AND CreditAccountRole = N'AccountsReceivable' AND RequiresCashMovement = 0 AND IsEnabled = 1) AS EnabledDiscountEvents;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            throw new InvalidOperationException("تعذر تنفيذ الخصم لأن حساب خصم التسوية غير مهيأ في النظام.");
+
+        var activeAccounts = reader.GetInt32(0);
+        var enabledMappings = reader.GetInt32(1);
+        var enabledEvents = reader.GetInt32(2);
+        if (activeAccounts != 1 || enabledMappings != 1 || enabledEvents != 1)
+            throw new InvalidOperationException("تعذر تنفيذ الخصم لأن حساب خصم التسوية غير مهيأ في النظام.");
+    }
+
     public async Task<OrderDetailsDto?> DeliverAsync(int orderId, CancellationToken cancellationToken)
     {
         await using var connection = operationalConnections.Create();
@@ -431,6 +450,8 @@ public sealed partial class OrderRepository(ReadOnlySqlConnectionFactory connect
                 await transaction.RollbackAsync(CancellationToken.None);
                 return null;
             }
+
+            await EnsureSettlementDiscountAccountingReadyAsync(connection, transaction, cancellationToken);
 
             if (revenueRecognized)
             {
@@ -650,6 +671,9 @@ public sealed partial class OrderRepository(ReadOnlySqlConnectionFactory connect
                 await transaction.RollbackAsync(CancellationToken.None);
                 return null;
             }
+
+            if (settlementDiscount > 0m)
+                await EnsureSettlementDiscountAccountingReadyAsync(connection, transaction, cancellationToken);
 
             if (currentRemaining <= 0m)
             {

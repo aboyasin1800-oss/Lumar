@@ -1,7 +1,7 @@
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
-IF DB_NAME() NOT IN (N'LUMAR_ERP_TEST', N'LUMAR_ERP_ES_VALIDATION')
+IF DB_NAME() NOT IN (N'LUMAR_ERP_TEST', N'LUMAR_ERP_ES_VALIDATION', N'LUMAR_ERP_ES_VALIDATION_R3')
     THROW 52990, N'This customer settlement discount migration is restricted to approved ES validation databases.', 1;
 
 BEGIN TRY
