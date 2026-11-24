@@ -75,7 +75,8 @@ class OrderDetails {
         saleCategory: json['saleCategory'] as String,
         revenueRecognized: json['revenueRecognized'] as bool? ?? false,
         revenueRecognizedAt: _nullableDate(json, 'revenueRecognizedAt'),
-        revenueReversalCreated: json['revenueReversalCreated'] as bool? ?? false,
+        revenueReversalCreated:
+            json['revenueReversalCreated'] as bool? ?? false,
         revenueReversalCreatedAt:
             _nullableDate(json, 'revenueReversalCreatedAt'),
       );
@@ -153,8 +154,9 @@ class OrderItem {
       createdDate: _date(json, 'createdDate'),
       snapshot: snapshot,
       pricingSnapshotFullCost: _nullableAmount(json, 'fullCost'),
-      pricingSnapshotOperationalCost: _nullableAmount(json, 'operationalCost') ??
-          _nullableAmount(json, 'operationalCostPerPiece'),
+      pricingSnapshotOperationalCost:
+          _nullableAmount(json, 'operationalCost') ??
+              _nullableAmount(json, 'operationalCostPerPiece'),
     );
   }
 
@@ -191,25 +193,21 @@ class OrderItem {
         snapshot['_catalogNumber'],
         snapshot['CatalogNumber'],
         snapshot['catalogNumber'],
-        snapshot['barcode'],
-        snapshot['Barcode'],
       ]
-          .whereType<Object>()
-          .map((value) => value.toString())
-          .firstWhere(
-            (value) => value.trim().isNotEmpty,
-            orElse: () => '',
-          )
-          .trim()
-          .isEmpty
-      ? null
-      : [
-          snapshot['_catalogNumber'],
-          snapshot['CatalogNumber'],
-          snapshot['catalogNumber'],
-          snapshot['barcode'],
-          snapshot['Barcode'],
-        ]
+              .whereType<Object>()
+              .map((value) => value.toString())
+              .firstWhere(
+                (value) => value.trim().isNotEmpty,
+                orElse: () => '',
+              )
+              .trim()
+              .isEmpty
+          ? null
+          : [
+              snapshot['_catalogNumber'],
+              snapshot['CatalogNumber'],
+              snapshot['catalogNumber'],
+            ]
               .whereType<Object>()
               .map((value) => value.toString())
               .firstWhere((value) => value.trim().isNotEmpty, orElse: () => '')
@@ -218,12 +216,13 @@ class OrderItem {
       double.tryParse(snapshot['_consumption']?.toString() ?? '');
   double? get fullCost {
     final value = pricingSnapshotFullCost ??
-      snapshot['_fullCost'] ??
-      snapshot['fullCost'];
+        snapshot['_fullCost'] ??
+        snapshot['fullCost'];
     return value is num
         ? value.toDouble()
         : double.tryParse(value?.toString() ?? '');
   }
+
   Map<String, dynamic> get measurements =>
       Map.unmodifiable(Map.fromEntries(snapshot.entries.where((entry) =>
           !entry.key.startsWith('_') &&

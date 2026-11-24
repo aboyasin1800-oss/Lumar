@@ -11,23 +11,27 @@ import 'package:printing/printing.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/measurement_snapshot.dart';
+import '../core/tailoring_order_documents_printing.dart';
 import '../core/document_printing.dart';
 import '../core/ui_palette.dart';
 import '../repositories/finance_repository.dart';
 import '../services/auth_state.dart';
 
 class PrintingScreen extends StatelessWidget {
-  const PrintingScreen({required this.auth, this.initialTabIndex = 0, super.key});
+  const PrintingScreen(
+      {required this.auth, this.initialTabIndex = 0, super.key});
 
   final AuthState auth;
   final int initialTabIndex;
 
   @override
-  Widget build(BuildContext context) => PrintingCenterScreen(auth: auth, initialTabIndex: initialTabIndex);
+  Widget build(BuildContext context) =>
+      PrintingCenterScreen(auth: auth, initialTabIndex: initialTabIndex);
 }
 
 class PrintingCenterScreen extends StatefulWidget {
-  const PrintingCenterScreen({required this.auth, this.initialTabIndex = 0, super.key});
+  const PrintingCenterScreen(
+      {required this.auth, this.initialTabIndex = 0, super.key});
 
   final AuthState auth;
   final int initialTabIndex;
@@ -52,7 +56,8 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
   void initState() {
     super.initState();
     _activeTabIndex = widget.initialTabIndex.clamp(0, 4);
-    _tabController = TabController(length: 5, initialIndex: _activeTabIndex, vsync: this);
+    _tabController =
+        TabController(length: 5, initialIndex: _activeTabIndex, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) return;
       if (_activeTabIndex == _tabController.index) return;
@@ -75,10 +80,14 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     return Scaffold(
-      backgroundColor: isLight ? const Color(0xFFF4F7FA) : UiPalette.screenBackground,
+      backgroundColor:
+          isLight ? const Color(0xFFF4F7FA) : UiPalette.screenBackground,
       appBar: AppBar(
-        backgroundColor: isLight ? const Color(0xFFFFFFFF) : UiPalette.surfaceCard,
-        foregroundColor: isLight ? const Color(0xFF172033) : UiPalette.adaptiveTextColor(UiPalette.surfaceCard),
+        backgroundColor:
+            isLight ? const Color(0xFFFFFFFF) : UiPalette.surfaceCard,
+        foregroundColor: isLight
+            ? const Color(0xFF172033)
+            : UiPalette.adaptiveTextColor(UiPalette.surfaceCard),
         title: Text(
           'مركز الطباعة',
           style: TextStyle(
@@ -109,7 +118,9 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
               tabs: const [
                 Tab(icon: Icon(Icons.credit_card), text: 'بطاقات المقاسات'),
                 Tab(icon: Icon(Icons.receipt_long_outlined), text: 'الإيصالات'),
-                Tab(icon: Icon(Icons.description_outlined), text: 'سندات القبض'),
+                Tab(
+                    icon: Icon(Icons.description_outlined),
+                    text: 'سندات القبض'),
                 Tab(icon: Icon(Icons.fact_check_outlined), text: 'الفواتير'),
                 Tab(icon: Icon(Icons.label_outline), text: 'ملصقات الأقمشة'),
               ],
@@ -122,15 +133,30 @@ class _PrintingCenterScreenState extends State<PrintingCenterScreen>
                   _MeasurementCardsTab(
                     active: _activeTabIndex == 0,
                     orders: const <_OrderSummary>[],
-                    header: const _MeasurementHeaderSettings(useImage: false, imageValue: '', name: 'LUMAR', location: '', phone1: '', phone2: ''),
+                    header: const _MeasurementHeaderSettings(
+                        useImage: false,
+                        imageValue: '',
+                        name: 'LUMAR',
+                        location: '',
+                        phone1: '',
+                        phone2: ''),
                     baseUrl: _baseUrl,
                     auth: widget.auth,
                     onRefresh: _refresh,
                   ),
-                  const _PlaceholderTab(title: 'طباعة الإيصالات', subtitle: 'سيتم تنفيذها في المرحلة القادمة.'),
-                  const _PlaceholderTab(title: 'طباعة سندات القبض', subtitle: 'سيتم تنفيذها في المرحلة القادمة.'),
-                  const _PlaceholderTab(title: 'طباعة الفواتير', subtitle: 'سيتم تنفيذها في المرحلة القادمة.'),
-                  _FabricRollLabelsTab(baseUrl: _baseUrl, auth: widget.auth, cachedLabels: _fabricLabelsCache),
+                  _TailoringOrdersPrintingTab(
+                      baseUrl: _baseUrl,
+                      auth: widget.auth,
+                      finalInvoice: false),
+                  const _PlaceholderTab(
+                      title: 'طباعة سندات القبض',
+                      subtitle: 'سيتم تنفيذها في المرحلة القادمة.'),
+                  _TailoringOrdersPrintingTab(
+                      baseUrl: _baseUrl, auth: widget.auth, finalInvoice: true),
+                  _FabricRollLabelsTab(
+                      baseUrl: _baseUrl,
+                      auth: widget.auth,
+                      cachedLabels: _fabricLabelsCache),
                 ],
               ),
             ),
@@ -173,7 +199,13 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   int _allUnprintedCards = 0;
   final Map<int, List<_PrintHistoryRecord>> _printHistoryCache = {};
   List<_OrderSummary> _orders = const [];
-  _MeasurementHeaderSettings _header = const _MeasurementHeaderSettings(useImage: false, imageValue: '', name: 'LUMAR', location: '', phone1: '', phone2: '');
+  _MeasurementHeaderSettings _header = const _MeasurementHeaderSettings(
+      useImage: false,
+      imageValue: '',
+      name: 'LUMAR',
+      location: '',
+      phone1: '',
+      phone2: '');
 
   bool _startedLazyLoad = false;
 
@@ -186,50 +218,88 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   Future<void> _loadMeasurementData() async {
     if (!mounted) return;
     try {
-      final customersResponse = await http.get(Uri.parse('${widget.baseUrl}/customers'), headers: _authHeaders);
+      final customersResponse = await http
+          .get(Uri.parse('${widget.baseUrl}/customers'), headers: _authHeaders);
       final customers = <int, _CustomerSnapshot>{};
-      if (customersResponse.statusCode >= 200 && customersResponse.statusCode < 300) {
+      if (customersResponse.statusCode >= 200 &&
+          customersResponse.statusCode < 300) {
         final body = jsonDecode(customersResponse.body);
         if (body is List) {
           for (final item in body.whereType<Map<String, dynamic>>()) {
             final id = (item['customerId'] as num?)?.toInt() ?? 0;
-            if (id > 0) customers[id] = _CustomerSnapshot(name: (item['customerName'] ?? '').toString(), phone: (item['phoneNumber'] ?? '').toString());
+            if (id > 0)
+              customers[id] = _CustomerSnapshot(
+                  name: (item['customerName'] ?? '').toString(),
+                  phone: (item['phoneNumber'] ?? '').toString());
           }
         }
       }
       final responses = await Future.wait([
         http.get(Uri.parse('${widget.baseUrl}/orders'), headers: _authHeaders),
-        http.get(Uri.parse('${widget.baseUrl}/production/readymade-orders'), headers: _authHeaders),
+        http.get(Uri.parse('${widget.baseUrl}/production/readymade-orders'),
+            headers: _authHeaders),
       ]);
       final ordersResponse = responses[0];
       final readyOrdersResponse = responses[1];
       final orderList = <_OrderSummary>[];
       if (ordersResponse.statusCode >= 200 && ordersResponse.statusCode < 300) {
-        orderList.addAll((jsonDecode(ordersResponse.body) as List).whereType<Map<String, dynamic>>().map((entry) => _OrderSummary.fromJson(entry, customers)));
+        orderList.addAll((jsonDecode(ordersResponse.body) as List)
+            .whereType<Map<String, dynamic>>()
+            .map((entry) => _OrderSummary.fromJson(entry, customers)));
       }
-      if (readyOrdersResponse.statusCode >= 200 && readyOrdersResponse.statusCode < 300) {
-        orderList.addAll((jsonDecode(readyOrdersResponse.body) as List).whereType<Map<String, dynamic>>().map(_OrderSummary.fromReadyMadeJson));
+      if (readyOrdersResponse.statusCode >= 200 &&
+          readyOrdersResponse.statusCode < 300) {
+        orderList.addAll((jsonDecode(readyOrdersResponse.body) as List)
+            .whereType<Map<String, dynamic>>()
+            .map(_OrderSummary.fromReadyMadeJson));
       }
       orderList.sort((a, b) => b.orderDate.compareTo(a.orderDate));
 
-      final headerKeys = <String>['MeasurementCardHeaderImage','MeasurementCardHeaderUseImage','MeasurementCardHeaderName','MeasurementCardLocation','MeasurementCardPhone1','MeasurementCardPhone2'];
-      final headerResponses = await Future.wait(headerKeys.map((key) => http.get(Uri.parse('${widget.baseUrl}/settings/by-key/${Uri.encodeComponent(key)}'), headers: _authHeaders)));
+      final headerKeys = <String>[
+        'MeasurementCardHeaderImage',
+        'MeasurementCardHeaderUseImage',
+        'MeasurementCardHeaderName',
+        'MeasurementCardLocation',
+        'MeasurementCardPhone1',
+        'MeasurementCardPhone2'
+      ];
+      final headerResponses = await Future.wait(headerKeys.map((key) => http.get(
+          Uri.parse(
+              '${widget.baseUrl}/settings/by-key/${Uri.encodeComponent(key)}'),
+          headers: _authHeaders)));
       final entries = <String, String>{};
       for (var i = 0; i < headerKeys.length; i++) {
         final response = headerResponses[i];
         if (response.statusCode >= 200 && response.statusCode < 300) {
           final decoded = jsonDecode(response.body);
-          if (decoded is Map<String, dynamic>) entries[headerKeys[i]] = (decoded['settingValue'] ?? '').toString();
+          if (decoded is Map<String, dynamic>)
+            entries[headerKeys[i]] = (decoded['settingValue'] ?? '').toString();
         }
       }
-      final useImage = entries['MeasurementCardHeaderUseImage']?.trim().toLowerCase() == 'true';
-      final header = _MeasurementHeaderSettings(useImage: useImage, imageValue: entries['MeasurementCardHeaderImage'] ?? '', name: entries['MeasurementCardHeaderName']?.trim().isNotEmpty == true ? entries['MeasurementCardHeaderName']! : 'LUMAR', location: entries['MeasurementCardLocation'] ?? '', phone1: entries['MeasurementCardPhone1'] ?? '', phone2: entries['MeasurementCardPhone2'] ?? '');
+      final useImage =
+          entries['MeasurementCardHeaderUseImage']?.trim().toLowerCase() ==
+              'true';
+      final header = _MeasurementHeaderSettings(
+          useImage: useImage,
+          imageValue: entries['MeasurementCardHeaderImage'] ?? '',
+          name: entries['MeasurementCardHeaderName']?.trim().isNotEmpty == true
+              ? entries['MeasurementCardHeaderName']!
+              : 'LUMAR',
+          location: entries['MeasurementCardLocation'] ?? '',
+          phone1: entries['MeasurementCardPhone1'] ?? '',
+          phone2: entries['MeasurementCardPhone2'] ?? '');
       if (!mounted) return;
-      setState(() { _orders = orderList; _header = header; });
+      setState(() {
+        _orders = orderList;
+        _header = header;
+      });
       await _refreshUnprintedSummary();
     } catch (_) {
       if (!mounted) return;
-      setState(() { _orders = const []; _allUnprintedCards = 0; });
+      setState(() {
+        _orders = const [];
+        _allUnprintedCards = 0;
+      });
     }
   }
 
@@ -270,7 +340,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
             // Keep the established PieceStatus fallback if history is unavailable.
           }
         }
-        final unprinted = pieces.where((piece) => !_isPiecePrinted(piece)).length;
+        final unprinted =
+            pieces.where((piece) => !_isPiecePrinted(piece)).length;
         totalUnprintedCards += unprinted;
       }
 
@@ -294,7 +365,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     }
   }
 
-  Future<List<_OrderPieceDetail>> _fetchOrderPiecesOnce(_OrderSummary order) async {
+  Future<List<_OrderPieceDetail>> _fetchOrderPiecesOnce(
+      _OrderSummary order) async {
     final response = await http.get(
       Uri.parse(order.isReadyMade
           ? '${widget.baseUrl}/production/readymade-orders/${order.orderId}/items'
@@ -317,11 +389,18 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                 '${widget.baseUrl}/production/readymade-order-items/$itemId/pieces'),
             headers: _authHeaders,
           );
-          if (pieceResponse.statusCode < 200 || pieceResponse.statusCode >= 300) continue;
-          for (final pieceJson in (jsonDecode(pieceResponse.body) as List).cast<Map<String, dynamic>>()) {
-            final pieceId = (pieceJson['readyMadeProductionOrderPieceInstanceId'] as int?) ?? 0;
+          if (pieceResponse.statusCode < 200 || pieceResponse.statusCode >= 300)
+            continue;
+          for (final pieceJson in (jsonDecode(pieceResponse.body) as List)
+              .cast<Map<String, dynamic>>()) {
+            final pieceId =
+                (pieceJson['readyMadeProductionOrderPieceInstanceId']
+                        as int?) ??
+                    0;
             if (pieceId > 0) {
-              try { pieces.add(await _loadPieceCard(pieceId, readyMade: true)); } catch (_) {}
+              try {
+                pieces.add(await _loadPieceCard(pieceId, readyMade: true));
+              } catch (_) {}
             }
           }
         } else {
@@ -361,17 +440,24 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
       for (final entry in piecesJson) {
         if (entry is Map<String, dynamic>) {
           if (order.isReadyMade) {
-            final itemId = (entry['readyMadeProductionOrderItemId'] as int?) ?? 0;
+            final itemId =
+                (entry['readyMadeProductionOrderItemId'] as int?) ?? 0;
             if (itemId <= 0) continue;
             final pieceResponse = await http.get(
               Uri.parse(
                   '${widget.baseUrl}/production/readymade-order-items/$itemId/pieces'),
               headers: _authHeaders,
             );
-            if (pieceResponse.statusCode < 200 || pieceResponse.statusCode >= 300) continue;
-            for (final pieceJson in (jsonDecode(pieceResponse.body) as List).cast<Map<String, dynamic>>()) {
-              final pieceId = (pieceJson['readyMadeProductionOrderPieceInstanceId'] as int?) ?? 0;
-              if (pieceId > 0) pieces.add(await _loadPieceCard(pieceId, readyMade: true));
+            if (pieceResponse.statusCode < 200 ||
+                pieceResponse.statusCode >= 300) continue;
+            for (final pieceJson in (jsonDecode(pieceResponse.body) as List)
+                .cast<Map<String, dynamic>>()) {
+              final pieceId =
+                  (pieceJson['readyMadeProductionOrderPieceInstanceId']
+                          as int?) ??
+                      0;
+              if (pieceId > 0)
+                pieces.add(await _loadPieceCard(pieceId, readyMade: true));
             }
           } else {
             final pieceId = (entry['pieceId'] as int?) ?? 0;
@@ -426,7 +512,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     }
   }
 
-  Future<_OrderPieceDetail> _loadPieceCard(int pieceId, {bool readyMade = false}) async {
+  Future<_OrderPieceDetail> _loadPieceCard(int pieceId,
+      {bool readyMade = false}) async {
     final response = await http.get(
       Uri.parse(readyMade
           ? '${widget.baseUrl}/production/readymade-pieces/$pieceId/work-card'
@@ -535,7 +622,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     final record = _PrintHistoryRecord.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>);
     final history = [...?_printHistoryCache[piece.pieceId]];
-    history.removeWhere((entry) => entry.printHistoryId == record.printHistoryId);
+    history
+        .removeWhere((entry) => entry.printHistoryId == record.printHistoryId);
     history.add(record);
     _printHistoryCache[piece.pieceId] = history;
     return record;
@@ -554,7 +642,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     final record = _PrintHistoryRecord.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>);
     final history = [...?_printHistoryCache[piece.pieceId]];
-    history.removeWhere((entry) => entry.printHistoryId == record.printHistoryId);
+    history
+        .removeWhere((entry) => entry.printHistoryId == record.printHistoryId);
     history.add(record);
     _printHistoryCache[piece.pieceId] = history;
     return record;
@@ -622,10 +711,10 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         false;
   }
 
-  Future<_ReprintFormData?> _showReprintForm(
-      _OrderPieceDetail piece) async {
+  Future<_ReprintFormData?> _showReprintForm(_OrderPieceDetail piece) async {
     final employees = await _fetchEmployees();
-    final customers = piece.isReadyMade ? await _fetchCustomers() : const <_CustomerOption>[];
+    final customers =
+        piece.isReadyMade ? await _fetchCustomers() : const <_CustomerOption>[];
     if (!mounted) return null;
     final damageController = TextEditingController();
     final saleAmountController = TextEditingController();
@@ -725,11 +814,10 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                           border: OutlineInputBorder(),
                         ),
                         items: const [
-                          DropdownMenuItem(
-                              value: 'Cash', child: Text('نقداً')),
+                          DropdownMenuItem(value: 'Cash', child: Text('نقداً')),
                           DropdownMenuItem(
                               value: 'Credit', child: Text('آجلاً')),
-                            DropdownMenuItem(
+                          DropdownMenuItem(
                               value: 'Donation', child: Text('تبرعاً')),
                         ],
                         onChanged: (value) => setDialogState(() {
@@ -794,7 +882,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                   final saleAmount =
                       double.tryParse(saleAmountController.text.trim());
                   if (reasonCode == null) {
-                    setDialogState(() => errorText = 'اختيار سبب إعادة الطباعة مطلوب.');
+                    setDialogState(
+                        () => errorText = 'اختيار سبب إعادة الطباعة مطلوب.');
                     return;
                   }
                   if (isDamagedPiece &&
@@ -818,18 +907,18 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                       }
                       cashAccountId = generalCashAccount.id;
                     }
-                    if (saleAmount == null || saleAmount <= 0 ||
+                    if (saleAmount == null ||
+                        saleAmount <= 0 ||
                         (piece.isReadyMade && saleCustomerId == null)) {
-                      setDialogState(() =>
-                          errorText = 'قيمة البيع وعميل البيع المطلوبان قبل المتابعة.');
+                      setDialogState(() => errorText =
+                          'قيمة البيع وعميل البيع المطلوبان قبل المتابعة.');
                       return;
                     }
                   }
                   Navigator.of(dialogContext).pop(_ReprintFormData(
                     reasonCode: reasonCode!,
-                    damageReason: isDamagedPiece
-                        ? damageController.text.trim()
-                        : null,
+                    damageReason:
+                        isDamagedPiece ? damageController.text.trim() : null,
                     responsibleEmployeeId:
                         isDamagedPiece ? responsibleEmployeeId : null,
                     notes: notesController.text.trim().isEmpty
@@ -912,8 +1001,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
       history = await _fetchPrintHistory(piece);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذر قراءة سجل الطباعة: $error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر قراءة سجل الطباعة: $error')));
       return;
     }
 
@@ -1171,7 +1260,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
             : piece.pieceType.trim().isNotEmpty
                 ? piece.pieceType
                 : 'القطعة ${piece.pieceNumber}';
-        final statusText = isPrinted ? 'مطبوعة - إعادة الطباعة متاحة' : 'غير مطبوعة';
+        final statusText =
+            isPrinted ? 'مطبوعة - إعادة الطباعة متاحة' : 'غير مطبوعة';
 
         return Material(
           color: Theme.of(context).brightness == Brightness.light
@@ -1306,7 +1396,8 @@ class _PrintService {
       builder: (dialogContext) {
         final isLight = Theme.of(dialogContext).brightness == Brightness.light;
         return AlertDialog(
-          backgroundColor: isLight ? const Color(0xFFFFFFFF) : UiPalette.surfaceCard,
+          backgroundColor:
+              isLight ? const Color(0xFFFFFFFF) : UiPalette.surfaceCard,
           title: const Text('مسار حفظ ملفات PDF'),
           content: SizedBox(
             width: 420,
@@ -1365,18 +1456,16 @@ class _PrintService {
     final messenger = ScaffoldMessenger.maybeOf(context);
     switch (target) {
       case _PrintTarget.pdfPreview:
-        final bytes =
-            await _MeasurementCardPdfGenerator.generate(piece, header,
-                copyNumber: copyNumber);
+        final bytes = await _MeasurementCardPdfGenerator.generate(piece, header,
+            copyNumber: copyNumber);
         await Printing.layoutPdf(onLayout: (_) => bytes);
         messenger?.showSnackBar(
           const SnackBar(content: Text('تم تجهيز معاينة PDF لبطاقة المقاسات.')),
         );
         break;
       case _PrintTarget.savePdf:
-        final bytes =
-            await _MeasurementCardPdfGenerator.generate(piece, header,
-                copyNumber: copyNumber);
+        final bytes = await _MeasurementCardPdfGenerator.generate(piece, header,
+            copyNumber: copyNumber);
         if (!context.mounted) return;
         final directoryPath = await _resolveSaveDirectory(context);
         final fileName =
@@ -1389,21 +1478,19 @@ class _PrintService {
         );
         break;
       case _PrintTarget.officePrinter:
-        final bytes =
-            await _MeasurementCardPdfGenerator.generate(piece, header,
-                copyNumber: copyNumber);
+        final bytes = await _MeasurementCardPdfGenerator.generate(piece, header,
+            copyNumber: copyNumber);
         await Printing.layoutPdf(onLayout: (_) => bytes);
         messenger?.showSnackBar(
           const SnackBar(
-              content:
-                Text('تم إرسال البطاقة إلى نافذة الطباعة المكتبية.')),
+              content: Text('تم إرسال البطاقة إلى نافذة الطباعة المكتبية.')),
         );
         break;
       case _PrintTarget.labelPrinter:
         messenger?.showSnackBar(
           const SnackBar(
             content: Text(
-              'طباعة الملصقات قابلة للتوسعة لاحقاً؛ لا يوجد تكامل فعلي للطابعة الحالية في هذه المرحلة.'),
+                'طباعة الملصقات قابلة للتوسعة لاحقاً؛ لا يوجد تكامل فعلي للطابعة الحالية في هذه المرحلة.'),
           ),
         );
         break;
@@ -1426,10 +1513,8 @@ class _MeasurementCardPdfGenerator {
   }
 
   static Future<Uint8List> generate(
-    _OrderPieceDetail piece,
-    _MeasurementHeaderSettings header,
-    {int copyNumber = 1}
-  ) async {
+      _OrderPieceDetail piece, _MeasurementHeaderSettings header,
+      {int copyNumber = 1}) async {
     final pdf = pw.Document();
     final layout = DocumentPrintSupport.layout;
     final arabicFont = await DocumentPrintSupport.loadArabicFont();
@@ -1466,7 +1551,8 @@ class _MeasurementCardPdfGenerator {
                   'الكود: ${piece.fabricCode.isNotEmpty ? piece.fabricCode : 'غير محدد'}',
                   textAlign: pw.TextAlign.right,
                   textDirection: pw.TextDirection.rtl,
-                  style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
+                  style: pw.TextStyle(
+                      font: arabicFont, fontSize: layout.metaTextSize)),
             ),
             pw.SizedBox(width: layout.sectionSpacing),
             pw.Expanded(
@@ -1474,7 +1560,8 @@ class _MeasurementCardPdfGenerator {
                   'اللنوع : ${piece.fabricType.isNotEmpty ? piece.fabricType : 'غير محدد'}',
                   textAlign: pw.TextAlign.right,
                   textDirection: pw.TextDirection.rtl,
-                  style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
+                  style: pw.TextStyle(
+                      font: arabicFont, fontSize: layout.metaTextSize)),
             ),
           ],
         ),
@@ -1489,7 +1576,8 @@ class _MeasurementCardPdfGenerator {
                   'اللون : ${piece.fabricColor.isNotEmpty ? piece.fabricColor : 'غير محدد'}',
                   textAlign: pw.TextAlign.right,
                   textDirection: pw.TextDirection.rtl,
-                  style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
+                  style: pw.TextStyle(
+                      font: arabicFont, fontSize: layout.metaTextSize)),
             ),
             pw.SizedBox(width: layout.sectionSpacing),
             pw.Expanded(
@@ -1497,7 +1585,8 @@ class _MeasurementCardPdfGenerator {
                   ' الكتالوج: ${piece.catalogNumber.isNotEmpty ? piece.catalogNumber : 'غير محدد'}',
                   textAlign: pw.TextAlign.right,
                   textDirection: pw.TextDirection.rtl,
-                  style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
+                  style: pw.TextStyle(
+                      font: arabicFont, fontSize: layout.metaTextSize)),
             ),
           ],
         ),
@@ -1508,7 +1597,8 @@ class _MeasurementCardPdfGenerator {
             'الاستهلاك: ${piece.consumptionDisplay.isNotEmpty ? piece.consumptionDisplay : 'غير محدد'}',
             textAlign: pw.TextAlign.right,
             textDirection: pw.TextDirection.rtl,
-            style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
+            style:
+                pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
       );
     }
 
@@ -1522,7 +1612,8 @@ class _MeasurementCardPdfGenerator {
           '  1: ${piece.request1.isNotEmpty ? piece.request1 : 'لا يوجد'}',
           textAlign: pw.TextAlign.right,
           textDirection: pw.TextDirection.rtl,
-          style: pw.TextStyle(font: arabicFont, fontSize: layout.requestTextSize),
+          style:
+              pw.TextStyle(font: arabicFont, fontSize: layout.requestTextSize),
         ),
       ));
       specialRows.add(pw.SizedBox(height: layout.sectionSpacing));
@@ -1532,7 +1623,8 @@ class _MeasurementCardPdfGenerator {
           '  2: ${piece.request2.isNotEmpty ? piece.request2 : 'لا يوجد'}',
           textAlign: pw.TextAlign.right,
           textDirection: pw.TextDirection.rtl,
-          style: pw.TextStyle(font: arabicFont, fontSize: layout.requestTextSize),
+          style:
+              pw.TextStyle(font: arabicFont, fontSize: layout.requestTextSize),
         ),
       ));
       specialRows.add(pw.SizedBox(height: layout.sectionSpacing));
@@ -1542,7 +1634,8 @@ class _MeasurementCardPdfGenerator {
           '4 : ${piece.specialRequest.isNotEmpty ? piece.specialRequest : 'لا يوجد'}',
           textAlign: pw.TextAlign.right,
           textDirection: pw.TextDirection.rtl,
-          style: pw.TextStyle(font: arabicFont, fontSize: layout.requestTextSize),
+          style:
+              pw.TextStyle(font: arabicFont, fontSize: layout.requestTextSize),
         ),
       ));
     }
@@ -1560,7 +1653,8 @@ class _MeasurementCardPdfGenerator {
     }
 
     final measurementRows = <pw.Widget>[];
-    for (final rowEntries in DocumentPrintSupport.buildMeasurementGridRows(piece.measurements)) {
+    for (final rowEntries
+        in DocumentPrintSupport.buildMeasurementGridRows(piece.measurements)) {
       final rowCells = rowEntries
           .map(
             (entry) => pw.Container(
@@ -1604,9 +1698,11 @@ class _MeasurementCardPdfGenerator {
           padding: const pw.EdgeInsets.only(bottom: 0),
           child: pw.Table(
             columnWidths: {
-              for (var i = 0; i < rowCells.length; i++) i: const pw.FlexColumnWidth(1),
+              for (var i = 0; i < rowCells.length; i++)
+                i: const pw.FlexColumnWidth(1),
             },
-            border: pw.TableBorder.all(width: layout.measurementTableBorderWidth),
+            border:
+                pw.TableBorder.all(width: layout.measurementTableBorderWidth),
             children: [
               pw.TableRow(
                 children: rowCells,
@@ -1684,23 +1780,28 @@ class _MeasurementCardPdfGenerator {
                         pw.Text('النوع: $typeLabel',
                             textAlign: pw.TextAlign.right,
                             textDirection: pw.TextDirection.rtl,
-                            style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                            style:
+                                pw.TextStyle(font: arabicFont, fontSize: 11)),
                         pw.Text('الطلب: ${piece.orderNumber}',
                             textAlign: pw.TextAlign.right,
                             textDirection: pw.TextDirection.rtl,
-                            style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                            style:
+                                pw.TextStyle(font: arabicFont, fontSize: 11)),
                         pw.Text('تاريخ الطلب: ${piece.orderDateText}',
                             textAlign: pw.TextAlign.right,
                             textDirection: pw.TextDirection.rtl,
-                            style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                            style:
+                                pw.TextStyle(font: arabicFont, fontSize: 11)),
                         pw.Text('الاستلام: ${piece.deliveryDateText}',
                             textAlign: pw.TextAlign.right,
                             textDirection: pw.TextDirection.rtl,
-                            style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                            style:
+                                pw.TextStyle(font: arabicFont, fontSize: 11)),
                         pw.Text('التتبع: ${piece.trackingCode}',
                             textAlign: pw.TextAlign.right,
                             textDirection: pw.TextDirection.rtl,
-                            style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                            style:
+                                pw.TextStyle(font: arabicFont, fontSize: 11)),
                       ],
                     ),
                   ),
@@ -1712,7 +1813,8 @@ class _MeasurementCardPdfGenerator {
           rows.add(
             pw.Container(
               decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.8)),
-              padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding:
+                  const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               child: pw.BarcodeWidget(
                 barcode: pw.Barcode.code128(),
                 data: barcodeValue,
@@ -1732,7 +1834,8 @@ class _MeasurementCardPdfGenerator {
             );
             rows.add(
               pw.Container(
-                decoration: pw.BoxDecoration(border: pw.Border.all(width: layout.innerBorderWidth)),
+                decoration: pw.BoxDecoration(
+                    border: pw.Border.all(width: layout.innerBorderWidth)),
                 padding: pw.EdgeInsets.all(layout.sectionPadding),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1761,7 +1864,8 @@ class _MeasurementCardPdfGenerator {
             );
             rows.add(
               pw.Container(
-                decoration: pw.BoxDecoration(border: pw.Border.all(width: layout.innerBorderWidth)),
+                decoration: pw.BoxDecoration(
+                    border: pw.Border.all(width: layout.innerBorderWidth)),
                 padding: pw.EdgeInsets.all(layout.sectionPadding),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1790,7 +1894,8 @@ class _MeasurementCardPdfGenerator {
             );
             rows.add(
               pw.Container(
-                decoration: pw.BoxDecoration(border: pw.Border.all(width: layout.innerBorderWidth)),
+                decoration: pw.BoxDecoration(
+                    border: pw.Border.all(width: layout.innerBorderWidth)),
                 padding: pw.EdgeInsets.fromLTRB(
                   layout.sectionSpacing,
                   0,
@@ -1814,7 +1919,159 @@ class _MeasurementCardPdfGenerator {
 
     return pdf.save();
   }
+}
 
+class _TailoringOrdersPrintingTab extends StatefulWidget {
+  const _TailoringOrdersPrintingTab(
+      {required this.baseUrl, required this.auth, required this.finalInvoice});
+  final String baseUrl;
+  final AuthState auth;
+  final bool finalInvoice;
+
+  @override
+  State<_TailoringOrdersPrintingTab> createState() =>
+      _TailoringOrdersPrintingTabState();
+}
+
+class _TailoringOrdersPrintingTabState
+    extends State<_TailoringOrdersPrintingTab> {
+  final TextEditingController _search = TextEditingController();
+  Future<List<_OrderSummary>>? _future;
+
+  Map<String, String> get _headers {
+    final token = widget.auth.token;
+    return {
+      'Accept': 'application/json',
+      if (token != null && token.trim().isNotEmpty)
+        'Authorization': 'Bearer ${token.trim()}',
+    };
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _load() {
+    setState(() {
+      _future = _fetch();
+    });
+  }
+
+  Future<List<_OrderSummary>> _fetch() async {
+    final customersResponse = await http
+        .get(Uri.parse('${widget.baseUrl}/customers'), headers: _headers);
+    final customers = <int, _CustomerSnapshot>{};
+    if (customersResponse.statusCode >= 200 &&
+        customersResponse.statusCode < 300) {
+      final body = jsonDecode(customersResponse.body);
+      if (body is List) {
+        for (final item in body.whereType<Map<String, dynamic>>()) {
+          final id = (item['customerId'] as num?)?.toInt() ?? 0;
+          if (id > 0) {
+            customers[id] = _CustomerSnapshot(
+                name: (item['customerName'] ?? '').toString(),
+                phone: (item['phoneNumber'] ?? '').toString());
+          }
+        }
+      }
+    }
+    final response = await http.get(Uri.parse('${widget.baseUrl}/orders'),
+        headers: _headers);
+    if (response.statusCode < 200 || response.statusCode >= 300)
+      throw StateError('تعذر تحميل الطلبات.');
+    final entries = (jsonDecode(response.body) as List)
+        .whereType<Map<String, dynamic>>()
+        .map((json) => _OrderSummary.fromJson(json, customers))
+        .where((order) => !order.isReadyMade)
+        .where((order) {
+      if (!widget.finalInvoice) return true;
+      return order.orderStatus.toLowerCase() == 'delivered';
+    }).toList()
+      ..sort((a, b) => b.orderDate.compareTo(a.orderDate));
+    return entries;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      Padding(
+          padding: const EdgeInsets.all(12),
+          child: TextField(
+              controller: _search,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search),
+                  hintText: 'البحث برقم الطلب أو اسم/كود/هاتف العميل'))),
+      Expanded(
+          child: FutureBuilder<List<_OrderSummary>>(
+              future: _future,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  return const Center(child: CircularProgressIndicator());
+                if (snapshot.hasError)
+                  return Center(child: Text('تعذر تحميل الطلبات المحفوظة.'));
+                final query = _search.text.trim().toLowerCase();
+                final filtered = (snapshot.data ?? []).where((order) {
+                  if (query.isEmpty) return true;
+                  return order.orderNumber.toLowerCase().contains(query) ||
+                      order.customerName.toLowerCase().contains(query) ||
+                      order.customerPhone.toLowerCase().contains(query);
+                }).toList();
+                if (filtered.isEmpty)
+                  return Center(
+                      child: Text(widget.finalInvoice
+                          ? 'لا توجد طلبات مسلمة.'
+                          : 'لا توجد طلبات محفوظة مطابقة.'));
+                return ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final order = filtered[index];
+                      return Card(
+                          child: ListTile(
+                              title: Text(order.orderNumber),
+                              subtitle: Text(
+                                  '${order.customerName} • ${order.customerPhone.isEmpty ? '-' : order.customerPhone}\n${order.orderStatus}'),
+                              trailing: FilledButton.icon(
+                                  onPressed: () async {
+                                    try {
+                                      if (widget.finalInvoice) {
+                                        await TailoringOrderDocumentsPrinting
+                                            .printFinalInvoice(
+                                                context, order.orderId);
+                                      } else {
+                                        await TailoringOrderDocumentsPrinting
+                                            .printInitialReceipt(
+                                                context, order.orderId);
+                                      }
+                                    } catch (_) {
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(SnackBar(
+                                              content: Text(widget.finalInvoice
+                                                  ? 'تعذر تحميل بيانات التسوية النهائية للطلب.'
+                                                  : 'تعذر تحميل بيانات الطلب المحفوظ.')));
+                                    }
+                                  },
+                                  icon: Icon(widget.finalInvoice
+                                      ? Icons.description_outlined
+                                      : Icons.receipt_long_outlined),
+                                  label: Text(widget.finalInvoice
+                                      ? 'طباعة الفاتورة النهائية'
+                                      : 'طباعة الإيصال'))));
+                    });
+              }))
+    ]);
+  }
 }
 
 class _PlaceholderTab extends StatelessWidget {
@@ -1829,42 +2086,42 @@ class _PlaceholderTab extends StatelessWidget {
     return ColoredBox(
       color: isLight ? const Color(0xFFF4F7FA) : UiPalette.screenBackground,
       child: Center(
-      child: Container(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.construction_outlined,
-                size: 42,
-                color: isLight ? const Color(0xFF168F86) : null),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: TextStyle(
-                color: isLight ? const Color(0xFF172033) : UiPalette.textMain,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+        child: Container(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.construction_outlined,
+                  size: 42, color: isLight ? const Color(0xFF168F86) : null),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: TextStyle(
+                  color: isLight ? const Color(0xFF172033) : UiPalette.textMain,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: isLight ? const Color(0xFF5B687A) : UiPalette.textSoft,
-                fontSize: 14,
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: isLight ? const Color(0xFF5B687A) : UiPalette.textSoft,
+                  fontSize: 14,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
 }
 
 class _FabricRollLabelsTab extends StatefulWidget {
-  const _FabricRollLabelsTab({required this.baseUrl, required this.auth, this.cachedLabels});
+  const _FabricRollLabelsTab(
+      {required this.baseUrl, required this.auth, this.cachedLabels});
 
   final String baseUrl;
   final AuthState auth;
@@ -1887,8 +2144,10 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
   @override
   void initState() {
     super.initState();
-    _widthController = TextEditingController(text: _labelWidthMm.toStringAsFixed(0));
-    _heightController = TextEditingController(text: _labelHeightMm.toStringAsFixed(0));
+    _widthController =
+        TextEditingController(text: _labelWidthMm.toStringAsFixed(0));
+    _heightController =
+        TextEditingController(text: _labelHeightMm.toStringAsFixed(0));
     _labels = widget.cachedLabels ?? _loadLabels();
   }
 
@@ -1909,23 +2168,32 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
     };
   }
 
-  Future<List<_FabricRollLabel>> _loadLabels({int? goodsReceiptItemId, String? catalogNumber, String? fabricCode}) async {
+  Future<List<_FabricRollLabel>> _loadLabels(
+      {int? goodsReceiptItemId,
+      String? catalogNumber,
+      String? fabricCode}) async {
     final query = <String>[];
-    if (goodsReceiptItemId != null) query.add('goodsReceiptItemId=$goodsReceiptItemId');
+    if (goodsReceiptItemId != null)
+      query.add('goodsReceiptItemId=$goodsReceiptItemId');
     if (catalogNumber != null && catalogNumber.trim().isNotEmpty) {
-      query.add('catalogNumber=${Uri.encodeQueryComponent(catalogNumber.trim())}');
+      query.add(
+          'catalogNumber=${Uri.encodeQueryComponent(catalogNumber.trim())}');
     }
     if (fabricCode != null && fabricCode.trim().isNotEmpty) {
       query.add('fabricCode=${Uri.encodeQueryComponent(fabricCode.trim())}');
     }
-    final uri = Uri.parse('${widget.baseUrl}/inventory/fabric-roll-labels${query.isEmpty ? '' : '?${query.join('&')}'}');
+    final uri = Uri.parse(
+        '${widget.baseUrl}/inventory/fabric-roll-labels${query.isEmpty ? '' : '?${query.join('&')}'}');
     final response = await http.get(uri, headers: _headers);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('تعذر تحميل ملصقات الرولات.');
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! List) return const <_FabricRollLabel>[];
-    return decoded.cast<Map<String, dynamic>>().map(_FabricRollLabel.fromJson).toList();
+    return decoded
+        .cast<Map<String, dynamic>>()
+        .map(_FabricRollLabel.fromJson)
+        .toList();
   }
 
   Future<void> _search() async {
@@ -1936,7 +2204,8 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
     });
   }
 
-  Future<Uint8List> _buildPdf(List<_FabricRollLabel> labels, {bool includeCatalogLabels = true}) async {
+  Future<Uint8List> _buildPdf(List<_FabricRollLabel> labels,
+      {bool includeCatalogLabels = true}) async {
     pw.Font? arabicFont;
     try {
       arabicFont = await DocumentPrintSupport.loadArabicFont();
@@ -1952,25 +2221,25 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
     final catalogs = <String>{};
     if (includeCatalogLabels) {
       for (final label in labels) {
-      final catalog = label.catalogNumber?.trim();
-      if (catalog != null && catalog.isNotEmpty && catalogs.add(catalog)) {
-        pdf.addPage(pw.Page(
-          pageFormat: pageFormat,
-          build: (_) => pw.Directionality(
-            textDirection: pw.TextDirection.rtl,
-            child: pw.Center(
-              child: pw.Text(
-                catalog,
-                style: pw.TextStyle(
-                  font: arabicFont,
-                  fontSize: 18,
-                  fontWeight: pw.FontWeight.bold,
+        final catalog = label.catalogNumber?.trim();
+        if (catalog != null && catalog.isNotEmpty && catalogs.add(catalog)) {
+          pdf.addPage(pw.Page(
+            pageFormat: pageFormat,
+            build: (_) => pw.Directionality(
+              textDirection: pw.TextDirection.rtl,
+              child: pw.Center(
+                child: pw.Text(
+                  catalog,
+                  style: pw.TextStyle(
+                    font: arabicFont,
+                    fontSize: 18,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
               ),
             ),
-          ),
-        ));
-      }
+          ));
+        }
       }
     }
 
@@ -1986,13 +2255,19 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
               children: [
                 pw.Text(
                   label.catalogNumber ?? '-',
-                  style: pw.TextStyle(font: arabicFont, fontSize: 9, fontWeight: pw.FontWeight.bold),
+                  style: pw.TextStyle(
+                      font: arabicFont,
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold),
                   textDirection: pw.TextDirection.rtl,
                 ),
                 pw.SizedBox(height: 1),
                 pw.Text(
                   label.fabricCode,
-                  style: pw.TextStyle(font: arabicFont, fontSize: 11, fontWeight: pw.FontWeight.bold),
+                  style: pw.TextStyle(
+                      font: arabicFont,
+                      fontSize: 11,
+                      fontWeight: pw.FontWeight.bold),
                   textDirection: pw.TextDirection.ltr,
                 ),
                 pw.SizedBox(height: 1),
@@ -2007,15 +2282,21 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text('نوع القماش: ${label.fabricType}', style: bodyStyle, textDirection: pw.TextDirection.rtl),
-                    pw.Text('اللون: ${label.fabricColor ?? '-'}', style: bodyStyle, textDirection: pw.TextDirection.rtl),
+                    pw.Text('نوع القماش: ${label.fabricType}',
+                        style: bodyStyle, textDirection: pw.TextDirection.rtl),
+                    pw.Text('اللون: ${label.fabricColor ?? '-'}',
+                        style: bodyStyle, textDirection: pw.TextDirection.rtl),
                   ],
                 ),
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text('العرض: ${label.fabricWidth?.toStringAsFixed(2) ?? '-'} ${label.fabricWidthUnit == 'Inch' ? 'إنش' : (label.fabricWidthUnit ?? '')}', style: bodyStyle, textDirection: pw.TextDirection.rtl),
-                    pw.Text('الكمية: ${label.quantity.toStringAsFixed(2)}', style: bodyStyle, textDirection: pw.TextDirection.rtl),
+                    pw.Text(
+                        'العرض: ${label.fabricWidth?.toStringAsFixed(2) ?? '-'} ${label.fabricWidthUnit == 'Inch' ? 'إنش' : (label.fabricWidthUnit ?? '')}',
+                        style: bodyStyle,
+                        textDirection: pw.TextDirection.rtl),
+                    pw.Text('الكمية: ${label.quantity.toStringAsFixed(2)}',
+                        style: bodyStyle, textDirection: pw.TextDirection.rtl),
                   ],
                 ),
               ],
@@ -2027,39 +2308,51 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
     return pdf.save();
   }
 
-  Future<void> _printLabels(List<_FabricRollLabel> labels, {bool includeCatalogLabels = true}) async {
+  Future<void> _printLabels(List<_FabricRollLabel> labels,
+      {bool includeCatalogLabels = true}) async {
     if (labels.isEmpty) return;
     final alreadyPrinted = labels.where((label) => label.isPrinted).toList();
     if (alreadyPrinted.isNotEmpty) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) {
-          final isLight = Theme.of(dialogContext).brightness == Brightness.light;
+          final isLight =
+              Theme.of(dialogContext).brightness == Brightness.light;
           return AlertDialog(
-          backgroundColor: isLight ? const Color(0xFFFFFFFF) : UiPalette.surfaceCard,
-          title: const Text('إعادة الطباعة'),
-          content: const Text('سبق طباعة هذا الملصق. هل تريد إعادة الطباعة؟'),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('إلغاء')),
-            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('إعادة الطباعة')),
-          ],
+            backgroundColor:
+                isLight ? const Color(0xFFFFFFFF) : UiPalette.surfaceCard,
+            title: const Text('إعادة الطباعة'),
+            content: const Text('سبق طباعة هذا الملصق. هل تريد إعادة الطباعة؟'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('إلغاء')),
+              FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('إعادة الطباعة')),
+            ],
           );
         },
       );
       if (confirmed != true) return;
     }
     try {
-      final bytes = await _buildPdf(labels, includeCatalogLabels: includeCatalogLabels);
+      final bytes =
+          await _buildPdf(labels, includeCatalogLabels: includeCatalogLabels);
       await Printing.layoutPdf(onLayout: (_) async => bytes);
       if (!mounted) return;
       final printOperationId = const Uuid().v4();
       final printRecordResponse = await http.post(
         Uri.parse('${widget.baseUrl}/inventory/fabric-roll-labels/prints'),
         headers: {..._headers, 'Content-Type': 'application/json'},
-        body: jsonEncode(<String, dynamic>{'fabricRollIds': labels.map((label) => label.fabricRollId).toList(), 'printOperationId': printOperationId}),
+        body: jsonEncode(<String, dynamic>{
+          'fabricRollIds': labels.map((label) => label.fabricRollId).toList(),
+          'printOperationId': printOperationId
+        }),
       );
       if (!mounted) return;
-      if (printRecordResponse.statusCode < 200 || printRecordResponse.statusCode >= 300) {
+      if (printRecordResponse.statusCode < 200 ||
+          printRecordResponse.statusCode >= 300) {
         throw Exception('تعذر تسجيل نجاح الطباعة.');
       }
       setState(() {
@@ -2122,9 +2415,77 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             children: [
-              SizedBox(width: 140, child: TextField(controller: _widthController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'عرض الملصق (مم)', filled: true, fillColor: Theme.of(context).brightness == Brightness.light ? const Color(0xFFFFFFFF) : null, labelStyle: TextStyle(color: Theme.of(context).brightness == Brightness.light ? const Color(0xFF172033) : null), enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.light ? const Color(0xFFCBD5E1) : UiPalette.borderSoft)), focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.light ? const Color(0xFF168F86) : UiPalette.primaryBlue, width: 1.5))), onChanged: (v) { final value = double.tryParse(v); if (value != null && value > 0) setState(() => _labelWidthMm = value); })),
+              SizedBox(
+                  width: 140,
+                  child: TextField(
+                      controller: _widthController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                          labelText: 'عرض الملصق (مم)',
+                          filled: true,
+                          fillColor:
+                              Theme.of(context).brightness == Brightness.light
+                                  ? const Color(0xFFFFFFFF)
+                                  : null,
+                          labelStyle: TextStyle(
+                              color: Theme.of(context).brightness ==
+                                      Brightness.light
+                                  ? const Color(0xFF172033)
+                                  : null),
+                          enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.light
+                                      ? const Color(0xFFCBD5E1)
+                                      : UiPalette.borderSoft)),
+                          focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.light
+                                      ? const Color(0xFF168F86)
+                                      : UiPalette.primaryBlue,
+                                  width: 1.5))),
+                      onChanged: (v) {
+                        final value = double.tryParse(v);
+                        if (value != null && value > 0)
+                          setState(() => _labelWidthMm = value);
+                      })),
               const SizedBox(width: 8),
-              SizedBox(width: 140, child: TextField(controller: _heightController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'ارتفاع الملصق (مم)', filled: true, fillColor: Theme.of(context).brightness == Brightness.light ? const Color(0xFFFFFFFF) : null, labelStyle: TextStyle(color: Theme.of(context).brightness == Brightness.light ? const Color(0xFF172033) : null), enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.light ? const Color(0xFFCBD5E1) : UiPalette.borderSoft)), focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.light ? const Color(0xFF168F86) : UiPalette.primaryBlue, width: 1.5))), onChanged: (v) { final value = double.tryParse(v); if (value != null && value > 0) setState(() => _labelHeightMm = value); })),
+              SizedBox(
+                  width: 140,
+                  child: TextField(
+                      controller: _heightController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                          labelText: 'ارتفاع الملصق (مم)',
+                          filled: true,
+                          fillColor:
+                              Theme.of(context).brightness == Brightness.light
+                                  ? const Color(0xFFFFFFFF)
+                                  : null,
+                          labelStyle: TextStyle(
+                              color: Theme.of(context).brightness ==
+                                      Brightness.light
+                                  ? const Color(0xFF172033)
+                                  : null),
+                          enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.light
+                                      ? const Color(0xFFCBD5E1)
+                                      : UiPalette.borderSoft)),
+                          focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.light
+                                      ? const Color(0xFF168F86)
+                                      : UiPalette.primaryBlue,
+                                  width: 1.5))),
+                      onChanged: (v) {
+                        final value = double.tryParse(v);
+                        if (value != null && value > 0)
+                          setState(() => _labelHeightMm = value);
+                      })),
             ],
           ),
         ),
@@ -2133,8 +2494,10 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
           child: FutureBuilder<List<_FabricRollLabel>>(
             future: _labels,
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-              if (snapshot.hasError) return Center(child: Text(snapshot.error.toString()));
+              if (snapshot.connectionState != ConnectionState.done)
+                return const Center(child: CircularProgressIndicator());
+              if (snapshot.hasError)
+                return Center(child: Text(snapshot.error.toString()));
               final labels = snapshot.data ?? const <_FabricRollLabel>[];
               return Column(
                 children: [
@@ -2144,14 +2507,22 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
                       children: [
                         FilledButton.icon(
                           onPressed: () {
-                            final selectedLabels = labels.where((label) => _selected.contains(label.fabricRollId)).toList();
-                            _printLabels(selectedLabels, includeCatalogLabels: selectedLabels.length != 1);
+                            final selectedLabels = labels
+                                .where((label) =>
+                                    _selected.contains(label.fabricRollId))
+                                .toList();
+                            _printLabels(selectedLabels,
+                                includeCatalogLabels:
+                                    selectedLabels.length != 1);
                           },
                           icon: const Icon(Icons.print_outlined),
                           label: const Text('طباعة المحدد'),
                         ),
                         const SizedBox(width: 8),
-                        FilledButton.tonalIcon(onPressed: () => _printLabels(labels), icon: const Icon(Icons.print), label: const Text('طباعة جميع رولات المخزن')),
+                        FilledButton.tonalIcon(
+                            onPressed: () => _printLabels(labels),
+                            icon: const Icon(Icons.print),
+                            label: const Text('طباعة جميع رولات المخزن')),
                       ],
                     ),
                   ),
@@ -2160,7 +2531,10 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
                     child: Builder(builder: (context) {
                       final groups = <int, List<_FabricRollLabel>>{};
                       for (final label in labels) {
-                        groups.putIfAbsent(label.goodsReceiptItemId, () => <_FabricRollLabel>[]).add(label);
+                        groups
+                            .putIfAbsent(label.goodsReceiptItemId,
+                                () => <_FabricRollLabel>[])
+                            .add(label);
                       }
                       final entries = groups.entries.toList()
                         ..sort((a, b) => a.key.compareTo(b.key));
@@ -2171,22 +2545,31 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
                           final entry = entries[index];
                           final groupLabels = entry.value;
                           final first = groupLabels.first;
-                          final selectedCount = groupLabels.where((label) => _selected.contains(label.fabricRollId)).length;
-                          final allSelected = selectedCount == groupLabels.length;
-                          final printedCount = groupLabels.where((label) => label.isPrinted).length;
+                          final selectedCount = groupLabels
+                              .where((label) =>
+                                  _selected.contains(label.fabricRollId))
+                              .length;
+                          final allSelected =
+                              selectedCount == groupLabels.length;
+                          final printedCount = groupLabels
+                              .where((label) => label.isPrinted)
+                              .length;
                           final groupStatus = printedCount == 0
                               ? 'غير مطبوع'
                               : printedCount == groupLabels.length
                                   ? 'تمت طباعة جميع الرولات'
                                   : 'مطبوع جزئيًا';
-                          final isLight = Theme.of(context).brightness == Brightness.light;
+                          final isLight =
+                              Theme.of(context).brightness == Brightness.light;
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
                             color: isLight ? const Color(0xFFFFFFFF) : null,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                               side: BorderSide(
-                                color: isLight ? const Color(0xFFCBD5E1) : UiPalette.borderSoft,
+                                color: isLight
+                                    ? const Color(0xFFCBD5E1)
+                                    : UiPalette.borderSoft,
                               ),
                             ),
                             child: Padding(
@@ -2200,28 +2583,44 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
                                         value: allSelected,
                                         onChanged: (value) => setState(() {
                                           if (value == true) {
-                                            _selected.addAll(groupLabels.map((label) => label.fabricRollId));
+                                            _selected.addAll(groupLabels.map(
+                                                (label) => label.fabricRollId));
                                             _selectedGroups.add(entry.key);
                                           } else {
-                                            _selected.removeAll(groupLabels.map((label) => label.fabricRollId));
+                                            _selected.removeAll(groupLabels.map(
+                                                (label) => label.fabricRollId));
                                             _selectedGroups.remove(entry.key);
                                           }
                                         }),
                                       ),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
-                                            Text(first.catalogNumber ?? '-', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                            Text('${first.fabricType}${first.fabricColor == null || first.fabricColor!.isEmpty ? '' : ' • ${first.fabricColor}'}'),
+                                            Text(first.catalogNumber ?? '-',
+                                                style: const TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                            Text(
+                                                '${first.fabricType}${first.fabricColor == null || first.fabricColor!.isEmpty ? '' : ' • ${first.fabricColor}'}'),
                                           ],
                                         ),
                                       ),
                                       Column(
-                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
                                         children: [
-                                          Text('${groupLabels.length} رول', style: const TextStyle(fontWeight: FontWeight.w700)),
-                                          Text(groupStatus, style: TextStyle(color: printedCount == 0 ? Colors.grey : Colors.green, fontSize: 12)),
+                                          Text('${groupLabels.length} رول',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w700)),
+                                          Text(groupStatus,
+                                              style: TextStyle(
+                                                  color: printedCount == 0
+                                                      ? Colors.grey
+                                                      : Colors.green,
+                                                  fontSize: 12)),
                                         ],
                                       ),
                                     ],
@@ -2233,7 +2632,8 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
                                   ),
                                   const SizedBox(height: 8),
                                   ...groupLabels.map((label) {
-                                    final checked = _selected.contains(label.fabricRollId);
+                                    final checked =
+                                        _selected.contains(label.fabricRollId);
                                     final printed = label.isPrinted;
                                     return CheckboxListTile(
                                       value: checked,
@@ -2245,9 +2645,15 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
                                         }
                                       }),
                                       title: Text(label.fabricCode),
-                                      subtitle: Text('Catalog: ${label.catalogNumber ?? '-'} | ${label.fabricType}', style: TextStyle(color: printed ? Colors.green : null)),
+                                      subtitle: Text(
+                                          'Catalog: ${label.catalogNumber ?? '-'} | ${label.fabricType}',
+                                          style: TextStyle(
+                                              color: printed
+                                                  ? Colors.green
+                                                  : null)),
                                       secondary: printed
-                                          ? const Chip(label: Text('تمت الطباعة'))
+                                          ? const Chip(
+                                              label: Text('تمت الطباعة'))
                                           : const Icon(Icons.label_outline),
                                     );
                                   }),
@@ -2270,22 +2676,36 @@ class _FabricRollLabelsTabState extends State<_FabricRollLabelsTab> {
 }
 
 class _FabricRollLabel {
-  const _FabricRollLabel({required this.fabricRollId, required this.goodsReceiptItemId, required this.catalogNumber, required this.fabricCode, required this.fabricType, required this.fabricColor, required this.fabricWidth, required this.fabricWidthUnit, required this.quantity, required this.unitCost, required this.isPrinted, required this.lastPrintedAt, required this.printCount});
-  factory _FabricRollLabel.fromJson(Map<String, dynamic> json) => _FabricRollLabel(
-    fabricRollId: (json['fabricRollId'] as num).toInt(),
-    goodsReceiptItemId: (json['goodsReceiptItemId'] as num).toInt(),
-    catalogNumber: json['catalogNumber']?.toString(),
-    fabricCode: (json['fabricCode'] ?? '').toString(),
-    fabricType: (json['fabricType'] ?? '').toString(),
-    fabricColor: json['fabricColor']?.toString(),
-    fabricWidth: (json['fabricWidth'] as num?)?.toDouble(),
-    fabricWidthUnit: json['fabricWidthUnit']?.toString(),
-    quantity: (json['quantity'] as num?)?.toDouble() ?? 0,
-    unitCost: (json['unitCost'] as num?)?.toDouble() ?? 0,
-    isPrinted: json['isPrinted'] == true,
-    lastPrintedAt: json['lastPrintedAt']?.toString(),
-    printCount: (json['printCount'] as num?)?.toInt() ?? 0,
-  );
+  const _FabricRollLabel(
+      {required this.fabricRollId,
+      required this.goodsReceiptItemId,
+      required this.catalogNumber,
+      required this.fabricCode,
+      required this.fabricType,
+      required this.fabricColor,
+      required this.fabricWidth,
+      required this.fabricWidthUnit,
+      required this.quantity,
+      required this.unitCost,
+      required this.isPrinted,
+      required this.lastPrintedAt,
+      required this.printCount});
+  factory _FabricRollLabel.fromJson(Map<String, dynamic> json) =>
+      _FabricRollLabel(
+        fabricRollId: (json['fabricRollId'] as num).toInt(),
+        goodsReceiptItemId: (json['goodsReceiptItemId'] as num).toInt(),
+        catalogNumber: json['catalogNumber']?.toString(),
+        fabricCode: (json['fabricCode'] ?? '').toString(),
+        fabricType: (json['fabricType'] ?? '').toString(),
+        fabricColor: json['fabricColor']?.toString(),
+        fabricWidth: (json['fabricWidth'] as num?)?.toDouble(),
+        fabricWidthUnit: json['fabricWidthUnit']?.toString(),
+        quantity: (json['quantity'] as num?)?.toDouble() ?? 0,
+        unitCost: (json['unitCost'] as num?)?.toDouble() ?? 0,
+        isPrinted: json['isPrinted'] == true,
+        lastPrintedAt: json['lastPrintedAt']?.toString(),
+        printCount: (json['printCount'] as num?)?.toInt() ?? 0,
+      );
   final int fabricRollId;
   final int goodsReceiptItemId;
   final String? catalogNumber;
@@ -2366,7 +2786,8 @@ class _OrderSummary {
         orderNumber: (json['productionOrderNumber'] ?? '').toString(),
         customerName: 'إنتاج جاهز',
         customerPhone: '',
-        orderDate: DateTime.tryParse((json['createdAt'] ?? '').toString()) ?? DateTime.now(),
+        orderDate: DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
+            DateTime.now(),
         orderStatus: (json['status'] ?? 'New').toString(),
         isReadyMade: true,
       );
@@ -2406,7 +2827,7 @@ class _OrderPieceDetail {
     required this.specialRequest,
     required this.measurements,
     required this.pieceStatus,
-      this.isReadyMade = false,
+    this.isReadyMade = false,
   });
 
   factory _OrderPieceDetail.fromJson(
@@ -2540,7 +2961,6 @@ class _OrderPieceDetail {
     );
   }
 
-
   final int pieceId;
   final String orderNumber;
   final int pieceNumber;
@@ -2644,7 +3064,11 @@ class _PrintHistoryRecord {
 }
 
 class _EmployeeOption {
-  const _EmployeeOption({required this.id, required this.code, required this.name, required this.isActive});
+  const _EmployeeOption(
+      {required this.id,
+      required this.code,
+      required this.name,
+      required this.isActive});
 
   factory _EmployeeOption.fromJson(Map<String, dynamic> json) {
     final status = (json['status'] ?? '').toString().trim().toLowerCase();
@@ -2665,7 +3089,8 @@ class _EmployeeOption {
 class _CustomerOption {
   const _CustomerOption({required this.id, required this.name});
 
-  factory _CustomerOption.fromJson(Map<String, dynamic> json) => _CustomerOption(
+  factory _CustomerOption.fromJson(Map<String, dynamic> json) =>
+      _CustomerOption(
         id: (json['customerId'] as num?)?.toInt() ?? 0,
         name: (json['customerName'] ?? '').toString(),
       );
@@ -2695,4 +3120,3 @@ class _ReprintFormData {
   final int? cashAccountId;
   final int? saleCustomerId;
 }
-

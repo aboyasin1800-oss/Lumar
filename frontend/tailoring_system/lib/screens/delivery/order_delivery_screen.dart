@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../core/app_error.dart';
 import '../../core/app_navigation.dart';
 import '../../core/app_message.dart';
+import '../../core/tailoring_order_documents_printing.dart';
 import '../../core/ui_palette.dart';
 import '../../models/finance_models.dart';
 import '../../models/order_models.dart';
@@ -163,7 +164,8 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
   }
 
   Future<void> _resolveDefaultCashAccount() async {
-    final generalCashAccount = await FinanceRepository().resolveGeneralCashAccount(
+    final generalCashAccount =
+        await FinanceRepository().resolveGeneralCashAccount(
       requireReceiptEnabled: true,
     );
     if (!mounted || generalCashAccount == null) return;
@@ -490,7 +492,8 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
     if (error != null) {
       final raw = error.toString();
       final trimmed = raw
-          .replaceFirst(RegExp(r'^(Exception|Error):\s*', caseSensitive: false), '')
+          .replaceFirst(
+              RegExp(r'^(Exception|Error):\s*', caseSensitive: false), '')
           .trim();
       if (trimmed.isNotEmpty && trimmed.toLowerCase() != 'null') {
         return trimmed;
@@ -652,6 +655,26 @@ class _OrderDeliveryScreenState extends State<OrderDeliveryScreen> {
                       ],
                     ),
                   ),
+                  if (isDelivered && order.revenueRecognized) ...[
+                    const SizedBox(height: 16),
+                    _Panel(
+                      title: 'الفاتورة النهائية',
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          try {
+                            await TailoringOrderDocumentsPrinting
+                                .printFinalInvoice(context, order.id);
+                          } catch (_) {
+                            if (!mounted) return;
+                            _showMessage(
+                                'تعذر تحميل بيانات التسوية النهائية للطلب.');
+                          }
+                        },
+                        icon: const Icon(Icons.description_outlined),
+                        label: const Text('طباعة الفاتورة النهائية'),
+                      ),
+                    ),
+                  ],
                   if (data.financialTransactions.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     _Panel(
