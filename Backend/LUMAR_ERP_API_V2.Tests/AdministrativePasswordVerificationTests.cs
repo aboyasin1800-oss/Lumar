@@ -89,7 +89,7 @@ public sealed class AdministrativePasswordVerificationTests
             => Task.FromResult(verified);
         public Task<bool> SetProtectedAreasPasswordAsync(ProtectedAreasPasswordSetupDto request, CancellationToken ct)
             => Task.FromResult(verified);
-        public Task<bool> UpdateProtectedAreasDurationAsync(ProtectedAreasDurationDto request, string adminUsername, string adminPassword, CancellationToken ct)
+        public Task<bool> UpdateProtectedAreasDurationAsync(ProtectedAreasDurationDto request, string currentProtectionPassword, CancellationToken ct)
             => Task.FromResult(verified);
 
         public Task<SessionDto?> LoginAsync(LoginDto login, CancellationToken ct) => Task.FromResult<SessionDto?>(null);
@@ -104,6 +104,12 @@ public sealed class AdministrativePasswordVerificationTests
         public Task<bool> ChangePasswordAsync(string token, ChangePasswordDto request, CancellationToken ct) => Task.FromResult(false);
         public Task<LUMAR_ERP_API_V2.DTOs.Auth.RecoveryStartResultDto> BeginAdministrativeRecoveryAsync(string adminToken, string username, CancellationToken ct) => throw new NotSupportedException();
         public Task<LUMAR_ERP_API_V2.DTOs.Auth.RecoveryCompleteResultDto> CompleteAdministrativeRecoveryAsync(string resetToken, string newPassword, string confirmPassword, CancellationToken ct) => throw new NotSupportedException();
+        public Task<AccountRecoverySubmitResultDto> SubmitAccountRecoveryAsync(AccountRecoverySubmitDto request, CancellationToken ct) => Task.FromResult(new AccountRecoverySubmitResultDto(0, Guid.Empty, "Pending", ""));
+        public Task<IReadOnlyList<AccountRecoveryCandidateDto>> ListAccountRecoveryRequestsAsync(string adminToken, CancellationToken ct) => Task.FromResult<IReadOnlyList<AccountRecoveryCandidateDto>>(Array.Empty<AccountRecoveryCandidateDto>());
+        public Task<bool> ApproveAccountRecoveryAsync(string adminToken, AccountRecoveryApproveDto request, CancellationToken ct) => Task.FromResult(false);
+        public Task<bool> RejectAccountRecoveryAsync(string adminToken, AccountRecoveryRejectDto request, CancellationToken ct) => Task.FromResult(false);
+        public Task<RecoveryCompleteResultDto> CompleteAccountRecoveryAsync(AccountRecoveryCompleteDto request, CancellationToken ct) => Task.FromResult(new RecoveryCompleteResultDto(false, ""));
+        public Task<AccountRecoveryStatusDto?> GetAccountRecoveryStatusAsync(Guid publicRequestKey, CancellationToken ct) => Task.FromResult<AccountRecoveryStatusDto?>(null);
         public Task<AccountTypeDto?> GetAccountTypeAsync(string token, CancellationToken ct) => Task.FromResult<AccountTypeDto?>(null);
     }
 }

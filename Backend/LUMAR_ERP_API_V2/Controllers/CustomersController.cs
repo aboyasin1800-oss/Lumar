@@ -24,6 +24,15 @@ public sealed class CustomersController(ICustomerService service, IAuthenticated
         return customer is null ? NotFound() : Ok(customer);
     }
 
+    [HttpGet("{id:int}/mobile-access")]
+    [ProducesResponseType<IReadOnlyList<CustomerMobileAccessDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<IReadOnlyList<CustomerMobileAccessDto>>> GetMobileAccess(int id, CancellationToken cancellationToken)
+    {
+        if (id <= 0) return BadRequest("Customer id must be positive.");
+        return Ok(await service.GetMobileAccessAsync(id, cancellationToken));
+    }
+
     [HttpPost]
     [ProducesResponseType<CustomerDetailsDto>(StatusCodes.Status201Created)]
     public async Task<ActionResult<CustomerDetailsDto>> CreateCustomer(CreateCustomerDto customer, CancellationToken cancellationToken)

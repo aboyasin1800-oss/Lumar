@@ -39,6 +39,21 @@ public sealed record LinkedCustomerAccessDto(
     string AccessRole,
     bool IsActive);
 
+public sealed record CustomerMobileAccessDto(
+    int CustomerId,
+    int MobileAccountId,
+    int? UserId,
+    string? Username,
+    string? FullName,
+    string AccountType,
+    string AccessRole,
+    string? RelationshipType,
+    bool MobileAccountIsActive,
+    bool AccessIsActive,
+    int? PrimaryCustomerId,
+    string? PrimaryCustomerCode,
+    string? PrimaryCustomerName);
+
 public sealed class CreateManagedCustomerDto
 {
     [StringLength(20)] public string? CustomerCode { get; init; }

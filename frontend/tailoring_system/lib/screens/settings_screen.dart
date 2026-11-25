@@ -799,10 +799,11 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   final username = TextEditingController();
   final newPassword = TextEditingController();
   final confirmPassword = TextEditingController();
-  final adminTargetUsername = TextEditingController();
-  final adminRecoveryToken = TextEditingController();
-  final adminRecoveryPassword = TextEditingController();
-  final adminRecoveryConfirmPassword = TextEditingController();
+  final Map<int, TextEditingController> _recoveryUsernameControllers = {};
+  final Map<int, TextEditingController> _recoveryReasonControllers = {};
+  final Map<int, List<Map<String, dynamic>>> _recoveryMatches = {};
+  final Map<int, Map<String, dynamic>?> _recoverySelectedMatches = {};
+  List<Map<String, dynamic>> _recoveryRequests = const [];
   final currentPasswordFocus = FocusNode();
   final newPasswordFocus = FocusNode();
   final confirmPasswordFocus = FocusNode();
@@ -827,10 +828,12 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     username.dispose();
     newPassword.dispose();
     confirmPassword.dispose();
-    adminTargetUsername.dispose();
-    adminRecoveryToken.dispose();
-    adminRecoveryPassword.dispose();
-    adminRecoveryConfirmPassword.dispose();
+    for (final controller in _recoveryUsernameControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _recoveryReasonControllers.values) {
+      controller.dispose();
+    }
     currentPasswordFocus.dispose();
     newPasswordFocus.dispose();
     confirmPasswordFocus.dispose();
@@ -859,37 +862,131 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     }
   }
 
-  Future<void> _startAdminRecovery() async {
-    final result = await widget.auth.beginAdministrativeRecovery(
-      adminTargetUsername.text,
-    );
+  Future<void> _refreshAccountRecoveryRequests() async {
+    final requests = await widget.auth.listAccountRecoveryRequests();
     if (!mounted) return;
 
+    final sorted = List<Map<String, dynamic>>.of(requests);
+    sorted.sort((left, right) {
+      final leftStatus = (left['status'] ?? '').toString();
+      final rightStatus = (right['status'] ?? '').toString();
+      if (leftStatus == 'Pending' && rightStatus != 'Pending') return -1;
+      if (rightStatus == 'Pending' && leftStatus != 'Pending') return 1;
+      final leftDate =
+          DateTime.tryParse((left['createdAtUtc'] ?? '').toString()) ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+      final rightDate =
+          DateTime.tryParse((right['createdAtUtc'] ?? '').toString()) ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+      return rightDate.compareTo(leftDate);
+    });
+
     setState(() {
-      message = result['message'] as String? ?? 'تعذر بدء الاستعادة.';
-      if (result['success'] == true) {
-        adminRecoveryToken.text = (result['resetToken'] as String?) ?? '';
-      }
+      _recoveryRequests = sorted;
+      message = sorted.isEmpty
+          ? 'لا توجد طلبات استعادة معلنة.'
+          : 'تم تحميل ${sorted.length} طلب استعادة للمراجعة.';
     });
   }
 
-  Future<void> _completeAdminRecovery() async {
-    final result = await widget.auth.completeAdministrativeRecovery(
-      resetToken: adminRecoveryToken.text,
-      newPassword: adminRecoveryPassword.text,
-      confirmPassword: adminRecoveryConfirmPassword.text,
+  Future<void> _approveRecoveryRequest(int recoveryRequestId) async {
+    final selected = _recoverySelectedMatches[recoveryRequestId];
+    final accessList =
+        (selected?['mobileAccess'] as List<Map<String, dynamic>>?) ??
+            const <Map<String, dynamic>>[];
+    final primaryAccess = accessList
+        .where((access) =>
+            (access['accessRole'] ?? '').toString().toLowerCase() ==
+                'primary' &&
+            access['accessIsActive'] == true)
+        .toList();
+    final targetUserId = primaryAccess.isNotEmpty
+        ? (primaryAccess.first['userId'] as num?)?.toInt()
+        : null;
+    if (targetUserId == null || targetUserId <= 0) {
+      setState(() => message =
+          'اختر حسابًا أوليًا نشطًا للسجل الرسمي، ولا يتم الموافقة على وصول مُدار كحساب مستقل.');
+      return;
+    }
+
+    final approved = await widget.auth.approveAccountRecovery(
+      recoveryRequestId,
+      targetUserId,
     );
     if (!mounted) return;
-
-    setState(() =>
-        message = result['message'] as String? ?? 'تعذر إكمال الاستعادة.');
-    if (result['success'] == true) {
-      adminTargetUsername.clear();
-      adminRecoveryToken.clear();
-      adminRecoveryPassword.clear();
-      adminRecoveryConfirmPassword.clear();
-    }
+    setState(() => message = approved
+        ? 'تمت الموافقة على طلب الاستعادة.'
+        : 'تعذر الموافقة على طلب الاستعادة.');
+    await _refreshAccountRecoveryRequests();
   }
+
+  Future<void> _searchRecoveryMatches(
+      int recoveryRequestId,
+      String accountType,
+      String submittedUsername,
+      String submittedFullName,
+      String phoneNumber,
+      String verificationInfo) async {
+    if (accountType != 'Customer') {
+      setState(() => message =
+          'بحث السجل الرسمي للموظفين والموردين يحتاج عرضاً إداريًا معتمدًا منفصلًا.');
+      return;
+    }
+
+    final terms = [
+      submittedFullName,
+      submittedUsername,
+      phoneNumber,
+      verificationInfo
+    ].where((value) => value.trim().isNotEmpty).toList();
+    final matches = <int, Map<String, dynamic>>{};
+    for (final term in terms) {
+      final found = await widget.auth
+          .searchOfficialRecoveryMatches(accountType: accountType, term: term);
+      for (final match in found) {
+        final customerId = (match['customerId'] as num?)?.toInt();
+        if (customerId != null) matches[customerId] = match;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _recoveryMatches[recoveryRequestId] = matches.values.toList();
+      _recoverySelectedMatches[recoveryRequestId] = null;
+      message = matches.isEmpty
+          ? 'لا توجد نتائج مطابقة للسجل الرسمي.'
+          : 'تم العثور على ${matches.length} نتيجة؛ اختر نتيجة واحدة بوضوح.';
+    });
+  }
+
+  Future<void> _rejectRecoveryRequest(int recoveryRequestId) async {
+    final reason = _recoveryReasonControllers[recoveryRequestId]?.text.trim();
+    final rejected = await widget.auth.rejectAccountRecovery(
+      recoveryRequestId,
+      reason: reason?.isEmpty == true ? null : reason,
+    );
+    if (!mounted) return;
+    setState(() => message =
+        rejected ? 'تم رفض طلب الاستعادة.' : 'تعذر رفض طلب الاستعادة.');
+    await _refreshAccountRecoveryRequests();
+  }
+
+  String _recoveryAccountTypeLabel(String value) => switch (value) {
+        'Customer' => 'عميل',
+        'Employee' => 'موظف',
+        'Supplier' => 'مورد',
+        _ => value.isEmpty ? '-' : value,
+      };
+
+  String _recoveryStatusLabel(String value) => switch (value) {
+        'Pending' => 'بانتظار المراجعة',
+        'MatchRequired' => 'تحتاج مطابقة',
+        'Approved' => 'تمت الموافقة',
+        'Rejected' => 'مرفوض',
+        'Completed' => 'مكتمل',
+        'Expired' => 'منتهي',
+        _ => value.isEmpty ? '-' : value,
+      };
 
   String _roleLabel(String? role) => switch (role?.toLowerCase()) {
         'admin' => 'مدير',
@@ -1013,29 +1110,181 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: adminTargetUsername,
-              textInputAction: TextInputAction.done,
-              decoration: const InputDecoration(
-                labelText: 'اسم المستخدم الرسمي المختار للموافقة',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: () async {
-                final requests =
-                    await widget.auth.listAccountRecoveryRequests();
-                if (!mounted) return;
-                setState(() {
-                  message = requests.isEmpty
-                      ? 'لا توجد طلبات استعادة معلنة.'
-                      : 'تم تحميل ${requests.length} طلب استعادة للمراجعة.';
-                });
-              },
+              onPressed: _refreshAccountRecoveryRequests,
               icon: const Icon(Icons.refresh),
               label: const Text('تحديث الطلبات'),
             ),
+            const SizedBox(height: 12),
+            for (final request in _recoveryRequests)
+              Builder(builder: (cardContext) {
+                final recoveryRequestId =
+                    (request['recoveryRequestId'] as num?)?.toInt() ?? 0;
+                final status = (request['status'] ?? '').toString();
+                final accountType = (request['accountType'] ?? '').toString();
+                final submittedFullName =
+                    (request['submittedFullName'] ?? request['fullName'] ?? '')
+                        .toString();
+                final submittedUsername =
+                    (request['submittedUsername'] ?? '').toString();
+                final phoneNumber = (request['phoneNumber'] ?? '').toString();
+                final customerCode = (request['customerCode'] ?? '').toString();
+                final employeeCode = (request['employeeCode'] ?? '').toString();
+                final supplierCode = (request['supplierCode'] ?? '').toString();
+                final verificationInfo =
+                    (request['verificationInfo'] ?? '').toString();
+                final targetCustomerId =
+                    (request['targetCustomerId'] as num?)?.toInt();
+                final targetEmployeeId =
+                    (request['targetEmployeeId'] as num?)?.toInt();
+                final targetSupplierId =
+                    (request['targetSupplierId'] as num?)?.toInt();
+                final createdAtUtc = DateTime.tryParse(
+                        (request['createdAtUtc'] ?? '').toString())
+                    ?.toLocal();
+                final reasonController = _recoveryReasonControllers.putIfAbsent(
+                    recoveryRequestId, TextEditingController.new);
+                final matches = _recoveryMatches[recoveryRequestId] ??
+                    const <Map<String, dynamic>>[];
+                final selectedMatch =
+                    _recoverySelectedMatches[recoveryRequestId];
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('طلب استعادة #$recoveryRequestId',
+                            style: Theme.of(cardContext).textTheme.titleMedium),
+                        const SizedBox(height: 6),
+                        Text('الحالة: ${_recoveryStatusLabel(status)}'),
+                        Text(
+                            'نوع الحساب: ${_recoveryAccountTypeLabel(accountType)}'),
+                        Text(
+                            'الاسم الكامل المرسل: ${submittedFullName.isEmpty ? '-' : submittedFullName}'),
+                        Text(
+                            'اسم المستخدم المرسل: ${submittedUsername.isEmpty ? 'غير مدخل' : submittedUsername}'),
+                        Text(
+                            'رقم الهاتف المرسل: ${phoneNumber.isEmpty ? '-' : phoneNumber}'),
+                        if (customerCode.isNotEmpty)
+                          Text('كود العميل: $customerCode'),
+                        if (employeeCode.isNotEmpty)
+                          Text('كود الموظف: $employeeCode'),
+                        if (supplierCode.isNotEmpty)
+                          Text('كود المورد: $supplierCode'),
+                        Text(
+                            'معلومة التحقق: ${verificationInfo.isEmpty ? '-' : verificationInfo}'),
+                        if (targetCustomerId != null)
+                          Text('السجل المطابق: عميل رقم $targetCustomerId'),
+                        if (targetEmployeeId != null)
+                          Text('السجل المطابق: موظف رقم $targetEmployeeId'),
+                        if (targetSupplierId != null)
+                          Text('السجل المطابق: مورد رقم $targetSupplierId'),
+                        if (createdAtUtc != null)
+                          Text('تاريخ الإرسال: ${createdAtUtc.toString()}'),
+                        const SizedBox(height: 10),
+                        if (accountType == 'Customer')
+                          OutlinedButton.icon(
+                            onPressed: () => _searchRecoveryMatches(
+                                recoveryRequestId,
+                                accountType,
+                                submittedUsername,
+                                submittedFullName,
+                                phoneNumber,
+                                verificationInfo),
+                            icon: const Icon(Icons.manage_search_outlined),
+                            label: const Text('البحث عن السجل الرسمي'),
+                          ),
+                        if (matches.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          for (final match in matches)
+                            Builder(builder: (matchContext) {
+                              final matchCustomerId =
+                                  (match['customerId'] as num?)?.toInt() ?? 0;
+                              final accessList =
+                                  (match['mobileAccess'] as List<dynamic>? ??
+                                          const <dynamic>[])
+                                      .whereType<Map<String, dynamic>>()
+                                      .toList();
+                              final selected = selectedMatch != null &&
+                                  (selectedMatch['customerId'] as num?)
+                                          ?.toInt() ==
+                                      matchCustomerId;
+                              final primary = accessList
+                                  .where((access) =>
+                                      (access['accessRole'] ?? '')
+                                          .toString()
+                                          .toLowerCase() ==
+                                      'primary')
+                                  .toList();
+                              final managed = accessList
+                                  .where((access) =>
+                                      (access['accessRole'] ?? '')
+                                          .toString()
+                                          .toLowerCase() ==
+                                      'managed')
+                                  .toList();
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                child: InkWell(
+                                  onTap: () => setState(() =>
+                                      _recoverySelectedMatches[
+                                          recoveryRequestId] = match),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Row(children: [
+                                      Icon(selected
+                                          ? Icons.radio_button_checked
+                                          : Icons.radio_button_unchecked),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                          child: Text(
+                                        '${(match['customerName'] ?? 'عميل غير مسمى')}\nكود العميل: ${(match['customerCode'] ?? '-')}\nرقم الهاتف: ${(match['phoneNumber'] ?? '-')}\nالحساب الأساسي: ${primary.isEmpty ? 'لا' : 'نعم'}\nالعلاقات المُدارة: ${managed.length}',
+                                      )),
+                                    ]),
+                                  ),
+                                ),
+                              );
+                            }),
+                        ],
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: reasonController,
+                          decoration: const InputDecoration(
+                              labelText: 'سبب الرفض (اختياري)',
+                              border: OutlineInputBorder()),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(children: [
+                          Expanded(
+                              child: FilledButton.icon(
+                                  onPressed: status == 'Rejected' ||
+                                          status == 'Completed' ||
+                                          selectedMatch == null
+                                      ? null
+                                      : () => _approveRecoveryRequest(
+                                          recoveryRequestId),
+                                  icon: const Icon(Icons.check_circle_outline),
+                                  label: const Text('موافقة'))),
+                          const SizedBox(width: 8),
+                          Expanded(
+                              child: OutlinedButton.icon(
+                                  onPressed: status == 'Approved' ||
+                                          status == 'Rejected' ||
+                                          status == 'Completed'
+                                      ? null
+                                      : () => _rejectRecoveryRequest(
+                                          recoveryRequestId),
+                                  icon: const Icon(Icons.cancel_outlined),
+                                  label: const Text('رفض'))),
+                        ]),
+                      ],
+                    ),
+                  ),
+                );
+              }),
           ],
           if (message != null)
             Padding(

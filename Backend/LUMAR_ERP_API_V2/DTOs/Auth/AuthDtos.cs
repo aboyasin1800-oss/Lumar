@@ -55,12 +55,13 @@ public sealed record RecoveryVerifyResultDto(bool Success, string? Message, stri
 public sealed record RecoveryCompleteDto(string ResetToken, string NewPassword, string ConfirmPassword);
 public sealed record RecoveryCompleteResultDto(bool Success, string? Message);
 
-public sealed record AccountRecoverySubmitDto(string AccountType, string PhoneNumber, string? Username, string? CustomerCode, string? EmployeeCode, string? SupplierCode, string? VerificationInfo);
+public sealed record AccountRecoverySubmitDto(string AccountType, string PhoneNumber, string? FullName, string? Username, string? CustomerCode, string? EmployeeCode, string? SupplierCode, string? VerificationInfo);
 public sealed record AccountRecoverySubmitResultDto(long RecoveryRequestId, Guid PublicRequestKey, string Status, string Message);
-public sealed record AccountRecoveryCandidateDto(long RecoveryRequestId, string AccountType, string? SubmittedUsername, string? VerificationInfo, int? TargetUserId, int? TargetMobileAccountId, int? TargetCustomerId, int? TargetEmployeeId, int? TargetSupplierId, string Status, DateTime CreatedAtUtc);
+public sealed record AccountRecoveryCandidateDto(long RecoveryRequestId, string AccountType, string? SubmittedFullName, string? SubmittedUsername, string? PhoneNumber, string? CustomerCode, string? EmployeeCode, string? SupplierCode, string? VerificationInfo, int? TargetUserId, int? TargetMobileAccountId, int? TargetCustomerId, int? TargetEmployeeId, int? TargetSupplierId, string Status, DateTime CreatedAtUtc);
 public sealed record AccountRecoveryApproveDto(long RecoveryRequestId, int TargetUserId);
 public sealed record AccountRecoveryRejectDto(long RecoveryRequestId, string? Reason);
 public sealed record AccountRecoveryCompleteDto(Guid PublicRequestKey, string NewPassword, string ConfirmPassword);
+public sealed record AccountRecoveryStatusDto(long RecoveryRequestId, string Status);
 
 public sealed record SessionInfoDto(Guid SessionId, DateTime CreatedAtUtc, DateTime ExpiresAtUtc, DateTime? RevokedAtUtc, string? RevocationReason, string? DeviceInfo, bool IsCurrent);
 

@@ -44,15 +44,20 @@ class CustomerRepository {
 
   Future<CustomerDetailsData> getDetails(int customerId) async {
     final initial = await Future.wait([
-      _object('/customers/$customerId').catchError((_) => const <String, dynamic>{}),
+      _object('/customers/$customerId')
+          .catchError((_) => const <String, dynamic>{}),
       _optionalObject('/customers/$customerId/loyalty').catchError((_) => null),
-      _optionalObject('/customers/$customerId/referrals').catchError((_) => null),
+      _optionalObject('/customers/$customerId/referrals')
+          .catchError((_) => null),
       _list('/customers/$customerId/ledger', CustomerLedgerRecord.fromJson)
           .catchError((_) => const <CustomerLedgerRecord>[]),
       _list<CustomerJson>('/orders', (json) => json)
           .catchError((_) => const <CustomerJson>[]),
       _list('/finance/transactions', CustomerFinancialTransaction.fromJson)
           .catchError((_) => const <CustomerFinancialTransaction>[]),
+      _list('/customers/$customerId/mobile-access',
+              CustomerMobileAccess.fromJson)
+          .catchError((_) => const <CustomerMobileAccess>[]),
     ]);
 
     final customerJson = initial[0] as CustomerJson;
@@ -75,11 +80,9 @@ class CustomerRepository {
     })).then((items) => items.whereType<CustomerOrder>().toList());
 
     final paymentLists = await Future.wait(orderIds.map((orderId) =>
-            _list('/orders/$orderId/payments', CustomerOrderPayment.fromJson)
-                .catchError((_) => const <CustomerOrderPayment>[])));
-    final payments = paymentLists
-        .expand((items) => items)
-        .toList()
+        _list('/orders/$orderId/payments', CustomerOrderPayment.fromJson)
+            .catchError((_) => const <CustomerOrderPayment>[])));
+    final payments = paymentLists.expand((items) => items).toList()
       ..sort((left, right) => right.paymentDate.compareTo(left.paymentDate));
     final orderNumbers = orders.map((order) => order.number).toSet();
     final financialTransactions =
@@ -103,6 +106,7 @@ class CustomerRepository {
       payments: payments,
       financialTransactions: financialTransactions
         ..sort((left, right) => right.createdAt.compareTo(left.createdAt)),
+      mobileAccess: initial[6] as List<CustomerMobileAccess>,
     );
   }
 }

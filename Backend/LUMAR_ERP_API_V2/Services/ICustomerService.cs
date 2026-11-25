@@ -17,6 +17,7 @@ public interface ICustomerService
     Task<IReadOnlyList<CustomerListDto>> SearchAsync(string term, CancellationToken cancellationToken);
     Task<IReadOnlyList<CustomerReferralCandidateDto>> SearchReferralCandidatesAsync(string term, CancellationToken cancellationToken);
     Task<IReadOnlyList<LinkedCustomerAccessDto>> GetLinkedCustomersAsync(string username, CancellationToken cancellationToken);
+    Task<IReadOnlyList<CustomerMobileAccessDto>> GetMobileAccessAsync(int customerId, CancellationToken cancellationToken);
     Task<LinkedCustomerAccessDto> CreateManagedCustomerAsync(string username, CreateManagedCustomerDto request, CancellationToken cancellationToken);
     Task<ReferrerLookupResultDto?> ResolveReferrerAsync(ReferrerLookupRequest request, CancellationToken cancellationToken);
     Task<ReferralHierarchyDto?> GetReferralHierarchyAsync(int customerId, CancellationToken cancellationToken);

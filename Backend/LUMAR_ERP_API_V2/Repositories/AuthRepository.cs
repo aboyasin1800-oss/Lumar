@@ -662,14 +662,30 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
 
         await using var connection = connections.Create();
         await connection.OpenAsync(ct);
-        const string sql = @"SELECT RecoveryRequestId,AccountType,SubmittedUsername,VerificationInfo,TargetUserId,TargetMobileAccountId,TargetCustomerId,TargetEmployeeId,TargetSupplierId,RequestStatus,CreatedAtUtc
+        const string sql = @"SELECT RecoveryRequestId,AccountType,NormalizedPhone,SubmittedUsername,VerificationInfo,TargetUserId,TargetMobileAccountId,TargetCustomerId,TargetEmployeeId,TargetSupplierId,RequestStatus,CreatedAtUtc
             FROM dbo.AccountRecoveryRequests WHERE RequestStatus IN(N'Pending',N'MatchRequired',N'Approved') ORDER BY CreatedAtUtc DESC,RecoveryRequestId DESC";
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(ct);
         var result = new List<AccountRecoveryCandidateDto>();
         while (await reader.ReadAsync(ct))
         {
-            result.Add(new AccountRecoveryCandidateDto(reader.GetInt64(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetInt32(4), reader.IsDBNull(5) ? null : reader.GetInt32(5), reader.IsDBNull(6) ? null : reader.GetInt32(6), reader.IsDBNull(7) ? null : reader.GetInt32(7), reader.IsDBNull(8) ? null : reader.GetInt32(8), reader.GetString(9), reader.GetDateTime(10)));
+            result.Add(new AccountRecoveryCandidateDto(
+                reader.GetInt64(0),
+                reader.GetString(1),
+                null,
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                null,
+                null,
+                null,
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetInt32(5),
+                reader.IsDBNull(6) ? null : reader.GetInt32(6),
+                reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                reader.IsDBNull(8) ? null : reader.GetInt32(8),
+                reader.IsDBNull(9) ? null : reader.GetInt32(9),
+                reader.GetString(10),
+                reader.GetDateTime(11)));
         }
         return result;
     }
@@ -729,6 +745,29 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         command.Parameters.AddWithValue("@reviewer", admin.UserId);
         command.Parameters.AddWithValue("@requestId", request.RecoveryRequestId);
         return await command.ExecuteNonQueryAsync(ct) == 1;
+    }
+
+    public async Task<AccountRecoveryStatusDto?> GetAccountRecoveryStatusAsync(Guid publicRequestKey, CancellationToken ct)
+    {
+        if (publicRequestKey == Guid.Empty) return null;
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        const string sql = @"SELECT RecoveryRequestId,RequestStatus,
+                    CASE WHEN RequestStatus=N'Approved' AND CompletionTokenExpiresAtUtc IS NOT NULL AND CompletionTokenExpiresAtUtc <= SYSUTCDATETIME() THEN N'Expired' ELSE RequestStatus END AS EffectiveStatus
+            FROM dbo.AccountRecoveryRequests
+            WHERE PublicRequestKey=@key";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@key", publicRequestKey);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+
+        var recoveryRequestId = reader.GetInt64(0);
+        var effectiveStatus = reader.GetString(2);
+        if (effectiveStatus is not ("Pending" or "MatchRequired" or "Approved" or "Rejected" or "Completed" or "Expired"))
+            return null;
+
+        return new AccountRecoveryStatusDto(recoveryRequestId, effectiveStatus);
     }
 
     public async Task<RecoveryCompleteResultDto> CompleteAccountRecoveryAsync(AccountRecoveryCompleteDto request, CancellationToken ct)

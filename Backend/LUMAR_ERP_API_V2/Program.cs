@@ -185,5 +185,11 @@ app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 app.UseSwagger();
 app.UseSwaggerUI();
 app.MapControllers();
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "healthy",
+    service = "LUMAR_ERP_API_V2",
+    utcNow = DateTime.UtcNow
+}));
 
 await app.RunAsync();

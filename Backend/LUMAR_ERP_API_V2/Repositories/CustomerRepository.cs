@@ -369,6 +369,52 @@ public sealed class CustomerRepository(ReadOnlySqlConnectionFactory connections,
         return results;
     }
 
+    public async Task<IReadOnlyList<CustomerMobileAccessDto>> GetMobileAccessAsync(int customerId, CancellationToken cancellationToken)
+    {
+        if (customerId <= 0) return [];
+
+        const string sql = @"
+            SELECT mac.CustomerId, ma.MobileAccountId,
+                   u.UserID,
+                   ma.Username,
+                   u.FullName,
+                   ma.AccountType,
+                   mac.AccessRole,
+                   mac.RelationshipType,
+                   ma.IsActive AS MobileAccountIsActive,
+                   mac.IsActive AS AccessIsActive,
+                   ma.CustomerId AS PrimaryCustomerId,
+                   primaryCustomer.CustomerCode AS PrimaryCustomerCode,
+                   primaryCustomer.CustomerName AS PrimaryCustomerName
+            FROM dbo.MobileAccountCustomerAccess mac
+            JOIN dbo.MobileAccounts ma ON ma.MobileAccountId = mac.MobileAccountId
+            LEFT JOIN dbo.Users u ON u.Username = ma.Username OR u.Username = ma.NormalizedUsername
+            LEFT JOIN dbo.Customers primaryCustomer ON primaryCustomer.CustomerID = ma.CustomerId
+            WHERE mac.CustomerId = @customerId
+              AND mac.IsActive = 1
+              AND (mac.RevokedAtUtc IS NULL OR mac.RevokedAtUtc > SYSUTCDATETIME())
+            ORDER BY CASE WHEN mac.AccessRole = N'Primary' THEN 0 ELSE 1 END, ma.MobileAccountId;";
+
+        await using var connection = connections.Create();
+        var result = await QueryAsync(sql, reader => new CustomerMobileAccessDto(
+            reader.GetInt32(0),
+            reader.GetInt32(1),
+            reader.NullableInt32("UserID"),
+            reader.NullableString("Username"),
+            reader.NullableString("FullName"),
+            reader.GetString(5),
+            reader.GetString(6),
+            reader.NullableString("RelationshipType"),
+            reader.GetBoolean(8),
+            reader.GetBoolean(9),
+            reader.NullableInt32("PrimaryCustomerId"),
+            reader.NullableString("PrimaryCustomerCode"),
+            reader.NullableString("PrimaryCustomerName")),
+            customerId,
+            cancellationToken);
+        return result;
+    }
+
     public async Task<IReadOnlyList<LinkedCustomerAccessDto>> GetLinkedCustomersAsync(string username, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(username))

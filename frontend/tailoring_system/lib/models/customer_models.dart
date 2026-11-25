@@ -305,6 +305,55 @@ class CustomerFinancialTransaction {
   final DateTime createdAt;
 }
 
+class CustomerMobileAccess {
+  const CustomerMobileAccess({
+    required this.customerId,
+    required this.mobileAccountId,
+    required this.userId,
+    required this.username,
+    required this.fullName,
+    required this.accountType,
+    required this.accessRole,
+    required this.relationshipType,
+    required this.mobileAccountIsActive,
+    required this.accessIsActive,
+    required this.primaryCustomerId,
+    required this.primaryCustomerCode,
+    required this.primaryCustomerName,
+  });
+
+  factory CustomerMobileAccess.fromJson(CustomerJson json) =>
+      CustomerMobileAccess(
+        customerId: json['customerId'] as int,
+        mobileAccountId: json['mobileAccountId'] as int,
+        userId: json['userId'] as int?,
+        username: json['username'] as String?,
+        fullName: json['fullName'] as String?,
+        accountType: json['accountType'] as String,
+        accessRole: json['accessRole'] as String,
+        relationshipType: json['relationshipType'] as String?,
+        mobileAccountIsActive: json['mobileAccountIsActive'] as bool? ?? false,
+        accessIsActive: json['accessIsActive'] as bool? ?? false,
+        primaryCustomerId: json['primaryCustomerId'] as int?,
+        primaryCustomerCode: json['primaryCustomerCode'] as String?,
+        primaryCustomerName: json['primaryCustomerName'] as String?,
+      );
+
+  final int customerId;
+  final int mobileAccountId;
+  final int? userId;
+  final String? username;
+  final String? fullName;
+  final String accountType;
+  final String accessRole;
+  final String? relationshipType;
+  final bool mobileAccountIsActive;
+  final bool accessIsActive;
+  final int? primaryCustomerId;
+  final String? primaryCustomerCode;
+  final String? primaryCustomerName;
+}
+
 class CustomerDetailsData {
   const CustomerDetailsData(
       {required this.customer,
@@ -313,7 +362,8 @@ class CustomerDetailsData {
       required this.ledger,
       required this.orders,
       required this.payments,
-      required this.financialTransactions});
+      required this.financialTransactions,
+      required this.mobileAccess});
   final CustomerDetails customer;
   final CustomerLoyalty? loyalty;
   final CustomerReferral? referral;
@@ -321,4 +371,5 @@ class CustomerDetailsData {
   final List<CustomerOrder> orders;
   final List<CustomerOrderPayment> payments;
   final List<CustomerFinancialTransaction> financialTransactions;
+  final List<CustomerMobileAccess> mobileAccess;
 }

@@ -235,6 +235,9 @@ public static class ProductionTrackingEngine
         return string.IsNullOrWhiteSpace(orderStatus) ? "InProduction" : orderStatus;
     }
 
+    public static decimal CalculatePieceProgressPercent(int productTypeId, string? currentStage, IReadOnlyCollection<string>? completedStages)
+        => CalculatePieceProgressPercent(productTypeId > 0 ? productTypeId.ToString() : string.Empty, currentStage, completedStages);
+
     public static decimal CalculatePieceProgressPercent(string? pieceType, string? currentStage, IReadOnlyCollection<string>? completedStages = null)
     {
         var route = GetRoute(pieceType);

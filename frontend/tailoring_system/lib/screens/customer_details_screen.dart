@@ -67,12 +67,12 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
             child: FutureBuilder<CustomerDetailsData>(
           future: future,
           builder: (context, snapshot) {
-                        if (snapshot.connectionState != ConnectionState.done) {
+            if (snapshot.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
-                        }
-                        if (snapshot.hasError || snapshot.data == null) {
+            }
+            if (snapshot.hasError || snapshot.data == null) {
               return _CustomerError(onRetry: reload);
-                        }
+            }
             final data = snapshot.data!;
             final customer = data.customer;
             final totalValue = data.orders
@@ -153,6 +153,93 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                     _CustomerValue('ملاحظات', _customerText(customer.notes),
                         width: 440),
                   ])),
+              const SizedBox(height: 12),
+              _CustomerSection(
+                title: 'بيانات تطبيق الجوال',
+                icon: Icons.phone_android_outlined,
+                child: data.mobileAccess.isEmpty
+                    ? const Wrap(children: [
+                        _CustomerValue(
+                            'حالة تطبيق الجوال', 'لا يوجد حساب أو وصول جوال'),
+                        _CustomerValue('الوصف',
+                            'هذا العميل غير مرتبط حاليًا بحساب في تطبيق الجوال'),
+                      ])
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: data.mobileAccess.map((access) {
+                          final isPrimary =
+                              access.accessRole.toLowerCase() == 'primary';
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Wrap(
+                              spacing: 28,
+                              runSpacing: 12,
+                              children: [
+                                _CustomerValue(
+                                    'حالة تطبيق الجوال',
+                                    isPrimary
+                                        ? 'لديه حساب جوال'
+                                        : 'مُدار ضمن حساب عائلة'),
+                                _CustomerValue('نوع الوصول',
+                                    isPrimary ? 'حساب أساسي' : 'حساب مُدار'),
+                                _CustomerValue(
+                                    'اسم المستخدم',
+                                    access.username?.trim().isNotEmpty == true
+                                        ? access.username!
+                                        : '-'),
+                                _CustomerValue(
+                                    'الاسم الكامل',
+                                    access.fullName?.trim().isNotEmpty == true
+                                        ? access.fullName!
+                                        : '-'),
+                                _CustomerValue('نوع الحساب',
+                                    isPrimary ? 'عميل' : 'حساب عائلة'),
+                                _CustomerValue(
+                                    'حالة حساب الجوال',
+                                    access.mobileAccountIsActive
+                                        ? 'نشط'
+                                        : 'غير نشط'),
+                                _CustomerValue('حالة الوصول',
+                                    access.accessIsActive ? 'نشط' : 'موقوف'),
+                                if (!isPrimary) ...[
+                                  _CustomerValue(
+                                      'الحساب المسؤول عن الوصول',
+                                      access.primaryCustomerName
+                                                  ?.trim()
+                                                  .isNotEmpty ==
+                                              true
+                                          ? access.primaryCustomerName!
+                                          : '-'),
+                                  _CustomerValue(
+                                      'كود العميل الأساسي',
+                                      access.primaryCustomerCode
+                                                  ?.trim()
+                                                  .isNotEmpty ==
+                                              true
+                                          ? access.primaryCustomerCode!
+                                          : '-'),
+                                  _CustomerValue(
+                                      'صلة القرابة',
+                                      access.relationshipType
+                                                  ?.trim()
+                                                  .isNotEmpty ==
+                                              true
+                                          ? access.relationshipType!
+                                          : '-'),
+                                ],
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+              ),
               const SizedBox(height: 12),
               _CustomerSection(
                   title: 'برنامج الولاء والإحالة',
@@ -317,8 +404,8 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
 }
 
 String _loyaltyCreditOrder(String reference) {
-    final parts = reference.split(':');
-    return parts.length > 2 ? parts[2] : reference;
+  final parts = reference.split(':');
+  return parts.length > 2 ? parts[2] : reference;
 }
 
 class _CustomerActivity {
@@ -339,11 +426,11 @@ class _CustomerActivities extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-        if (items.isEmpty) {
+    if (items.isEmpty) {
       return const Padding(
           padding: EdgeInsets.symmetric(vertical: 12),
           child: Text('لا توجد عمليات مرتبطة بالعميل في المصادر الحالية.'));
-        }
+    }
     final visible = items.take(30).toList();
     return LayoutBuilder(builder: (context, constraints) {
       if (constraints.maxWidth >= 720) {
@@ -499,11 +586,11 @@ class _CustomerTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-        if (rows.isEmpty) {
+    if (rows.isEmpty) {
       return Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(empty));
-        }
+    }
     return SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: ConstrainedBox(

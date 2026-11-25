@@ -596,6 +596,7 @@ public sealed class MessageWriteServiceTests
         public Task<IReadOnlyList<CustomerListDto>> SearchAsync(string term, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerListDto>>(Array.Empty<CustomerListDto>());
         public Task<IReadOnlyList<CustomerReferralCandidateDto>> SearchReferralCandidatesAsync(string term, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerReferralCandidateDto>>(Array.Empty<CustomerReferralCandidateDto>());
         public Task<IReadOnlyList<LinkedCustomerAccessDto>> GetLinkedCustomersAsync(string username, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<LinkedCustomerAccessDto>>(Array.Empty<LinkedCustomerAccessDto>());
+        public Task<IReadOnlyList<CustomerMobileAccessDto>> GetMobileAccessAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerMobileAccessDto>>(Array.Empty<CustomerMobileAccessDto>());
         public Task<LinkedCustomerAccessDto> CreateManagedCustomerAsync(string username, CreateManagedCustomerDto request, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ReferrerLookupResultDto?> ResolveReferrerAsync(ReferrerLookupRequest request, CancellationToken cancellationToken) => Task.FromResult<ReferrerLookupResultDto?>(null);
         public Task<ReferralHierarchyDto?> GetReferralHierarchyAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<ReferralHierarchyDto?>(null);
@@ -3530,6 +3531,7 @@ public sealed class MessageWriteServiceTests
         public Task<IReadOnlyList<CustomerListDto>> SearchAsync(string term, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerListDto>>(Array.Empty<CustomerListDto>());
         public Task<IReadOnlyList<CustomerReferralCandidateDto>> SearchReferralCandidatesAsync(string term, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerReferralCandidateDto>>(Array.Empty<CustomerReferralCandidateDto>());
         public Task<IReadOnlyList<LinkedCustomerAccessDto>> GetLinkedCustomersAsync(string username, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<LinkedCustomerAccessDto>>(Array.Empty<LinkedCustomerAccessDto>());
+        public Task<IReadOnlyList<CustomerMobileAccessDto>> GetMobileAccessAsync(int customerId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<CustomerMobileAccessDto>>(Array.Empty<CustomerMobileAccessDto>());
         public Task<LinkedCustomerAccessDto> CreateManagedCustomerAsync(string username, CreateManagedCustomerDto request, CancellationToken cancellationToken)
             => Task.FromResult(new LinkedCustomerAccessDto(0, null, request.CustomerName, request.RelationshipType ?? "Family", "Managed", true));
         public Task<ReferrerLookupResultDto?> ResolveReferrerAsync(ReferrerLookupRequest request, CancellationToken cancellationToken)

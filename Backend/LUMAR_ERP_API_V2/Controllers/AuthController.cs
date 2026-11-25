@@ -81,6 +81,18 @@ public sealed class AuthController(IAuthService service, ILogger<AuthController>
     public async Task<ActionResult<AccountRecoverySubmitResultDto>> SubmitRecoveryRequest([FromBody] AccountRecoverySubmitDto request, CancellationToken ct)
         => Ok(await service.SubmitAccountRecoveryAsync(request, ct));
 
+    [HttpGet("recovery/status/{publicRequestKey:guid}")]
+    [ProducesResponseType<AccountRecoveryStatusDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AccountRecoveryStatusDto>> GetRecoveryStatus(Guid publicRequestKey, CancellationToken ct)
+    {
+        if (publicRequestKey == Guid.Empty) return NotFound(new { message = "تعذر العثور على طلب الاستعادة." });
+        var status = await service.GetAccountRecoveryStatusAsync(publicRequestKey, ct);
+        return status is null
+            ? NotFound(new { message = "تعذر العثور على طلب الاستعادة." })
+            : Ok(status);
+    }
+
     [HttpGet("admin/recovery/requests")]
     public async Task<ActionResult<IReadOnlyList<AccountRecoveryCandidateDto>>> ListRecoveryRequests(CancellationToken ct)
     {

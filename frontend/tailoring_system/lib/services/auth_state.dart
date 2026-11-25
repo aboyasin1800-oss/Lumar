@@ -499,6 +499,45 @@ class AuthState extends ChangeNotifier {
     return decoded.whereType<Map<String, dynamic>>().toList();
   }
 
+  Future<List<Map<String, dynamic>>> searchOfficialRecoveryMatches({
+    required String accountType,
+    required String term,
+  }) async {
+    if (_disposed || _token == null || term.trim().isEmpty) return const [];
+    if (accountType != 'Customer') return const [];
+
+    final searchResponse = await _request(
+      'GET',
+      '/customers/search?term=${Uri.encodeQueryComponent(term.trim())}',
+      token: _token,
+    ).timeout(const Duration(seconds: 12));
+    if (searchResponse.statusCode < 200 || searchResponse.statusCode >= 300)
+      return const [];
+
+    final decoded = jsonDecode(searchResponse.body);
+    if (decoded is! List) return const [];
+
+    final matches = <Map<String, dynamic>>[];
+    for (final item in decoded.whereType<Map<String, dynamic>>()) {
+      final customerId = (item['customerId'] as num?)?.toInt() ?? 0;
+      if (customerId <= 0) continue;
+      final accessResponse = await _request(
+        'GET',
+        '/customers/$customerId/mobile-access',
+        token: _token,
+      ).timeout(const Duration(seconds: 12));
+      final access =
+          accessResponse.statusCode >= 200 && accessResponse.statusCode < 300
+              ? (jsonDecode(accessResponse.body) as List?)
+                      ?.whereType<Map<String, dynamic>>()
+                      .toList() ??
+                  const <Map<String, dynamic>>[]
+              : const <Map<String, dynamic>>[];
+      matches.add({...item, 'mobileAccess': access});
+    }
+    return matches;
+  }
+
   Future<bool> approveAccountRecovery(
       int recoveryRequestId, int targetUserId) async {
     if (_disposed || _token == null) return false;

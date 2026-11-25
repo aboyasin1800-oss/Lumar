@@ -25,5 +25,6 @@ public sealed class AuthService(IAuthRepository repository) : IAuthService
     public Task<bool> ApproveAccountRecoveryAsync(string adminToken, AccountRecoveryApproveDto request, CancellationToken ct) => repository.ApproveAccountRecoveryAsync(adminToken, request, ct);
     public Task<bool> RejectAccountRecoveryAsync(string adminToken, AccountRecoveryRejectDto request, CancellationToken ct) => repository.RejectAccountRecoveryAsync(adminToken, request, ct);
     public Task<RecoveryCompleteResultDto> CompleteAccountRecoveryAsync(AccountRecoveryCompleteDto request, CancellationToken ct) => repository.CompleteAccountRecoveryAsync(request, ct);
+    public Task<AccountRecoveryStatusDto?> GetAccountRecoveryStatusAsync(Guid publicRequestKey, CancellationToken ct) => repository.GetAccountRecoveryStatusAsync(publicRequestKey, ct);
     public Task<AccountTypeDto?> GetAccountTypeAsync(string token, CancellationToken ct) => repository.GetAccountTypeAsync(token, ct);
 }
