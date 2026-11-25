@@ -287,9 +287,15 @@ public sealed partial class OrderRepository(ReadOnlySqlConnectionFactory connect
             result.Add(BuildTrackingDto(order.OrderId, order.OrderNumber, order.CustomerId ?? 0, order.CustomerName, piece, events));
         }
 
-        var totalPieces = result.Count;
-        var completedPieces = result.Count(dto => dto.ReadyForDelivery == true || dto.IsDelivered == true || dto.IsCompleted == true);
-        var progressPercent = totalPieces == 0 ? 0m : Math.Round((completedPieces * 100m) / totalPieces, 2);
+        var activeResult = result
+            .Where(dto => !string.Equals(dto.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var totalPieces = activeResult.Count;
+        var completedPieces = activeResult.Count(dto => dto.ReadyForDelivery == true || dto.IsDelivered == true || dto.IsCompleted == true);
+        var piecePercentages = activeResult
+            .Select(dto => ProductionTrackingEngine.CalculatePieceProgressPercent(dto.ItemType, dto.CurrentStage, null))
+            .ToList();
+        var progressPercent = ProductionTrackingEngine.CalculateOrderProgressPercent(piecePercentages);
         for (var i = 0; i < result.Count; i++)
         {
             var dto = result[i];
@@ -297,9 +303,12 @@ public sealed partial class OrderRepository(ReadOnlySqlConnectionFactory connect
             {
                 TotalPieces = totalPieces,
                 CompletedPieces = completedPieces,
-                ProgressPercent = progressPercent,
                 CurrentStage = string.IsNullOrWhiteSpace(dto.CurrentStage) ? dto.Status : dto.CurrentStage,
-                NextStage = string.IsNullOrWhiteSpace(dto.NextStage) ? null : dto.NextStage
+                NextStage = string.IsNullOrWhiteSpace(dto.NextStage) ? null : dto.NextStage,
+                PieceProgressPercent = string.Equals(dto.Status, "Cancelled", StringComparison.OrdinalIgnoreCase)
+                    ? 0m
+                    : ProductionTrackingEngine.CalculatePieceProgressPercent(dto.ItemType, dto.CurrentStage, null),
+                ProgressPercent = progressPercent
             };
         }
 

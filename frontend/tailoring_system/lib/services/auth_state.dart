@@ -485,6 +485,47 @@ class AuthState extends ChangeNotifier {
     }
   }
 
+  Future<List<Map<String, dynamic>>> listAccountRecoveryRequests() async {
+    if (_disposed || _token == null) return const [];
+    final response = await _request(
+      'GET',
+      '/auth/admin/recovery/requests',
+      token: _token,
+    ).timeout(const Duration(seconds: 12));
+    if (response.statusCode < 200 || response.statusCode >= 300)
+      return const [];
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) return const [];
+    return decoded.whereType<Map<String, dynamic>>().toList();
+  }
+
+  Future<bool> approveAccountRecovery(
+      int recoveryRequestId, int targetUserId) async {
+    if (_disposed || _token == null) return false;
+    final response = await _request(
+      'POST',
+      '/auth/admin/recovery/approve',
+      token: _token,
+      body: {
+        'recoveryRequestId': recoveryRequestId,
+        'targetUserId': targetUserId
+      },
+    ).timeout(const Duration(seconds: 12));
+    return response.statusCode >= 200 && response.statusCode < 300;
+  }
+
+  Future<bool> rejectAccountRecovery(int recoveryRequestId,
+      {String? reason}) async {
+    if (_disposed || _token == null) return false;
+    final response = await _request(
+      'POST',
+      '/auth/admin/recovery/reject',
+      token: _token,
+      body: {'recoveryRequestId': recoveryRequestId, 'reason': reason},
+    ).timeout(const Duration(seconds: 12));
+    return response.statusCode >= 200 && response.statusCode < 300;
+  }
+
   Future<Map<String, dynamic>> completeAdministrativeRecovery({
     required String resetToken,
     required String newPassword,

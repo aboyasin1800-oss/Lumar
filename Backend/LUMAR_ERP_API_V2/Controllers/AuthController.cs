@@ -76,6 +76,48 @@ public sealed class AuthController(IAuthService service, ILogger<AuthController>
     [HttpPost("mobile/supplier/password-setup")] public async Task<IActionResult> CompleteSupplierPasswordSetup([FromBody] PasswordSetupDto request,CancellationToken ct){var correlationId = HttpContext.TraceIdentifier;if(request is null || string.IsNullOrWhiteSpace(request.SetupToken)) return BadRequest(new { message = "رمز إعداد كلمة المرور مطلوب.", correlationId });var ok=await service.CompleteSupplierPasswordSetupAsync(request.SetupToken, request.NewPassword, request.ConfirmPassword, ct);if (!ok) {logger.LogWarning("Supplier password setup failed or token expired. CorrelationId={CorrelationId}", correlationId); return BadRequest(new { message = "تعذر إعداد كلمة المرور أو الرمز غير صالح.", correlationId });}logger.LogInformation("Supplier password setup completed. CorrelationId={CorrelationId}", correlationId);return NoContent();}
     [HttpPost("admin/recovery/start")] public async Task<ActionResult<RecoveryStartResultDto>> StartAdministrativeRecovery([FromBody] AdminRecoveryStartDto request,CancellationToken ct){if(string.IsNullOrWhiteSpace(Token)) return Unauthorized(new { message = "جلسة الإدارة مطلوبة." });if(request is null || string.IsNullOrWhiteSpace(request.Username)) return BadRequest(new { message = "اسم المستخدم مطلوب." });var result=await service.BeginAdministrativeRecoveryAsync(Token, request.Username, ct);if(!result.Success) return BadRequest(new { message = result.Message });return Ok(result);}
     [HttpPost("admin/recovery/complete")] public async Task<IActionResult> CompleteAdministrativeRecovery([FromBody] RecoveryCompleteDto request,CancellationToken ct){if(request is null || string.IsNullOrWhiteSpace(request.ResetToken)) return BadRequest(new { message = "رمز استعادة الحساب مطلوب." });var result=await service.CompleteAdministrativeRecoveryAsync(request.ResetToken, request.NewPassword, request.ConfirmPassword, ct);if(!result.Success) return BadRequest(new { message = result.Message });logger.LogInformation("Administrative account recovery completed for reset token.");return NoContent();}
+
+    [HttpPost("recovery/request")]
+    public async Task<ActionResult<AccountRecoverySubmitResultDto>> SubmitRecoveryRequest([FromBody] AccountRecoverySubmitDto request, CancellationToken ct)
+        => Ok(await service.SubmitAccountRecoveryAsync(request, ct));
+
+    [HttpGet("admin/recovery/requests")]
+    public async Task<ActionResult<IReadOnlyList<AccountRecoveryCandidateDto>>> ListRecoveryRequests(CancellationToken ct)
+    {
+        var user = await ResolveBearerUserAsync(ct);
+        if (user is null) return Unauthorized(new { message = "جلسة الإدارة مطلوبة." });
+        if (!IsAdministrativeRole(user.Role)) return StatusCode(StatusCodes.Status403Forbidden, new { message = "صلاحية الإدارة مطلوبة." });
+        return Ok(await service.ListAccountRecoveryRequestsAsync(Token, ct));
+    }
+
+    [HttpPost("admin/recovery/approve")]
+    public async Task<IActionResult> ApproveRecoveryRequest([FromBody] AccountRecoveryApproveDto request, CancellationToken ct)
+    {
+        var user = await ResolveBearerUserAsync(ct);
+        if (user is null) return Unauthorized(new { message = "جلسة الإدارة مطلوبة." });
+        if (!IsAdministrativeRole(user.Role)) return StatusCode(StatusCodes.Status403Forbidden, new { message = "صلاحية الإدارة مطلوبة." });
+        return await service.ApproveAccountRecoveryAsync(Token, request, ct)
+            ? Ok(new { approved = true })
+            : BadRequest(new { message = "تعذر اعتماد طلب الاستعادة أو لم يعد الطلب معلناً للاعتماد." });
+    }
+
+    [HttpPost("admin/recovery/reject")]
+    public async Task<IActionResult> RejectRecoveryRequest([FromBody] AccountRecoveryRejectDto request, CancellationToken ct)
+    {
+        var user = await ResolveBearerUserAsync(ct);
+        if (user is null) return Unauthorized(new { message = "جلسة الإدارة مطلوبة." });
+        if (!IsAdministrativeRole(user.Role)) return StatusCode(StatusCodes.Status403Forbidden, new { message = "صلاحية الإدارة مطلوبة." });
+        return await service.RejectAccountRecoveryAsync(Token, request, ct)
+            ? Ok(new { rejected = true })
+            : BadRequest(new { message = "تعذر رفض طلب الاستعادة." });
+    }
+
+    [HttpPost("recovery/complete")]
+    public async Task<IActionResult> CompleteRecoveryRequest([FromBody] AccountRecoveryCompleteDto request, CancellationToken ct)
+    {
+        var result = await service.CompleteAccountRecoveryAsync(request, ct);
+        return result.Success ? Ok(result) : BadRequest(new { message = result.Message });
+    }
     [HttpGet("me")] public async Task<ActionResult<CurrentUserDto>> Me(CancellationToken ct){var user=await service.GetCurrentUserAsync(Token,ct);return user is null?Unauthorized():Ok(user);}
     [HttpGet("account-type")] public async Task<ActionResult<AccountTypeDto>> AccountType(CancellationToken ct){var account=await service.GetAccountTypeAsync(Token,ct);return account is null?Unauthorized():Ok(account);}
     [HttpPost("logout")] public async Task<IActionResult> Logout(CancellationToken ct)=>await service.LogoutAsync(Token,ct)?NoContent():Unauthorized();

@@ -20,5 +20,10 @@ public sealed class AuthService(IAuthRepository repository) : IAuthService
     public Task<bool> ChangePasswordAsync(string token, ChangePasswordDto request, CancellationToken ct) => repository.ChangePasswordAsync(token, request, ct);
     public Task<RecoveryStartResultDto> BeginAdministrativeRecoveryAsync(string adminToken, string username, CancellationToken ct) => repository.BeginAdministrativeRecoveryAsync(adminToken, username, ct);
     public Task<RecoveryCompleteResultDto> CompleteAdministrativeRecoveryAsync(string resetToken, string newPassword, string confirmPassword, CancellationToken ct) => repository.CompleteAdministrativeRecoveryAsync(resetToken, newPassword, confirmPassword, ct);
+    public Task<AccountRecoverySubmitResultDto> SubmitAccountRecoveryAsync(AccountRecoverySubmitDto request, CancellationToken ct) => repository.SubmitAccountRecoveryAsync(request, ct);
+    public Task<IReadOnlyList<AccountRecoveryCandidateDto>> ListAccountRecoveryRequestsAsync(string adminToken, CancellationToken ct) => repository.ListAccountRecoveryRequestsAsync(adminToken, ct);
+    public Task<bool> ApproveAccountRecoveryAsync(string adminToken, AccountRecoveryApproveDto request, CancellationToken ct) => repository.ApproveAccountRecoveryAsync(adminToken, request, ct);
+    public Task<bool> RejectAccountRecoveryAsync(string adminToken, AccountRecoveryRejectDto request, CancellationToken ct) => repository.RejectAccountRecoveryAsync(adminToken, request, ct);
+    public Task<RecoveryCompleteResultDto> CompleteAccountRecoveryAsync(AccountRecoveryCompleteDto request, CancellationToken ct) => repository.CompleteAccountRecoveryAsync(request, ct);
     public Task<AccountTypeDto?> GetAccountTypeAsync(string token, CancellationToken ct) => repository.GetAccountTypeAsync(token, ct);
 }

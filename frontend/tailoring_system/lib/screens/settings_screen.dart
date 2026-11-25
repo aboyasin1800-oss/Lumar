@@ -1005,67 +1005,37 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
           ),
           if (_isAdministrativeUser) ...[
             const SizedBox(height: 28),
-            Text('استعادة كلمة مرور مستخدم (إداري)',
+            Text('طلبات استعادة الحساب',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(
-              'هذا الإجراء متاح فقط للحسابات الإدارية، ولا يوجد استعادة ذاتية للمستخدمين. يجب بدء الاستعادة من حساب إداري معتمد فقط.',
+              'راجع السجل الرسمي يدويًا. الموافقة تحفظ هوية المستخدم والـUserId والـMobileAccountId دون إنشاء حساب جديد.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: adminTargetUsername,
-              textInputAction: TextInputAction.next,
+              textInputAction: TextInputAction.done,
               decoration: const InputDecoration(
-                labelText: 'اسم المستخدم المستهدف',
+                labelText: 'اسم المستخدم الرسمي المختار للموافقة',
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.tonal(
-                onPressed: _startAdminRecovery,
-                child: const Text('بدء استعادة الحساب'),
-              ),
+            FilledButton.icon(
+              onPressed: () async {
+                final requests =
+                    await widget.auth.listAccountRecoveryRequests();
+                if (!mounted) return;
+                setState(() {
+                  message = requests.isEmpty
+                      ? 'لا توجد طلبات استعادة معلنة.'
+                      : 'تم تحميل ${requests.length} طلب استعادة للمراجعة.';
+                });
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('تحديث الطلبات'),
             ),
-            if (adminRecoveryToken.text.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              TextField(
-                controller: adminRecoveryToken,
-                readOnly: true,
-                decoration: const InputDecoration(
-                  labelText: 'رمز الاستعادة (Reset Token)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: adminRecoveryPassword,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'كلمة المرور الجديدة للمستخدم',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: adminRecoveryConfirmPassword,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'تأكيد كلمة المرور الجديدة',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton(
-                  onPressed: _completeAdminRecovery,
-                  child: const Text('تأكيد إعادة تعيين كلمة المرور'),
-                ),
-              ),
-            ],
           ],
           if (message != null)
             Padding(

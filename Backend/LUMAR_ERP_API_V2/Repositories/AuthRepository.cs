@@ -616,6 +616,155 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         }
     }
 
+    public async Task<AccountRecoverySubmitResultDto> SubmitAccountRecoveryAsync(AccountRecoverySubmitDto request, CancellationToken ct)
+    {
+        var accountType = request?.AccountType?.Trim() ?? string.Empty;
+        var normalizedPhone = NormalizePhone(request?.PhoneNumber);
+        var submittedUsername = NormalizeOptional(request?.Username);
+        if ((accountType is not ("Customer" or "Employee" or "Supplier") || string.IsNullOrWhiteSpace(normalizedPhone)))
+            return new AccountRecoverySubmitResultDto(0, Guid.Empty, "Pending", "تم تسجيل الطلب للمراجعة.");
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+
+        const string rateSql = @"SELECT COUNT(*) FROM dbo.AccountRecoveryRequests
+            WHERE AccountType=@accountType AND NormalizedPhone=@phone AND CreatedAtUtc > DATEADD(MINUTE,-15,SYSUTCDATETIME())";
+        await using (var rate = new SqlCommand(rateSql, connection))
+        {
+            rate.Parameters.AddWithValue("@accountType", accountType);
+            rate.Parameters.AddWithValue("@phone", normalizedPhone);
+            var count = (int)await rate.ExecuteScalarAsync(ct);
+            if (count >= 3)
+                return new AccountRecoverySubmitResultDto(0, Guid.Empty, "Pending", "تم تسجيل الطلب للمراجعة.");
+        }
+
+        var publicKey = Guid.NewGuid();
+        const string insertSql = @"INSERT INTO dbo.AccountRecoveryRequests
+            (AccountType,NormalizedPhone,SubmittedUsername,VerificationInfo,RequestStatus,PublicRequestKey)
+            OUTPUT INSERTED.RecoveryRequestId
+            VALUES (@accountType,@phone,@username,@verification,N'Pending',@publicKey)";
+        await using (var insert = new SqlCommand(insertSql, connection))
+        {
+            insert.Parameters.AddWithValue("@accountType", accountType);
+            insert.Parameters.AddWithValue("@phone", normalizedPhone);
+            insert.Parameters.AddWithValue("@username", (object?)submittedUsername ?? DBNull.Value);
+            insert.Parameters.AddWithValue("@verification", (object?)NormalizeOptional(request?.VerificationInfo) ?? DBNull.Value);
+            insert.Parameters.AddWithValue("@publicKey", publicKey);
+            var id = Convert.ToInt64(await insert.ExecuteScalarAsync(ct));
+            return new AccountRecoverySubmitResultDto(id, publicKey, "Pending", "تم تسجيل الطلب للمراجعة.");
+        }
+    }
+
+    public async Task<IReadOnlyList<AccountRecoveryCandidateDto>> ListAccountRecoveryRequestsAsync(string adminToken, CancellationToken ct)
+    {
+        var admin = await GetUserAsync(adminToken, ct);
+        if (admin is null || !IsAdministrativeRole(admin.Role)) return Array.Empty<AccountRecoveryCandidateDto>();
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        const string sql = @"SELECT RecoveryRequestId,AccountType,SubmittedUsername,VerificationInfo,TargetUserId,TargetMobileAccountId,TargetCustomerId,TargetEmployeeId,TargetSupplierId,RequestStatus,CreatedAtUtc
+            FROM dbo.AccountRecoveryRequests WHERE RequestStatus IN(N'Pending',N'MatchRequired',N'Approved') ORDER BY CreatedAtUtc DESC,RecoveryRequestId DESC";
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        var result = new List<AccountRecoveryCandidateDto>();
+        while (await reader.ReadAsync(ct))
+        {
+            result.Add(new AccountRecoveryCandidateDto(reader.GetInt64(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetInt32(4), reader.IsDBNull(5) ? null : reader.GetInt32(5), reader.IsDBNull(6) ? null : reader.GetInt32(6), reader.IsDBNull(7) ? null : reader.GetInt32(7), reader.IsDBNull(8) ? null : reader.GetInt32(8), reader.GetString(9), reader.GetDateTime(10)));
+        }
+        return result;
+    }
+
+    public async Task<bool> ApproveAccountRecoveryAsync(string adminToken, AccountRecoveryApproveDto request, CancellationToken ct)
+    {
+        var admin = await GetUserAsync(adminToken, ct);
+        if (admin is null || !IsAdministrativeRole(admin.Role) || request is null || request.RecoveryRequestId <= 0 || request.TargetUserId <= 0) return false;
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        try
+        {
+            const string getUserSql = "SELECT u.UserID,u.Username,ma.MobileAccountId,ma.CustomerId,ma.EmployeeId,ma.SupplierId FROM dbo.Users u LEFT JOIN dbo.MobileAccounts ma ON ma.Username=u.Username OR ma.NormalizedUsername=UPPER(u.Username) WHERE u.UserID=@userId AND u.IsActive=1";
+            await using var lookup = new SqlCommand(getUserSql, connection, transaction);
+            lookup.Parameters.AddWithValue("@userId", request.TargetUserId);
+            await using var reader = await lookup.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct)) { await reader.CloseAsync(); await transaction.RollbackAsync(CancellationToken.None); return false; }
+            var username = reader.GetString(1);
+            var mobileId = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2);
+            var customerId = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3);
+            var employeeId = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4);
+            var supplierId = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5);
+            await reader.CloseAsync();
+
+            var rawToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+            var expiresAt = DateTime.UtcNow.AddMinutes(15);
+            const string updateSql = @"UPDATE dbo.AccountRecoveryRequests SET RequestStatus=N'Approved',TargetUserId=@userId,SubmittedUsername=@username,TargetMobileAccountId=@mobileId,TargetCustomerId=@customerId,TargetEmployeeId=@employeeId,TargetSupplierId=@supplierId,CompletionTokenHash=@tokenHash,CompletionTokenExpiresAtUtc=@expiresAt,ReviewedAtUtc=SYSUTCDATETIME(),ReviewedByUserId=@reviewer WHERE RecoveryRequestId=@requestId AND RequestStatus IN(N'Pending',N'MatchRequired')";
+            await using var update = new SqlCommand(updateSql, connection, transaction);
+            update.Parameters.AddWithValue("@userId", request.TargetUserId);
+            update.Parameters.AddWithValue("@username", username);
+            update.Parameters.AddWithValue("@mobileId", (object?)mobileId ?? DBNull.Value);
+            update.Parameters.AddWithValue("@customerId", (object?)customerId ?? DBNull.Value);
+            update.Parameters.AddWithValue("@employeeId", (object?)employeeId ?? DBNull.Value);
+            update.Parameters.AddWithValue("@supplierId", (object?)supplierId ?? DBNull.Value);
+            update.Parameters.Add("@tokenHash", System.Data.SqlDbType.VarBinary, 32).Value = TokenHash(rawToken);
+            update.Parameters.AddWithValue("@expiresAt", expiresAt);
+            update.Parameters.AddWithValue("@reviewer", admin.UserId);
+            update.Parameters.AddWithValue("@requestId", request.RecoveryRequestId);
+            if (await update.ExecuteNonQueryAsync(ct) != 1) { await transaction.RollbackAsync(CancellationToken.None); return false; }
+            await transaction.CommitAsync(ct);
+            return true;
+        }
+        catch { await transaction.RollbackAsync(CancellationToken.None); throw; }
+    }
+
+    public async Task<bool> RejectAccountRecoveryAsync(string adminToken, AccountRecoveryRejectDto request, CancellationToken ct)
+    {
+        var admin = await GetUserAsync(adminToken, ct);
+        if (admin is null || !IsAdministrativeRole(admin.Role) || request is null) return false;
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        const string sql = "UPDATE dbo.AccountRecoveryRequests SET RequestStatus=N'Rejected',RejectionReason=@reason,ReviewedAtUtc=SYSUTCDATETIME(),ReviewedByUserId=@reviewer WHERE RecoveryRequestId=@requestId AND RequestStatus IN(N'Pending',N'MatchRequired')";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@reason", (object?)NormalizeOptional(request.Reason) ?? DBNull.Value);
+        command.Parameters.AddWithValue("@reviewer", admin.UserId);
+        command.Parameters.AddWithValue("@requestId", request.RecoveryRequestId);
+        return await command.ExecuteNonQueryAsync(ct) == 1;
+    }
+
+    public async Task<RecoveryCompleteResultDto> CompleteAccountRecoveryAsync(AccountRecoveryCompleteDto request, CancellationToken ct)
+    {
+        if (request is null || request.PublicRequestKey == Guid.Empty || request.NewPassword.Length < 8 || !string.Equals(request.NewPassword, request.ConfirmPassword, StringComparison.Ordinal))
+            return new RecoveryCompleteResultDto(false, "بيانات الاستعادة غير صالحة.");
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        try
+        {
+            const string sql = "SELECT TargetUserId FROM dbo.AccountRecoveryRequests WHERE PublicRequestKey=@key AND RequestStatus=N'Approved' AND CompletionTokenExpiresAtUtc>SYSUTCDATETIME() AND CompletionTokenHash IS NOT NULL";
+            await using var lookup = new SqlCommand(sql, connection, transaction);
+            lookup.Parameters.AddWithValue("@key", request.PublicRequestKey);
+            var userIdValue = await lookup.ExecuteScalarAsync(ct);
+            if (userIdValue is not int userId) { await transaction.RollbackAsync(CancellationToken.None); return new RecoveryCompleteResultDto(false, "طلب الاستعادة غير صالح أو منتهي الصلاحية."); }
+
+            const string updateSql = "UPDATE dbo.Users SET PasswordHash=@hash,UserPassword='',SecurityStamp=NEWID() WHERE UserID=@userId AND IsActive=1; UPDATE dbo.AccountRecoveryRequests SET RequestStatus=N'Completed',CompletedAtUtc=SYSUTCDATETIME(),CompletionTokenHash=NULL WHERE PublicRequestKey=@key AND RequestStatus=N'Approved';";
+            await using var update = new SqlCommand(updateSql, connection, transaction);
+            update.Parameters.AddWithValue("@hash", HashPassword(request.NewPassword));
+            update.Parameters.AddWithValue("@userId", userId);
+            update.Parameters.AddWithValue("@key", request.PublicRequestKey);
+            await update.ExecuteNonQueryAsync(ct);
+            await transaction.CommitAsync(ct);
+            return new RecoveryCompleteResultDto(true, "تمت استعادة كلمة المرور بنجاح.");
+        }
+        catch { await transaction.RollbackAsync(CancellationToken.None); throw; }
+    }
+
+    private static string NormalizePhone(string? phone)
+        => phone is null ? string.Empty : Regex.Replace(phone, @"[^0-9]", string.Empty).TrimStart('0');
+
+    private static string? NormalizeOptional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
     public async Task<RecoveryStartResultDto> BeginAdministrativeRecoveryAsync(string adminToken, string username, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(adminToken))
