@@ -655,6 +655,70 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         }
     }
 
+    public async Task<IReadOnlyList<OfficialRecoveryMatchDto>> SearchOfficialRecoveryMatchesAsync(string accountType, string term, CancellationToken ct)
+    {
+        if (accountType is not ("Employee" or "Supplier") || string.IsNullOrWhiteSpace(term)) return Array.Empty<OfficialRecoveryMatchDto>();
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(ct);
+        var result = new List<OfficialRecoveryMatchDto>();
+        var normalizedTerm = term.Trim();
+        var normalizedPhone = NormalizePhone(normalizedTerm);
+
+        if (accountType == "Employee")
+        {
+            const string sql = @"
+                SELECT e.EmployeeID,e.EmployeeCode,e.FullName,e.PhoneNumber,
+                       ma.MobileAccountId,ma.Username,ma.IsActive,u.UserID
+                FROM dbo.Employees e
+                LEFT JOIN dbo.MobileAccounts ma ON ma.EmployeeId=e.EmployeeID AND ma.AccountType=N'Employee'
+                LEFT JOIN dbo.Users u ON u.Username=ma.Username OR u.Username=ma.NormalizedUsername
+                WHERE e.IsActive=1 AND (
+                    e.EmployeeCode=@term OR e.FullName LIKE @name OR
+                    (@phone<>'' AND REPLACE(REPLACE(REPLACE(COALESCE(e.PhoneNumber,N''),N' ',N''),N'-',N''),N'+',N'') LIKE @phoneLike))
+                ORDER BY e.EmployeeCode,e.EmployeeID;";
+            await using var command = new SqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@term", normalizedTerm);
+            command.Parameters.AddWithValue("@name", $"%{normalizedTerm}%");
+            command.Parameters.AddWithValue("@phone", normalizedPhone);
+            command.Parameters.AddWithValue("@phoneLike", $"%{normalizedPhone}%");
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var userId = reader.IsDBNull(7) ? 0 : reader.GetInt32(7);
+                if (userId <= 0) continue;
+                result.Add(new OfficialRecoveryMatchDto(userId, reader.IsDBNull(4) ? null : reader.GetInt32(4), "Employee", reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(5) ? null : reader.GetString(5), reader.IsDBNull(6) ? false : reader.GetBoolean(6)));
+            }
+        }
+        else
+        {
+            const string sql = @"
+                SELECT s.SupplierId,s.SupplierCode,s.SupplierName,s.Phone,
+                       ma.MobileAccountId,ma.Username,ma.IsActive,u.UserID
+                FROM dbo.Suppliers s
+                LEFT JOIN dbo.MobileAccounts ma ON ma.SupplierId=s.SupplierId AND ma.AccountType=N'Supplier'
+                LEFT JOIN dbo.Users u ON u.Username=ma.Username OR u.Username=ma.NormalizedUsername
+                WHERE s.IsActive=1 AND (
+                    s.SupplierCode=@term OR s.SupplierName LIKE @name OR
+                    (@phone<>'' AND REPLACE(REPLACE(REPLACE(COALESCE(s.Phone,N''),N' ',N''),N'-',N''),N'+',N'') LIKE @phoneLike))
+                ORDER BY s.SupplierCode,s.SupplierId;";
+            await using var command = new SqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@term", normalizedTerm);
+            command.Parameters.AddWithValue("@name", $"%{normalizedTerm}%");
+            command.Parameters.AddWithValue("@phone", normalizedPhone);
+            command.Parameters.AddWithValue("@phoneLike", $"%{normalizedPhone}%");
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var userId = reader.IsDBNull(7) ? 0 : reader.GetInt32(7);
+                if (userId <= 0) continue;
+                result.Add(new OfficialRecoveryMatchDto(userId, reader.IsDBNull(4) ? null : reader.GetInt32(4), "Supplier", reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(5) ? null : reader.GetString(5), reader.IsDBNull(6) ? false : reader.GetBoolean(6)));
+            }
+        }
+
+        return result;
+    }
+
     public async Task<IReadOnlyList<AccountRecoveryCandidateDto>> ListAccountRecoveryRequestsAsync(string adminToken, CancellationToken ct)
     {
         var admin = await GetUserAsync(adminToken, ct);

@@ -30,6 +30,7 @@ public interface IAuthRepository
     Task<bool> RejectAccountRecoveryAsync(string adminToken, AccountRecoveryRejectDto request, CancellationToken ct);
     Task<RecoveryCompleteResultDto> CompleteAccountRecoveryAsync(AccountRecoveryCompleteDto request, CancellationToken ct);
     Task<AccountRecoveryStatusDto?> GetAccountRecoveryStatusAsync(Guid publicRequestKey, CancellationToken ct);
+    Task<IReadOnlyList<OfficialRecoveryMatchDto>> SearchOfficialRecoveryMatchesAsync(string accountType, string term, CancellationToken ct);
     Task<List<SessionInfoDto>> GetSessionsAsync(string token, CancellationToken ct);
     Task<bool> RevokeSessionAsync(string token, Guid sessionId, CancellationToken ct);
     Task<AccountTypeDto?> GetAccountTypeAsync(string token, CancellationToken ct);

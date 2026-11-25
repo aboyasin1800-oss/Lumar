@@ -504,6 +504,26 @@ class AuthState extends ChangeNotifier {
     required String term,
   }) async {
     if (_disposed || _token == null || term.trim().isEmpty) return const [];
+
+    if (accountType == 'Employee' || accountType == 'Supplier') {
+      final response = await _request(
+        'GET',
+        '/auth/admin/recovery/matches?accountType=${Uri.encodeQueryComponent(accountType)}&term=${Uri.encodeQueryComponent(term.trim())}',
+        token: _token,
+      ).timeout(const Duration(seconds: 12));
+      if (response.statusCode < 200 || response.statusCode >= 300)
+        return const [];
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) return const [];
+      return decoded
+          .whereType<Map<String, dynamic>>()
+          .map((match) => {
+                ...match,
+                'customerId': null,
+              })
+          .toList();
+    }
+
     if (accountType != 'Customer') return const [];
 
     final searchResponse = await _request(

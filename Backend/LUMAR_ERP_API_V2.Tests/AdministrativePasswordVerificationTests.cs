@@ -110,6 +110,7 @@ public sealed class AdministrativePasswordVerificationTests
         public Task<bool> RejectAccountRecoveryAsync(string adminToken, AccountRecoveryRejectDto request, CancellationToken ct) => Task.FromResult(false);
         public Task<RecoveryCompleteResultDto> CompleteAccountRecoveryAsync(AccountRecoveryCompleteDto request, CancellationToken ct) => Task.FromResult(new RecoveryCompleteResultDto(false, ""));
         public Task<AccountRecoveryStatusDto?> GetAccountRecoveryStatusAsync(Guid publicRequestKey, CancellationToken ct) => Task.FromResult<AccountRecoveryStatusDto?>(null);
+        public Task<IReadOnlyList<OfficialRecoveryMatchDto>> SearchOfficialRecoveryMatchesAsync(string accountType, string term, CancellationToken ct) => Task.FromResult<IReadOnlyList<OfficialRecoveryMatchDto>>(Array.Empty<OfficialRecoveryMatchDto>());
         public Task<AccountTypeDto?> GetAccountTypeAsync(string token, CancellationToken ct) => Task.FromResult<AccountTypeDto?>(null);
     }
 }

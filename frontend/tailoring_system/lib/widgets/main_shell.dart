@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../core/ui_palette.dart';
 import '../screens/module_screens.dart';
@@ -106,15 +109,101 @@ class _WorkspaceViewportState extends State<_WorkspaceViewport> {
   }
 }
 
-class _WorkspaceHeader extends StatelessWidget {
+class _WorkspaceHeader extends StatefulWidget {
   const _WorkspaceHeader({required this.auth, required this.workspace});
 
   final AuthState auth;
   final WorkspaceController workspace;
 
   @override
+  State<_WorkspaceHeader> createState() => _WorkspaceHeaderState();
+}
+
+class _WorkspaceHeaderState extends State<_WorkspaceHeader>
+    with WidgetsBindingObserver {
+  static const _baseUrl = String.fromEnvironment(
+    'LUMAR_API_URL',
+    defaultValue: 'http://127.0.0.1:5093',
+  );
+  int _pendingOrdersCount = 0;
+  bool _pendingOrdersLoading = true;
+  String? _lastLoadedRoute;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    widget.workspace.addListener(_onWorkspaceChanged);
+    _refreshPendingOrders();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.workspace.removeListener(_onWorkspaceChanged);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshPendingOrders();
+    }
+  }
+
+  void _onWorkspaceChanged() {
+    final route = widget.workspace.activeRouteId;
+    if (route != _lastLoadedRoute) {
+      _lastLoadedRoute = route;
+      _refreshPendingOrders();
+    }
+  }
+
+  bool get _canOpenOrders {
+    final role = widget.auth.user?.role?.trim().toLowerCase() ?? '';
+    return role.isNotEmpty && role != 'customer' && role != 'supplier';
+  }
+
+  Future<void> _refreshPendingOrders() async {
+    if (!mounted) return;
+    setState(() => _pendingOrdersLoading = true);
+    try {
+      final token = widget.auth.token;
+      final response = await http.get(
+        Uri.parse('$_baseUrl/orders'),
+        headers: {
+          'Accept': 'application/json',
+          if (token != null && token.trim().isNotEmpty)
+            'Authorization': 'Bearer ${token.trim()}',
+        },
+      ).timeout(const Duration(seconds: 8));
+      if (response.statusCode < 200 || response.statusCode >= 300)
+        throw Exception();
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) throw Exception();
+      final count = decoded.where((item) {
+        if (item is! Map) return false;
+        final status = (item['orderStatus'] ?? '').toString().trim();
+        return status.isNotEmpty &&
+            status != 'Delivered' &&
+            status != 'Cancelled';
+      }).length;
+      if (!mounted) return;
+      setState(() {
+        _pendingOrdersCount = count;
+        _pendingOrdersLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pendingOrdersLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
+    final workspace = widget.workspace;
+    final auth = widget.auth;
     final active = workspace.activeRouteId == null
         ? null
         : workspace.definitionFor(workspace.activeRouteId!);
@@ -152,8 +241,47 @@ class _WorkspaceHeader extends StatelessWidget {
               const SizedBox(width: 8),
               Text(auth.user?.username ?? ''),
               const SizedBox(width: 8),
+              if (_canOpenOrders)
+                TextButton.icon(
+                  onPressed: () {
+                    widget.workspace.open('/orders');
+                  },
+                  icon: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.receipt_long_outlined, size: 20),
+                      Positioned(
+                        right: -8,
+                        top: -8,
+                        child: Container(
+                          constraints: const BoxConstraints(minWidth: 16),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 3, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.error,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          alignment: Alignment.center,
+                          child: _pendingOrdersLoading
+                              ? const SizedBox(
+                                  width: 8,
+                                  height: 8,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 1.5))
+                              : Text('$_pendingOrdersCount',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  label: const Text('الطلبات'),
+                ),
+              const SizedBox(width: 8),
               ListenableBuilder(
-                listenable: workspace.protectedAreasKey,
+                listenable: widget.workspace.protectedAreasKey,
                 builder: (context, _) {
                   final key = workspace.protectedAreasKey;
                   final unlocked = key.unlocked;

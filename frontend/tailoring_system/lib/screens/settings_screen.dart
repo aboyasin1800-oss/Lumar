@@ -891,6 +891,20 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
 
   Future<void> _approveRecoveryRequest(int recoveryRequestId) async {
     final selected = _recoverySelectedMatches[recoveryRequestId];
+    if (selected != null) {
+      final employeeOrSupplierUserId =
+          (selected['targetUserId'] as num?)?.toInt();
+      if (employeeOrSupplierUserId != null && employeeOrSupplierUserId > 0) {
+        final approved = await widget.auth.approveAccountRecovery(
+            recoveryRequestId, employeeOrSupplierUserId);
+        if (!mounted) return;
+        setState(() => message = approved
+            ? 'تمت الموافقة على طلب الاستعادة.'
+            : 'تعذر الموافقة على طلب الاستعادة.');
+        await _refreshAccountRecoveryRequests();
+        return;
+      }
+    }
     final accessList =
         (selected?['mobileAccess'] as List<Map<String, dynamic>>?) ??
             const <Map<String, dynamic>>[];
@@ -927,12 +941,6 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
       String submittedFullName,
       String phoneNumber,
       String verificationInfo) async {
-    if (accountType != 'Customer') {
-      setState(() => message =
-          'بحث السجل الرسمي للموظفين والموردين يحتاج عرضاً إداريًا معتمدًا منفصلًا.');
-      return;
-    }
-
     final terms = [
       submittedFullName,
       submittedUsername,
@@ -944,8 +952,14 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
       final found = await widget.auth
           .searchOfficialRecoveryMatches(accountType: accountType, term: term);
       for (final match in found) {
-        final customerId = (match['customerId'] as num?)?.toInt();
-        if (customerId != null) matches[customerId] = match;
+        if (accountType == 'Customer') {
+          final customerId = (match['customerId'] as num?)?.toInt();
+          if (customerId != null) matches[customerId] = match;
+        } else {
+          final officialId =
+              (match['officialId'] ?? match['targetUserId'] ?? '').toString();
+          matches[officialId.hashCode] = match;
+        }
       }
     }
 
@@ -1185,33 +1199,42 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                         if (createdAtUtc != null)
                           Text('تاريخ الإرسال: ${createdAtUtc.toString()}'),
                         const SizedBox(height: 10),
-                        if (accountType == 'Customer')
-                          OutlinedButton.icon(
-                            onPressed: () => _searchRecoveryMatches(
-                                recoveryRequestId,
-                                accountType,
-                                submittedUsername,
-                                submittedFullName,
-                                phoneNumber,
-                                verificationInfo),
-                            icon: const Icon(Icons.manage_search_outlined),
-                            label: const Text('البحث عن السجل الرسمي'),
-                          ),
+                        OutlinedButton.icon(
+                          onPressed: () => _searchRecoveryMatches(
+                              recoveryRequestId,
+                              accountType,
+                              submittedUsername,
+                              submittedFullName,
+                              phoneNumber,
+                              verificationInfo),
+                          icon: const Icon(Icons.manage_search_outlined),
+                          label: const Text('البحث عن السجل الرسمي'),
+                        ),
                         if (matches.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           for (final match in matches)
                             Builder(builder: (matchContext) {
                               final matchCustomerId =
                                   (match['customerId'] as num?)?.toInt() ?? 0;
+                              final matchOfficialId =
+                                  (match['officialId'] ?? '').toString();
+                              final matchType =
+                                  (match['accountType'] ?? accountType)
+                                      .toString();
                               final accessList =
                                   (match['mobileAccess'] as List<dynamic>? ??
                                           const <dynamic>[])
                                       .whereType<Map<String, dynamic>>()
                                       .toList();
                               final selected = selectedMatch != null &&
-                                  (selectedMatch['customerId'] as num?)
-                                          ?.toInt() ==
-                                      matchCustomerId;
+                                  (accountType == 'Customer'
+                                      ? (selectedMatch['customerId'] as num?)
+                                              ?.toInt() ==
+                                          matchCustomerId
+                                      : (selectedMatch['targetUserId'] as num?)
+                                              ?.toInt() ==
+                                          (match['targetUserId'] as num?)
+                                              ?.toInt());
                               final primary = accessList
                                   .where((access) =>
                                       (access['accessRole'] ?? '')
@@ -1241,7 +1264,9 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                                       const SizedBox(width: 8),
                                       Expanded(
                                           child: Text(
-                                        '${(match['customerName'] ?? 'عميل غير مسمى')}\nكود العميل: ${(match['customerCode'] ?? '-')}\nرقم الهاتف: ${(match['phoneNumber'] ?? '-')}\nالحساب الأساسي: ${primary.isEmpty ? 'لا' : 'نعم'}\nالعلاقات المُدارة: ${managed.length}',
+                                        matchType == 'Customer'
+                                            ? '${(match['customerName'] ?? 'عميل غير مسمى')}\nكود العميل: ${(match['customerCode'] ?? '-')}\nرقم الهاتف: ${(match['phoneNumber'] ?? '-')}\nالحساب الأساسي: ${primary.isEmpty ? 'لا' : 'نعم'}\nالعلاقات المُدارة: ${managed.length}'
+                                            : '${(match['officialName'] ?? match['fullName'] ?? 'غير مسمى')}\n${matchType == 'Employee' ? 'كود الموظف' : 'كود المورد'}: ${matchOfficialId.isEmpty ? '-' : matchOfficialId}\nرقم الهاتف: ${(match['phoneNumber'] ?? '-')}\nاسم المستخدم: ${(match['username'] ?? '-')}\nحالة حساب الجوال: ${(match['mobileAccountIsActive'] == true ? 'نشط' : 'غير نشط')}',
                                       )),
                                     ]),
                                   ),

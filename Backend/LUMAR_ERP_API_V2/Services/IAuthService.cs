@@ -25,5 +25,6 @@ public interface IAuthService
     Task<bool> RejectAccountRecoveryAsync(string adminToken, AccountRecoveryRejectDto request, CancellationToken ct);
     Task<RecoveryCompleteResultDto> CompleteAccountRecoveryAsync(AccountRecoveryCompleteDto request, CancellationToken ct);
     Task<AccountRecoveryStatusDto?> GetAccountRecoveryStatusAsync(Guid publicRequestKey, CancellationToken ct);
+    Task<IReadOnlyList<OfficialRecoveryMatchDto>> SearchOfficialRecoveryMatchesAsync(string accountType, string term, CancellationToken ct);
     Task<AccountTypeDto?> GetAccountTypeAsync(string token, CancellationToken ct);
 }

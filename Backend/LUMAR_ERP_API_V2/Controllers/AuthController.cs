@@ -102,6 +102,16 @@ public sealed class AuthController(IAuthService service, ILogger<AuthController>
         return Ok(await service.ListAccountRecoveryRequestsAsync(Token, ct));
     }
 
+    [HttpGet("admin/recovery/matches")]
+    public async Task<ActionResult<IReadOnlyList<OfficialRecoveryMatchDto>>> SearchOfficialRecoveryMatches([FromQuery] string accountType, [FromQuery] string term, CancellationToken ct)
+    {
+        var user = await ResolveBearerUserAsync(ct);
+        if (user is null) return Unauthorized(new { message = "جلسة الإدارة مطلوبة." });
+        if (!IsAdministrativeRole(user.Role)) return StatusCode(StatusCodes.Status403Forbidden, new { message = "صلاحية الإدارة مطلوبة." });
+        if (string.IsNullOrWhiteSpace(accountType) || string.IsNullOrWhiteSpace(term)) return BadRequest(new { message = "بيانات المطابقة الرسمية غير مكتملة." });
+        return Ok(await service.SearchOfficialRecoveryMatchesAsync(accountType.Trim(), term.Trim(), ct));
+    }
+
     [HttpPost("admin/recovery/approve")]
     public async Task<IActionResult> ApproveRecoveryRequest([FromBody] AccountRecoveryApproveDto request, CancellationToken ct)
     {

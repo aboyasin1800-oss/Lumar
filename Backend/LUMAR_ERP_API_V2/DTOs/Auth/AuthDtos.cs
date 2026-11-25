@@ -61,6 +61,7 @@ public sealed record AccountRecoveryCandidateDto(long RecoveryRequestId, string 
 public sealed record AccountRecoveryApproveDto(long RecoveryRequestId, int TargetUserId);
 public sealed record AccountRecoveryRejectDto(long RecoveryRequestId, string? Reason);
 public sealed record AccountRecoveryCompleteDto(Guid PublicRequestKey, string NewPassword, string ConfirmPassword);
+public sealed record OfficialRecoveryMatchDto(int TargetUserId, int? MobileAccountId, string AccountType, string OfficialId, string OfficialName, string? PhoneNumber, string? Username, bool MobileAccountIsActive);
 public sealed record AccountRecoveryStatusDto(long RecoveryRequestId, string Status);
 
 public sealed record SessionInfoDto(Guid SessionId, DateTime CreatedAtUtc, DateTime ExpiresAtUtc, DateTime? RevokedAtUtc, string? RevocationReason, string? DeviceInfo, bool IsCurrent);
