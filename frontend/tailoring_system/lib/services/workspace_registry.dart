@@ -6,6 +6,7 @@ abstract final class WorkspaceRouteIds {
   static const dashboard = '/dashboard';
   static const login = '/login';
   static const designSystemDemo = '/design-system-demo';
+  static const settingsAccountRecovery = '/settings/account-recovery';
   static const supplierHome = '/supplier-home';
   static const supplierMessages = '/supplier-messages';
   static const supplierMessageDetail = '/supplier-message-detail';
@@ -28,8 +29,10 @@ abstract final class WorkspaceRouteIds {
   static const vipLevels = '/vip-levels';
   static const pointsSettings = '/points-settings';
   static const piecePointSettings = '/piece-point-settings';
-  static const importedProductPointSettings = '/imported-product-point-settings';
-  static const readyMadeProductPointSettings = '/ready-made-product-point-settings';
+  static const importedProductPointSettings =
+      '/imported-product-point-settings';
+  static const readyMadeProductPointSettings =
+      '/ready-made-product-point-settings';
 }
 
 WorkspaceRouteDefinition workspaceDefinition({

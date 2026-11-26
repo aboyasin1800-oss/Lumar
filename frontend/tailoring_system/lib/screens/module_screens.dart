@@ -82,6 +82,9 @@ Widget screenForIndex(
   if (index == 18) {
     return SettingsScreen(auth: auth, themeState: themeState, uiScale: uiScale);
   }
+  if (index == -18) {
+    return AccountSettingsScreen(auth: auth, initialRecoveryRequests: true);
+  }
   if (index == 19) return const ReadyMadeProductionScreen();
   if (index == 20) return const FactoryMonitorScreen();
   if (index == 21) return const DeliveryDashboardScreen();
@@ -355,6 +358,11 @@ final workspaceRegistry = <WorkspaceRouteDefinition>[
       routeId: '/settings',
       title: 'الإعدادات',
       icon: Icons.settings_outlined),
+  _indexedWorkspaceDefinition(
+      index: -18,
+      routeId: '/settings/account-recovery',
+      title: 'طلبات استعادة الحساب',
+      icon: Icons.manage_accounts_outlined),
   _indexedWorkspaceDefinition(
       index: 19,
       routeId: '/ready-made-production',

@@ -1,7 +1,4 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 import '../core/ui_palette.dart';
 import '../screens/module_screens.dart';
@@ -121,10 +118,6 @@ class _WorkspaceHeader extends StatefulWidget {
 
 class _WorkspaceHeaderState extends State<_WorkspaceHeader>
     with WidgetsBindingObserver {
-  static const _baseUrl = String.fromEnvironment(
-    'LUMAR_API_URL',
-    defaultValue: 'http://127.0.0.1:5093',
-  );
   int _pendingOrdersCount = 0;
   bool _pendingOrdersLoading = true;
   String? _lastLoadedRoute;
@@ -168,25 +161,14 @@ class _WorkspaceHeaderState extends State<_WorkspaceHeader>
     if (!mounted) return;
     setState(() => _pendingOrdersLoading = true);
     try {
-      final token = widget.auth.token;
-      final response = await http.get(
-        Uri.parse('$_baseUrl/orders'),
-        headers: {
-          'Accept': 'application/json',
-          if (token != null && token.trim().isNotEmpty)
-            'Authorization': 'Bearer ${token.trim()}',
-        },
-      ).timeout(const Duration(seconds: 8));
-      if (response.statusCode < 200 || response.statusCode >= 300)
-        throw Exception();
-      final decoded = jsonDecode(response.body);
-      if (decoded is! List) throw Exception();
-      final count = decoded.where((item) {
-        if (item is! Map) return false;
-        final status = (item['orderStatus'] ?? '').toString().trim();
-        return status.isNotEmpty &&
-            status != 'Delivered' &&
-            status != 'Cancelled';
+      final requests = await widget.auth
+          .listAccountRecoveryRequests()
+          .timeout(const Duration(seconds: 8));
+      final count = requests.where((item) {
+        final status = (item['status'] ?? '').toString().trim();
+        return status == 'Pending' ||
+            status == 'MatchRequired' ||
+            status == 'Approved';
       }).length;
       if (!mounted) return;
       setState(() {
@@ -244,7 +226,7 @@ class _WorkspaceHeaderState extends State<_WorkspaceHeader>
               if (_canOpenOrders)
                 TextButton.icon(
                   onPressed: () {
-                    widget.workspace.open('/orders');
+                    widget.workspace.open('/settings/account-recovery');
                   },
                   icon: Stack(
                     clipBehavior: Clip.none,
@@ -277,7 +259,7 @@ class _WorkspaceHeaderState extends State<_WorkspaceHeader>
                       ),
                     ],
                   ),
-                  label: const Text('الطلبات'),
+                  label: const Text('طلبات الاستعادة'),
                 ),
               const SizedBox(width: 8),
               ListenableBuilder(

@@ -786,9 +786,14 @@ class _SettingsSection {
 }
 
 class AccountSettingsScreen extends StatefulWidget {
-  const AccountSettingsScreen({required this.auth, super.key});
+  const AccountSettingsScreen({
+    required this.auth,
+    this.initialRecoveryRequests = false,
+    super.key,
+  });
 
   final AuthState auth;
+  final bool initialRecoveryRequests;
 
   @override
   State<AccountSettingsScreen> createState() => _AccountSettingsScreenState();
@@ -820,6 +825,11 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   void initState() {
     super.initState();
     username.text = widget.auth.user!.username;
+    if (widget.initialRecoveryRequests) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _refreshAccountRecoveryRequests();
+      });
+    }
   }
 
   @override
