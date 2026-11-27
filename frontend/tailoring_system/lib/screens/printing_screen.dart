@@ -204,6 +204,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   List<_MeasurementStatusType> _unprintedByType = const [];
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   List<_BulkPrintPage> _pendingBulkPages = const [];
+  List<_BulkPrintPage> _pendingBackendConfirmation = const [];
+  List<_BulkPrintPage> _remainingToPrint = const [];
   String? _pendingBulkBatchId;
   String? _pendingBulkRestoreError;
   Map<int, String> _pendingBulkReconcileStatus = const {};
@@ -341,9 +343,19 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
           .map(_BulkPrintPage.fromJson)
           .toList();
       if (pages.isEmpty) return;
+      final pending = (storedPayload['pendingBackendConfirmation'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_BulkPrintPage.fromJson)
+          .toList();
+      final remaining = (storedPayload['remainingToPrint'] as List? ?? pages)
+          .whereType<Map<String, dynamic>>()
+          .map(_BulkPrintPage.fromJson)
+          .toList();
       setState(() {
         _pendingBulkPages = pages;
         _pendingBulkBatchId = (storedPayload['batchId'] ?? '').toString();
+        _pendingBackendConfirmation = pending;
+        _remainingToPrint = remaining;
         _pendingBulkRestoreError = null;
       });
       await _reconcilePendingBulk();
@@ -422,11 +434,17 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     String batchId,
     List<_BulkPrintPage> pages, {
     String status = 'reserved',
+    List<_BulkPrintPage>? pendingBackendConfirmation,
+    List<_BulkPrintPage>? remainingToPrint,
   }) async {
+    final pending = pendingBackendConfirmation ?? const <_BulkPrintPage>[];
+    final remaining = remainingToPrint ?? pages;
     final payload = jsonEncode({
       'batchId': batchId,
       'status': status,
       'pages': pages.map((page) => page.toJson()).toList(),
+      'pendingBackendConfirmation': pending.map((page) => page.toJson()).toList(),
+      'remainingToPrint': remaining.map((page) => page.toJson()).toList(),
     });
     await _secureStorage.write(
       key: 'lumar_pending_measurement_card_bulk',
@@ -446,6 +464,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     setState(() {
       _pendingBulkPages = pages;
       _pendingBulkBatchId = batchId;
+      _pendingBackendConfirmation = pending;
+      _remainingToPrint = remaining;
       _pendingBulkRestoreError = null;
     });
   }
@@ -453,6 +473,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   Future<void> _clearPendingBulk() async {
     _pendingBulkPages = const [];
     _pendingBulkBatchId = null;
+    _pendingBackendConfirmation = const [];
+    _remainingToPrint = const [];
     _pendingBulkRestoreError = null;
     await _secureStorage.delete(key: 'lumar_pending_measurement_card_bulk');
   }
@@ -1601,6 +1623,17 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  FilledButton.tonalIcon(
+                    onPressed: () {
+                      setDialogState(() {
+                        cutoff = 0;
+                        confirmedThroughLast = false;
+                      });
+                    },
+                    icon: const Icon(Icons.cancel_outlined),
+                    label: const Text('لم تخرج أي بطاقة سليمة'),
+                  ),
+                  const SizedBox(height: 10),
                   DropdownButtonFormField<bool>(
                     initialValue: confirmedThroughLast,
                     decoration: const InputDecoration(labelText: 'آلية التعريف'),
@@ -1638,29 +1671,59 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     );
     if (partialChoice != true) return;
 
+    if (cutoff == 0) {
+      await _persistPendingBulk(
+        batchId,
+        pages,
+        status: 'awaitingConfirmation',
+        pendingBackendConfirmation: const [],
+        remainingToPrint: pages,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم تؤكد أي بطاقة؛ بقيت جميع الصفحات للطباعة والاستئناف.')),
+        );
+      }
+      return;
+    }
+
     final confirmedCount = confirmedThroughLast ? cutoff : cutoff - 1;
-    final confirmed = pages.where((page) => page.pageNumber <= confirmedCount).toList();
+    final physicallyConfirmed = confirmedCount <= 0
+        ? const <_BulkPrintPage>[]
+        : pages.where((page) => page.pageNumber <= confirmedCount).toList();
     final remaining = confirmedThroughLast
         ? pages.where((page) => page.pageNumber > cutoff).toList()
         : pages.where((page) => page.pageNumber >= cutoff).toList();
 
-    final syncResult = await _confirmBulkPages(batchId, confirmed);
+    if (physicallyConfirmed.isEmpty) {
+      await _persistPendingBulk(
+        batchId,
+        [..._pendingBackendConfirmation, ...remaining],
+        status: 'awaitingConfirmation',
+        pendingBackendConfirmation: _pendingBackendConfirmation,
+        remainingToPrint: remaining,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم تؤكد أي بطاقة سليمة؛ بقيت جميع بطاقات الدفعة للطباعة والاستئناف.')),
+        );
+      }
+      return;
+    }
+
+    final syncResult = await _confirmBulkPages(batchId, physicallyConfirmed);
     if (!syncResult.isSuccess) {
       await _persistPendingBulk(batchId, pages, status: 'syncFailed');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(syncResult.errorMessage)));
       return;
     }
-    final effectiveRemaining = pages
+    final effectivePending = physicallyConfirmed
         .where((page) => !syncResult.acceptedIds.contains(page.printHistoryId))
         .toList();
-    final remainingAfterConfirmation = effectiveRemaining
-        .where((page) => remaining.any((candidate) => candidate.printHistoryId == page.printHistoryId))
-        .toList();
-    if (remainingAfterConfirmation.isEmpty) {
-      await _clearPendingBulk();
-    } else {
-      final remaining = remainingAfterConfirmation;
-      final resumed = remaining.asMap().entries.map((entry) => _BulkPrintPage(
+    final effectiveRemaining = remaining;
+
+    final combinedPages = <_BulkPrintPage>[...effectivePending, ...effectiveRemaining];
+    final remappedRemaining = effectiveRemaining.asMap().entries.map((entry) => _BulkPrintPage(
         pageNumber: entry.key + 1,
         isReadyMade: entry.value.isReadyMade,
         pieceId: entry.value.pieceId,
@@ -1673,7 +1736,31 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         pieceNumber: entry.value.pieceNumber,
         cardJson: entry.value.cardJson,
       )).toList();
-      await _persistPendingBulk(batchId, resumed, status: 'partiallyConfirmed');
+
+    if (effectivePending.isEmpty && effectiveRemaining.isEmpty) {
+      await _clearPendingBulk();
+    } else {
+      await _persistPendingBulk(
+        batchId,
+        combinedPages,
+        status: effectivePending.isEmpty ? 'partiallyConfirmed' : 'syncFailed',
+        pendingBackendConfirmation: effectivePending,
+        remainingToPrint: remappedRemaining,
+      );
+      if (effectivePending.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('بقيت ${effectivePending.length} بطاقة بانتظار مزامنة Backend ولا تدخل PDF الاستئناف.')),
+        );
+      }
+      if (effectiveRemaining.isNotEmpty) {
+        await _persistPendingBulk(
+          batchId,
+          combinedPages,
+          status: effectivePending.isEmpty ? 'partiallyConfirmed' : 'syncFailed',
+          pendingBackendConfirmation: effectivePending,
+          remainingToPrint: remappedRemaining,
+        );
+      }
     }
   }
 
@@ -1756,9 +1843,43 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   Future<void> _resumePendingBulk() async {
     if (_pendingBulkBatchId == null || _pendingBulkPages.isEmpty) return;
     await _reconcilePendingBulk();
-    final resumable = _pendingBulkPages
-        .where((page) => _pendingBulkReconcileStatus[page.printHistoryId] == 'Reserved')
+
+    if (_pendingBackendConfirmation.isNotEmpty) {
+      final pendingSync = await _confirmBulkPages(
+        _pendingBulkBatchId!,
+        _pendingBackendConfirmation,
+      );
+      if (!pendingSync.isSuccess) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(pendingSync.errorMessage)),
+          );
+        }
+        return;
+      }
+      final stillPending = _pendingBackendConfirmation
+          .where((page) => !pendingSync.acceptedIds.contains(page.printHistoryId))
+          .toList();
+      await _persistPendingBulk(
+        _pendingBulkBatchId!,
+        [...stillPending, ..._remainingToPrint],
+        status: stillPending.isEmpty ? 'partiallyConfirmed' : 'syncFailed',
+        pendingBackendConfirmation: stillPending,
+        remainingToPrint: _remainingToPrint,
+      );
+    }
+
+    final resumable = _remainingToPrint
+        .where((page) => _pendingBulkReconcileStatus[page.printHistoryId] == 'Reserved'
+            || !_pendingBulkReconcileStatus.containsKey(page.printHistoryId))
         .toList();
+    if (_pendingBackendConfirmation.isNotEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يبدأ PDF الاستئناف حتى اكتمال مزامنة البطاقات المعلقة في Backend.')),
+      );
+      return;
+    }
     if (resumable.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

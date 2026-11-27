@@ -231,6 +231,53 @@ public sealed class MeasurementCardPrintingIntegrationTests
     }
 
     [Fact]
+    public async Task BulkConfirmWithSkippedKeepsPhysicalIdsPending()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedTailoringPieceAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        try
+        {
+            var batchId = Guid.NewGuid();
+            var prepared = await repository.PrepareBulkAsync(
+                new MeasurementCardBulkPrepareDto(batchId, Guid.NewGuid(), seed.OrderId),
+                seed.User,
+                CancellationToken.None);
+
+            var wrongBatchId = Guid.NewGuid();
+            var result = await repository.ConfirmBulkAsync(
+                new MeasurementCardBulkConfirmationDto(wrongBatchId,
+                    prepared.ReservedItems.Select(item => item.PrintHistoryId).ToList()),
+                seed.User,
+                CancellationToken.None);
+
+            Assert.Empty(result.Confirmed);
+            Assert.NotEmpty(result.Skipped);
+
+            var history = await repository.GetPieceHistoryAsync(seed.PieceId, false, CancellationToken.None);
+            Assert.Equal("Reserved", history.Last().PrintStatus);
+
+            var reconcile = await repository.ReconcileBulkAsync(
+                new MeasurementCardBulkReconcileDto(wrongBatchId,
+                    prepared.ReservedItems.Select(item => item.PrintHistoryId).ToList()),
+                seed.User,
+                CancellationToken.None);
+            Assert.Equal("WrongBatch", reconcile.Items[0].Classification);
+            Assert.False(reconcile.Items[0].BelongsToBatch);
+
+            await repository.CancelBulkAsync(
+                new MeasurementCardBulkConfirmationDto(batchId,
+                    prepared.ReservedItems.Select(item => item.PrintHistoryId).ToList()),
+                "اختبار عدم اعتماد سجل مؤكد ماديًا", seed.User, CancellationToken.None);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
     public async Task BulkReconcileRejectsWrongBatchAndDoesNotRecoverOtherBatch()
     {
         var connectionString = GetConnectionString();
