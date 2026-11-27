@@ -106,7 +106,10 @@ builder.Services.AddScoped<ILoyaltyAccountLifecycleService, LoyaltyAccountLifecy
 builder.Services.AddScoped<IVipLevelEvaluationService, VipLevelEvaluationService>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<LoyaltyFreezeBackgroundService>();
-if (OperatingSystem.IsWindows())
+var localWhatsAppLifecycle = LocalWhatsAppFoundationRegistration.ResolveGatewayLifecycle(
+    builder.Configuration,
+    OperatingSystem.IsWindows());
+if (localWhatsAppLifecycle == LocalWhatsAppGatewayLifecycle.WindowsManaged)
 {
     builder.Services.AddHostedService<LocalWhatsAppGatewayProcessHost>();
 }

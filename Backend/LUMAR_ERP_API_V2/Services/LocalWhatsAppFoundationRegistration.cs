@@ -4,8 +4,29 @@ using LUMAR_ERP_API_V2.Repositories;
 
 namespace LUMAR_ERP_API_V2.Services;
 
+public enum LocalWhatsAppGatewayLifecycle
+{
+    WindowsManaged,
+    ExternalService
+}
+
 public static class LocalWhatsAppFoundationRegistration
 {
+    public static LocalWhatsAppGatewayLifecycle ResolveGatewayLifecycle(IConfiguration configuration, bool isWindows)
+    {
+        if (!isWindows)
+            return LocalWhatsAppGatewayLifecycle.ExternalService;
+
+        var configured = configuration["LocalWhatsAppGateway:GatewayLifecycle"];
+        if (string.IsNullOrWhiteSpace(configured)
+            || string.Equals(configured, "WindowsManaged", StringComparison.OrdinalIgnoreCase))
+            return LocalWhatsAppGatewayLifecycle.WindowsManaged;
+        if (string.Equals(configured, "ExternalService", StringComparison.OrdinalIgnoreCase))
+            return LocalWhatsAppGatewayLifecycle.ExternalService;
+
+        throw new InvalidOperationException("Local WhatsApp gateway lifecycle configuration is invalid.");
+    }
+
     public static IServiceCollection AddWhatsAppProviderIntegration(this IServiceCollection services)
     {
         services.AddScoped<IWhatsAppProviderStore, SettingsRepository>();
@@ -36,15 +57,33 @@ public static class LocalWhatsAppFoundationRegistration
 
 public sealed class LocalWhatsAppGatewayAuthenticationHandler : DelegatingHandler
 {
+    public static string ResolveLinuxGatewayToken(string? environmentToken)
+    {
+        var token = environmentToken?.Trim();
+        if (string.IsNullOrWhiteSpace(token)
+            || !Regex.IsMatch(token, "\\A[a-f0-9]{64}\\z", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
+            throw new HttpRequestException("Local gateway authentication unavailable.");
+        return token;
+    }
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "LUMAR", "LocalWhatsAppGateway", "gateway-token");
         try
         {
-            var token = (await File.ReadAllTextAsync(path, cancellationToken)).Trim();
-            if (!Regex.IsMatch(token, "\\A[a-f0-9]{64}\\z", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
-                throw new HttpRequestException("Local gateway authentication unavailable.");
+            string token;
+            if (OperatingSystem.IsWindows())
+            {
+                var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "LUMAR", "LocalWhatsAppGateway", "gateway-token");
+                token = (await File.ReadAllTextAsync(path, cancellationToken)).Trim();
+                if (!Regex.IsMatch(token, "\\A[a-f0-9]{64}\\z", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
+                    throw new HttpRequestException("Local gateway authentication unavailable.");
+            }
+            else
+            {
+                token = ResolveLinuxGatewayToken(
+                    Environment.GetEnvironmentVariable("LUMAR_LOCAL_WHATSAPP_GATEWAY_TOKEN"));
+            }
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
         catch (IOException)

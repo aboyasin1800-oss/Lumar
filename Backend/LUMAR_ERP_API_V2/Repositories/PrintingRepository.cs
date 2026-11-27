@@ -46,6 +46,315 @@ public sealed class PrintingRepository(
         return results;
     }
 
+    public async Task<MeasurementCardStatusSummaryDto> GetStatusSummaryAsync(int? orderId, CancellationToken cancellationToken)
+    {
+        await using var connection = readOnlyConnections.Create();
+        await connection.OpenAsync(cancellationToken);
+
+        const string sql = @"
+WITH candidates AS (
+    SELECT 0 AS IsReadyMade, p.PieceID AS PieceId, oi.OrderID AS OrderId,
+           oi.ProductTypeId,
+           COALESCE(pt.NameAr, oi.PieceType) AS ProductTypeName,
+           p.PieceStatus
+    FROM dbo.Pieces p
+    INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = p.OrderItemID
+    INNER JOIN dbo.Orders o ON o.OrderID = oi.OrderID
+    LEFT JOIN dbo.PricingProductTypes pt ON pt.ProductTypeId = oi.ProductTypeId
+    WHERE (@orderId IS NULL OR oi.OrderID = @orderId)
+      AND LOWER(LTRIM(RTRIM(COALESCE(p.PieceStatus, N'')))) NOT IN (N'cancelled', N'canceled', N'ملغي')
+    UNION ALL
+    SELECT 1 AS IsReadyMade, p.ReadyMadeProductionOrderPieceInstanceId AS PieceId,
+           i.ReadyMadeProductionOrderId AS OrderId,
+           COALESCE(pt.ProductTypeId, 0) AS ProductTypeId,
+           COALESCE(pt.NameAr, i.PieceType) AS ProductTypeName,
+           p.PieceStatus
+    FROM dbo.ReadyMadeProductionOrderPieceInstances p
+    INNER JOIN dbo.ReadyMadeProductionOrderItems i ON i.ReadyMadeProductionOrderItemId = p.ReadyMadeProductionOrderItemId
+    INNER JOIN dbo.ReadyMadeProductionOrders o ON o.ReadyMadeProductionOrderId = i.ReadyMadeProductionOrderId
+    LEFT JOIN dbo.PricingProductTypes pt ON pt.IsActive = 1 AND (pt.Code = i.PieceType OR pt.NameAr = i.PieceType)
+    WHERE (@orderId IS NULL OR i.ReadyMadeProductionOrderId = @orderId)
+      AND LOWER(LTRIM(RTRIM(COALESCE(p.PieceStatus, N'')))) NOT IN (N'cancelled', N'canceled', N'ملغي')
+), classified AS (
+    SELECT c.*,
+           CASE WHEN EXISTS (
+               SELECT 1 FROM dbo.MeasurementCardPrintHistory h
+               WHERE h.PrintStatus = N'Completed'
+                 AND ((c.IsReadyMade = 0 AND h.PieceId = c.PieceId)
+                   OR (c.IsReadyMade = 1 AND h.ReadyMadePieceId = c.PieceId))
+           ) THEN 1 ELSE 0 END AS HasCompleted,
+           CASE WHEN NOT EXISTS (
+               SELECT 1 FROM dbo.MeasurementCardPrintHistory h
+               WHERE h.PrintStatus = N'Completed'
+                 AND ((c.IsReadyMade = 0 AND h.PieceId = c.PieceId)
+                   OR (c.IsReadyMade = 1 AND h.ReadyMadePieceId = c.PieceId))
+           ) AND (LOWER(LTRIM(RTRIM(COALESCE(c.PieceStatus, N'')))) LIKE N'%printed%'
+                OR LOWER(LTRIM(RTRIM(COALESCE(c.PieceStatus, N'')))) LIKE N'%completed%') THEN 1 ELSE 0 END AS HasLegacyPrinted
+    FROM candidates c
+)
+SELECT
+    COALESCE(SUM(CASE WHEN HasCompleted = 1 OR HasLegacyPrinted = 1 THEN 1 ELSE 0 END), 0) AS PrintedTotal,
+    COALESCE(SUM(CASE WHEN HasCompleted = 0 AND HasLegacyPrinted = 0 THEN 1 ELSE 0 END), 0) AS UnprintedTotal
+FROM classified;";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@orderId", (object?)orderId ?? DBNull.Value);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var printed = 0;
+        var unprinted = 0;
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            printed = reader.GetInt32(0);
+            unprinted = reader.GetInt32(1);
+        }
+        await reader.CloseAsync();
+
+        const string groupSql = @"
+WITH candidates AS (
+    SELECT 0 AS IsReadyMade, p.PieceID AS PieceId, oi.OrderID AS OrderId,
+           oi.ProductTypeId,
+           COALESCE(pt.NameAr, oi.PieceType) AS ProductTypeName,
+           p.PieceStatus
+    FROM dbo.Pieces p
+    INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = p.OrderItemID
+    INNER JOIN dbo.Orders o ON o.OrderID = oi.OrderID
+    LEFT JOIN dbo.PricingProductTypes pt ON pt.ProductTypeId = oi.ProductTypeId
+    WHERE (@orderId IS NULL OR oi.OrderID = @orderId)
+      AND LOWER(LTRIM(RTRIM(COALESCE(p.PieceStatus, N'')))) NOT IN (N'cancelled', N'canceled', N'ملغي')
+    UNION ALL
+    SELECT 1 AS IsReadyMade, p.ReadyMadeProductionOrderPieceInstanceId AS PieceId,
+           i.ReadyMadeProductionOrderId AS OrderId,
+           COALESCE(pt.ProductTypeId, 0) AS ProductTypeId,
+           COALESCE(pt.NameAr, i.PieceType) AS ProductTypeName,
+           p.PieceStatus
+    FROM dbo.ReadyMadeProductionOrderPieceInstances p
+    INNER JOIN dbo.ReadyMadeProductionOrderItems i ON i.ReadyMadeProductionOrderItemId = p.ReadyMadeProductionOrderItemId
+    INNER JOIN dbo.ReadyMadeProductionOrders o ON o.ReadyMadeProductionOrderId = i.ReadyMadeProductionOrderId
+    LEFT JOIN dbo.PricingProductTypes pt ON pt.IsActive = 1 AND (pt.Code = i.PieceType OR pt.NameAr = i.PieceType)
+    WHERE (@orderId IS NULL OR i.ReadyMadeProductionOrderId = @orderId)
+      AND LOWER(LTRIM(RTRIM(COALESCE(p.PieceStatus, N'')))) NOT IN (N'cancelled', N'canceled', N'ملغي')
+), unprinted AS (
+    SELECT c.* FROM candidates c
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.MeasurementCardPrintHistory h
+        WHERE h.PrintStatus = N'Completed'
+          AND ((c.IsReadyMade = 0 AND h.PieceId = c.PieceId)
+            OR (c.IsReadyMade = 1 AND h.ReadyMadePieceId = c.PieceId))
+    )
+      AND NOT (LOWER(LTRIM(RTRIM(COALESCE(c.PieceStatus, N'')))) LIKE N'%printed%'
+        OR LOWER(LTRIM(RTRIM(COALESCE(c.PieceStatus, N'')))) LIKE N'%completed%')
+)
+SELECT COALESCE(ProductTypeId, 0), COALESCE(NULLIF(ProductTypeName, N''), N'غير محدد'), COUNT(*)
+FROM unprinted
+GROUP BY COALESCE(ProductTypeId, 0), COALESCE(NULLIF(ProductTypeName, N''), N'غير محدد')
+ORDER BY COUNT(*) DESC, COALESCE(NULLIF(ProductTypeName, N''), N'غير محدد');";
+        await using var groupCommand = new SqlCommand(groupSql, connection);
+        groupCommand.Parameters.AddWithValue("@orderId", (object?)orderId ?? DBNull.Value);
+        await using var groupReader = await groupCommand.ExecuteReaderAsync(cancellationToken);
+        var types = new List<MeasurementCardStatusTypeDto>();
+        while (await groupReader.ReadAsync(cancellationToken))
+            types.Add(new MeasurementCardStatusTypeDto(groupReader.GetInt32(0), groupReader.GetString(1), groupReader.GetInt32(2)));
+
+        return new MeasurementCardStatusSummaryDto(Guid.NewGuid(), DateTime.UtcNow, printed, unprinted, types);
+    }
+
+    public async Task<MeasurementCardEligibleSnapshotDto> GetEligibleSnapshotAsync(int? orderId, CancellationToken cancellationToken)
+    {
+        await using var connection = readOnlyConnections.Create();
+        await connection.OpenAsync(cancellationToken);
+
+        const string sql = @"
+WITH candidates AS (
+    SELECT 0 AS IsReadyMade, p.PieceID AS PieceId, oi.OrderItemID, oi.OrderID,
+           o.OrderNumber, p.PieceNumber, c.CustomerName, oi.PieceType,
+           oi.ProductTypeId, p.TrackingCode, NULL AS Barcode, oi.MeasurementSnapshot,
+           oi.FabricCode, oi.FabricType, oi.FabricColor,
+           COALESCE(NULLIF(oi.MeasurementSnapshot, N''), N'') AS CatalogNumber,
+           oi.Request1, oi.Request2, oi.Notes1, oi.Notes2,
+           p.PieceStatus, o.DeliveryDate
+    FROM dbo.Pieces p
+    INNER JOIN dbo.OrderItems oi ON oi.OrderItemID = p.OrderItemID
+    INNER JOIN dbo.Orders o ON o.OrderID = oi.OrderID
+    LEFT JOIN dbo.Customers c ON c.CustomerID = o.CustomerID
+    WHERE (@orderId IS NULL OR oi.OrderID = @orderId)
+      AND LOWER(LTRIM(RTRIM(COALESCE(p.PieceStatus, N'')))) NOT IN (N'cancelled', N'canceled', N'ملغي')
+    UNION ALL
+    SELECT 1 AS IsReadyMade, p.ReadyMadeProductionOrderPieceInstanceId AS PieceId,
+           p.ReadyMadeProductionOrderItemId AS OrderItemID,
+           i.ReadyMadeProductionOrderId AS OrderID,
+           o.ProductionOrderNumber AS OrderNumber, p.PieceNumber, N'' AS CustomerName,
+           i.PieceType, COALESCE(pt.ProductTypeId, 0) AS ProductTypeId,
+           p.TrackingCode, i.CatalogNumber AS Barcode, i.MeasurementSnapshot,
+           i.FabricCode, i.FabricType, i.FabricColor, i.CatalogNumber,
+           NULL AS Request1, NULL AS Request2, NULL AS Notes1, NULL AS Notes2,
+           p.PieceStatus, NULL AS DeliveryDate
+    FROM dbo.ReadyMadeProductionOrderPieceInstances p
+    INNER JOIN dbo.ReadyMadeProductionOrderItems i ON i.ReadyMadeProductionOrderItemId = p.ReadyMadeProductionOrderItemId
+    INNER JOIN dbo.ReadyMadeProductionOrders o ON o.ReadyMadeProductionOrderId = i.ReadyMadeProductionOrderId
+    LEFT JOIN dbo.PricingProductTypes pt ON pt.IsActive = 1 AND (pt.Code = i.PieceType OR pt.NameAr = i.PieceType)
+    WHERE (@orderId IS NULL OR i.ReadyMadeProductionOrderId = @orderId)
+      AND LOWER(LTRIM(RTRIM(COALESCE(p.PieceStatus, N'')))) NOT IN (N'cancelled', N'canceled', N'ملغي')
+)
+SELECT c.*, 1 AS CopyNumber
+FROM candidates c
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.MeasurementCardPrintHistory h
+    WHERE h.PrintStatus = N'Completed'
+      AND ((c.IsReadyMade = 0 AND h.PieceId = c.PieceId)
+        OR (c.IsReadyMade = 1 AND h.ReadyMadePieceId = c.PieceId))
+)
+AND NOT (LOWER(LTRIM(RTRIM(COALESCE(c.PieceStatus, N'')))) LIKE N'%printed%'
+      OR LOWER(LTRIM(RTRIM(COALESCE(c.PieceStatus, N'')))) LIKE N'%completed%')
+ORDER BY c.OrderNumber, c.PieceNumber, c.PieceId;";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@orderId", (object?)orderId ?? DBNull.Value);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var cards = new List<EligibleMeasurementCardDto>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var isReadyMade = reader.GetInt32(reader.GetOrdinal("IsReadyMade")) == 1;
+            cards.Add(new EligibleMeasurementCardDto(
+                isReadyMade,
+                reader.GetInt32(reader.GetOrdinal("PieceId")),
+                reader.GetInt32(reader.GetOrdinal("OrderID")),
+                reader.NullableInt32("OrderItemID"),
+                reader.GetString(reader.GetOrdinal("OrderNumber")),
+                reader.GetInt32(reader.GetOrdinal("PieceNumber")),
+                reader.GetString(reader.GetOrdinal("CustomerName")),
+                reader.GetString(reader.GetOrdinal("PieceType")),
+                reader.NullableInt32("ProductTypeId"),
+                reader.GetString(reader.GetOrdinal("TrackingCode")),
+                reader.NullableString("Barcode"),
+                reader.NullableString("MeasurementSnapshot"),
+                reader.NullableString("FabricCode"),
+                reader.NullableString("FabricType"),
+                reader.NullableString("FabricColor"),
+                reader.NullableString("CatalogNumber"),
+                reader.NullableString("Request1"),
+                reader.NullableString("Request2"),
+                reader.NullableString("Notes1"),
+                reader.GetString(reader.GetOrdinal("PieceStatus")),
+                reader.NullableDateTime("DeliveryDate"),
+                1));
+        }
+        return new MeasurementCardEligibleSnapshotDto(Guid.NewGuid(), DateTime.UtcNow, cards);
+    }
+
+    public async Task<MeasurementCardBulkConfirmationResultDto> ConfirmBulkAsync(MeasurementCardBulkConfirmationDto request, CurrentUserDto user, CancellationToken cancellationToken)
+    {
+        var confirmed = new List<MeasurementCardBulkConfirmationItemDto>();
+        var skipped = new List<string>();
+        foreach (var printHistoryId in request.PrintHistoryIds.Distinct())
+        {
+            try
+            {
+                var history = await GetHistoryByIdAsync(printHistoryId, cancellationToken);
+                if (history is null) throw new InvalidOperationException("سجل الطباعة غير موجود.");
+                var pieceId = history.PieceId ?? history.ReadyMadePieceId;
+                if (pieceId is not int id) throw new InvalidOperationException("هوية القطعة غير صالحة.");
+                var expectedRequestId = CreateBulkPiecePrintRequestId(request.BatchRequestId,
+                    history.ReadyMadePieceId is not null, id);
+                if (history.PrintRequestId != expectedRequestId)
+                    throw new InvalidOperationException("سجل الطباعة لا ينتمي إلى دفعة التشغيل المطلوبة.");
+
+                var result = await CompleteAsync(printHistoryId, null, user, cancellationToken);
+                confirmed.Add(new MeasurementCardBulkConfirmationItemDto(printHistoryId, result.PrintStatus));
+            }
+            catch (Exception exception)
+            {
+                skipped.Add($"{printHistoryId}:{exception.Message}");
+            }
+        }
+        return new MeasurementCardBulkConfirmationResultDto(request.BatchRequestId, confirmed, skipped);
+    }
+
+    public async Task<MeasurementCardBulkConfirmationResultDto> CancelBulkAsync(MeasurementCardBulkConfirmationDto request, string? reason, CurrentUserDto user, CancellationToken cancellationToken)
+    {
+        var cancelled = new List<MeasurementCardBulkConfirmationItemDto>();
+        var skipped = new List<string>();
+        foreach (var printHistoryId in request.PrintHistoryIds.Distinct())
+        {
+            try
+            {
+                var history = await GetHistoryByIdAsync(printHistoryId, cancellationToken);
+                if (history is null) throw new InvalidOperationException("سجل الطباعة غير موجود.");
+                var pieceId = history.PieceId ?? history.ReadyMadePieceId;
+                if (pieceId is not int id) throw new InvalidOperationException("هوية القطعة غير صالحة.");
+                var expectedRequestId = CreateBulkPiecePrintRequestId(request.BatchRequestId,
+                    history.ReadyMadePieceId is not null, id);
+                if (history.PrintRequestId != expectedRequestId)
+                    throw new InvalidOperationException("سجل الطباعة لا ينتمي إلى دفعة التشغيل المطلوبة.");
+
+                var result = await FailAsync(printHistoryId, reason ?? "تم إلغاء الدفعة قبل تأكيد الطباعة", user, cancellationToken);
+                if (result is not null)
+                    cancelled.Add(new MeasurementCardBulkConfirmationItemDto(printHistoryId, result.PrintStatus));
+            }
+            catch (Exception exception)
+            {
+                skipped.Add($"{printHistoryId}:{exception.Message}");
+            }
+        }
+        return new MeasurementCardBulkConfirmationResultDto(request.BatchRequestId, cancelled, skipped);
+    }
+
+    public async Task<MeasurementCardReservedRecoveryDto> RecoverReservedAsync(int? orderId, CancellationToken cancellationToken)
+    {
+        await using var connection = operationalConnections.Create();
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+
+        const string sql = @"
+UPDATE h
+SET PrintStatus = N'Failed',
+    FailedAtUtc = COALESCE(h.FailedAtUtc, SYSUTCDATETIME()),
+    FailureReason = COALESCE(h.FailureReason, N'Recovered as abandoned reserved print operation')
+FROM dbo.MeasurementCardPrintHistory h
+WHERE h.PrintStatus = N'Reserved'
+  AND (@orderId IS NULL OR h.OrderId = @orderId);";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("@orderId", (object?)orderId ?? DBNull.Value);
+        var recovered = await command.ExecuteNonQueryAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new MeasurementCardReservedRecoveryDto(recovered);
+    }
+
+    public async Task<MeasurementCardBulkPrepareResultDto> PrepareBulkAsync(MeasurementCardBulkPrepareDto request, CurrentUserDto user, CancellationToken cancellationToken)
+    {
+        var snapshot = await GetEligibleSnapshotAsync(request.OrderId, cancellationToken);
+        var reserved = new List<MeasurementCardBulkPrepareItemDto>();
+        var skipped = new List<string>();
+
+        foreach (var card in snapshot.Cards)
+        {
+            try
+            {
+                var pieceRequestId = CreateBulkPiecePrintRequestId(request.BatchRequestId, card.IsReadyMade, card.PieceId);
+                var history = await PrepareAsync(card.PieceId, card.IsReadyMade,
+                    new PrepareMeasurementCardPrintDto(pieceRequestId, null, null, null, "Bulk measurement card print", null, null, null),
+                    user, cancellationToken);
+                reserved.Add(new MeasurementCardBulkPrepareItemDto(card.IsReadyMade, card.PieceId,
+                    history.PrintHistoryId, history.PrintRequestId, history.CopyNumber, history.PrintStatus));
+            }
+            catch (Exception exception)
+            {
+                skipped.Add($"{(card.IsReadyMade ? "ready" : "tailoring")}:{card.PieceId}:{exception.Message}");
+            }
+        }
+
+        return new MeasurementCardBulkPrepareResultDto(request.BatchRequestId, snapshot.SnapshotId,
+            snapshot.CapturedAtUtc, reserved, snapshot.Cards, skipped);
+    }
+
+    private static Guid CreateBulkPiecePrintRequestId(Guid batchRequestId, bool isReadyMade, int pieceId)
+    {
+        Span<byte> input = stackalloc byte[24];
+        batchRequestId.TryWriteBytes(input);
+        input[16] = isReadyMade ? (byte)1 : (byte)0;
+        BitConverter.TryWriteBytes(input.Slice(20, 4), pieceId);
+        Span<byte> hash = stackalloc byte[32];
+        SHA256.HashData(input, hash);
+        return new Guid(hash[..16]);
+    }
+
     public async Task<MeasurementCardPrintHistoryDto> PrepareAsync(
         int pieceId,
         bool isReadyMade,

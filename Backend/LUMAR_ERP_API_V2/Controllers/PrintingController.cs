@@ -14,6 +14,65 @@ public sealed class PrintingController(IPrintingService printing, IAuthService a
     public Task<ActionResult<IReadOnlyList<MeasurementCardPrintHistoryDto>>> GetPieceHistory(int pieceId, CancellationToken cancellationToken) =>
         GetHistoryCore(pieceId, false, cancellationToken);
 
+    [HttpGet("measurement-card-status-summary")]
+    public async Task<ActionResult<MeasurementCardStatusSummaryDto>> GetStatusSummary([FromQuery] int? orderId, CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUserAsync(cancellationToken);
+        if (user is null) return Unauthorized();
+        return Ok(await printing.GetStatusSummaryAsync(orderId, cancellationToken));
+    }
+
+    [HttpGet("eligible-snapshot")]
+    public async Task<ActionResult<MeasurementCardEligibleSnapshotDto>> GetEligibleSnapshot([FromQuery] int? orderId, CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUserAsync(cancellationToken);
+        if (user is null) return Unauthorized();
+        return Ok(await printing.GetEligibleSnapshotAsync(orderId, cancellationToken));
+    }
+
+    [HttpPost("bulk/prepare")]
+    public async Task<ActionResult<MeasurementCardBulkPrepareResultDto>> PrepareBulk(MeasurementCardBulkPrepareDto request, CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUserAsync(cancellationToken);
+        if (user is null) return Unauthorized();
+        try
+        {
+            return Ok(await printing.PrepareBulkAsync(request, user, cancellationToken));
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Conflict(exception.Message);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(exception.Message);
+        }
+    }
+
+    [HttpPost("bulk/confirm")]
+    public async Task<ActionResult<MeasurementCardBulkConfirmationResultDto>> ConfirmBulk(MeasurementCardBulkConfirmationDto request, CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUserAsync(cancellationToken);
+        if (user is null) return Unauthorized();
+        return Ok(await printing.ConfirmBulkAsync(request, user, cancellationToken));
+    }
+
+    [HttpPost("bulk/cancel")]
+    public async Task<ActionResult<MeasurementCardBulkConfirmationResultDto>> CancelBulk(MeasurementCardBulkConfirmationDto request, [FromQuery] string? reason, CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUserAsync(cancellationToken);
+        if (user is null) return Unauthorized();
+        return Ok(await printing.CancelBulkAsync(request, reason, user, cancellationToken));
+    }
+
+    [HttpPost("reserved/recover")]
+    public async Task<ActionResult<MeasurementCardReservedRecoveryDto>> RecoverReserved([FromQuery] int? orderId, CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUserAsync(cancellationToken);
+        if (user is null) return Unauthorized();
+        return Ok(await printing.RecoverReservedAsync(orderId, cancellationToken));
+    }
+
     [HttpGet("readymade-pieces/{pieceId:int}/history")]
     public Task<ActionResult<IReadOnlyList<MeasurementCardPrintHistoryDto>>> GetReadyMadePieceHistory(int pieceId, CancellationToken cancellationToken) =>
         GetHistoryCore(pieceId, true, cancellationToken);

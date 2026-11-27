@@ -1,12 +1,56 @@
 import { EventEmitter } from 'node:events';
-import { join } from 'node:path';
+import { lstatSync, mkdirSync, chmodSync } from 'node:fs';
+import { isAbsolute, join, resolve } from 'node:path';
 import whatsapp from 'whatsapp-web.js';
 
 const { Client, LocalAuth, MessageMedia } = whatsapp;
 
+export function resolveLinuxChromiumExecutable() {
+  if (process.platform !== 'linux') return undefined;
+  const configured = process.env.LUMAR_LOCAL_CHROMIUM_EXECUTABLE_PATH;
+  if (!configured) return undefined;
+  if (!isAbsolute(configured)) throw new Error('Configured Chromium path is invalid.');
+
+  const executable = resolve(configured);
+  let info;
+  try { info = lstatSync(executable); }
+  catch { throw new Error('Configured Chromium path is invalid.'); }
+  if (info.isSymbolicLink() || !info.isFile()) throw new Error('Configured Chromium path is invalid.');
+  if ((info.mode & 0o111) === 0) throw new Error('Configured Chromium path is invalid.');
+  return executable;
+}
+
+export function resolveBrowserCacheDirectory(directory) {
+  if (process.platform !== 'win32') {
+    if (process.platform !== 'linux') throw new Error('Browser cache directory is unavailable.');
+    const configured = process.env.LUMAR_LOCAL_BROWSER_CACHE_DIRECTORY;
+    if (!configured || !isAbsolute(configured)) throw new Error('Browser cache directory is unavailable.');
+
+    const cacheDirectory = resolve(configured);
+    const dataDirectory = resolve(directory);
+    if (cacheDirectory === dataDirectory || cacheDirectory.startsWith(dataDirectory + '/')) {
+      throw new Error('Browser cache directory is unavailable.');
+    }
+    mkdirSync(cacheDirectory, { recursive: true, mode: 0o700 });
+    chmodSync(cacheDirectory, 0o700);
+    if (lstatSync(cacheDirectory).isSymbolicLink()) throw new Error('Browser cache directory is unavailable.');
+    return cacheDirectory;
+  }
+  return join(directory, 'web-cache');
+}
+
+export function validateLinuxBrowserRuntime() {
+  if (process.platform !== 'linux') return;
+  const uid = process.geteuid?.();
+  if (typeof uid === 'number' && uid === 0) throw new Error('Gateway must not run as root on Linux.');
+}
+
 export class WebDriver extends EventEmitter {
   constructor(directory) {
     super();
+    validateLinuxBrowserRuntime();
+    const cacheDirectory = resolveBrowserCacheDirectory(directory);
+    const executablePath = resolveLinuxChromiumExecutable();
     this.stopped = false;
     this.confirmationTimeoutMs = 15000;
     this.pendingConfirmations = [];
@@ -29,8 +73,12 @@ export class WebDriver extends EventEmitter {
     };
     this.client = new Client({
       authStrategy: new LocalAuth({ clientId: 'lumar', dataPath: join(directory, 'auth') }),
-      webVersionCache: { type: 'local', path: join(directory, 'web-cache') },
-      puppeteer: { headless: true, timeout: 30000 },
+      webVersionCache: { type: 'local', path: cacheDirectory },
+      puppeteer: {
+        headless: true,
+        timeout: 30000,
+        ...(executablePath ? { executablePath } : {}),
+      },
       authTimeoutMs: 60000,
       qrMaxRetries: 4,
       deviceName: 'LUMAR Local Test Gateway',

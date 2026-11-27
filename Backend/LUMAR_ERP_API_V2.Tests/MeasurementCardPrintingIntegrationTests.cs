@@ -118,6 +118,119 @@ public sealed class MeasurementCardPrintingIntegrationTests
     }
 
     [Fact]
+    public async Task BulkPrint_IsIdempotentAndMatchesStatusSummary()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedTailoringPieceAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        try
+        {
+            var batchId = Guid.NewGuid();
+            var request = new MeasurementCardBulkPrepareDto(batchId, Guid.NewGuid(), seed.OrderId);
+
+            var first = await repository.PrepareBulkAsync(request, seed.User, CancellationToken.None);
+            var duplicate = await repository.PrepareBulkAsync(request, seed.User, CancellationToken.None);
+
+            Assert.Single(first.ReservedItems);
+            Assert.Single(duplicate.ReservedItems);
+            Assert.Equal(first.ReservedItems[0].PrintHistoryId, duplicate.ReservedItems[0].PrintHistoryId);
+
+            await repository.CompleteAsync(first.ReservedItems[0].PrintHistoryId, null, seed.User, CancellationToken.None);
+            var summary = await repository.GetStatusSummaryAsync(seed.OrderId, CancellationToken.None);
+
+            Assert.Equal(1, summary.PrintedTotal);
+            Assert.Equal(0, summary.UnprintedTotal);
+            Assert.Empty(summary.UnprintedByProductType);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
+    public async Task BulkPartialConfirmationCompletesOnlyConfirmedIds()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedTailoringPieceAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        try
+        {
+            var batchId = Guid.NewGuid();
+            var prepared = await repository.PrepareBulkAsync(
+                new MeasurementCardBulkPrepareDto(batchId, Guid.NewGuid(), seed.OrderId),
+                seed.User,
+                CancellationToken.None);
+
+            var result = await repository.ConfirmBulkAsync(
+                new MeasurementCardBulkConfirmationDto(batchId,
+                    prepared.ReservedItems.Select(item => item.PrintHistoryId).ToList()),
+                seed.User,
+                CancellationToken.None);
+
+            Assert.Single(result.Confirmed);
+            Assert.Empty(result.Skipped);
+            var completed = await repository.CompleteAsync(
+                prepared.ReservedItems[0].PrintHistoryId,
+                null,
+                seed.User,
+                CancellationToken.None);
+            Assert.Equal("Completed", completed.PrintStatus);
+
+            var summary = await repository.GetStatusSummaryAsync(seed.OrderId, CancellationToken.None);
+            Assert.Equal(1, summary.PrintedTotal);
+            Assert.Equal(0, summary.UnprintedTotal);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
+    public async Task BulkCancellationLeavesNoConfirmedCopyAndAllowsRetry()
+    {
+        var connectionString = GetConnectionString();
+        var seed = await SeedTailoringPieceAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        try
+        {
+            var batchId = Guid.NewGuid();
+            var prepared = await repository.PrepareBulkAsync(
+                new MeasurementCardBulkPrepareDto(batchId, Guid.NewGuid(), seed.OrderId),
+                seed.User,
+                CancellationToken.None);
+
+            var result = await repository.CancelBulkAsync(
+                new MeasurementCardBulkConfirmationDto(batchId,
+                    prepared.ReservedItems.Select(item => item.PrintHistoryId).ToList()),
+                "تم إلغاء الطباعة",
+                seed.User,
+                CancellationToken.None);
+
+            Assert.Single(result.Confirmed);
+            Assert.Empty(result.Skipped);
+            Assert.Equal("Failed", result.Confirmed[0].PrintStatus);
+
+            var retry = await repository.PrepareAsync(
+                seed.PieceId,
+                false,
+                new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null),
+                seed.User,
+                CancellationToken.None);
+            Assert.Equal(1, retry.CopyNumber);
+            Assert.Equal("Reserved", retry.PrintStatus);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seed);
+        }
+    }
+
+    [Fact]
     public async Task SuccessfulPrint_UpdatesOfficialProductionStage_AndDoesNotCreatePieceWage()
     {
         var connectionString = GetConnectionString();

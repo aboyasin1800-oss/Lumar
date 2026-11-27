@@ -336,6 +336,53 @@ public sealed class LocalWhatsAppFoundationTests
     }
 
     [Fact]
+    public void GatewayLifecycleResolver_PreservesWindowsManagedAndUsesExternalServiceOnLinux()
+    {
+        var configuration = new ConfigurationBuilder().Build();
+        Assert.Equal(LocalWhatsAppGatewayLifecycle.WindowsManaged,
+            LocalWhatsAppFoundationRegistration.ResolveGatewayLifecycle(configuration, true));
+        Assert.Equal(LocalWhatsAppGatewayLifecycle.ExternalService,
+            LocalWhatsAppFoundationRegistration.ResolveGatewayLifecycle(configuration, false));
+    }
+
+    [Fact]
+    public void GatewayLifecycleResolver_RejectsUnknownWindowsValue()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["LocalWhatsAppGateway:GatewayLifecycle"] = "UnknownMode"
+            }).Build();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            LocalWhatsAppFoundationRegistration.ResolveGatewayLifecycle(configuration, true));
+    }
+
+    [Fact]
+    public void GatewayLifecycleResolver_HonorsExplicitExternalServiceOnWindows()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["LocalWhatsAppGateway:GatewayLifecycle"] = "ExternalService"
+            }).Build();
+
+        Assert.Equal(LocalWhatsAppGatewayLifecycle.ExternalService,
+            LocalWhatsAppFoundationRegistration.ResolveGatewayLifecycle(configuration, true));
+    }
+
+    [Fact]
+    public void LinuxGatewayTokenResolver_RejectsMissingOrMalformedTokenWithoutExposingValue()
+    {
+        Assert.Throws<HttpRequestException>(() =>
+            LocalWhatsAppGatewayAuthenticationHandler.ResolveLinuxGatewayToken(null));
+        Assert.Throws<HttpRequestException>(() =>
+            LocalWhatsAppGatewayAuthenticationHandler.ResolveLinuxGatewayToken("malformed-secret"));
+        Assert.Equal(new string('a', 64),
+            LocalWhatsAppGatewayAuthenticationHandler.ResolveLinuxGatewayToken(new string('a', 64)));
+    }
+
+    [Fact]
     public void StartupRegistration_RegisterGatewayLifecycleHost()
     {
         var services = new ServiceCollection();

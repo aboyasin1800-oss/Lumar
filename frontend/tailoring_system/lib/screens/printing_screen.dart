@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -197,6 +199,11 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   bool _loadingUnprintedSummary = false;
   bool _loadingPrintAction = false;
   int _allUnprintedCards = 0;
+  int _allPrintedCards = 0;
+  List<_MeasurementStatusType> _unprintedByType = const [];
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  List<_BulkPrintPage> _pendingBulkPages = const [];
+  String? _pendingBulkBatchId;
   final Map<int, List<_PrintHistoryRecord>> _printHistoryCache = {};
   List<_OrderSummary> _orders = const [];
   _MeasurementHeaderSettings _header = const _MeasurementHeaderSettings(
@@ -306,7 +313,46 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startLazyLoad());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startLazyLoad();
+      _restorePendingBulk();
+    });
+  }
+
+  Future<void> _restorePendingBulk() async {
+    try {
+      final raw = await _secureStorage.read(key: 'lumar_pending_measurement_card_bulk');
+      if (raw == null || raw.trim().isEmpty || !mounted) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return;
+      final pages = (decoded['pages'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_BulkPrintPage.fromJson)
+          .toList();
+      if (pages.isEmpty) return;
+      setState(() {
+        _pendingBulkPages = pages;
+        _pendingBulkBatchId = (decoded['batchId'] ?? '').toString();
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _persistPendingBulk(String batchId, List<_BulkPrintPage> pages) async {
+    _pendingBulkPages = pages;
+    _pendingBulkBatchId = batchId;
+    await _secureStorage.write(
+      key: 'lumar_pending_measurement_card_bulk',
+      value: jsonEncode({
+        'batchId': batchId,
+        'pages': pages.map((page) => page.toJson()).toList(),
+      }),
+    );
+  }
+
+  Future<void> _clearPendingBulk() async {
+    _pendingBulkPages = const [];
+    _pendingBulkBatchId = null;
+    await _secureStorage.delete(key: 'lumar_pending_measurement_card_bulk');
   }
 
   @override
@@ -323,45 +369,39 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
 
   Future<void> _refreshUnprintedSummary() async {
     if (_loadingUnprintedSummary) return;
-    setState(() {
-      _loadingUnprintedSummary = true;
-    });
+    setState(() => _loadingUnprintedSummary = true);
 
     try {
-      int totalUnprintedCards = 0;
-
-      for (final order in _orders) {
-        if (order.isCancelled) continue;
-        final pieces = await _fetchOrderPiecesOnce(order);
-        for (final piece in pieces) {
-          try {
-            await _fetchPrintHistory(piece);
-          } catch (_) {
-            // Keep the established PieceStatus fallback if history is unavailable.
-          }
-        }
-        final unprinted =
-            pieces.where((piece) => !_isPiecePrinted(piece)).length;
-        totalUnprintedCards += unprinted;
+      final query = _selectedOrder?.orderId;
+      final suffix = query == null ? '' : '?orderId=$query';
+      final response = await http.get(
+        Uri.parse('${widget.baseUrl}/printing/measurement-card-status-summary$suffix'),
+        headers: _authHeaders,
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(_readApiError(response));
       }
-
-      if (mounted) {
-        setState(() {
-          _allUnprintedCards = totalUnprintedCards;
-        });
-      }
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final types = (body['unprintedByProductType'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_MeasurementStatusType.fromJson)
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _allPrintedCards = (body['printedTotal'] as num?)?.toInt() ?? 0;
+        _allUnprintedCards = (body['unprintedTotal'] as num?)?.toInt() ?? 0;
+        _unprintedByType = types;
+      });
     } catch (_) {
       if (mounted) {
         setState(() {
+          _allPrintedCards = 0;
           _allUnprintedCards = 0;
+          _unprintedByType = const [];
         });
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _loadingUnprintedSummary = false;
-        });
-      }
+      if (mounted) setState(() => _loadingUnprintedSummary = false);
     }
   }
 
@@ -1083,12 +1123,116 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         title: 'طباعة جميع البطاقات النشطة غير المطبوعة');
     if (target == null || !mounted) return;
 
-    for (final order in _orders) {
-      if (order.isCancelled) continue;
-      final pieces = await _fetchOrderPiecesOnce(order);
-      for (final piece in pieces.where((entry) => !_isPiecePrinted(entry))) {
-        await _executePrint(piece, null, target);
+    await _executeBulkPrint(target);
+  }
+
+  Future<void> _executeBulkPrint(_PrintTarget target) async {
+    if (_loadingPrintAction || !mounted) return;
+    setState(() => _loadingPrintAction = true);
+
+    try {
+      final batchId = const Uuid().v4();
+      final orderId = _selectedOrder?.orderId;
+      final response = await http.post(
+        Uri.parse('${widget.baseUrl}/printing/bulk/prepare'),
+        headers: _authHeaders,
+        body: jsonEncode({
+          'batchRequestId': batchId,
+          'snapshotId': const Uuid().v4(),
+          'orderId': orderId,
+        }),
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(_readApiError(response));
       }
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final reserved = (body['reservedItems'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      final cards = (body['cards'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      if (reserved.isEmpty) {
+        throw Exception('لا توجد بطاقات قابلة للحجز في اللقطة الحالية.');
+      }
+
+      final copiesByKey = <String, int>{};
+      for (final item in reserved) {
+        final isReadyMade = item['isReadyMade'] == true;
+        final pieceId = (item['pieceId'] as num?)?.toInt() ?? 0;
+        copiesByKey['${isReadyMade ? 'r' : 't'}:$pieceId'] =
+            (item['copyNumber'] as num?)?.toInt() ?? 1;
+      }
+
+      final pieces = <_OrderPieceDetail>[];
+      final copyNumbers = <int>[];
+      final pages = <_BulkPrintPage>[];
+      for (var index = 0; index < cards.length; index++) {
+        final card = cards[index];
+        final isReadyMade = card['isReadyMade'] == true;
+        final pieceId = (card['pieceId'] as num?)?.toInt() ?? 0;
+        final key = '${isReadyMade ? 'r' : 't'}:$pieceId';
+        if (!copiesByKey.containsKey(key)) continue;
+        final item = reserved.firstWhere(
+          (entry) => entry['isReadyMade'] == isReadyMade && (entry['pieceId'] as num?)?.toInt() == pieceId,
+          orElse: () => const <String, dynamic>{},
+        );
+        if (item.isEmpty) continue;
+        final copyNumber = copiesByKey[key]!;
+        final printHistoryId = (item['printHistoryId'] as num?)?.toInt() ?? 0;
+        final printRequestId = item['printRequestId']?.toString() ?? '';
+        pieces.add(_OrderPieceDetail.fromJson(card, readyMade: isReadyMade));
+        copyNumbers.add(copyNumber);
+        pages.add(_BulkPrintPage(
+          pageNumber: pages.length + 1,
+          isReadyMade: isReadyMade,
+          pieceId: pieceId,
+          printHistoryId: printHistoryId,
+          printRequestId: printRequestId,
+          copyNumber: copyNumber,
+          orderNumber: (card['orderNumber'] ?? '').toString(),
+          trackingCode: (card['trackingCode'] ?? '').toString(),
+          pieceType: (card['pieceType'] ?? '').toString(),
+          pieceNumber: (card['pieceNumber'] as num?)?.toInt(),
+          cardJson: card,
+        ));
+      }
+
+      if (pieces.isEmpty) {
+        throw Exception('تعذر بناء بيانات بطاقات الدفعة.');
+      }
+
+      final bytes = await _MeasurementCardPdfGenerator.generateMany(
+        pieces,
+        copyNumbers,
+        _header,
+      );
+
+      if (target == _PrintTarget.savePdf) {
+        if (!mounted) return;
+        final directoryPath = await _PrintService.resolveSaveDirectory(context);
+        final fullPath = '$directoryPath${Platform.pathSeparator}measurement_cards_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        await File(fullPath).writeAsBytes(bytes);
+      } else if (target == _PrintTarget.officePrinter ||
+          target == _PrintTarget.pdfPreview) {
+        await Printing.layoutPdf(onLayout: (_) async => bytes);
+      }
+
+      await _persistPendingBulk(batchId, pages);
+      await _showBulkOutcomeDialog(batchId, pages);
+      await _refreshUnprintedSummary();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم تجهيز دفعة بطاقات من ${reserved.length} بطاقة عبر نافذة طباعة واحدة.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر تنفيذ الطباعة الجماعية: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingPrintAction = false);
     }
   }
 
@@ -1305,6 +1449,211 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     );
   }
 
+  Future<void> _showBulkOutcomeDialog(String batchId, List<_BulkPrintPage> pages) async {
+    final choice = await showDialog<_BulkOutcome>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تأكيد نتيجة الطباعة الجماعية'),
+        content: const Text('اختر ما خرج فعليًا من الطابعة. لن يتم اعتماد أي بطاقة قبل هذا التأكيد.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(_BulkOutcome.cancelled),
+            child: const Text('أُلغيت ولم تبدأ'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(_BulkOutcome.unknown),
+            child: const Text('النتيجة غير معروفة'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(_BulkOutcome.partial),
+            child: const Text('توقفت جزئيًا'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(_BulkOutcome.full),
+            child: Text('تمت الطباعة كاملة (${pages.length})'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null) return;
+    if (choice == _BulkOutcome.full) {
+      await _confirmBulkPages(batchId, pages);
+      await _clearPendingBulk();
+      return;
+    }
+    if (choice == _BulkOutcome.cancelled) {
+      await _cancelBulkPages(batchId, pages);
+      await _clearPendingBulk();
+      return;
+    }
+    if (choice == _BulkOutcome.unknown) return;
+
+    var cutoff = pages.length;
+    var confirmedThroughLast = true;
+    final partialChoice = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('تحديد آخر صفحة خرجت سليمة'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<bool>(
+                    initialValue: confirmedThroughLast,
+                    decoration: const InputDecoration(labelText: 'آلية التعريف'),
+                    items: const [
+                      DropdownMenuItem(value: true, child: Text('آخر بطاقة خرجت سليمة')),
+                      DropdownMenuItem(value: false, child: Text('أول بطاقة يجب إعادة الطباعة منها')),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() => confirmedThroughLast = value);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<int>(
+                    initialValue: cutoff,
+                    decoration: const InputDecoration(labelText: 'رقم الصفحة'),
+                    items: [
+                      for (final page in pages)
+                        DropdownMenuItem(value: page.pageNumber, child: Text('${page.pageNumber} — ${page.orderNumber} — ${page.trackingCode} — ${page.pieceType}')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setDialogState(() => cutoff = value);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('إلغاء')), 
+            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('اعتماد النتيجة الجزئية')),
+          ],
+        ),
+      ),
+    );
+    if (partialChoice != true) return;
+
+    final confirmedCount = confirmedThroughLast ? cutoff : cutoff - 1;
+    final confirmed = pages.where((page) => page.pageNumber <= confirmedCount).toList();
+    final remaining = confirmedThroughLast
+        ? pages.where((page) => page.pageNumber > cutoff).toList()
+        : pages.where((page) => page.pageNumber >= cutoff).toList();
+
+    await _confirmBulkPages(batchId, confirmed);
+    if (remaining.isEmpty) {
+      await _clearPendingBulk();
+    } else {
+      final resumed = remaining.asMap().entries.map((entry) => _BulkPrintPage(
+        pageNumber: entry.key + 1,
+        isReadyMade: entry.value.isReadyMade,
+        pieceId: entry.value.pieceId,
+        printHistoryId: entry.value.printHistoryId,
+        printRequestId: entry.value.printRequestId,
+        copyNumber: entry.value.copyNumber,
+        orderNumber: entry.value.orderNumber,
+        trackingCode: entry.value.trackingCode,
+        pieceType: entry.value.pieceType,
+        pieceNumber: entry.value.pieceNumber,
+        cardJson: entry.value.cardJson,
+      )).toList();
+      await _persistPendingBulk(batchId, resumed);
+    }
+  }
+
+  Future<void> _confirmBulkPages(String batchId, List<_BulkPrintPage> pages) async {
+    if (pages.isEmpty) return;
+    await http.post(
+      Uri.parse('${widget.baseUrl}/printing/bulk/confirm'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'batchRequestId': batchId,
+        'printHistoryIds': pages.map((page) => page.printHistoryId).toList(),
+      }),
+    );
+  }
+
+  Future<void> _cancelBulkPages(String batchId, List<_BulkPrintPage> pages) async {
+    if (pages.isEmpty) return;
+    await http.post(
+      Uri.parse('${widget.baseUrl}/printing/bulk/cancel?reason=${Uri.encodeComponent('تم إلغاء الدفعة قبل تأكيد الطباعة')}'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'batchRequestId': batchId,
+        'printHistoryIds': pages.map((page) => page.printHistoryId).toList(),
+      }),
+    );
+  }
+
+  Future<void> _resumePendingBulk() async {
+    if (_pendingBulkBatchId == null || _pendingBulkPages.isEmpty) return;
+    final pieces = _pendingBulkPages.map((page) => _OrderPieceDetail.fromJson(page.cardJson, readyMade: page.isReadyMade)).toList();
+    final copyNumbers = _pendingBulkPages.map((page) => page.copyNumber).toList();
+    final target = await _showPrintOptionsDialog(title: 'استئناف البطاقات غير المؤكدة');
+    if (target == null || !mounted) return;
+    final bytes = await _MeasurementCardPdfGenerator.generateMany(pieces, copyNumbers, _header);
+    if (target == _PrintTarget.officePrinter || target == _PrintTarget.pdfPreview) {
+      await Printing.layoutPdf(onLayout: (_) async => bytes);
+    }
+    await _showBulkOutcomeDialog(_pendingBulkBatchId!, _pendingBulkPages);
+  }
+
+  Widget _buildStatusBar(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final background = isLight ? const Color(0xFFF7FAFA) : UiPalette.surfaceCard;
+    final border = isLight ? const Color(0xFFDDE7E4) : const Color(0xFF3A4A46);
+
+    Widget card({required IconData icon, required String label, required int value, required Color color}) {
+      return Container(
+        constraints: const BoxConstraints(minWidth: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: border),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(label, style: TextStyle(fontSize: 11, color: isLight ? const Color(0xFF66756F) : const Color(0xFFB8C5C1))),
+            Text('$value', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isLight ? const Color(0xFF17362E) : Colors.white)),
+          ]),
+        ]),
+      );
+    }
+
+    return SizedBox(
+      height: 58,
+      width: double.infinity,
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: 2 + _unprintedByType.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return card(icon: Icons.print_outlined, label: 'البطاقات المطبوعة', value: _allPrintedCards, color: const Color(0xFF2E9D5A));
+            }
+            if (index == 1) {
+              return card(icon: Icons.print_disabled_outlined, label: 'البطاقات غير المطبوعة', value: _allUnprintedCards, color: const Color(0xFFE5A63A));
+            }
+            final type = _unprintedByType[index - 2];
+            return card(icon: Icons.category_outlined, label: type.productTypeName, value: type.count, color: const Color(0xFF2F6FED));
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _orders.where((order) {
@@ -1338,6 +1687,18 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
             ),
           ),
           const SizedBox(height: 10),
+          _buildStatusBar(context),
+          if (_pendingBulkPages.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _resumePendingBulk,
+                icon: const Icon(Icons.restart_alt),
+                label: Text('استئناف دفعة غير محسومة (${_pendingBulkPages.length} بطاقة)'),
+              ),
+            ),
+          ],
           Row(
             children: [
               Expanded(
@@ -1370,6 +1731,87 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
       ),
     );
   }
+}
+
+class _MeasurementStatusType {
+  const _MeasurementStatusType({
+    required this.productTypeId,
+    required this.productTypeName,
+    required this.count,
+  });
+
+  factory _MeasurementStatusType.fromJson(Map<String, dynamic> json) {
+    return _MeasurementStatusType(
+      productTypeId: (json['productTypeId'] as num?)?.toInt() ?? 0,
+      productTypeName: (json['productTypeName'] ?? 'غير محدد').toString(),
+      count: (json['count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  final int productTypeId;
+  final String productTypeName;
+  final int count;
+}
+
+enum _BulkOutcome { full, partial, cancelled, unknown }
+
+class _BulkPrintPage {
+  const _BulkPrintPage({
+    required this.pageNumber,
+    required this.isReadyMade,
+    required this.pieceId,
+    required this.printHistoryId,
+    required this.printRequestId,
+    required this.copyNumber,
+    required this.orderNumber,
+    required this.trackingCode,
+    required this.pieceType,
+    required this.pieceNumber,
+    required this.cardJson,
+  });
+
+  factory _BulkPrintPage.fromJson(Map<String, dynamic> json) {
+    final card = json['cardJson'] as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return _BulkPrintPage(
+      pageNumber: (json['pageNumber'] as num?)?.toInt() ?? 1,
+      isReadyMade: json['isReadyMade'] == true,
+      pieceId: (json['pieceId'] as num?)?.toInt() ?? 0,
+      printHistoryId: (json['printHistoryId'] as num?)?.toInt() ?? 0,
+      printRequestId: (json['printRequestId'] ?? '').toString(),
+      copyNumber: (json['copyNumber'] as num?)?.toInt() ?? 1,
+      orderNumber: (json['orderNumber'] ?? '').toString(),
+      trackingCode: (json['trackingCode'] ?? '').toString(),
+      pieceType: (json['pieceType'] ?? '').toString(),
+      pieceNumber: (json['pieceNumber'] as num?)?.toInt(),
+      cardJson: Map<String, dynamic>.from(card),
+    );
+  }
+
+  final int pageNumber;
+  final bool isReadyMade;
+  final int pieceId;
+  final int printHistoryId;
+  final String printRequestId;
+  final int copyNumber;
+  final String orderNumber;
+  final String trackingCode;
+  final String pieceType;
+  final int? pieceNumber;
+  final Map<String, dynamic> cardJson;
+
+  Map<String, dynamic> toJson() => {
+    'pageNumber': pageNumber,
+    'isReadyMade': isReadyMade,
+    'pieceId': pieceId,
+    'printHistoryId': printHistoryId,
+    'printRequestId': printRequestId,
+    'copyNumber': copyNumber,
+    'orderNumber': orderNumber,
+    'trackingCode': trackingCode,
+    'pieceType': pieceType,
+    'pieceNumber': pieceNumber,
+    'cardJson': cardJson,
+  };
 }
 
 enum _PrintTarget {
@@ -1446,6 +1888,9 @@ class _PrintService {
     return directory.path;
   }
 
+  static Future<String> resolveSaveDirectory(BuildContext context) =>
+      _PrintService._resolveSaveDirectory(context);
+
   static Future<void> execute({
     required BuildContext context,
     required _OrderPieceDetail piece,
@@ -1510,6 +1955,144 @@ class _MeasurementCardPdfGenerator {
       default:
         return copyNumber > 1 ? 'النسخة رقم $copyNumber' : '';
     }
+  }
+
+  static Future<Uint8List> generateMany(
+    List<_OrderPieceDetail> pieces,
+    List<int> copyNumbers,
+    _MeasurementHeaderSettings header,
+  ) async {
+    final pdf = pw.Document();
+    final layout = DocumentPrintSupport.layout;
+    final arabicFont = await DocumentPrintSupport.loadArabicFont();
+    final headerWidget = await DocumentPrintSupport.buildHeader(
+      DocumentPrintHeader(
+        useImage: header.useImage,
+        imageValue: header.imageValue,
+        name: header.name,
+        location: header.location,
+        phone1: header.phone1,
+        phone2: header.phone2,
+      ),
+      arabicFont,
+      imageHeight: layout.headerImageHeight,
+    );
+
+    for (var index = 0; index < pieces.length; index++) {
+      final piece = pieces[index];
+      final copyNumber = copyNumbers[index];
+      final typeLabel = piece.pieceType.trim().isNotEmpty
+          ? piece.pieceType
+          : 'غير محدد';
+      final barcodeValue = piece.barcode.trim().isNotEmpty
+          ? piece.barcode
+          : piece.trackingCode;
+      final measurementRows = DocumentPrintSupport.buildMeasurementGridRows(
+        piece.measurements,
+      ).map((rowEntries) {
+        return pw.Table(
+          border: pw.TableBorder.all(width: layout.measurementTableBorderWidth),
+          children: [
+            pw.TableRow(
+              children: rowEntries.map((entry) => pw.Container(
+                padding: pw.EdgeInsets.symmetric(
+                  horizontal: layout.measurementCellPaddingX,
+                  vertical: layout.measurementCellPaddingY,
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                  children: [
+                    pw.Text(entry.key,
+                        textAlign: pw.TextAlign.center,
+                        textDirection: pw.TextDirection.rtl,
+                        style: pw.TextStyle(font: arabicFont, fontSize: layout.measurementLabelSize, fontWeight: pw.FontWeight.bold)),
+                    pw.SizedBox(height: layout.measurementCellPaddingY),
+                    pw.Text(entry.value?.toString().trim().isNotEmpty == true
+                            ? entry.value.toString()
+                            : '-',
+                        textAlign: pw.TextAlign.center,
+                        textDirection: pw.TextDirection.rtl,
+                        style: pw.TextStyle(font: arabicFont, fontSize: layout.measurementValueSize, fontWeight: pw.FontWeight.bold)),
+                  ],
+                ),
+              )).toList(),
+            ),
+          ],
+        );
+      }).toList();
+
+      pdf.addPage(pw.Page(
+        pageFormat: DocumentPrintSupport.measurementCardPortrait,
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: [
+              headerWidget,
+              pw.SizedBox(height: 6),
+              pw.Divider(thickness: 1),
+              if (copyNumber > 1)
+                pw.Text(_copyLabel(copyNumber),
+                    textAlign: pw.TextAlign.right,
+                    textDirection: pw.TextDirection.rtl,
+                    style: pw.TextStyle(font: arabicFont, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
+              pw.Container(
+                decoration: pw.BoxDecoration(border: pw.Border.all(width: layout.outerBorderWidth)),
+                padding: pw.EdgeInsets.all(layout.sectionPadding),
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Container(
+                      width: 60,
+                      child: pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: piece.qrCode, width: 60, height: 60, drawText: false),
+                    ),
+                    pw.SizedBox(width: 8),
+                    pw.Expanded(child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Text('/  ${piece.customerName}', textAlign: pw.TextAlign.right, textDirection: pw.TextDirection.rtl, style: pw.TextStyle(font: arabicFont, fontSize: 12)),
+                        pw.Text('النوع: $typeLabel', textAlign: pw.TextAlign.right, textDirection: pw.TextDirection.rtl, style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                        pw.Text('الطلب: ${piece.orderNumber}', textAlign: pw.TextAlign.right, textDirection: pw.TextDirection.rtl, style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                        pw.Text('تاريخ الطلب: ${piece.orderDateText}', textAlign: pw.TextAlign.right, textDirection: pw.TextDirection.rtl, style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                        pw.Text('الاستلام: ${piece.deliveryDateText}', textAlign: pw.TextAlign.right, textDirection: pw.TextDirection.rtl, style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                        pw.Text('التتبع: ${piece.trackingCode}', textAlign: pw.TextAlign.right, textDirection: pw.TextDirection.rtl, style: pw.TextStyle(font: arabicFont, fontSize: 11)),
+                      ],
+                    )),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Container(
+                decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.8)),
+                padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: pw.BarcodeWidget(barcode: pw.Barcode.code128(), data: barcodeValue, width: 140, height: 30, drawText: false),
+              ),
+              if (piece.fabricCode.isNotEmpty || piece.fabricType.isNotEmpty || piece.fabricColor.isNotEmpty || piece.catalogNumber.isNotEmpty)
+                pw.Container(
+                  margin: pw.EdgeInsets.only(top: layout.dividerHeight),
+                  decoration: pw.BoxDecoration(border: pw.Border.all(width: layout.innerBorderWidth)),
+                  padding: pw.EdgeInsets.all(layout.sectionPadding),
+                  child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                    pw.Text('بيانات القماش', textAlign: pw.TextAlign.right, textDirection: pw.TextDirection.rtl, style: pw.TextStyle(font: arabicFont, fontSize: layout.sectionTitleSize, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('الكود: ${piece.fabricCode.isNotEmpty ? piece.fabricCode : 'غير محدد'}', textAlign: pw.TextAlign.right, textDirection: pw.TextDirection.rtl, style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
+                    pw.Text('النوع: ${piece.fabricType.isNotEmpty ? piece.fabricType : 'غير محدد'}', textAlign: pw.TextAlign.right, textDirection: pw.TextDirection.rtl, style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
+                    pw.Text('اللون: ${piece.fabricColor.isNotEmpty ? piece.fabricColor : 'غير محدد'}', textAlign: pw.TextAlign.right, textDirection: pw.TextDirection.rtl, style: pw.TextStyle(font: arabicFont, fontSize: layout.metaTextSize)),
+                  ]),
+                ),
+              if (measurementRows.isNotEmpty)
+                pw.Container(
+                  margin: pw.EdgeInsets.only(top: layout.dividerHeight),
+                  decoration: pw.BoxDecoration(border: pw.Border.all(width: layout.innerBorderWidth)),
+                  padding: pw.EdgeInsets.all(layout.sectionPadding),
+                  child: pw.Column(children: measurementRows),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+    }
+
+    return pdf.save();
   }
 
   static Future<Uint8List> generate(

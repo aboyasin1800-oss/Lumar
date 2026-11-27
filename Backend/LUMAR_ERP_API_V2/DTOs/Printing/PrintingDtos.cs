@@ -13,6 +13,73 @@ public sealed record PrepareMeasurementCardPrintDto(
 public sealed record FailMeasurementCardPrintDto(string? FailureReason);
 public sealed record CompleteMeasurementCardPrintDto(int? CashAccountId);
 
+public sealed record MeasurementCardReservedRecoveryDto(int RecoveredCount);
+
+public sealed record MeasurementCardStatusTypeDto(int ProductTypeId, string ProductTypeName, int Count);
+
+public sealed record MeasurementCardStatusSummaryDto(
+    Guid SnapshotId,
+    DateTime CapturedAtUtc,
+    int PrintedTotal,
+    int UnprintedTotal,
+    IReadOnlyList<MeasurementCardStatusTypeDto> UnprintedByProductType);
+
+public sealed record EligibleMeasurementCardDto(
+    bool IsReadyMade,
+    int PieceId,
+    int? OrderId,
+    int? OrderItemId,
+    string OrderNumber,
+    int PieceNumber,
+    string CustomerName,
+    string PieceType,
+    int? ProductTypeId,
+    string TrackingCode,
+    string? Barcode,
+    string? MeasurementSnapshot,
+    string? FabricCode,
+    string? FabricType,
+    string? FabricColor,
+    string? CatalogNumber,
+    string? Request1,
+    string? Request2,
+    string? Notes,
+    string PieceStatus,
+    DateTime? DeliveryDate,
+    int CopyNumber);
+
+public sealed record MeasurementCardBulkPrepareDto(Guid BatchRequestId, Guid SnapshotId, int? OrderId);
+
+public sealed record MeasurementCardBulkConfirmationDto(Guid BatchRequestId, IReadOnlyList<int> PrintHistoryIds);
+
+public sealed record MeasurementCardBulkConfirmationItemDto(int PrintHistoryId, string PrintStatus);
+
+public sealed record MeasurementCardBulkConfirmationResultDto(
+    Guid BatchRequestId,
+    IReadOnlyList<MeasurementCardBulkConfirmationItemDto> Confirmed,
+    IReadOnlyList<string> Skipped);
+
+public sealed record MeasurementCardBulkPrepareItemDto(
+    bool IsReadyMade,
+    int PieceId,
+    int PrintHistoryId,
+    Guid PrintRequestId,
+    int CopyNumber,
+    string PrintStatus);
+
+public sealed record MeasurementCardEligibleSnapshotDto(
+    Guid SnapshotId,
+    DateTime CapturedAtUtc,
+    IReadOnlyList<EligibleMeasurementCardDto> Cards);
+
+public sealed record MeasurementCardBulkPrepareResultDto(
+    Guid BatchRequestId,
+    Guid SnapshotId,
+    DateTime CapturedAtUtc,
+    IReadOnlyList<MeasurementCardBulkPrepareItemDto> ReservedItems,
+    IReadOnlyList<EligibleMeasurementCardDto> Cards,
+    IReadOnlyList<string> Skipped);
+
 public sealed record MeasurementCardPrintHistoryDto(
     int PrintHistoryId,
     Guid PrintRequestId,
