@@ -231,6 +231,53 @@ public sealed class AuthRepositoryAuthContractTests
         await deleteCustomer.ExecuteNonQueryAsync();
     }
 
+    private static async Task<int> CountCustomerMobileAccountsAsync(SqlConnection connection, int customerId)
+    {
+        await using var command = new SqlCommand("SELECT COUNT(*) FROM dbo.MobileAccounts WHERE CustomerId=@customerId AND AccountType=N'Customer';", connection);
+        command.Parameters.AddWithValue("@customerId", customerId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountCustomersAsync(SqlConnection connection, int customerId)
+    {
+        await using var command = new SqlCommand("SELECT COUNT(*) FROM dbo.Customers WHERE CustomerID=@customerId;", connection);
+        command.Parameters.AddWithValue("@customerId", customerId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task CleanupProvisioningFixtureAsync(string connectionString, int customerId, string? username)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var tx = (SqlTransaction)await connection.BeginTransactionAsync();
+        try
+        {
+            await using (var access = new SqlCommand("DELETE FROM dbo.MobileAccountCustomerAccess WHERE CustomerId=@customerId;", connection, tx))
+            { access.Parameters.AddWithValue("@customerId", customerId); await access.ExecuteNonQueryAsync(); }
+
+            await using (var sessions = new SqlCommand(@"
+                DELETE s FROM dbo.UserSessions s
+                WHERE s.UserId IN (SELECT u.UserID FROM dbo.Users u JOIN dbo.MobileAccounts ma ON ma.Username=u.Username WHERE ma.CustomerId=@customerId);", connection, tx))
+            { sessions.Parameters.AddWithValue("@customerId", customerId); await sessions.ExecuteNonQueryAsync(); }
+
+            await using (var account = new SqlCommand("DELETE FROM dbo.MobileAccounts WHERE CustomerId=@customerId;", connection, tx))
+            { account.Parameters.AddWithValue("@customerId", customerId); await account.ExecuteNonQueryAsync(); }
+
+            await using (var user = new SqlCommand("DELETE FROM dbo.Users WHERE Username=@username;", connection, tx))
+            { user.Parameters.AddWithValue("@username", (object?)username ?? DBNull.Value); await user.ExecuteNonQueryAsync(); }
+
+            await using (var customer = new SqlCommand("DELETE FROM dbo.Customers WHERE CustomerID=@customerId;", connection, tx))
+            { customer.Parameters.AddWithValue("@customerId", customerId); await customer.ExecuteNonQueryAsync(); }
+
+            await tx.CommitAsync();
+        }
+        catch
+        {
+            await tx.RollbackAsync();
+            throw;
+        }
+    }
+
     private static string GetValidationConnectionString()
     {
         var value = Environment.GetEnvironmentVariable("Lumar__ConnectionString")
@@ -239,6 +286,216 @@ public sealed class AuthRepositoryAuthContractTests
         if (!string.Equals(builder.InitialCatalog, "LUMAR_ERP_ES_VALIDATION", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Auth repository tests require LUMAR_ERP_ES_VALIDATION.");
         return builder.ConnectionString;
+    }
+
+    [Fact]
+    public async Task ExistingCustomerProvisioning_Creates_One_MobileAccount_Only()
+    {
+        var connectionString = GetValidationConnectionString();
+        var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+        var repository = new AuthRepository(new OperationalSqlConnectionFactory(options), new CustomerRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options)));
+
+        var customerCode = $"CX{Guid.NewGuid():N}"[..12].ToUpperInvariant();
+        var customerName = $"عميل رسمي {Guid.NewGuid():N}"[..40];
+        var phone = $"9677{Random.Shared.Next(1000000, 9999999)}";
+        var username = $"ex_{Guid.NewGuid():N}"[..30].ToLowerInvariant();
+        var customerId = 0;
+
+        await using (var connection = new SqlConnection(connectionString))
+        {
+            await connection.OpenAsync();
+            await using var insert = new SqlCommand("INSERT INTO dbo.Customers (CustomerCode,CustomerName,PhoneNumber,IsActive,RelationshipType) OUTPUT INSERTED.CustomerID VALUES (@code,@name,@phone,1,N'Family');", connection);
+            insert.Parameters.AddWithValue("@code", customerCode);
+            insert.Parameters.AddWithValue("@name", customerName);
+            insert.Parameters.AddWithValue("@phone", phone);
+            customerId = (int)(await insert.ExecuteScalarAsync())!;
+        }
+
+        try
+        {
+            var session = await repository.RegisterMobileCustomerAsync(new MobileCustomerRegistrationDto(
+                username, "P@ssword1", "P@ssword1", customerName, null, phone,
+                null, null, true, null, null, customerCode), CancellationToken.None);
+
+            Assert.Equal(customerId, session.User.CustomerId);
+
+            await using var verify = new SqlConnection(connectionString);
+            await verify.OpenAsync();
+            Assert.Equal(1, await CountCustomerMobileAccountsAsync(verify, customerId));
+            Assert.Equal(1, await CountCustomersAsync(verify, customerId));
+
+            await Assert.ThrowsAsync<AuthRepository.ExistingCustomerMobileAccountException>(() => repository.RegisterMobileCustomerAsync(new MobileCustomerRegistrationDto(
+                $"other_{Guid.NewGuid():N}@example.com", "P@ssword1", "P@ssword1", customerName, null, phone,
+                null, null, true, null, null, customerCode), CancellationToken.None));
+            Assert.Equal(1, await CountCustomerMobileAccountsAsync(verify, customerId));
+        }
+        finally
+        {
+            await CleanupProvisioningFixtureAsync(connectionString, customerId, username);
+        }
+    }
+
+    [Fact]
+    public async Task ExistingCustomerProvisioning_FailsClosedOnWrongNamePhoneCode()
+    {
+        var connectionString = GetValidationConnectionString();
+        var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+        var repository = new AuthRepository(new OperationalSqlConnectionFactory(options), new CustomerRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options)));
+
+        var customerCode = $"C{Guid.NewGuid():N}"[..10].ToUpperInvariant();
+        var customerName = $"عميل فحص هوية {Guid.NewGuid():N}"[..40];
+        var phone = $"9677{Random.Shared.Next(1000000, 9999999)}";
+        var customerId = 0;
+
+        await using (var connection = new SqlConnection(connectionString))
+        {
+            await connection.OpenAsync();
+            await using var insert = new SqlCommand("INSERT INTO dbo.Customers (CustomerCode,CustomerName,PhoneNumber,IsActive) OUTPUT INSERTED.CustomerID VALUES (@code,@name,@phone,1);", connection);
+            insert.Parameters.AddWithValue("@code", customerCode);
+            insert.Parameters.AddWithValue("@name", customerName);
+            insert.Parameters.AddWithValue("@phone", phone);
+            customerId = (int)(await insert.ExecuteScalarAsync())!;
+        }
+
+        try
+        {
+            await Assert.ThrowsAsync<ArgumentException>(() => repository.RegisterMobileCustomerAsync(new MobileCustomerRegistrationDto(
+                $"wrong-phone-{Guid.NewGuid():N}@example.com", "P@ssword1", "P@ssword1", customerName, null,
+                "967700000000", null, null, true, null, null, customerCode), CancellationToken.None));
+
+            await Assert.ThrowsAsync<ArgumentException>(() => repository.RegisterMobileCustomerAsync(new MobileCustomerRegistrationDto(
+                $"wrong-name-{Guid.NewGuid():N}@example.com", "P@ssword1", "P@ssword1", "اسم مختلف", null,
+                phone, null, null, true, null, null, customerCode), CancellationToken.None));
+
+            await Assert.ThrowsAsync<ArgumentException>(() => repository.RegisterMobileCustomerAsync(new MobileCustomerRegistrationDto(
+                $"missing-{Guid.NewGuid():N}@example.com", "P@ssword1", "P@ssword1", customerName, null,
+                phone, null, null, true, null, null, "C-MISSING"), CancellationToken.None));
+
+            await using var verify = new SqlConnection(connectionString);
+            await verify.OpenAsync();
+            Assert.Equal(0, await CountCustomerMobileAccountsAsync(verify, customerId));
+            Assert.Equal(1, await CountCustomersAsync(verify, customerId));
+        }
+        finally
+        {
+            await CleanupProvisioningFixtureAsync(connectionString, customerId, null);
+        }
+    }
+
+    [Fact]
+    public async Task ExistingCustomerProvisioning_Uses_Code_When_Phone_Is_Shared()
+    {
+        var connectionString = GetValidationConnectionString();
+        var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+        var repository = new AuthRepository(new OperationalSqlConnectionFactory(options), new CustomerRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options)));
+
+        var sharedPhone = $"9677{Random.Shared.Next(1000000, 9999999)}";
+        var codeA = $"CA{Guid.NewGuid():N}"[..10].ToUpperInvariant();
+        var codeB = $"CB{Guid.NewGuid():N}"[..10].ToUpperInvariant();
+        var nameA = $"عميل مشترك 1 {Guid.NewGuid():N}"[..40];
+        var nameB = $"عميل مشترك 2 {Guid.NewGuid():N}"[..40];
+        var customerA = 0;
+        var customerB = 0;
+        var usernameA = $"sa_{Guid.NewGuid():N}"[..30].ToLowerInvariant();
+
+        await using (var connection = new SqlConnection(connectionString))
+        {
+            await connection.OpenAsync();
+            await using var insertA = new SqlCommand("INSERT INTO dbo.Customers (CustomerCode,CustomerName,PhoneNumber,IsActive) OUTPUT INSERTED.CustomerID VALUES (@code,@name,@phone,1);", connection);
+            insertA.Parameters.AddWithValue("@code", codeA);
+            insertA.Parameters.AddWithValue("@name", nameA);
+            insertA.Parameters.AddWithValue("@phone", sharedPhone);
+            customerA = (int)(await insertA.ExecuteScalarAsync())!;
+
+            await using var insertB = new SqlCommand("INSERT INTO dbo.Customers (CustomerCode,CustomerName,PhoneNumber,IsActive) OUTPUT INSERTED.CustomerID VALUES (@code,@name,@phone,1);", connection);
+            insertB.Parameters.AddWithValue("@code", codeB);
+            insertB.Parameters.AddWithValue("@name", nameB);
+            insertB.Parameters.AddWithValue("@phone", sharedPhone);
+            customerB = (int)(await insertB.ExecuteScalarAsync())!;
+        }
+
+        try
+        {
+            var session = await repository.RegisterMobileCustomerAsync(new MobileCustomerRegistrationDto(
+                usernameA, "P@ssword1", "P@ssword1", nameA, null, sharedPhone,
+                null, null, true, null, null, codeA), CancellationToken.None);
+
+            Assert.Equal(customerA, session.User.CustomerId);
+            await using var verify = new SqlConnection(connectionString);
+            await verify.OpenAsync();
+            Assert.Equal(1, await CountCustomerMobileAccountsAsync(verify, customerA));
+            Assert.Equal(0, await CountCustomerMobileAccountsAsync(verify, customerB));
+        }
+        finally
+        {
+            await CleanupProvisioningFixtureAsync(connectionString, customerA, usernameA);
+            await CleanupProvisioningFixtureAsync(connectionString, customerB, null);
+        }
+    }
+
+    [Fact]
+    public async Task ExistingCustomerProvisioning_DistinguishesUsernameOwnedByAnotherCustomer()
+    {
+        var connectionString = GetValidationConnectionString();
+        var options = Options.Create(new DatabaseOptions { ConnectionString = connectionString });
+        var repository = new AuthRepository(new OperationalSqlConnectionFactory(options), new CustomerRepository(new ReadOnlySqlConnectionFactory(options), new OperationalSqlConnectionFactory(options)));
+
+        var phoneA = $"9677{Random.Shared.Next(1000000, 9999999)}";
+        var phoneB = $"9677{Random.Shared.Next(1000000, 9999999)}";
+        var codeA = $"UA{Guid.NewGuid():N}"[..10].ToUpperInvariant();
+        var codeB = $"UB{Guid.NewGuid():N}"[..10].ToUpperInvariant();
+        var nameA = $"مالك اسم المستخدم {Guid.NewGuid():N}"[..40];
+        var nameB = $"عميل الكود الآخر {Guid.NewGuid():N}"[..40];
+        var username = $"uo_{Guid.NewGuid():N}"[..30].ToLowerInvariant();
+        var customerA = 0;
+        var customerB = 0;
+
+        await using (var connection = new SqlConnection(connectionString))
+        {
+            await connection.OpenAsync();
+            await using var insertA = new SqlCommand("INSERT INTO dbo.Customers (CustomerCode,CustomerName,PhoneNumber,IsActive) OUTPUT INSERTED.CustomerID VALUES (@code,@name,@phone,1);", connection);
+            insertA.Parameters.AddWithValue("@code", codeA);
+            insertA.Parameters.AddWithValue("@name", nameA);
+            insertA.Parameters.AddWithValue("@phone", phoneA);
+            customerA = (int)(await insertA.ExecuteScalarAsync())!;
+
+            await using var insertB = new SqlCommand("INSERT INTO dbo.Customers (CustomerCode,CustomerName,PhoneNumber,IsActive) OUTPUT INSERTED.CustomerID VALUES (@code,@name,@phone,1);", connection);
+            insertB.Parameters.AddWithValue("@code", codeB);
+            insertB.Parameters.AddWithValue("@name", nameB);
+            insertB.Parameters.AddWithValue("@phone", phoneB);
+            customerB = (int)(await insertB.ExecuteScalarAsync())!;
+
+            await using var tx = (SqlTransaction)await connection.BeginTransactionAsync();
+            await using (var user = new SqlCommand("INSERT INTO dbo.Users (Username,FullName,UserRole,IsActive,PasswordHash,UserPassword,SecurityStamp) OUTPUT INSERTED.UserID VALUES (@username,@name,'Customer',1,'','',NEWID());", connection, tx))
+            {
+                user.Parameters.AddWithValue("@username", username);
+                user.Parameters.AddWithValue("@name", nameA);
+                var userId = (int)(await user.ExecuteScalarAsync())!;
+                await using var account = new SqlCommand("INSERT INTO dbo.MobileAccounts (AccountType,CustomerId,Username,NormalizedUsername,PasswordHash,IsActive,FailedLoginAttempts,SecurityStamp,TokenVersion,CreatedAtUtc,UpdatedAtUtc) OUTPUT INSERTED.MobileAccountId VALUES (N'Customer',@customerId,@username,@normalized,'',1,0,NEWID(),0,SYSUTCDATETIME(),SYSUTCDATETIME());", connection, tx);
+                account.Parameters.AddWithValue("@customerId", customerA);
+                account.Parameters.AddWithValue("@username", username);
+                account.Parameters.AddWithValue("@normalized", username.ToUpperInvariant());
+                await account.ExecuteScalarAsync();
+            }
+            await tx.CommitAsync();
+        }
+
+        try
+        {
+            await Assert.ThrowsAsync<AuthRepository.UsernameOwnedByAnotherCustomerException>(() => repository.RegisterMobileCustomerAsync(new MobileCustomerRegistrationDto(
+                username, "P@ssword1", "P@ssword1", nameB, null, phoneB,
+                null, null, true, null, null, codeB), CancellationToken.None));
+
+            await using var verify = new SqlConnection(connectionString);
+            await verify.OpenAsync();
+            Assert.Equal(1, await CountCustomerMobileAccountsAsync(verify, customerA));
+            Assert.Equal(0, await CountCustomerMobileAccountsAsync(verify, customerB));
+        }
+        finally
+        {
+            await CleanupProvisioningFixtureAsync(connectionString, customerA, username);
+            await CleanupProvisioningFixtureAsync(connectionString, customerB, null);
+        }
     }
 
     [Theory]

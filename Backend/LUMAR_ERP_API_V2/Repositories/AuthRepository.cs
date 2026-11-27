@@ -12,6 +12,9 @@ namespace LUMAR_ERP_API_V2.Repositories;
 
 public sealed class AuthRepository(OperationalSqlConnectionFactory connections, ICustomerRepository customerRepository) : IAuthRepository
 {
+    public sealed class ExistingCustomerMobileAccountException(string message) : ArgumentException(message) { }
+    public sealed class UsernameOwnedByAnotherCustomerException(string message) : ArgumentException(message) { }
+
     private sealed record MobileAccountIdentity(
         int MobileAccountId,
         string AccountType,
@@ -31,13 +34,19 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         if (request is null)
             throw new ArgumentException("Registration request is required.");
 
-        if (!ValidateMobileCustomerRegistrationRequest(request.Username, request.Password, request.ConfirmPassword, request.FullName, request.CustomerName, request.PhoneNumber))
-            throw new ArgumentException("Invalid customer registration request.");
-
         var username = NormalizeUsername(request.Username);
         var normalizedUsername = username.ToUpperInvariant();
         var fullName = request.FullName.Trim();
-        var customerName = request.CustomerName.Trim();
+        var customerName = string.IsNullOrWhiteSpace(request.CustomerName)
+            ? fullName
+            : request.CustomerName.Trim();
+
+        var validationCustomerName = string.IsNullOrWhiteSpace(request.CustomerCode)
+            ? request.CustomerName
+            : customerName;
+        if (!ValidateMobileCustomerRegistrationRequest(request.Username, request.Password, request.ConfirmPassword, request.FullName, validationCustomerName, request.PhoneNumber))
+            throw new ArgumentException("Invalid customer registration request.");
+
         var phoneNumber = NormalizeCustomerPhone(request.PhoneNumber);
 
         await using var connection = connections.Create();
@@ -46,6 +55,116 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
 
         try
         {
+            if (!string.IsNullOrWhiteSpace(request.CustomerCode))
+            {
+                var officialCustomerCode = request.CustomerCode.Trim();
+                int existingCustomerId;
+                string officialCustomerName;
+                string? officialPhone;
+
+                await using (var customerLookup = new SqlCommand(
+                    "SELECT TOP (1) CustomerID, CustomerName, PhoneNumber FROM dbo.Customers WITH (UPDLOCK, HOLDLOCK) WHERE CustomerCode = @customerCode AND IsActive = 1;",
+                    connection,
+                    transaction))
+                {
+                    customerLookup.Parameters.AddWithValue("@customerCode", officialCustomerCode);
+                    await using var customerReader = await customerLookup.ExecuteReaderAsync(ct);
+                    if (!await customerReader.ReadAsync(ct))
+                        throw new ArgumentException("كود العميل غير موجود أو غير نشط.");
+                    existingCustomerId = customerReader.GetInt32(0);
+                    officialCustomerName = customerReader.GetString(1);
+                    officialPhone = customerReader.NullableString("PhoneNumber");
+                    await customerReader.CloseAsync();
+                }
+
+                var normalizedOfficialName = NormalizeCustomerName(officialCustomerName);
+                var normalizedProvidedName = NormalizeCustomerName(customerName);
+                if (!string.Equals(normalizedOfficialName, normalizedProvidedName, StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException("الاسم الكامل لا يطابق سجل العميل الرسمي.");
+
+                var normalizedOfficialPhone = NormalizeCustomerPhone(officialPhone);
+                if (string.IsNullOrWhiteSpace(phoneNumber) ||
+                    string.IsNullOrWhiteSpace(normalizedOfficialPhone) ||
+                    !string.Equals(normalizedOfficialPhone, phoneNumber, StringComparison.Ordinal))
+                    throw new ArgumentException("رقم الهاتف لا يطابق سجل العميل الرسمي.");
+
+                await using (var accountCheck = new SqlCommand(
+                    "SELECT TOP (1) MobileAccountId FROM dbo.MobileAccounts WITH (UPDLOCK, HOLDLOCK) WHERE AccountType = N'Customer' AND CustomerId = @customerId AND IsActive = 1 ORDER BY MobileAccountId;",
+                    connection,
+                    transaction))
+                {
+                    accountCheck.Parameters.AddWithValue("@customerId", existingCustomerId);
+                    if (await accountCheck.ExecuteScalarAsync(ct) is not null)
+                        throw new ExistingCustomerMobileAccountException("لدى هذا العميل حساب موجود بالفعل. استخدم تسجيل الدخول أو استعادة كلمة المرور.");
+                }
+
+                await using (var usernameCheck = new SqlCommand(
+                    "SELECT TOP (1) ma.MobileAccountId, ma.CustomerId FROM dbo.MobileAccounts AS ma WITH (UPDLOCK, HOLDLOCK) WHERE ma.Username = @username OR ma.NormalizedUsername = @normalizedUsername",
+                    connection,
+                    transaction))
+                {
+                    usernameCheck.Parameters.AddWithValue("@username", username);
+                    usernameCheck.Parameters.AddWithValue("@normalizedUsername", normalizedUsername);
+                    await using var usernameReader = await usernameCheck.ExecuteReaderAsync(ct);
+                    if (await usernameReader.ReadAsync(ct))
+                    {
+                        var ownerCustomerId = usernameReader.IsDBNull(1) ? (int?)null : usernameReader.GetInt32(1);
+                        if (ownerCustomerId is not null && ownerCustomerId.Value != existingCustomerId)
+                            throw new UsernameOwnedByAnotherCustomerException("اسم المستخدم مستخدم لحساب عميل آخر.");
+                        throw new ArgumentException("اسم المستخدم مستخدم بالفعل.");
+                    }
+                }
+
+                await using (var userCheck = new SqlCommand(
+                    "SELECT TOP (1) UserID FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE Username = @username",
+                    connection,
+                    transaction))
+                {
+                    userCheck.Parameters.AddWithValue("@username", username);
+                    if (await userCheck.ExecuteScalarAsync(ct) is not null)
+                        throw new UsernameOwnedByAnotherCustomerException("اسم المستخدم مستخدم لشخص آخر.");
+                }
+
+                var existingPasswordHash = HashPassword(request.Password);
+                int existingUserId;
+                const string existingCreateUserSql = "INSERT INTO dbo.Users (Username, FullName, UserRole, IsActive, PasswordHash, UserPassword, SecurityStamp, LastLoginUtc) OUTPUT INSERTED.UserID VALUES (@username, @fullName, 'Customer', 1, @passwordHash, '', NEWID(), SYSUTCDATETIME())";
+                await using (var createUser = new SqlCommand(existingCreateUserSql, connection, transaction))
+                {
+                    createUser.Parameters.AddWithValue("@username", username);
+                    createUser.Parameters.AddWithValue("@fullName", fullName);
+                    createUser.Parameters.AddWithValue("@passwordHash", existingPasswordHash);
+                    existingUserId = (int)(await createUser.ExecuteScalarAsync(ct))!;
+                }
+
+                int existingMobileAccountId;
+                const string existingCreateMobileAccountSql = "INSERT INTO dbo.MobileAccounts (AccountType, CustomerId, EmployeeId, SupplierId, Username, NormalizedUsername, PasswordHash, IsActive, FailedLoginAttempts, LockoutEndUtc, SecurityStamp, TokenVersion, CreatedAtUtc, UpdatedAtUtc) OUTPUT INSERTED.MobileAccountId VALUES (@accountType, @customerId, NULL, NULL, @username, @normalizedUsername, @passwordHash, 1, 0, NULL, CAST(NEWID() AS nvarchar(128)), 0, SYSUTCDATETIME(), SYSUTCDATETIME())";
+                await using (var createMobileAccount = new SqlCommand(existingCreateMobileAccountSql, connection, transaction))
+                {
+                    createMobileAccount.Parameters.AddWithValue("@accountType", "Customer");
+                    createMobileAccount.Parameters.AddWithValue("@customerId", existingCustomerId);
+                    createMobileAccount.Parameters.AddWithValue("@username", username);
+                    createMobileAccount.Parameters.AddWithValue("@normalizedUsername", normalizedUsername);
+                    createMobileAccount.Parameters.AddWithValue("@passwordHash", existingPasswordHash);
+                    existingMobileAccountId = (int)(await createMobileAccount.ExecuteScalarAsync(ct))!;
+                }
+
+                const string existingCreatePrimaryAccessSql = @"
+                    INSERT INTO dbo.MobileAccountCustomerAccess (MobileAccountId, CustomerId, AccessRole, IsActive, RelationshipType, CreatedAtUtc)
+                    VALUES (@mobileAccountId, @customerId, N'Primary', 1, NULL, SYSUTCDATETIME());";
+                await using (var createPrimaryAccess = new SqlCommand(existingCreatePrimaryAccessSql, connection, transaction))
+                {
+                    createPrimaryAccess.Parameters.AddWithValue("@mobileAccountId", existingMobileAccountId);
+                    createPrimaryAccess.Parameters.AddWithValue("@customerId", existingCustomerId);
+                    if (await createPrimaryAccess.ExecuteNonQueryAsync(ct) != 1)
+                        throw new InvalidOperationException("تعذر إنشاء ربط حساب الجوال بالعميل الرسمي.");
+                }
+
+                var existingCurrentUser = new CurrentUserDto(existingUserId, username, fullName, "Customer", true, DateTime.UtcNow, "Customer", existingCustomerId, null, null);
+                var existingSession = await CreateSessionAsync(connection, existingCurrentUser, request.RememberMe, transaction, ct);
+                await transaction.CommitAsync(ct);
+                return existingSession;
+            }
+
             await using (var usernameCheck = new SqlCommand("SELECT TOP (1) UserID FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE Username = @username", connection, transaction))
             {
                 usernameCheck.Parameters.AddWithValue("@username", username);
@@ -1348,6 +1467,12 @@ public sealed class AuthRepository(OperationalSqlConnectionFactory connections, 
         var stamp = DateTime.UtcNow.ToString("yyMMddHHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
         var suffix = RandomNumberGenerator.GetInt32(100, 999);
         return $"C{stamp}{suffix}";
+    }
+
+    private static string NormalizeCustomerName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return string.Empty;
+        return Regex.Replace(name.Trim(), @"\s+", " ");
     }
 
     private static string? NormalizeCustomerPhone(string? phone)

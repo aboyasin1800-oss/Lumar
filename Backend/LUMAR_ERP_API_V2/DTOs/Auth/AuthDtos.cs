@@ -7,13 +7,14 @@ public sealed record MobileCustomerRegistrationDto(
     string Password,
     string ConfirmPassword,
     string FullName,
-    string CustomerName,
+    string? CustomerName,
     string? PhoneNumber = null,
     string? Address = null,
     string? Notes = null,
     bool RememberMe = true,
     int? ReferrerCustomerId = null,
-    string? RelationshipType = null);
+    string? RelationshipType = null,
+    string? CustomerCode = null);
 public sealed record ChangeUsernameDto(string CurrentPassword, string Username);
 public sealed record ChangePasswordDto(string CurrentPassword, string NewPassword, string ConfirmPassword);
 public sealed record PasswordSetupDto(string SetupToken, string NewPassword, string ConfirmPassword);
