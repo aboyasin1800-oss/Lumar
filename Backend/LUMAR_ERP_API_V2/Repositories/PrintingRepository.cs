@@ -62,6 +62,7 @@ WITH candidates AS (
     INNER JOIN dbo.Orders o ON o.OrderID = oi.OrderID
     LEFT JOIN dbo.PricingProductTypes pt ON pt.ProductTypeId = oi.ProductTypeId
     WHERE (@orderId IS NULL OR oi.OrderID = @orderId)
+      AND LOWER(LTRIM(RTRIM(COALESCE(o.OrderStatus, N'')))) NOT IN (N'cancelled', N'canceled', N'ملغي')
       AND LOWER(LTRIM(RTRIM(COALESCE(p.PieceStatus, N'')))) NOT IN (N'cancelled', N'canceled', N'ملغي')
     UNION ALL
     SELECT 1 AS IsReadyMade, p.ReadyMadeProductionOrderPieceInstanceId AS PieceId,
@@ -119,6 +120,7 @@ WITH candidates AS (
     INNER JOIN dbo.Orders o ON o.OrderID = oi.OrderID
     LEFT JOIN dbo.PricingProductTypes pt ON pt.ProductTypeId = oi.ProductTypeId
     WHERE (@orderId IS NULL OR oi.OrderID = @orderId)
+      AND LOWER(LTRIM(RTRIM(COALESCE(o.OrderStatus, N'')))) NOT IN (N'cancelled', N'canceled', N'ملغي')
       AND LOWER(LTRIM(RTRIM(COALESCE(p.PieceStatus, N'')))) NOT IN (N'cancelled', N'canceled', N'ملغي')
     UNION ALL
     SELECT 1 AS IsReadyMade, p.ReadyMadeProductionOrderPieceInstanceId AS PieceId,
@@ -176,6 +178,7 @@ WITH candidates AS (
     INNER JOIN dbo.Orders o ON o.OrderID = oi.OrderID
     LEFT JOIN dbo.Customers c ON c.CustomerID = o.CustomerID
     WHERE (@orderId IS NULL OR oi.OrderID = @orderId)
+      AND LOWER(LTRIM(RTRIM(COALESCE(o.OrderStatus, N'')))) NOT IN (N'cancelled', N'canceled', N'ملغي')
       AND LOWER(LTRIM(RTRIM(COALESCE(p.PieceStatus, N'')))) NOT IN (N'cancelled', N'canceled', N'ملغي')
     UNION ALL
     SELECT 1 AS IsReadyMade, p.ReadyMadeProductionOrderPieceInstanceId AS PieceId,
@@ -296,25 +299,69 @@ ORDER BY c.OrderNumber, c.PieceNumber, c.PieceId;";
         return new MeasurementCardBulkConfirmationResultDto(request.BatchRequestId, cancelled, skipped);
     }
 
-    public async Task<MeasurementCardReservedRecoveryDto> RecoverReservedAsync(int? orderId, CancellationToken cancellationToken)
+    public async Task<MeasurementCardBulkReconcileResultDto> ReconcileBulkAsync(MeasurementCardBulkReconcileDto request, CurrentUserDto user, CancellationToken cancellationToken)
     {
-        await using var connection = operationalConnections.Create();
-        await connection.OpenAsync(cancellationToken);
-        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        var items = new List<MeasurementCardBulkReconcileItemDto>();
+        foreach (var printHistoryId in request.PrintHistoryIds.Distinct())
+        {
+            var history = await GetHistoryByIdAsync(printHistoryId, cancellationToken);
+            if (history is null)
+            {
+                items.Add(new MeasurementCardBulkReconcileItemDto(printHistoryId, "NotFound", false, "Failed"));
+                continue;
+            }
 
-        const string sql = @"
-UPDATE h
-SET PrintStatus = N'Failed',
-    FailedAtUtc = COALESCE(h.FailedAtUtc, SYSUTCDATETIME()),
-    FailureReason = COALESCE(h.FailureReason, N'Recovered as abandoned reserved print operation')
-FROM dbo.MeasurementCardPrintHistory h
-WHERE h.PrintStatus = N'Reserved'
-  AND (@orderId IS NULL OR h.OrderId = @orderId);";
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("@orderId", (object?)orderId ?? DBNull.Value);
-        var recovered = await command.ExecuteNonQueryAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return new MeasurementCardReservedRecoveryDto(recovered);
+            var pieceId = history.PieceId ?? history.ReadyMadePieceId;
+            var belongsToBatch = pieceId is int id
+                && history.PrintRequestId == CreateBulkPiecePrintRequestId(request.BatchRequestId,
+                    history.ReadyMadePieceId is not null, id)
+                && history.PrintedByUserId == user.UserId;
+            var classification = history.PrintStatus switch
+            {
+                "Completed" => "Completed",
+                "Failed" => "Failed",
+                "Reserved" => belongsToBatch ? "Reserved" : "WrongBatch",
+                _ => "Unknown"
+            };
+            items.Add(new MeasurementCardBulkReconcileItemDto(printHistoryId, classification, belongsToBatch, history.PrintStatus));
+        }
+        return new MeasurementCardBulkReconcileResultDto(request.BatchRequestId, items);
+    }
+
+    public async Task<MeasurementCardBulkConfirmationResultDto> RecoverBulkAsync(MeasurementCardBulkRecoveryDto request, CurrentUserDto user, CancellationToken cancellationToken)
+    {
+        var recovered = new List<MeasurementCardBulkConfirmationItemDto>();
+        var skipped = new List<string>();
+        foreach (var printHistoryId in request.PrintHistoryIds.Distinct())
+        {
+            try
+            {
+                var history = await GetHistoryByIdAsync(printHistoryId, cancellationToken);
+                if (history is null) throw new InvalidOperationException("سجل الطباعة غير موجود.");
+                if (history.PrintedByUserId != user.UserId) throw new InvalidOperationException("الحجز مرتبط بمستخدم آخر.");
+                var pieceId = history.PieceId ?? history.ReadyMadePieceId;
+                if (pieceId is not int id) throw new InvalidOperationException("هوية القطعة غير صالحة.");
+                var expectedRequestId = CreateBulkPiecePrintRequestId(request.BatchRequestId,
+                    history.ReadyMadePieceId is not null, id);
+                if (history.PrintRequestId != expectedRequestId) throw new InvalidOperationException("السجل لا ينتمي إلى هذه الدفعة.");
+                if (history.PrintStatus == "Completed")
+                {
+                    recovered.Add(new MeasurementCardBulkConfirmationItemDto(printHistoryId, "Completed"));
+                    continue;
+                }
+                if (history.PrintStatus != "Reserved") continue;
+
+                var result = await FailAsync(printHistoryId,
+                    "تم استرداد حجز دفعة مهجورة", user, cancellationToken);
+                if (result is not null)
+                    recovered.Add(new MeasurementCardBulkConfirmationItemDto(printHistoryId, result.PrintStatus));
+            }
+            catch (Exception exception)
+            {
+                skipped.Add($"{printHistoryId}:{exception.Message}");
+            }
+        }
+        return new MeasurementCardBulkConfirmationResultDto(request.BatchRequestId, recovered, skipped);
     }
 
     public async Task<MeasurementCardBulkPrepareResultDto> PrepareBulkAsync(MeasurementCardBulkPrepareDto request, CurrentUserDto user, CancellationToken cancellationToken)

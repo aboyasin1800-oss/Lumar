@@ -18,14 +18,17 @@ public sealed class PrintingService(IPrintingRepository repository) : IPrintingS
     public Task<MeasurementCardBulkPrepareResultDto> PrepareBulkAsync(MeasurementCardBulkPrepareDto request, CurrentUserDto user, CancellationToken cancellationToken) =>
         repository.PrepareBulkAsync(request, user, cancellationToken);
 
-    public Task<MeasurementCardReservedRecoveryDto> RecoverReservedAsync(int? orderId, CancellationToken cancellationToken) =>
-        repository.RecoverReservedAsync(orderId, cancellationToken);
-
     public Task<MeasurementCardBulkConfirmationResultDto> ConfirmBulkAsync(MeasurementCardBulkConfirmationDto request, CurrentUserDto user, CancellationToken cancellationToken) =>
         repository.ConfirmBulkAsync(request, user, cancellationToken);
 
     public Task<MeasurementCardBulkConfirmationResultDto> CancelBulkAsync(MeasurementCardBulkConfirmationDto request, string? reason, CurrentUserDto user, CancellationToken cancellationToken) =>
         repository.CancelBulkAsync(request, reason, user, cancellationToken);
+
+    public Task<MeasurementCardBulkReconcileResultDto> ReconcileBulkAsync(MeasurementCardBulkReconcileDto request, CurrentUserDto user, CancellationToken cancellationToken) =>
+        repository.ReconcileBulkAsync(request, user, cancellationToken);
+
+    public Task<MeasurementCardBulkConfirmationResultDto> RecoverBulkAsync(MeasurementCardBulkRecoveryDto request, CurrentUserDto user, CancellationToken cancellationToken) =>
+        repository.RecoverBulkAsync(request, user, cancellationToken);
 
     public Task<MeasurementCardPrintHistoryDto> PrepareAsync(int pieceId, bool isReadyMade, PrepareMeasurementCardPrintDto request, CurrentUserDto user, CancellationToken cancellationToken) =>
         repository.PrepareAsync(pieceId, isReadyMade, request, user, cancellationToken);

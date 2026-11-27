@@ -59,6 +59,20 @@ public sealed record MeasurementCardBulkConfirmationResultDto(
     IReadOnlyList<MeasurementCardBulkConfirmationItemDto> Confirmed,
     IReadOnlyList<string> Skipped);
 
+public sealed record MeasurementCardBulkReconcileDto(Guid BatchRequestId, IReadOnlyList<int> PrintHistoryIds);
+
+public sealed record MeasurementCardBulkReconcileItemDto(
+    int PrintHistoryId,
+    string Classification,
+    bool BelongsToBatch,
+    string PrintStatus);
+
+public sealed record MeasurementCardBulkReconcileResultDto(
+    Guid BatchRequestId,
+    IReadOnlyList<MeasurementCardBulkReconcileItemDto> Items);
+
+public sealed record MeasurementCardBulkRecoveryDto(Guid BatchRequestId, IReadOnlyList<int> PrintHistoryIds);
+
 public sealed record MeasurementCardBulkPrepareItemDto(
     bool IsReadyMade,
     int PieceId,

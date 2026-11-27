@@ -65,12 +65,20 @@ public sealed class PrintingController(IPrintingService printing, IAuthService a
         return Ok(await printing.CancelBulkAsync(request, reason, user, cancellationToken));
     }
 
-    [HttpPost("reserved/recover")]
-    public async Task<ActionResult<MeasurementCardReservedRecoveryDto>> RecoverReserved([FromQuery] int? orderId, CancellationToken cancellationToken)
+    [HttpPost("bulk/reconcile")]
+    public async Task<ActionResult<MeasurementCardBulkReconcileResultDto>> ReconcileBulk(MeasurementCardBulkReconcileDto request, CancellationToken cancellationToken)
     {
         var user = await GetCurrentUserAsync(cancellationToken);
         if (user is null) return Unauthorized();
-        return Ok(await printing.RecoverReservedAsync(orderId, cancellationToken));
+        return Ok(await printing.ReconcileBulkAsync(request, user, cancellationToken));
+    }
+
+    [HttpPost("bulk/recover")]
+    public async Task<ActionResult<MeasurementCardBulkConfirmationResultDto>> RecoverBulk(MeasurementCardBulkRecoveryDto request, CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentUserAsync(cancellationToken);
+        if (user is null) return Unauthorized();
+        return Ok(await printing.RecoverBulkAsync(request, user, cancellationToken));
     }
 
     [HttpGet("readymade-pieces/{pieceId:int}/history")]

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -204,6 +205,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   List<_BulkPrintPage> _pendingBulkPages = const [];
   String? _pendingBulkBatchId;
+  String? _pendingBulkRestoreError;
+  Map<int, String> _pendingBulkReconcileStatus = const {};
   final Map<int, List<_PrintHistoryRecord>> _printHistoryCache = {};
   List<_OrderSummary> _orders = const [];
   _MeasurementHeaderSettings _header = const _MeasurementHeaderSettings(
@@ -323,35 +326,134 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     try {
       final raw = await _secureStorage.read(key: 'lumar_pending_measurement_card_bulk');
       if (raw == null || raw.trim().isEmpty || !mounted) return;
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) return;
-      final pages = (decoded['pages'] as List? ?? const [])
+      Map<String, dynamic> decoded;
+      try {
+        final parsed = jsonDecode(raw);
+        if (parsed is! Map<String, dynamic>) throw const FormatException('صيغة دفعة الطباعة غير صالحة');
+        decoded = parsed;
+      } on FormatException catch (error) {
+        setState(() => _pendingBulkRestoreError = 'تعذر قراءة دفعة الطباعة المحفوظة: ${error.message}');
+        return;
+      }
+      final storedPayload = decoded;
+      final pages = (storedPayload['pages'] as List? ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(_BulkPrintPage.fromJson)
           .toList();
       if (pages.isEmpty) return;
       setState(() {
         _pendingBulkPages = pages;
-        _pendingBulkBatchId = (decoded['batchId'] ?? '').toString();
+        _pendingBulkBatchId = (storedPayload['batchId'] ?? '').toString();
+        _pendingBulkRestoreError = null;
       });
-    } catch (_) {}
+      await _reconcilePendingBulk();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _pendingBulkRestoreError = 'تعذر الوصول إلى دفعة الطباعة المحفوظة: $error');
+    }
   }
 
-  Future<void> _persistPendingBulk(String batchId, List<_BulkPrintPage> pages) async {
-    _pendingBulkPages = pages;
-    _pendingBulkBatchId = batchId;
+  Future<void> _reconcilePendingBulk() async {
+    final batchId = _pendingBulkBatchId;
+    if (batchId == null || batchId.isEmpty || _pendingBulkPages.isEmpty) return;
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${widget.baseUrl}/printing/bulk/reconcile'),
+            headers: _authHeaders,
+            body: jsonEncode({
+              'batchRequestId': batchId,
+              'printHistoryIds': _pendingBulkPages.map((page) => page.printHistoryId).toList(),
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        await _persistPendingBulk(batchId, _pendingBulkPages, status: 'syncFailed');
+        if (mounted) setState(() => _pendingBulkRestoreError = _bulkHttpError(response));
+        return;
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        if (mounted) setState(() => _pendingBulkRestoreError = 'استجابة مصالحة الدفعة غير صالحة.');
+        return;
+      }
+      if ((decoded['batchRequestId'] ?? '').toString().toLowerCase() != batchId.toLowerCase()) {
+        if (mounted) setState(() => _pendingBulkRestoreError = 'تعارض: استجابة المصالحة لا تطابق دفعة الطباعة المحلية.');
+        return;
+      }
+
+      final reconcileStatus = <int, String>{};
+      final items = (decoded['items'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      final completedIds = <int>{};
+      var conflict = false;
+      for (final item in items) {
+        final id = (item['printHistoryId'] as num?)?.toInt() ?? 0;
+        final classification = (item['classification'] ?? '').toString();
+        final belongs = item['belongsToBatch'] == true;
+        reconcileStatus[id] = classification;
+        if (classification == 'Completed') completedIds.add(id);
+        if (classification == 'WrongBatch' || classification == 'NotFound' || !belongs) conflict = true;
+      }
+
+      _pendingBulkReconcileStatus = reconcileStatus;
+      final remaining = _pendingBulkPages
+          .where((page) => !completedIds.contains(page.printHistoryId))
+          .toList();
+      if (remaining.isEmpty) {
+        await _clearPendingBulk();
+      } else {
+        await _persistPendingBulk(batchId, remaining, status: conflict ? 'syncConflict' : 'awaitingConfirmation');
+        if (mounted && conflict) {
+          setState(() => _pendingBulkRestoreError = 'توجد سجلات تحتاج مراجعة؛ لم تُحذف الدفعة ولا تم اعتمادها تلقائيًا.');
+        }
+      }
+    } on http.ClientException {
+      if (mounted) setState(() => _pendingBulkRestoreError = 'فقد الاتصال عند مصالحة الدفعة؛ أبقيت الدفعة محفوظة.');
+    } on TimeoutException {
+      if (mounted) setState(() => _pendingBulkRestoreError = 'انتهت مهلة مصالحة الدفعة؛ أبقيت الدفعة محفوظة.');
+    } catch (error) {
+      if (mounted) setState(() => _pendingBulkRestoreError = 'تعذر مصالحة الدفعة: $error');
+    }
+  }
+
+  Future<void> _persistPendingBulk(
+    String batchId,
+    List<_BulkPrintPage> pages, {
+    String status = 'reserved',
+  }) async {
+    final payload = jsonEncode({
+      'batchId': batchId,
+      'status': status,
+      'pages': pages.map((page) => page.toJson()).toList(),
+    });
     await _secureStorage.write(
       key: 'lumar_pending_measurement_card_bulk',
-      value: jsonEncode({
-        'batchId': batchId,
-        'pages': pages.map((page) => page.toJson()).toList(),
-      }),
+      value: payload,
     );
+    final verified = await _secureStorage.read(key: 'lumar_pending_measurement_card_bulk');
+    if (verified != payload) {
+      throw Exception('فشل التحقق من حفظ دفعة الطباعة المحلية.');
+    }
+    final decoded = jsonDecode(verified!);
+    if (decoded is! Map<String, dynamic> ||
+        (decoded['batchId'] ?? '').toString() != batchId ||
+        (decoded['pages'] is! List)) {
+      throw Exception('بيانات دفعة الطباعة المحفوظة تالفة.');
+    }
+    if (!mounted) return;
+    setState(() {
+      _pendingBulkPages = pages;
+      _pendingBulkBatchId = batchId;
+      _pendingBulkRestoreError = null;
+    });
   }
 
   Future<void> _clearPendingBulk() async {
     _pendingBulkPages = const [];
     _pendingBulkBatchId = null;
+    _pendingBulkRestoreError = null;
     await _secureStorage.delete(key: 'lumar_pending_measurement_card_bulk');
   }
 
@@ -403,59 +505,6 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     } finally {
       if (mounted) setState(() => _loadingUnprintedSummary = false);
     }
-  }
-
-  Future<List<_OrderPieceDetail>> _fetchOrderPiecesOnce(
-      _OrderSummary order) async {
-    final response = await http.get(
-      Uri.parse(order.isReadyMade
-          ? '${widget.baseUrl}/production/readymade-orders/${order.orderId}/items'
-          : '${widget.baseUrl}/orders/${order.orderId}/pieces'),
-      headers: _authHeaders,
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      return const [];
-    }
-
-    final piecesJson = jsonDecode(response.body) as List;
-    final pieces = <_OrderPieceDetail>[];
-    for (final entry in piecesJson) {
-      if (entry is Map<String, dynamic>) {
-        if (order.isReadyMade) {
-          final itemId = (entry['readyMadeProductionOrderItemId'] as int?) ?? 0;
-          if (itemId <= 0) continue;
-          final pieceResponse = await http.get(
-            Uri.parse(
-                '${widget.baseUrl}/production/readymade-order-items/$itemId/pieces'),
-            headers: _authHeaders,
-          );
-          if (pieceResponse.statusCode < 200 || pieceResponse.statusCode >= 300)
-            continue;
-          for (final pieceJson in (jsonDecode(pieceResponse.body) as List)
-              .cast<Map<String, dynamic>>()) {
-            final pieceId =
-                (pieceJson['readyMadeProductionOrderPieceInstanceId']
-                        as int?) ??
-                    0;
-            if (pieceId > 0) {
-              try {
-                pieces.add(await _loadPieceCard(pieceId, readyMade: true));
-              } catch (_) {}
-            }
-          }
-        } else {
-          final pieceId = (entry['pieceId'] as int?) ?? 0;
-          if (pieceId <= 0) continue;
-          try {
-            pieces.add(await _loadPieceCard(pieceId));
-          } catch (_) {
-            // ignore unreadable pieces in aggregated summary
-          }
-        }
-      }
-    }
-
-    return pieces;
   }
 
   Future<void> _selectOrder(_OrderSummary order) async {
@@ -1203,6 +1252,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         throw Exception('تعذر بناء بيانات بطاقات الدفعة.');
       }
 
+      await _persistPendingBulk(batchId, pages, status: 'readyForPrint');
+
       final bytes = await _MeasurementCardPdfGenerator.generateMany(
         pieces,
         copyNumbers,
@@ -1219,8 +1270,22 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         await Printing.layoutPdf(onLayout: (_) async => bytes);
       }
 
-      await _persistPendingBulk(batchId, pages);
-      await _showBulkOutcomeDialog(batchId, pages);
+      await _persistPendingBulk(
+        batchId,
+        pages,
+        status: target == _PrintTarget.savePdf
+            ? 'savedPdfAwaitingDecision'
+            : 'printDialogReturned',
+      );
+      if (target == _PrintTarget.savePdf) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم حفظ PDF فقط؛ الحجوزات بقيت محفوظة ولم تعتمد أي بطاقة مطبوعة.')),
+          );
+        }
+      } else {
+        await _showBulkOutcomeDialog(batchId, pages);
+      }
       await _refreshUnprintedSummary();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1479,16 +1544,48 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
 
     if (choice == null) return;
     if (choice == _BulkOutcome.full) {
-      await _confirmBulkPages(batchId, pages);
-      await _clearPendingBulk();
+      final result = await _confirmBulkPages(batchId, pages);
+      if (!result.isSuccess) {
+        await _persistPendingBulk(batchId, pages, status: 'syncFailed');
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.errorMessage)));
+        return;
+      }
+      final accepted = pages.where((page) => result.acceptedIds.contains(page.printHistoryId)).toList();
+      final remaining = pages.where((page) => !result.acceptedIds.contains(page.printHistoryId)).toList();
+      if (remaining.isEmpty) {
+        await _clearPendingBulk();
+      } else {
+        await _persistPendingBulk(batchId, remaining, status: 'partiallyConfirmed');
+      }
+      await _refreshUnprintedSummary();
+      if (accepted.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('اعتمد Backend ${accepted.length} بطاقة مؤكدًا.')));
+      }
       return;
     }
     if (choice == _BulkOutcome.cancelled) {
-      await _cancelBulkPages(batchId, pages);
-      await _clearPendingBulk();
+      final result = await _cancelBulkPages(batchId, pages);
+      if (!result.isSuccess) {
+        await _persistPendingBulk(batchId, pages, status: 'cancelPending');
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.errorMessage)));
+        return;
+      }
+      final remaining = pages.where((page) => !result.acceptedIds.contains(page.printHistoryId)).toList();
+      if (remaining.isEmpty) {
+        await _clearPendingBulk();
+      } else {
+        await _persistPendingBulk(batchId, remaining, status: 'cancelPending');
+      }
+      await _refreshUnprintedSummary();
       return;
     }
-    if (choice == _BulkOutcome.unknown) return;
+    if (choice == _BulkOutcome.unknown) {
+      await _persistPendingBulk(batchId, pages, status: 'awaitingConfirmation');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('حُفظت النتيجة غير المعروفة؛ لن تعتمد أي بطاقة حتى المراجعة والتأكيد.')),
+      );
+      return;
+    }
 
     var cutoff = pages.length;
     var confirmedThroughLast = true;
@@ -1547,10 +1644,22 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         ? pages.where((page) => page.pageNumber > cutoff).toList()
         : pages.where((page) => page.pageNumber >= cutoff).toList();
 
-    await _confirmBulkPages(batchId, confirmed);
-    if (remaining.isEmpty) {
+    final syncResult = await _confirmBulkPages(batchId, confirmed);
+    if (!syncResult.isSuccess) {
+      await _persistPendingBulk(batchId, pages, status: 'syncFailed');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(syncResult.errorMessage)));
+      return;
+    }
+    final effectiveRemaining = pages
+        .where((page) => !syncResult.acceptedIds.contains(page.printHistoryId))
+        .toList();
+    final remainingAfterConfirmation = effectiveRemaining
+        .where((page) => remaining.any((candidate) => candidate.printHistoryId == page.printHistoryId))
+        .toList();
+    if (remainingAfterConfirmation.isEmpty) {
       await _clearPendingBulk();
     } else {
+      final remaining = remainingAfterConfirmation;
       final resumed = remaining.asMap().entries.map((entry) => _BulkPrintPage(
         pageNumber: entry.key + 1,
         isReadyMade: entry.value.isReadyMade,
@@ -1564,45 +1673,122 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         pieceNumber: entry.value.pieceNumber,
         cardJson: entry.value.cardJson,
       )).toList();
-      await _persistPendingBulk(batchId, resumed);
+      await _persistPendingBulk(batchId, resumed, status: 'partiallyConfirmed');
     }
   }
 
-  Future<void> _confirmBulkPages(String batchId, List<_BulkPrintPage> pages) async {
-    if (pages.isEmpty) return;
-    await http.post(
-      Uri.parse('${widget.baseUrl}/printing/bulk/confirm'),
-      headers: _authHeaders,
-      body: jsonEncode({
-        'batchRequestId': batchId,
-        'printHistoryIds': pages.map((page) => page.printHistoryId).toList(),
-      }),
-    );
+  String _bulkHttpError(http.Response response) {
+    if (response.statusCode == 401) return 'انتهت الجلسة. سجّل الدخول ثم أعد المزامنة.';
+    if (response.statusCode == 403) return 'الصلاحية لا تسمح بتأكيد أو إلغاء هذه الدفعة.';
+    if (response.statusCode == 409) return 'تعارض في الدفعة؛ لم يتم اعتماد أي نتيجة قديمة على دفعة أخرى.';
+    if (response.statusCode == 400) return 'طلب المزامنة غير صالح: ${_readApiError(response)}';
+    if (response.statusCode >= 500) return 'فشل خادم الطباعة مؤقتًا: ${_readApiError(response)}';
+    return 'تعذر مزامنة الدفعة: ${_readApiError(response)}';
   }
 
-  Future<void> _cancelBulkPages(String batchId, List<_BulkPrintPage> pages) async {
-    if (pages.isEmpty) return;
-    await http.post(
-      Uri.parse('${widget.baseUrl}/printing/bulk/cancel?reason=${Uri.encodeComponent('تم إلغاء الدفعة قبل تأكيد الطباعة')}'),
-      headers: _authHeaders,
-      body: jsonEncode({
-        'batchRequestId': batchId,
-        'printHistoryIds': pages.map((page) => page.printHistoryId).toList(),
-      }),
-    );
+  Future<_BulkSyncResult> _syncBulkPages(
+    String batchId,
+    List<_BulkPrintPage> pages, {
+    required bool confirm,
+  }) async {
+    if (pages.isEmpty) return const _BulkSyncResult.accepted(<int>[]);
+    final requestedIds = pages.map((page) => page.printHistoryId).toSet();
+    try {
+      final response = await http
+          .post(
+            Uri.parse(confirm
+                ? '${widget.baseUrl}/printing/bulk/confirm'
+                : '${widget.baseUrl}/printing/bulk/cancel?reason=${Uri.encodeComponent('تم إلغاء الدفعة قبل تأكيد الطباعة')}'),
+            headers: _authHeaders,
+            body: jsonEncode({
+              'batchRequestId': batchId,
+              'printHistoryIds': requestedIds.toList(),
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return _BulkSyncResult.error(_bulkHttpError(response));
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return const _BulkSyncResult.error('استجابة الخادم لدفعة الطباعة غير صالحة.');
+      }
+      if ((decoded['batchRequestId'] ?? '').toString().toLowerCase() != batchId.toLowerCase()) {
+        return const _BulkSyncResult.error('استجابة الدفعة لا تطابق BatchRequestId المطلوب.');
+      }
+
+      final confirmed = (decoded['confirmed'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      final accepted = <int>{};
+      for (final item in confirmed) {
+        final id = (item['printHistoryId'] as num?)?.toInt() ?? 0;
+        final status = (item['printStatus'] ?? '').toString();
+        if (id > 0 && requestedIds.contains(id) &&
+            ((confirm && status == 'Completed') || (!confirm && status == 'Failed'))) {
+          accepted.add(id);
+        }
+      }
+
+      final skipped = (decoded['skipped'] as List? ?? const [])
+          .map((item) => item.toString())
+          .toList();
+      if (accepted.isEmpty && skipped.isNotEmpty) {
+        return _BulkSyncResult.error('لم يعتمد الخادم أي عنصر: ${skipped.join(', ')}');
+      }
+      return _BulkSyncResult.accepted(accepted.toList(), skipped: skipped);
+    } on http.ClientException {
+      return const _BulkSyncResult.error('فقد الاتصال بالخادم. حافظت الدفعة المحلية ويمكن إعادة المزامنة.');
+    } on TimeoutException {
+      return const _BulkSyncResult.error('انتهت مهلة الاتصال بالخادم. لم تُحذف الدفعة المحلية.');
+    } catch (error) {
+      return _BulkSyncResult.error('تعذر التحقق من استجابة الخادم: $error');
+    }
   }
+
+  Future<_BulkSyncResult> _confirmBulkPages(String batchId, List<_BulkPrintPage> pages) =>
+      _syncBulkPages(batchId, pages, confirm: true);
+
+  Future<_BulkSyncResult> _cancelBulkPages(String batchId, List<_BulkPrintPage> pages) =>
+      _syncBulkPages(batchId, pages, confirm: false);
 
   Future<void> _resumePendingBulk() async {
     if (_pendingBulkBatchId == null || _pendingBulkPages.isEmpty) return;
-    final pieces = _pendingBulkPages.map((page) => _OrderPieceDetail.fromJson(page.cardJson, readyMade: page.isReadyMade)).toList();
-    final copyNumbers = _pendingBulkPages.map((page) => page.copyNumber).toList();
+    await _reconcilePendingBulk();
+    final resumable = _pendingBulkPages
+        .where((page) => _pendingBulkReconcileStatus[page.printHistoryId] == 'Reserved')
+        .toList();
+    if (resumable.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا توجد بطاقات قابلة للاستئناف آمنًا. راجع البطاقات الفاشلة أو المتعارضة من الشاشة الفردية.')),
+      );
+      return;
+    }
+    final pieces = resumable.map((page) => _OrderPieceDetail.fromJson(page.cardJson, readyMade: page.isReadyMade)).toList();
+    final copyNumbers = resumable.map((page) => page.copyNumber).toList();
     final target = await _showPrintOptionsDialog(title: 'استئناف البطاقات غير المؤكدة');
     if (target == null || !mounted) return;
     final bytes = await _MeasurementCardPdfGenerator.generateMany(pieces, copyNumbers, _header);
+    if (target == _PrintTarget.savePdf) {
+      if (!mounted) return;
+      final directoryPath = await _PrintService.resolveSaveDirectory(context);
+      final fullPath = '$directoryPath${Platform.pathSeparator}measurement_cards_resume_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      await File(fullPath).writeAsBytes(bytes);
+      await _persistPendingBulk(_pendingBulkBatchId!, resumable, status: 'savedPdfAwaitingDecision');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم حفظ PDF الاستئناف؛ لم تعتمد البطاقات كطباعة مادية.')),
+        );
+      }
+      return;
+    }
     if (target == _PrintTarget.officePrinter || target == _PrintTarget.pdfPreview) {
       await Printing.layoutPdf(onLayout: (_) async => bytes);
     }
-    await _showBulkOutcomeDialog(_pendingBulkBatchId!, _pendingBulkPages);
+    await _persistPendingBulk(_pendingBulkBatchId!, resumable, status: 'printDialogReturned');
+    await _showBulkOutcomeDialog(_pendingBulkBatchId!, resumable);
   }
 
   Widget _buildStatusBar(BuildContext context) {
@@ -1688,6 +1874,18 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
           ),
           const SizedBox(height: 10),
           _buildStatusBar(context),
+          if (_pendingBulkRestoreError != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(_pendingBulkRestoreError!, style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer)),
+            ),
+          ],
           if (_pendingBulkPages.isNotEmpty) ...[
             const SizedBox(height: 8),
             SizedBox(
@@ -1754,6 +1952,22 @@ class _MeasurementStatusType {
 }
 
 enum _BulkOutcome { full, partial, cancelled, unknown }
+
+class _BulkSyncResult {
+  const _BulkSyncResult.accepted(this.acceptedIds, {this.skipped = const []})
+      : isSuccess = true,
+        errorMessage = '';
+
+  const _BulkSyncResult.error(this.errorMessage)
+      : acceptedIds = const [],
+        skipped = const [],
+        isSuccess = false;
+
+  final bool isSuccess;
+  final List<int> acceptedIds;
+  final List<String> skipped;
+  final String errorMessage;
+}
 
 class _BulkPrintPage {
   const _BulkPrintPage({

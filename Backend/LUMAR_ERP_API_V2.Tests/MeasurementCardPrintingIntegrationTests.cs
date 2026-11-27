@@ -231,6 +231,76 @@ public sealed class MeasurementCardPrintingIntegrationTests
     }
 
     [Fact]
+    public async Task BulkReconcileRejectsWrongBatchAndDoesNotRecoverOtherBatch()
+    {
+        var connectionString = GetConnectionString();
+        var seedA = await SeedTailoringPieceAsync(connectionString);
+        var seedB = await SeedTailoringPieceAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        try
+        {
+            var batchA = Guid.NewGuid();
+            var batchB = Guid.NewGuid();
+            var preparedA = await repository.PrepareBulkAsync(
+                new MeasurementCardBulkPrepareDto(batchA, Guid.NewGuid(), seedA.OrderId), seedA.User, CancellationToken.None);
+            var preparedB = await repository.PrepareBulkAsync(
+                new MeasurementCardBulkPrepareDto(batchB, Guid.NewGuid(), seedB.OrderId), seedB.User, CancellationToken.None);
+
+            Assert.Single(preparedA.ReservedItems);
+            Assert.Single(preparedB.ReservedItems);
+
+            var reconcileA = await repository.ReconcileBulkAsync(
+                new MeasurementCardBulkReconcileDto(batchA,
+                    preparedA.ReservedItems.Select(item => item.PrintHistoryId).ToList()),
+                seedA.User,
+                CancellationToken.None);
+            Assert.Equal("Reserved", reconcileA.Items[0].Classification);
+            Assert.True(reconcileA.Items[0].BelongsToBatch);
+
+            var wrongReconcile = await repository.ReconcileBulkAsync(
+                new MeasurementCardBulkReconcileDto(batchB,
+                    preparedA.ReservedItems.Select(item => item.PrintHistoryId).ToList()),
+                seedA.User,
+                CancellationToken.None);
+            Assert.False(wrongReconcile.Items[0].BelongsToBatch);
+
+            var wrongConfirm = await repository.ConfirmBulkAsync(
+                new MeasurementCardBulkConfirmationDto(batchB,
+                    preparedA.ReservedItems.Select(item => item.PrintHistoryId).ToList()),
+                seedA.User,
+                CancellationToken.None);
+            Assert.Empty(wrongConfirm.Confirmed);
+            Assert.NotEmpty(wrongConfirm.Skipped);
+
+            var wrongRecovery = await repository.RecoverBulkAsync(
+                new MeasurementCardBulkRecoveryDto(batchA,
+                    preparedB.ReservedItems.Select(item => item.PrintHistoryId).ToList()),
+                seedB.User,
+                CancellationToken.None);
+            Assert.Empty(wrongRecovery.Confirmed);
+            Assert.NotEmpty(wrongRecovery.Skipped);
+
+            await repository.CancelBulkAsync(
+                new MeasurementCardBulkConfirmationDto(batchA,
+                    preparedA.ReservedItems.Select(item => item.PrintHistoryId).ToList()),
+                "اختبار إلغاء دفعة محددة", seedA.User, CancellationToken.None);
+            await repository.CancelBulkAsync(
+                new MeasurementCardBulkConfirmationDto(batchB,
+                    preparedB.ReservedItems.Select(item => item.PrintHistoryId).ToList()),
+                "اختبار إلغاء دفعة محددة", seedB.User, CancellationToken.None);
+
+            Assert.Equal("Failed", (await repository.GetPieceHistoryAsync(seedA.PieceId, false, CancellationToken.None)).Last().PrintStatus);
+            Assert.Equal("Failed", (await repository.GetPieceHistoryAsync(seedB.PieceId, false, CancellationToken.None)).Last().PrintStatus);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, seedA);
+            await CleanupAsync(connectionString, seedB);
+        }
+    }
+
+    [Fact]
     public async Task SuccessfulPrint_UpdatesOfficialProductionStage_AndDoesNotCreatePieceWage()
     {
         var connectionString = GetConnectionString();
