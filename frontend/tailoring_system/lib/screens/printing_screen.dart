@@ -209,7 +209,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
   String? _pendingBulkBatchId;
   String? _pendingBulkRestoreError;
   Map<int, String> _pendingBulkReconcileStatus = const {};
-  final Map<int, List<_PrintHistoryRecord>> _printHistoryCache = {};
+  final Map<String, List<_PrintHistoryRecord>> _printHistoryCache = {};
   List<_OrderSummary> _orders = const [];
   _MeasurementHeaderSettings _header = const _MeasurementHeaderSettings(
       useImage: false,
@@ -491,6 +491,18 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     super.dispose();
   }
 
+  Future<void> _reloadOpenOrderPrintHistory() async {
+    if (_pieces.isEmpty) return;
+    await Future.wait(_pieces.map((piece) async {
+      try {
+        await _fetchPrintHistory(piece);
+      } catch (_) {
+        // Keep the last verified history for this piece until retry.
+      }
+    }));
+    if (mounted) setState(() {});
+  }
+
   Future<void> _refreshUnprintedSummary() async {
     if (_loadingUnprintedSummary) return;
     setState(() => _loadingUnprintedSummary = true);
@@ -597,11 +609,20 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         labels[piece.pieceId] = '$key ($current من $total)';
       }
 
+      if (!mounted) return;
       setState(() {
         _pieces = pieces;
         _pieceTypeLabels.clear();
         _pieceTypeLabels.addAll(labels);
       });
+      await Future.wait(pieces.map((piece) async {
+        try {
+          await _fetchPrintHistory(piece);
+        } catch (_) {
+          // Keep PieceStatus fallback if one history endpoint temporarily fails.
+        }
+      }));
+      if (mounted) setState(() {});
     } catch (_) {
       setState(() {
         _pieces = const [];
@@ -646,8 +667,11 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     };
   }
 
+  String _printHistoryKey(_OrderPieceDetail piece) =>
+      '${piece.isReadyMade ? 'ready' : 'tailoring'}:${piece.pieceId}';
+
   bool _isPiecePrinted(_OrderPieceDetail piece) {
-    final history = _printHistoryCache[piece.pieceId];
+    final history = _printHistoryCache[_printHistoryKey(piece)];
     return piece.isPrinted ||
         (history?.any((entry) => entry.printStatus == 'Completed') ?? false);
   }
@@ -668,7 +692,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
             .map(_PrintHistoryRecord.fromJson)
             .toList()
         : <_PrintHistoryRecord>[];
-    _printHistoryCache[piece.pieceId] = history;
+    _printHistoryCache[_printHistoryKey(piece)] = history;
     return history;
   }
 
@@ -730,11 +754,12 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     }
     final record = _PrintHistoryRecord.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>);
-    final history = [...?_printHistoryCache[piece.pieceId]];
+    final cacheKey = _printHistoryKey(piece);
+    final history = [...?_printHistoryCache[cacheKey]];
     history
         .removeWhere((entry) => entry.printHistoryId == record.printHistoryId);
     history.add(record);
-    _printHistoryCache[piece.pieceId] = history;
+    _printHistoryCache[cacheKey] = history;
     return record;
   }
 
@@ -750,11 +775,12 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     }
     final record = _PrintHistoryRecord.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>);
-    final history = [...?_printHistoryCache[piece.pieceId]];
+    final cacheKey = _printHistoryKey(piece);
+    final history = [...?_printHistoryCache[cacheKey]];
     history
         .removeWhere((entry) => entry.printHistoryId == record.printHistoryId);
     history.add(record);
-    _printHistoryCache[piece.pieceId] = history;
+    _printHistoryCache[cacheKey] = history;
     return record;
   }
 
@@ -1073,6 +1099,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         copyNumber: copyNumber,
       );
       await _completePrint(piece, prepared.printHistoryId, form?.cashAccountId);
+      await _refreshUnprintedSummary();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1080,9 +1107,6 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
                   ? 'تم اعتماد الطباعة الأولى.'
                   : 'تم اعتماد إعادة الطباعة بالنسخة $copyNumber.')),
         );
-        if (form == null && _allUnprintedCards > 0) {
-          setState(() => _allUnprintedCards -= 1);
-        }
       }
     } catch (error) {
       if (prepared != null && prepared.printStatus == 'Reserved') {
@@ -1582,6 +1606,7 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         await _persistPendingBulk(batchId, remaining, status: 'partiallyConfirmed');
       }
       await _refreshUnprintedSummary();
+      if (accepted.isNotEmpty) await _reloadOpenOrderPrintHistory();
       if (accepted.isNotEmpty && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('اعتمد Backend ${accepted.length} بطاقة مؤكدًا.')));
       }
@@ -1764,6 +1789,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
         );
       }
     }
+    await _refreshUnprintedSummary();
+    await _reloadOpenOrderPrintHistory();
   }
 
   String _bulkHttpError(http.Response response) {
