@@ -15,6 +15,38 @@ namespace LUMAR_ERP_API_V2.Tests;
 public sealed class MeasurementCardPrintingIntegrationTests
 {
     [Fact]
+    public async Task SelectedCompletedOrder_DoesNotHideGlobalUnprintedCards()
+    {
+        var connectionString = GetConnectionString();
+        var selected = await SeedTailoringPieceAsync(connectionString);
+        var other = await SeedTailoringPieceAsync(connectionString);
+        var repository = CreateRepository(connectionString);
+
+        try
+        {
+            var selectedPrint = await repository.PrepareAsync(selected.PieceId, false,
+                new PrepareMeasurementCardPrintDto(null, null, null, null, null, null, null, null),
+                selected.User, CancellationToken.None);
+            await repository.CompleteAsync(selectedPrint.PrintHistoryId, null, selected.User, CancellationToken.None);
+
+            var selectedSummary = await repository.GetStatusSummaryAsync(selected.OrderId, CancellationToken.None);
+            var globalSummary = await repository.GetStatusSummaryAsync(null, CancellationToken.None);
+            var selectedSnapshot = await repository.GetEligibleSnapshotAsync(selected.OrderId, CancellationToken.None);
+            var globalSnapshot = await repository.GetEligibleSnapshotAsync(null, CancellationToken.None);
+
+            Assert.Equal(0, selectedSummary.UnprintedTotal);
+            Assert.Empty(selectedSnapshot.Cards);
+            Assert.True(globalSummary.UnprintedTotal > 0);
+            Assert.Contains(globalSnapshot.Cards, card => card.PieceId == other.PieceId && !card.IsReadyMade);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, selected);
+            await CleanupAsync(connectionString, other);
+        }
+    }
+
+    [Fact]
     public async Task PrintingLifecycle_TracksCopies_Reasons_FinancialPosting_AndOriginalTrackingCode()
     {
         var connectionString = GetConnectionString();

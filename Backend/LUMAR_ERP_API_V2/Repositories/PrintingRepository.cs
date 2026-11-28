@@ -222,7 +222,7 @@ ORDER BY c.OrderNumber, c.PieceNumber, c.PieceId;";
                 reader.NullableInt32("OrderItemID"),
                 reader.GetString(reader.GetOrdinal("OrderNumber")),
                 reader.GetInt32(reader.GetOrdinal("PieceNumber")),
-                reader.GetString(reader.GetOrdinal("CustomerName")),
+                reader.NullableString("CustomerName") ?? string.Empty,
                 reader.GetString(reader.GetOrdinal("PieceType")),
                 reader.NullableInt32("ProductTypeId"),
                 reader.GetString(reader.GetOrdinal("TrackingCode")),

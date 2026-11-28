@@ -496,10 +496,8 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     setState(() => _loadingUnprintedSummary = true);
 
     try {
-      final query = _selectedOrder?.orderId;
-      final suffix = query == null ? '' : '?orderId=$query';
       final response = await http.get(
-        Uri.parse('${widget.baseUrl}/printing/measurement-card-status-summary$suffix'),
+        Uri.parse('${widget.baseUrl}/printing/measurement-card-status-summary'),
         headers: _authHeaders,
       );
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1197,13 +1195,12 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
     await _executeBulkPrint(target);
   }
 
-  Future<void> _executeBulkPrint(_PrintTarget target) async {
+  Future<void> _executeBulkPrint(_PrintTarget target, {int? orderId}) async {
     if (_loadingPrintAction || !mounted) return;
     setState(() => _loadingPrintAction = true);
 
     try {
       final batchId = const Uuid().v4();
-      final orderId = _selectedOrder?.orderId;
       final response = await http.post(
         Uri.parse('${widget.baseUrl}/printing/bulk/prepare'),
         headers: _authHeaders,
@@ -1224,8 +1221,13 @@ class _MeasurementCardsTabState extends State<_MeasurementCardsTab> {
       final cards = (body['cards'] as List? ?? const [])
           .whereType<Map<String, dynamic>>()
           .toList();
+      final skipped = (body['skipped'] as List? ?? const [])
+          .map((item) => item.toString())
+          .toList();
       if (reserved.isEmpty) {
-        throw Exception('لا توجد بطاقات قابلة للحجز في اللقطة الحالية.');
+        throw Exception(skipped.isEmpty
+            ? 'لا توجد بطاقات مؤهلة للطباعة في النطاق المطلوب.'
+            : 'تعذر حجز البطاقات: ${skipped.join(' | ')}');
       }
 
       final copiesByKey = <String, int>{};
